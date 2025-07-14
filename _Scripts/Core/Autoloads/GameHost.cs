@@ -45,7 +45,7 @@ public partial class GameHost : AutoloadBase
 		var gameData = _gameRegistry?.GetGameData(gameId);
 		if (gameData == null || !gameData.IsActive)
 		{
-			GD.PrintErr($"GameHost: Game {gameId} not found or inactive");
+			LogError($"Game {gameId} not found or inactive");
 			return;
 		}
 
@@ -56,11 +56,11 @@ public partial class GameHost : AutoloadBase
 			if (currentUser != null && currentUser.Credits >= gameData.CreditCost)
 			{
 				_userManager.SpendCredits(gameData.CreditCost);
-				GD.Print($"GameHost: Deducted {gameData.CreditCost} credits for {gameId}");
+				LogInfo($"Deducted {gameData.CreditCost} credits for {gameId}");
 			}
 			else
 			{
-				GD.PrintErr("GameHost: Insufficient credits or no user logged in");
+				LogError("Insufficient credits or no user logged in");
 				return;
 			}
 		}
@@ -79,7 +79,7 @@ public partial class GameHost : AutoloadBase
 	{
 		if (string.IsNullOrEmpty(scenePath))
 		{
-			GD.PrintErr($"GameHost: No scene path for game {gameId}");
+			LogError($"No scene path for game {gameId}");
 			return;
 		}
 
@@ -87,7 +87,7 @@ public partial class GameHost : AutoloadBase
 		var scene = GD.Load<PackedScene>(scenePath);
 		if (scene == null)
 		{
-			GD.PrintErr($"GameHost: Failed to load scene {scenePath}");
+			LogError($"Failed to load scene {scenePath}");
 			return;
 		}
 
@@ -101,7 +101,7 @@ public partial class GameHost : AutoloadBase
 		// Connect game signals for optional integration
 		ConnectGameSignals(_currentGame);
 
-		GD.Print($"GameHost: Loaded {gameId} as overlay");
+		LogInfo($"Loaded {gameId} as overlay");
 	}
 
 	public void StopCurrentGame()

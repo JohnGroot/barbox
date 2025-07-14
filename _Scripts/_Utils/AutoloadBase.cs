@@ -80,7 +80,7 @@ public abstract partial class AutoloadBase : Node
 	/// </summary>
 	protected bool TryDisconnectSignal(Node node, string signalName, Callable callable)
 	{
-		if (IsInstanceValid(node) && node.HasSignal(signalName) && node.IsConnected(signalName, callable))
+		if (GodotObject.IsInstanceValid(node) && node.HasSignal(signalName) && node.IsConnected(signalName, callable))
 		{
 			node.Disconnect(signalName, callable);
 			return true;
