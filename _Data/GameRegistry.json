@@ -1,0 +1,22 @@
+{
+	"games": [
+		{
+			"game_id": "sample_game",
+			"display_name": "Sample Game",
+			"description": "A simple collection game to demonstrate the arcade architecture",
+			"scene_path": "res://_Scenes/Games/SampleGame/SampleGame.tscn",
+			"thumbnail_path": "res://_Scenes/Games/SampleGame/Assets/Sprites/thumbnail.png",
+			"max_players": 1,
+			"credit_cost": 1,
+			"is_active": true,
+			"category": "Arcade",
+			"difficulty_rating": 1.0
+		}
+	],
+	"settings": {
+		"default_credits": 5,
+		"idle_timeout_seconds": 120.0,
+		"show_fps": false,
+		"debug_mode": false
+	}
+}

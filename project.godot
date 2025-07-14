@@ -11,8 +11,17 @@ config_version=5
 [application]
 
 config/name="BarBox"
-config/features=PackedStringArray("4.4", "Forward Plus")
+run/main_scene="uid://bqkgdvfutgdsd"
+config/features=PackedStringArray("4.4", "C#", "Forward Plus")
 config/icon="res://icon.svg"
+
+[autoload]
+
+GameRegistry="*res://_Scripts/Core/Autoloads/GameRegistry.cs"
+UserManager="*res://_Scripts/Core/Autoloads/UserManager.cs"
+InputManager="*res://_Scripts/Core/Autoloads/InputManager.cs"
+SceneManager="*res://_Scripts/Core/Services/SceneManager.cs"
+GameHost="*res://_Scripts/Core/Autoloads/GameHost.cs"
 
 [dotnet]
 

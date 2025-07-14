@@ -1,32 +1,85 @@
-# Godot 4+ specific ignores
-.godot/
-/android/
-
-# Import cache
-.import/
-
-# Binaries
-*.o
-*.a
-*.so
-*.dylib
-*.exe
-*.dll
-
 # Godot-specific
-*.tmp
-.mono/
-data_*/
-mono_crash.*.json
+.import/
+.export/
+.export_presets.cfg
+.godot/
+godot.env
 
-# OS generated files
+# Mono (C#) specific
+.mono/
+data_*/  # Godot's C# build output
+mono_crash.*
+
+# Build output
+bin/
+obj/
+*.dll
+*.exe
+*.mdb
+*.pdb
+
+# Rider IDE
+.idea/
+*.sln.iml
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# VSCode (if used)
+.vscode/
+
+# OS generated
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
+ehthumbs.db
+Icon?
+Desktop.ini
+
+# Claude Code (if it generates any temp files, add them here)
+claude_code_temp/
+claude_code_cache/
+
+# NuGet
+*.nupkg
+*.snupkg
+*.nuspec
+*.psmdcp
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Logs
+*.log
+
+# Crash dumps
+*.dmp
+
+# Godot C# solution and project files (keep these if you want to share the project structure)
+# Uncomment if you want to ignore them:
+# *.csproj
+# *.sln
+# *.sln.DotSettings
+
+# Rider-specific caches (optional, but usually not needed in git)
+.idea/
+.idea_modules/
+.idea/.idea.*
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries
+.idea/vcs.xml
+.idea/jsLibraryMappings.xml
+.idea/.name
+.idea/httpRequests
+.idea/assetWizardSettings.xml
+.idea/gradle.xml
+.idea/libraries/
+.idea/modules.xml
+.idea/.gitignore
+
+# Godot Mono NuGet packages
+.nu
 
 # Claude files
 CLAUDE.md
