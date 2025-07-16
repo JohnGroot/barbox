@@ -6,22 +6,30 @@ using System.Linq;
 [Tool]
 public partial class TrackGenerator : Node2D
 {
-	[ExportCategory("Track Generation")]
-	[Export] public int InitialPointCount { get; set; } = 8;
+	[ExportCategory("Track Layout")]
+	[Export] public int TurnCount { get; set; } = 6;
+	[Export] public float MinTurnAngle { get; set; } = 45.0f;
+	[Export] public float MaxTurnAngle { get; set; } = 135.0f;
+	[Export] public int TurnSmoothness { get; set; } = 16;
 	[Export] public float TrackRadius { get; set; } = 400.0f;
-	[Export] public float MinPointDistance { get; set; } = 100.0f;
-	[Export] public float MaxDisplacement { get; set; } = 150.0f;
-	[Export] public float MinAngle { get; set; } = 30.0f;
-	[Export] public float MaxAngle { get; set; } = 150.0f;
-	[Export] public float TrackDifficulty { get; set; } = 0.5f;
-	[Export] public int SplineSegments { get; set; } = 100;
-	[Export] public bool UseConvexHull { get; set; } = true;
-	[Export] public bool EnforceSeamlessLoop { get; set; } = true;
 	[Export] public string TrackSeed { get; set; } = "";
 
+	[ExportCategory("Track Geometry")]
+	[Export] public float TrackWidth { get; set; } = 80.0f;
+	[Export] public int SplineSegments { get; set; } = 100;
+
+	[ExportCategory("Kerb Settings")]
+	[Export] public float KerbAngleThreshold { get; set; } = 90.0f;
+	[Export] public float KerbWidth { get; set; } = 12.0f;
+	[Export] public float KerbOffset { get; set; } = 5.0f;
+	[Export] public int KerbStripeCount { get; set; } = 8;
+	[Export] public Color KerbColor1 { get; set; } = Colors.Red;
+	[Export] public Color KerbColor2 { get; set; } = Colors.White;
+
 	[ExportCategory("Visual")]
-	[Export] public float TrackWidth { get; set; } = 8.0f;
-	[Export] public Color TrackColor { get; set; } = Colors.White;
+	[Export] public Color TrackColor { get; set; } = new Color(0.4f, 0.4f, 0.4f);
+	[Export] public Color EdgeColor { get; set; } = Colors.White;
+	[Export] public float EdgeWidth { get; set; } = 3.0f;
 	[Export] public bool ShowDebugPoints { get; set; } = false;
 
 	[ExportCategory("Editor Tools")]
@@ -48,10 +56,17 @@ public partial class TrackGenerator : Node2D
 
 	private bool _regenerateTrack = false;
 	private Vector2[] _trackPoints;
+	private Vector2[] _innerEdgePoints;
+	private Vector2[] _outerEdgePoints;
 	private Curve2D _trackCurve;
+	private Curve2D _innerEdgeCurve;
+	private Curve2D _outerEdgeCurve;
 	private Path2D _trackPath;
 	private Line2D _trackVisual;
+	private Line2D _innerEdgeVisual;
+	private Line2D _outerEdgeVisual;
 	private Node2D _debugPointsParent;
+	private Node2D _kerbParent;
 
 	public override void _Ready()
 	{
@@ -84,17 +99,11 @@ public partial class TrackGenerator : Node2D
 		var screenSize = viewport.GetVisibleRect().Size;
 		var center = screenSize / 2;
 
-		// Generate initial random points
-		var initialPoints = GenerateInitialPoints(center, screenSize);
-
-		// Apply convex hull if enabled
-		Vector2[] hullPoints = UseConvexHull ? ComputeConvexHull(initialPoints) : initialPoints;
-
-		// Apply displacement and constraints
-		var processedPoints = ProcessTrackPoints(hullPoints, center, screenSize);
+		// Generate turn-based control points
+		var turnPoints = GenerateTurnPoints(center, screenSize);
 
 		// Store the final track points
-		_trackPoints = processedPoints;
+		_trackPoints = turnPoints;
 
 		// Create the track curve
 		CreateTrackCurve();
@@ -105,35 +114,36 @@ public partial class TrackGenerator : Node2D
 		return _trackPoints;
 	}
 
-	private Vector2[] GenerateInitialPoints(Vector2 center, Vector2 screenSize)
+	private Vector2[] GenerateTurnPoints(Vector2 center, Vector2 screenSize)
 	{
 		var points = new List<Vector2>();
 		var margin = 50.0f;
+		
+		// Create a base oval shape to distribute turns around
+		var radiusX = Mathf.Min(TrackRadius, (screenSize.X - margin * 2) / 2);
+		var radiusY = Mathf.Min(TrackRadius * 0.7f, (screenSize.Y - margin * 2) / 2);
 
-		for (int i = 0; i < InitialPointCount; i++)
+		for (int i = 0; i < TurnCount; i++)
 		{
-			Vector2 point;
-			int attempts = 0;
-			const int maxAttempts = 100;
+			// Distribute turns evenly around an ellipse
+			float baseAngle = (float)(i * 2 * Mathf.Pi / TurnCount);
+			
+			// Add some variation to the angle within constraints
+			float angleVariation = (float)GD.RandRange(-0.3, 0.3);
+			float angle = baseAngle + angleVariation;
+			
+			// Add radius variation for more interesting shapes
+			float radiusVariationX = (float)GD.RandRange(0.8, 1.2);
+			float radiusVariationY = (float)GD.RandRange(0.8, 1.2);
+			
+			var point = center + new Vector2(
+				Mathf.Cos(angle) * radiusX * radiusVariationX,
+				Mathf.Sin(angle) * radiusY * radiusVariationY
+			);
 
-			do
-			{
-				// Generate point around a circle with random variation
-				float angle = (float)(i * 2 * Mathf.Pi / InitialPointCount);
-				var baseRadius = TrackRadius * (float)GD.RandRange(0.7, 1.3);
-				
-				point = center + new Vector2(
-					Mathf.Cos(angle) * baseRadius,
-					Mathf.Sin(angle) * baseRadius
-				);
-
-				// Ensure point is within screen bounds
-				point.X = Mathf.Clamp(point.X, margin, screenSize.X - margin);
-				point.Y = Mathf.Clamp(point.Y, margin, screenSize.Y - margin);
-
-				attempts++;
-			}
-			while (attempts < maxAttempts && !IsValidPointPlacement(point, points));
+			// Ensure point is within screen bounds
+			point.X = Mathf.Clamp(point.X, margin, screenSize.X - margin);
+			point.Y = Mathf.Clamp(point.Y, margin, screenSize.Y - margin);
 
 			points.Add(point);
 		}
@@ -141,15 +151,6 @@ public partial class TrackGenerator : Node2D
 		return points.ToArray();
 	}
 
-	private bool IsValidPointPlacement(Vector2 newPoint, List<Vector2> existingPoints)
-	{
-		foreach (var existingPoint in existingPoints)
-		{
-			if (newPoint.DistanceTo(existingPoint) < MinPointDistance)
-				return false;
-		}
-		return true;
-	}
 
 	private void CreateTrackCurve()
 	{
@@ -161,14 +162,201 @@ public partial class TrackGenerator : Node2D
 
 		_trackCurve = new Curve2D();
 
-		foreach (var point in _trackPoints)
+		// Create smooth Bézier curves between control points
+		// First pass: Add all points with properly calculated handles for closed loop
+		for (int i = 0; i < _trackPoints.Length; i++)
 		{
-			_trackCurve.AddPoint(point);
+			var currentPoint = _trackPoints[i];
+			var nextPoint = _trackPoints[(i + 1) % _trackPoints.Length];
+			var prevPoint = _trackPoints[(i - 1 + _trackPoints.Length) % _trackPoints.Length];
+			
+			// Calculate control point handles for smooth curves
+			// This properly handles the wraparound for closed loops
+			var toNext = (nextPoint - currentPoint);
+			var toPrev = (currentPoint - prevPoint);
+			var tangent = (toNext.Normalized() + toPrev.Normalized()).Normalized();
+			
+			// Scale control handles based on distance and turn smoothness setting
+			var baseHandleLength = Mathf.Min(toNext.Length(), toPrev.Length()) * 0.25f;
+			var smoothnessFactor = (float)TurnSmoothness / 16.0f; // Normalize to reasonable range
+			var handleLength = baseHandleLength * smoothnessFactor;
+			
+			var inHandle = -tangent * handleLength;
+			var outHandle = tangent * handleLength;
+			
+			_trackCurve.AddPoint(currentPoint, inHandle, outHandle);
 		}
-
-		// Close the loop
-		_trackCurve.AddPoint(_trackPoints[0]);
+		
+		// Close the loop by adding the first point again with consistent handles
+		// This ensures the curve forms a seamless closed loop
+		var firstPoint = _trackPoints[0];
+		
+		// Use the same handle calculation as for the first point to ensure consistency
+		var nextPointForClosure = _trackPoints[1];
+		var prevPointForClosure = _trackPoints[_trackPoints.Length - 1];
+		
+		var toNextClosure = (nextPointForClosure - firstPoint);
+		var toPrevClosure = (firstPoint - prevPointForClosure);
+		var closureTangent = (toNextClosure.Normalized() + toPrevClosure.Normalized()).Normalized();
+		
+		var closureBaseLength = Mathf.Min(toNextClosure.Length(), toPrevClosure.Length()) * 0.25f;
+		var closureSmoothness = (float)TurnSmoothness / 16.0f;
+		var closureHandleLength = closureBaseLength * closureSmoothness;
+		
+		var closureInHandle = -closureTangent * closureHandleLength;
+		var closureOutHandle = closureTangent * closureHandleLength;
+		
+		_trackCurve.AddPoint(firstPoint, closureInHandle, closureOutHandle);
+		
+		// Generate track edges
+		GenerateTrackEdges();
 	}
+
+	private void GenerateTrackEdges()
+	{
+		if (_trackCurve == null)
+			return;
+
+		// Generate edge point arrays for API compatibility
+		// (Visual edges are now generated dynamically in CreateSmoothEdgeVisual)
+		var innerPoints = new List<Vector2>();
+		var outerPoints = new List<Vector2>();
+		
+		var bakeLength = _trackCurve.GetBakedLength();
+		var segments = SplineSegments;
+		
+		for (int i = 0; i <= segments; i++)
+		{
+			var offset = (float)i / segments * bakeLength;
+			var centerPoint = _trackCurve.SampleBaked(offset);
+			
+			// Calculate perpendicular direction for track width
+			var nextOffset = offset + 1.0f;
+			if (nextOffset > bakeLength)
+				nextOffset = 0.0f;
+			
+			var nextPoint = _trackCurve.SampleBaked(nextOffset);
+			var direction = (nextPoint - centerPoint).Normalized();
+			var perpendicular = new Vector2(-direction.Y, direction.X);
+			
+			// Create inner and outer edge points
+			var halfWidth = TrackWidth * 0.5f;
+			innerPoints.Add(centerPoint - perpendicular * halfWidth);
+			outerPoints.Add(centerPoint + perpendicular * halfWidth);
+		}
+		
+		// Close the edge loops by adding the first points at the end
+		if (innerPoints.Count > 0)
+		{
+			innerPoints.Add(innerPoints[0]);
+			outerPoints.Add(outerPoints[0]);
+		}
+		
+		_innerEdgePoints = innerPoints.ToArray();
+		_outerEdgePoints = outerPoints.ToArray();
+		
+		// Create edge curves for API access
+		_innerEdgeCurve = new Curve2D();
+		_outerEdgeCurve = new Curve2D();
+		
+		foreach (var point in _innerEdgePoints)
+			_innerEdgeCurve.AddPoint(point);
+		
+		foreach (var point in _outerEdgePoints)
+			_outerEdgeCurve.AddPoint(point);
+			
+		// Generate kerb markings for sharp turns
+		GenerateKerbMarkings();
+	}
+
+	private void GenerateKerbMarkings()
+	{
+		if (_trackCurve == null || _innerEdgePoints == null)
+			return;
+
+		var kerbSections = new List<KerbSection>();
+		var bakeLength = _trackCurve.GetBakedLength();
+		
+		// Analyze curve for sharp turns
+		for (int i = 0; i < _trackPoints.Length; i++)
+		{
+			var prevIndex = (i - 1 + _trackPoints.Length) % _trackPoints.Length;
+			var nextIndex = (i + 1) % _trackPoints.Length;
+			
+			var prevPoint = _trackPoints[prevIndex];
+			var currentPoint = _trackPoints[i];
+			var nextPoint = _trackPoints[nextIndex];
+			
+			// Calculate turn angle
+			var vec1 = (currentPoint - prevPoint).Normalized();
+			var vec2 = (nextPoint - currentPoint).Normalized();
+			var turnAngle = Mathf.RadToDeg(Mathf.Acos(Mathf.Clamp(vec1.Dot(vec2), -1.0f, 1.0f)));
+			
+			// If turn is sharp enough, create kerb section
+			if (turnAngle < KerbAngleThreshold)
+			{
+				// Find the position on the curve for this control point
+				var closestOffset = FindClosestOffsetOnCurve(currentPoint);
+				var kerbStartOffset = Mathf.Max(0, closestOffset - KerbWidth * 0.5f);
+				var kerbEndOffset = Mathf.Min(bakeLength, closestOffset + KerbWidth * 0.5f);
+				
+				kerbSections.Add(new KerbSection
+				{
+					StartOffset = kerbStartOffset,
+					EndOffset = kerbEndOffset,
+					IsInnerEdge = DetermineKerbSide(prevPoint, currentPoint, nextPoint)
+				});
+			}
+		}
+		
+		_kerbSections = kerbSections;
+	}
+
+	private float FindClosestOffsetOnCurve(Vector2 point)
+	{
+		if (_trackCurve == null)
+			return 0.0f;
+			
+		var bakeLength = _trackCurve.GetBakedLength();
+		var bestOffset = 0.0f;
+		var bestDistance = float.MaxValue;
+		
+		// Sample the curve to find closest point
+		for (int i = 0; i <= 100; i++)
+		{
+			var offset = (float)i / 100 * bakeLength;
+			var curvePoint = _trackCurve.SampleBaked(offset);
+			var distance = point.DistanceSquaredTo(curvePoint);
+			
+			if (distance < bestDistance)
+			{
+				bestDistance = distance;
+				bestOffset = offset;
+			}
+		}
+		
+		return bestOffset;
+	}
+
+	private bool DetermineKerbSide(Vector2 prevPoint, Vector2 currentPoint, Vector2 nextPoint)
+	{
+		// Calculate cross product to determine turn direction
+		var vec1 = currentPoint - prevPoint;
+		var vec2 = nextPoint - currentPoint;
+		var cross = vec1.X * vec2.Y - vec1.Y * vec2.X;
+		
+		// Negative cross product means right turn, kerbs go on inside (left side)
+		return cross < 0;
+	}
+
+	private struct KerbSection
+	{
+		public float StartOffset;
+		public float EndOffset;
+		public bool IsInnerEdge;
+	}
+
+	private List<KerbSection> _kerbSections;
 
 	private void UpdateVisuals()
 	{
@@ -182,20 +370,36 @@ public partial class TrackGenerator : Node2D
 			_trackPath.Curve = _trackCurve;
 			AddChild(_trackPath);
 
-			// Create visual line
+			// Create track surface visual with overlap for seamless closure
 			_trackVisual = new Line2D();
 			_trackVisual.Width = TrackWidth;
 			_trackVisual.DefaultColor = TrackColor;
 
 			var bakeLength = _trackCurve.GetBakedLength();
-			for (int i = 0; i <= SplineSegments; i++)
+			// Add 15% extra sampling beyond full curve for visual overlap
+			var overlapFactor = 1.15f;
+			var totalSamples = (int)(SplineSegments * overlapFactor);
+			
+			for (int i = 0; i <= totalSamples; i++)
 			{
-				var offset = (float)i / SplineSegments * bakeLength;
+				var normalizedOffset = (float)i / SplineSegments; // Deliberately goes beyond 1.0
+				var offset = normalizedOffset * bakeLength;
+				
+				// Handle wraparound for sampling beyond curve length
+				if (offset > bakeLength)
+					offset = offset - bakeLength;
+					
 				var point = _trackCurve.SampleBaked(offset);
 				_trackVisual.AddPoint(point);
 			}
 
 			AddChild(_trackVisual);
+
+			// Create edge visuals
+			CreateEdgeVisuals();
+			
+			// Create kerb visuals
+			CreateKerbVisuals();
 		}
 
 		// Create debug points if enabled
@@ -215,6 +419,126 @@ public partial class TrackGenerator : Node2D
 		}
 	}
 
+	private void CreateEdgeVisuals()
+	{
+		// Create smooth edge visuals with overlap closure like the track surface
+		if (_trackCurve != null)
+		{
+			CreateSmoothEdgeVisual(true);  // Inner edge
+			CreateSmoothEdgeVisual(false); // Outer edge
+		}
+	}
+
+	private void CreateSmoothEdgeVisual(bool isInnerEdge)
+	{
+		var edgeVisual = new Line2D();
+		edgeVisual.Width = EdgeWidth;
+		edgeVisual.DefaultColor = EdgeColor;
+
+		var bakeLength = _trackCurve.GetBakedLength();
+		// Use same overlap factor as track surface for consistency
+		var overlapFactor = 1.15f;
+		var totalSamples = (int)(SplineSegments * overlapFactor);
+
+		for (int i = 0; i <= totalSamples; i++)
+		{
+			var normalizedOffset = (float)i / SplineSegments;
+			var offset = normalizedOffset * bakeLength;
+
+			// Handle wraparound for sampling beyond curve length
+			if (offset > bakeLength)
+				offset = offset - bakeLength;
+
+			var centerPoint = _trackCurve.SampleBaked(offset);
+
+			// Calculate perpendicular direction for track width
+			var nextSampleOffset = offset + 1.0f;
+			if (nextSampleOffset > bakeLength)
+				nextSampleOffset = nextSampleOffset - bakeLength;
+
+			var nextPoint = _trackCurve.SampleBaked(nextSampleOffset);
+			var direction = (nextPoint - centerPoint).Normalized();
+			var perpendicular = new Vector2(-direction.Y, direction.X);
+
+			// Create edge point offset from center
+			var halfWidth = TrackWidth * 0.5f;
+			var edgeOffset = isInnerEdge ? -halfWidth : halfWidth;
+			var edgePoint = centerPoint + perpendicular * edgeOffset;
+
+			edgeVisual.AddPoint(edgePoint);
+		}
+
+		// Store the visuals for cleanup
+		if (isInnerEdge)
+			_innerEdgeVisual = edgeVisual;
+		else
+			_outerEdgeVisual = edgeVisual;
+
+		AddChild(edgeVisual);
+	}
+
+	private void CreateKerbVisuals()
+	{
+		if (_kerbSections == null || _trackCurve == null)
+			return;
+
+		_kerbParent = new Node2D();
+		_kerbParent.Name = "KerbMarkings";
+		AddChild(_kerbParent);
+
+		foreach (var kerbSection in _kerbSections)
+		{
+			CreateKerbStripes(kerbSection);
+		}
+	}
+
+	private void CreateKerbStripes(KerbSection kerbSection)
+	{
+		var bakeLength = _trackCurve.GetBakedLength();
+		var sectionLength = kerbSection.EndOffset - kerbSection.StartOffset;
+		var stripeLength = sectionLength / KerbStripeCount;
+
+		for (int i = 0; i < KerbStripeCount; i++)
+		{
+			var stripeStart = kerbSection.StartOffset + i * stripeLength;
+			var stripeEnd = stripeStart + stripeLength;
+			
+			// Determine stripe color (alternating)
+			var stripeColor = (i % 2 == 0) ? KerbColor1 : KerbColor2;
+			
+			// Create stripe visual
+			var stripeLine = new Line2D();
+			stripeLine.Width = KerbWidth;
+			stripeLine.DefaultColor = stripeColor;
+			
+			// Sample points along the stripe
+			var stripePoints = 8; // Number of points per stripe for smooth curves
+			for (int j = 0; j <= stripePoints; j++)
+			{
+				var offset = stripeStart + (stripeEnd - stripeStart) * j / stripePoints;
+				if (offset > bakeLength) offset -= bakeLength;
+				
+				var centerPoint = _trackCurve.SampleBaked(offset);
+				
+				// Get perpendicular direction for offset
+				var nextOffset = offset + 1.0f;
+				if (nextOffset > bakeLength) nextOffset -= bakeLength;
+				var nextPoint = _trackCurve.SampleBaked(nextOffset);
+				var direction = (nextPoint - centerPoint).Normalized();
+				var perpendicular = new Vector2(-direction.Y, direction.X);
+				
+				// Offset to create kerb marking
+				var kerbOffset = (TrackWidth * 0.5f) + KerbOffset;
+				if (!kerbSection.IsInnerEdge) kerbOffset = -kerbOffset;
+				
+				var kerbPoint = centerPoint + perpendicular * kerbOffset;
+				stripeLine.AddPoint(kerbPoint);
+			}
+			
+			_kerbParent.AddChild(stripeLine);
+		}
+	}
+
 	private void ClearVisuals()
 	{
 		if (_trackPath != null)
@@ -227,6 +551,24 @@ public partial class TrackGenerator : Node2D
 		{
 			_trackVisual.QueueFree();
 			_trackVisual = null;
+		}
+
+		if (_innerEdgeVisual != null)
+		{
+			_innerEdgeVisual.QueueFree();
+			_innerEdgeVisual = null;
+		}
+
+		if (_outerEdgeVisual != null)
+		{
+			_outerEdgeVisual.QueueFree();
+			_outerEdgeVisual = null;
+		}
+
+		if (_kerbParent != null)
+		{
+			_kerbParent.QueueFree();
+			_kerbParent = null;
 		}
 
 		if (_debugPointsParent != null)
@@ -321,184 +663,7 @@ public partial class TrackGenerator : Node2D
 		return (a.X - o.X) * (b.Y - o.Y) - (a.Y - o.Y) * (b.X - o.X);
 	}
 
-	private Vector2[] ProcessTrackPoints(Vector2[] points, Vector2 center, Vector2 screenSize)
-	{
-		if (points.Length < 3)
-			return points;
 
-		var processedPoints = new List<Vector2>(points);
-		
-		// Step 1: Add midpoints between existing points for more detail
-		var expandedPoints = new List<Vector2>();
-		for (int i = 0; i < processedPoints.Count; i++)
-		{
-			expandedPoints.Add(processedPoints[i]);
-			
-			// Add midpoint to next point (wrapping around)
-			var nextIndex = (i + 1) % processedPoints.Count;
-			var midpoint = (processedPoints[i] + processedPoints[nextIndex]) / 2;
-			expandedPoints.Add(midpoint);
-		}
-
-		// Step 2: Apply random displacement based on difficulty and max displacement
-		var displacedPoints = new List<Vector2>();
-		var margin = 50.0f;
-		
-		for (int i = 0; i < expandedPoints.Count; i++)
-		{
-			var originalPoint = expandedPoints[i];
-			var displacement = Vector2.Zero;
-			
-			// Apply random displacement scaled by difficulty
-			var displacementMagnitude = MaxDisplacement * TrackDifficulty * (float)GD.RandRange(0.0, 1.0);
-			var displacementAngle = (float)GD.RandRange(0.0, 2 * Mathf.Pi);
-			
-			displacement = new Vector2(
-				Mathf.Cos(displacementAngle) * displacementMagnitude,
-				Mathf.Sin(displacementAngle) * displacementMagnitude
-			);
-			
-			var newPoint = originalPoint + displacement;
-			
-			// Ensure point stays within screen bounds
-			newPoint.X = Mathf.Clamp(newPoint.X, margin, screenSize.X - margin);
-			newPoint.Y = Mathf.Clamp(newPoint.Y, margin, screenSize.Y - margin);
-			
-			displacedPoints.Add(newPoint);
-		}
-
-		// Step 3: Enforce minimum distance constraints
-		var finalPoints = EnforceMinimumDistances(displacedPoints);
-
-		// Step 4: Validate and fix angle constraints
-		finalPoints = EnforceAngleConstraints(finalPoints);
-
-		// Step 5: Ensure seamless loop closure
-		if (EnforceSeamlessLoop)
-		{
-			finalPoints = EnsureSeamlessLoop(finalPoints);
-		}
-
-		return finalPoints.ToArray();
-	}
-
-	private List<Vector2> EnforceMinimumDistances(List<Vector2> points)
-	{
-		var result = new List<Vector2>(points);
-		bool changed = true;
-		int iterations = 0;
-		const int maxIterations = 50;
-
-		while (changed && iterations < maxIterations)
-		{
-			changed = false;
-			iterations++;
-
-			for (int i = 0; i < result.Count; i++)
-			{
-				for (int j = i + 1; j < result.Count; j++)
-				{
-					var distance = result[i].DistanceTo(result[j]);
-					
-					if (distance < MinPointDistance)
-					{
-						// Push points apart
-						var direction = (result[j] - result[i]).Normalized();
-						var pushDistance = (MinPointDistance - distance) / 2;
-						
-						result[i] -= direction * pushDistance;
-						result[j] += direction * pushDistance;
-						changed = true;
-					}
-				}
-			}
-		}
-
-		return result;
-	}
-
-	private List<Vector2> EnforceAngleConstraints(List<Vector2> points)
-	{
-		if (points.Count < 3)
-			return points;
-
-		var result = new List<Vector2>(points);
-		
-		for (int i = 0; i < result.Count; i++)
-		{
-			var prevIndex = (i - 1 + result.Count) % result.Count;
-			var nextIndex = (i + 1) % result.Count;
-			
-			var prevPoint = result[prevIndex];
-			var currentPoint = result[i];
-			var nextPoint = result[nextIndex];
-			
-			// Calculate angle between segments
-			var vec1 = (currentPoint - prevPoint).Normalized();
-			var vec2 = (nextPoint - currentPoint).Normalized();
-			
-			var angleDegrees = Mathf.RadToDeg(Mathf.Acos(Mathf.Clamp(vec1.Dot(vec2), -1.0f, 1.0f)));
-			
-			// If angle is too sharp, adjust the current point
-			if (angleDegrees < MinAngle)
-			{
-				// Move point to create a more gentle curve
-				var bisector = (vec1 + vec2).Normalized();
-				var adjustment = bisector * (MinPointDistance * 0.5f);
-				result[i] = currentPoint + adjustment;
-			}
-			else if (angleDegrees > MaxAngle)
-			{
-				// Move point to create a sharper curve
-				var bisector = (vec1 + vec2).Normalized();
-				var adjustment = bisector * (MinPointDistance * -0.2f);
-				result[i] = currentPoint + adjustment;
-			}
-		}
-
-		return result;
-	}
-
-	private List<Vector2> EnsureSeamlessLoop(List<Vector2> points)
-	{
-		if (points.Count < 3)
-			return points;
-
-		var result = new List<Vector2>(points);
-		
-		// Calculate angles for the loop closure
-		var lastPoint = result[result.Count - 1];
-		var firstPoint = result[0];
-		var secondPoint = result[1];
-		var secondToLastPoint = result[result.Count - 2];
-		
-		// Calculate the angle from second-to-last to last point
-		var incomingVector = (lastPoint - secondToLastPoint).Normalized();
-		
-		// Calculate the angle from first to second point
-		var outgoingVector = (secondPoint - firstPoint).Normalized();
-		
-		// Calculate what the ideal last-to-first vector should be for smooth transition
-		var idealVector = (incomingVector + outgoingVector).Normalized();
-		
-		// Adjust the distance between last and first point for smooth closure
-		var currentDistance = lastPoint.DistanceTo(firstPoint);
-		var idealDistance = Mathf.Max(MinPointDistance, currentDistance * 0.8f);
-		
-		// Calculate the ideal position for smooth loop closure
-		var midpoint = (lastPoint + firstPoint) / 2;
-		var adjustmentVector = idealVector * (idealDistance / 2);
-		
-		// Slightly adjust last point to create smoother angle transition
-		var lastPointAdjustment = incomingVector.Orthogonal() * (idealDistance * 0.1f);
-		result[result.Count - 1] = lastPoint + lastPointAdjustment;
-		
-		// Slightly adjust first point for better symmetry
-		var firstPointAdjustment = outgoingVector.Orthogonal() * (idealDistance * 0.1f);
-		result[0] = firstPoint - firstPointAdjustment;
-		
-		return result;
-	}
 
 	// Public API methods
 	public Curve2D GetTrackCurve()
@@ -529,6 +694,42 @@ public partial class TrackGenerator : Node2D
 	{
 		if (_trackCurve == null) return false;
 		return _trackCurve.GetClosestPoint(point).DistanceTo(point) <= TrackWidth;
+	}
+
+	public Curve2D GetInnerEdgeCurve()
+	{
+		return _innerEdgeCurve;
+	}
+
+	public Curve2D GetOuterEdgeCurve()
+	{
+		return _outerEdgeCurve;
+	}
+
+	public Vector2[] GetInnerEdgePoints()
+	{
+		return _innerEdgePoints;
+	}
+
+	public Vector2[] GetOuterEdgePoints()
+	{
+		return _outerEdgePoints;
+	}
+
+	public bool HasKerbAtPosition(Vector2 position)
+	{
+		if (_kerbSections == null || _trackCurve == null)
+			return false;
+
+		var closestOffset = FindClosestOffsetOnCurve(position);
+		
+		foreach (var kerbSection in _kerbSections)
+		{
+			if (closestOffset >= kerbSection.StartOffset && closestOffset <= kerbSection.EndOffset)
+				return true;
+		}
+		
+		return false;
 	}
 
 	public override void _Draw()
