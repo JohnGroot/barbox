@@ -1,0 +1,20 @@
+[gd_scene load_steps=3 format=3 uid="uid://bk8h5n2qp3m7x"]
+
+[ext_resource type="Script" uid="uid://dgm3rxt5i1tlc" path="res://_Scripts/Games/RacingGame/RacingGame.cs" id="1_x9h8c"]
+[ext_resource type="Script" uid="uid://cxwannnwjbyi1" path="res://_Scripts/Games/RacingGame/TrackGenerator.cs" id="2_track_gen"]
+
+[node name="RacingGame" type="Node2D"]
+script = ExtResource("1_x9h8c")
+MaxSpeed = 600.0
+MaxInputDistance = 500.0
+
+[node name="TrackGenerator" type="Node2D" parent="."]
+position = Vector2(1, 0)
+script = ExtResource("2_track_gen")
+InitialPointCount = 10
+MaxDisplacement = 1000.0
+MinAngle = 0.0
+MaxAngle = 90.0
+TrackDifficulty = 0.1
+TrackWidth = 80.0
+TrackColor = Color(0, 0, 0, 1)

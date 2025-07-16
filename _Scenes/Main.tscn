@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://boyeuot3nu0dq" path="res://_Scripts/MainController.cs" id="1_1x2qy"]
 
-[node name="Main" type="Control"]
+[node name="Main" type="Control" node_paths=PackedStringArray("LoginPanel", "GameSelectionPanel", "GameList", "UserInfoLabel", "LogoutButton", "UserIdInput", "PinInput", "LoginButton", "CreateUserButton", "StatusLabel")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -10,6 +10,16 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_1x2qy")
+LoginPanel = NodePath("UI/LoginPanel")
+GameSelectionPanel = NodePath("UI/GameSelectionPanel")
+GameList = NodePath("UI/GameSelectionPanel/GameContainer/GameList")
+UserInfoLabel = NodePath("UI/GameSelectionPanel/GameContainer/UserInfoLabel")
+LogoutButton = NodePath("UI/GameSelectionPanel/GameContainer/LogoutButton")
+UserIdInput = NodePath("UI/LoginPanel/LoginContainer/UserIdInput")
+PinInput = NodePath("UI/LoginPanel/LoginContainer/PinInput")
+LoginButton = NodePath("UI/LoginPanel/LoginContainer/LoginButton")
+CreateUserButton = NodePath("UI/LoginPanel/LoginContainer/CreateUserButton")
+StatusLabel = NodePath("UI/LoginPanel/LoginContainer/StatusLabel")
 
 [node name="UI" type="VBoxContainer" parent="."]
 layout_mode = 1
