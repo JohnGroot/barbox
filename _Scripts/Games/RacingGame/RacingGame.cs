@@ -56,7 +56,7 @@ public partial class RacingGame : Node2D
 	private float _currentSpeed = 0.0f;
 
 	// Track system
-	private TrackGenerator _trackGenerator;
+	private ITrackGenerator _trackGenerator;
 	private Curve2D _trackCurve;
 	private Path2D _trackPath;
 	private Line2D _trackVisual;
@@ -258,6 +258,14 @@ public partial class RacingGame : Node2D
 		restartButton.Pressed += RestartPractice;
 		bottomBar.AddChild(restartButton);
 
+		var separator6 = new VSeparator();
+		bottomBar.AddChild(separator6);
+
+		var regenerateTrackButton = new Button();
+		regenerateTrackButton.Text = "New Track";
+		regenerateTrackButton.Pressed += RegenerateTrack;
+		bottomBar.AddChild(regenerateTrackButton);
+
 		SetupPauseOverlay();
 		SetupGameOverOverlay();
 	}
@@ -414,19 +422,16 @@ public partial class RacingGame : Node2D
 
 	private void InitializeTrackGenerator()
 	{
-		// Get or create TrackGenerator child node
-		_trackGenerator = GetNode<TrackGenerator>("TrackGenerator");
+		// Get or create GridTrackGenerator child node
+		_trackGenerator = GetNode<GridTrackGenerator>("GridTrackGenerator");
 		if (_trackGenerator == null)
 		{
-			GD.PrintErr("RacingGame: TrackGenerator node not found");
+			GD.PrintErr("RacingGame: GridTrackGenerator node not found");
 			return;
 		}
 
-		// Generate track with daily seed
-		var today = Time.GetDateDictFromSystem();
-		var seed = $"{today["year"]}-{today["month"]}-{today["day"]}";
-		
-		_trackPoints = _trackGenerator.GenerateTrack(seed);
+		// Generate track
+		_trackGenerator.GenerateTrack();
 		_trackCurve = _trackGenerator.GetTrackCurve();
 		
 		CreateStartLine();
@@ -435,11 +440,11 @@ public partial class RacingGame : Node2D
 
 	private void CreateStartLine()
 	{
-		if (_trackPoints == null || _trackPoints.Length == 0) return;
+		if (_trackCurve == null || _trackCurve.PointCount == 0) return;
 
 		// Create start line at the first track point
-		var startPoint = _trackPoints[0];
-		var nextPoint = _trackPoints[1];
+		var startPoint = _trackCurve.GetPointPosition(0);
+		var nextPoint = _trackCurve.GetPointPosition(1);
 		var direction = (nextPoint - startPoint).Normalized();
 		var perpendicular = new Vector2(-direction.Y, direction.X);
 
@@ -733,10 +738,10 @@ public partial class RacingGame : Node2D
 		_gameOverOverlay.Visible = false;
 
 		// Position car at start line
-		if (_trackPoints != null && _trackPoints.Length > 1)
+		if (_trackCurve != null && _trackCurve.PointCount > 1)
 		{
-			var startPoint = _trackPoints[0];
-			var nextPoint = _trackPoints[1];
+			var startPoint = _trackCurve.GetPointPosition(0);
+			var nextPoint = _trackCurve.GetPointPosition(1);
 			var direction = (nextPoint - startPoint).Normalized();
 			_car.GlobalPosition = startPoint - direction * 50;
 			_car.Rotation = direction.Angle() + Mathf.Pi / 2;
@@ -783,6 +788,55 @@ public partial class RacingGame : Node2D
 		_inTimeTrialMode = false;
 		_gamePaused = false;
 		StartPracticeMode();
+	}
+
+	public void RegenerateTrack()
+	{
+		if (_trackGenerator == null)
+		{
+			GD.PrintErr("RacingGame: Cannot regenerate track - GridTrackGenerator not found");
+			return;
+		}
+
+		GD.Print("RacingGame: Regenerating track");
+		
+		// Clean up existing start line visuals
+		if (_startLine != null)
+		{
+			_startLine.QueueFree();
+			_startLine = null;
+		}
+		if (_startLineArea != null)
+		{
+			// Disconnect the signal if it was connected
+			_startLineArea.BodyEntered -= OnStartLineEntered;
+			_startLineArea.QueueFree();
+			_startLineArea = null;
+		}
+
+		// Generate new track
+		_trackGenerator.GenerateTrack();
+		_trackCurve = _trackGenerator.GetTrackCurve();
+		
+		// Recreate start line with new track
+		CreateStartLine();
+		
+		// Reset game state if currently playing
+		if (_gameActive)
+		{
+			_currentLap = 0;
+			_currentLapTime = 0.0f;
+			_crossedStartLine = false;
+			
+			// If in time trial, restart it
+			if (_inTimeTrialMode)
+			{
+				_inTimeTrialMode = false; // Prevent credit deduction
+				StartTimeTrial();
+			}
+		}
+
+		GD.Print("RacingGame: Track regenerated successfully!");
 	}
 
 	public void TogglePause()

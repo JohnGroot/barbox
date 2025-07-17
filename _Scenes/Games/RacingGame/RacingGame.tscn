@@ -1,23 +1,20 @@
 [gd_scene load_steps=3 format=3 uid="uid://bk8h5n2qp3m7x"]
 
 [ext_resource type="Script" uid="uid://dgm3rxt5i1tlc" path="res://_Scripts/Games/RacingGame/RacingGame.cs" id="1_x9h8c"]
-[ext_resource type="Script" uid="uid://cxwannnwjbyi1" path="res://_Scripts/Games/RacingGame/TrackGenerator.cs" id="2_track_gen"]
+[ext_resource type="Script" uid="uid://bf4nadmeq00q6" path="res://_Scripts/Games/RacingGame/GridTrackGenerator.cs" id="2_grid_track_gen"]
 
 [node name="RacingGame" type="Node2D"]
 script = ExtResource("1_x9h8c")
 MaxSpeed = 600.0
 MaxInputDistance = 500.0
 
-[node name="TrackGenerator" type="Node2D" parent="."]
-position = Vector2(1, 0)
-script = ExtResource("2_track_gen")
-TurnCount = 10
-MinTurnAngle = 0.0
-MaxTurnAngle = 360.0
-TurnSmoothness = 32
-TrackRadius = 800.0
-SplineSegments = 1000
-KerbWidth = 20.0
-TrackColor = Color(0, 0, 0, 1)
-EdgeWidth = 4.0
-ShowDebugPoints = true
+[node name="GridTrackGenerator" type="Node2D" parent="."]
+script = ExtResource("2_grid_track_gen")
+GridSize = 60
+TrackPointCount = 10
+MinDistanceFromCenter = 0.1
+MaxDistanceFromCenter = 0.9
+MinDistanceBetweenPoints = 3
+AngleVariation = 40.0
+BoundaryPadding = 3
+DistanceStep = 0.2
