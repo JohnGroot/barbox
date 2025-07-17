@@ -11,10 +11,10 @@ MaxInputDistance = 500.0
 [node name="GridTrackGenerator" type="Node2D" parent="."]
 script = ExtResource("2_grid_track_gen")
 GridSize = 60
-TrackPointCount = 10
-MinDistanceFromCenter = 0.1
+TrackPointCount = 15
+MinDistanceFromCenter = 0.25
 MaxDistanceFromCenter = 0.9
-MinDistanceBetweenPoints = 3
-AngleVariation = 40.0
-BoundaryPadding = 3
-DistanceStep = 0.2
+MinDistanceBetweenPoints = 5
+AngleVariation = 10.0
+CenterVariationFactor = 0.1
+BoundaryPadding = 5
