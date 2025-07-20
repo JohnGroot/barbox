@@ -54,7 +54,6 @@ public partial class GridTrackGenerator : Node2D, ITrackGenerator
 		private Vector2 _screenSize;
 		private float _cellSize;
 		private bool[,] _occupiedGrid;
-		private TrackRenderer _trackRenderer;
 
 		public override void _Ready()
 		{
@@ -64,9 +63,11 @@ public partial class GridTrackGenerator : Node2D, ITrackGenerator
 		
 		private void InitializeTrackRenderer()
 		{
-			_trackRenderer = new TrackRenderer();
-			TrackRenderer = _trackRenderer; // Expose for inspector access
-			AddChild(_trackRenderer);
+			if (TrackRenderer != null)
+				return;
+
+			TrackRenderer = new TrackRenderer();
+			AddChild(TrackRenderer);
 		}
 
 		private void InitializeGrid()
@@ -326,14 +327,14 @@ public partial class GridTrackGenerator : Node2D, ITrackGenerator
 		private void UpdateTrackRenderer()
 		{
 			// Ensure track renderer is initialized (for editor context)
-			if (_trackRenderer == null)
+			if (TrackRenderer == null)
 			{
 				InitializeTrackRenderer();
 			}
 			
-			if (_trackRenderer != null && _trackGridPoints.Count > 0)
+			if (TrackRenderer != null && _trackGridPoints.Count > 0)
 			{
-				_trackRenderer.SetTrackGeneratorData(_trackGridPoints, _startGridPoint, _cellSize, _screenSize);
+				TrackRenderer.SetTrackGeneratorData(_trackGridPoints, _startGridPoint, _cellSize, _screenSize, _centerGridPoint);
 			}
 		}
 
@@ -550,9 +551,9 @@ public partial class GridTrackGenerator : Node2D, ITrackGenerator
 			
 			// TrackRenderer handles its own drawing via its _Draw method
 			// We just need to ensure it's visible
-			if (_trackRenderer != null)
+			if (TrackRenderer != null)
 			{
-				_trackRenderer.Visible = ShowTrackRenderer;
+				TrackRenderer.Visible = ShowTrackRenderer;
 			}
 		}
 

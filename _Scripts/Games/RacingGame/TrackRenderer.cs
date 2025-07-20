@@ -56,7 +56,7 @@ public partial class TrackRenderer : Node2D
 		_trackData = new TrackData();
 	}
 	
-	public void SetTrackGeneratorData(List<Vector2I> gridPoints, Vector2I startGridPoint, float cellSize, Vector2 screenSize)
+	public void SetTrackGeneratorData(List<Vector2I> gridPoints, Vector2I startGridPoint, float cellSize, Vector2 screenSize, Vector2I centerGridPoint)
 	{
 		if (gridPoints == null || gridPoints.Count < 3)
 		{
@@ -73,6 +73,7 @@ public partial class TrackRenderer : Node2D
 		_trackData.TrackWidth = TrackWidth;
 		_trackData.CellSize = cellSize;
 		_trackData.StartPointIndex = gridPoints.IndexOf(startGridPoint);
+		_trackData.CenterPoint = GridToWorld(centerGridPoint, cellSize);
 		
 		// Convert grid points to world coordinates
 		var worldPoints = new List<Vector2>();
@@ -215,12 +216,16 @@ public partial class TrackRenderer : Node2D
 		// Determine polygon winding order using smooth points
 		bool isClockwise = IsPolygonClockwise(_trackData.SmoothTrackPoints);
 		
-		// Generate edges using smooth curve points with averaged normals
+		// Step 1: Generate clean inner edge first using advanced vertex classification
 		var innerEdge = GenerateSmoothOffsetPolygon(_trackData.SmoothTrackPoints, validatedHalfWidth, true, isClockwise);
-		var outerEdge = GenerateSmoothOffsetPolygon(_trackData.SmoothTrackPoints, validatedHalfWidth, false, isClockwise);
 		
-		// Apply enhanced smoothing to the edges
+		// Apply enhanced smoothing to the inner edge to get the cleanest reference
 		innerEdge = ApplyEnhancedSmoothing(innerEdge);
+		
+		// Step 2: Generate outer edge using iterative distance correction for consistent width
+		var outerEdge = GenerateIterativeCorrectedOffset(innerEdge, _trackData.TrackWidth);
+		
+		// Apply light smoothing to outer edge to maintain consistency
 		outerEdge = ApplyEnhancedSmoothing(outerEdge);
 		
 		_trackData.InnerEdgePoints = innerEdge;
@@ -259,8 +264,137 @@ public partial class TrackRenderer : Node2D
 		return offsetPoints;
 	}
 	
+	
 	/// <summary>
-	/// Computes the average perpendicular direction at a point by blending adjacent segment normals
+	/// Finds the nearest point on the inner edge polygon to a given point
+	/// </summary>
+	private Vector2 FindNearestPointOnInnerEdge(Vector2 point, List<Vector2> innerEdge)
+	{
+		if (innerEdge.Count == 0) return Vector2.Zero;
+		if (innerEdge.Count == 1) return innerEdge[0];
+		
+		var nearestPoint = innerEdge[0];
+		float minDistanceSquared = point.DistanceSquaredTo(innerEdge[0]);
+		
+		// Check each edge of the inner polygon for closest point
+		for (int i = 0; i < innerEdge.Count - 1; i++)
+		{
+			var edgeStart = innerEdge[i];
+			var edgeEnd = innerEdge[(i + 1) % innerEdge.Count];
+			
+			// Find closest point on this edge
+			var edgeVector = edgeEnd - edgeStart;
+			var pointVector = point - edgeStart;
+			
+			var edgeLength = edgeVector.Length();
+			if (edgeLength < 0.001f) continue; // Skip degenerate edges
+			
+			var t = Mathf.Clamp(pointVector.Dot(edgeVector) / (edgeLength * edgeLength), 0f, 1f);
+			var closestPointOnEdge = edgeStart + t * edgeVector;
+			
+			var distanceSquared = point.DistanceSquaredTo(closestPointOnEdge);
+			if (distanceSquared < minDistanceSquared)
+			{
+				minDistanceSquared = distanceSquared;
+				nearestPoint = closestPointOnEdge;
+			}
+		}
+		
+		return nearestPoint;
+	}
+	
+	/// <summary>
+	/// Generates outer edge using enhanced centroid approach with iterative distance correction
+	/// </summary>
+	private List<Vector2> GenerateIterativeCorrectedOffset(List<Vector2> innerEdgePoints, float trackWidth)
+	{
+		if (innerEdgePoints.Count < 3) return new List<Vector2>();
+		
+		int pointCount = innerEdgePoints.Count;
+		bool isClosedPolygon = pointCount > 1 && innerEdgePoints[0] == innerEdgePoints[pointCount - 1];
+		if (isClosedPolygon) pointCount--;
+		
+		// Phase 1: Start with centroid-based positioning (maintains good shape)
+		var centroid = Vector2.Zero;
+		for (int i = 0; i < pointCount; i++)
+		{
+			centroid += innerEdgePoints[i];
+		}
+		centroid /= pointCount;
+		
+		// Calculate average distance from centroid for initial scaling
+		var avgDistance = 0f;
+		for (int i = 0; i < pointCount; i++)
+		{
+			avgDistance += centroid.DistanceTo(innerEdgePoints[i]);
+		}
+		avgDistance /= pointCount;
+		
+		// Initial outer edge using centroid scaling
+		var outerPoints = new List<Vector2>();
+		var initialScaleFactor = (avgDistance + trackWidth) / avgDistance;
+		
+		for (int i = 0; i < pointCount; i++)
+		{
+			var innerPoint = innerEdgePoints[i];
+			var direction = innerPoint - centroid;
+			var outerPoint = centroid + direction * initialScaleFactor;
+			outerPoints.Add(outerPoint);
+		}
+		
+		// Phase 2: Iterative distance correction
+		const int maxIterations = 3;
+		const float correctionStrength = 0.6f; // How aggressively to correct (0-1)
+		
+		for (int iteration = 0; iteration < maxIterations; iteration++)
+		{
+			for (int i = 0; i < outerPoints.Count; i++)
+			{
+				// Find nearest point on inner edge
+				var nearestInner = FindNearestPointOnInnerEdge(outerPoints[i], innerEdgePoints);
+				var currentDistance = outerPoints[i].DistanceTo(nearestInner);
+				
+				// Skip if distance is too small to avoid division issues
+				if (currentDistance < 0.1f) continue;
+				
+				// Calculate correction to achieve target distance
+				var targetDistance = trackWidth;
+				var distanceError = targetDistance - currentDistance;
+				
+				// Apply gradual correction to avoid overshooting
+				var direction = (outerPoints[i] - nearestInner).Normalized();
+				var correction = direction * distanceError * correctionStrength;
+				outerPoints[i] += correction;
+			}
+			
+			// Apply light smoothing between iterations to maintain shape quality
+			if (iteration < maxIterations - 1) // Don't smooth on last iteration
+			{
+				for (int i = 0; i < outerPoints.Count; i++)
+				{
+					var prevIndex = (i - 1 + outerPoints.Count) % outerPoints.Count;
+					var nextIndex = (i + 1) % outerPoints.Count;
+					
+					var smoothed = (outerPoints[prevIndex] + outerPoints[i] * 2f + outerPoints[nextIndex]) / 4f;
+					outerPoints[i] = outerPoints[i].Lerp(smoothed, 0.2f); // Light smoothing
+				}
+			}
+		}
+		
+		// Ensure the outer polygon is properly closed if original was closed
+		if (isClosedPolygon && outerPoints.Count > 0)
+		{
+			outerPoints.Add(outerPoints[0]);
+		}
+		
+		return outerPoints;
+	}
+	
+	
+	
+	
+	/// <summary>
+	/// Computes the offset direction at a point using center-aware vertex classification
 	/// </summary>
 	private Vector2 CalculateAveragedNormal(List<Vector2> points, int index)
 	{
@@ -271,23 +405,62 @@ public partial class TrackRenderer : Node2D
 		var currentPoint = points[index];
 		var nextPoint = points[nextIndex];
 		
-		// Calculate normals for both adjacent segments
-		var dir1 = (currentPoint - prevPoint).Normalized();
-		var dir2 = (nextPoint - currentPoint).Normalized();
+		// Check if this is a reflex (concave) vertex using track center
+		bool isReflex = IsVertexReflex(points, index, _trackData.CenterPoint);
 		
-		var normal1 = new Vector2(-dir1.Y, dir1.X);
-		var normal2 = new Vector2(-dir2.Y, dir2.X);
-		
-		// Average the normals and normalize
-		var avgNormal = (normal1 + normal2).Normalized();
-		
-		// Handle the case where normals cancel out (straight line)
-		if (avgNormal.LengthSquared() < 0.01f)
+		if (isReflex)
 		{
-			avgNormal = normal2; // Use the forward segment normal
+			// For reflex vertices, use center-directed approach to avoid sharp spikes
+			var toCenter = (_trackData.CenterPoint - currentPoint).Normalized();
+			var fromCenter = -toCenter;
+			
+			// Calculate the angle bisector direction
+			var dir1 = (currentPoint - prevPoint).Normalized();
+			var dir2 = (nextPoint - currentPoint).Normalized();
+			var bisector = (dir1 + dir2).Normalized();
+			
+			// If the bisector points inward (toward center), use outward direction
+			if (bisector.Dot(toCenter) > 0)
+			{
+				bisector = -bisector;
+			}
+			
+			// Blend the outward bisector with the radial direction for smoother results
+			var blendedDirection = (bisector * 0.7f + fromCenter * 0.3f).Normalized();
+			return blendedDirection;
 		}
-		
-		return avgNormal;
+		else
+		{
+			// For convex vertices, use traditional averaged normals approach
+			var dir1 = (currentPoint - prevPoint).Normalized();
+			var dir2 = (nextPoint - currentPoint).Normalized();
+			
+			var normal1 = new Vector2(-dir1.Y, dir1.X);
+			var normal2 = new Vector2(-dir2.Y, dir2.X);
+			
+			// Average the normals and normalize
+			var avgNormal = (normal1 + normal2).Normalized();
+			
+			// Handle the case where normals cancel out (straight line)
+			if (avgNormal.LengthSquared() < 0.01f)
+			{
+				avgNormal = normal2; // Use the forward segment normal
+			}
+			
+			// Apply miter limit to prevent excessive spikes on sharp convex corners
+			var dir1Normalized = dir1;
+			var dir2Normalized = dir2;
+			var cosHalfAngle = Mathf.Max(0.1f, (dir1Normalized + dir2Normalized).Length() / 2f);
+			var miterLimit = 2.0f; // Configurable miter limit
+			
+			if (1f / cosHalfAngle > miterLimit)
+			{
+				// Use bevel join instead of miter for very sharp corners
+				return normal2;
+			}
+			
+			return avgNormal;
+		}
 	}
 	
 	/// <summary>
@@ -317,7 +490,7 @@ public partial class TrackRenderer : Node2D
 	}
 	
 	/// <summary>
-	/// Modulates track width at corners - reduces width for sharp turns, expands for gentle curves
+	/// Modulates track width at corners based on vertex type and angle
 	/// </summary>
 	private float CalculateOffsetDistance(List<Vector2> points, int index, float baseOffset)
 	{
@@ -335,62 +508,47 @@ public partial class TrackRenderer : Node2D
 		var dot = dir1.Dot(dir2);
 		var angle = Mathf.Acos(Mathf.Clamp(dot, -1f, 1f));
 		
+		// Check if this is a reflex vertex
+		bool isReflex = IsVertexReflex(points, index, _trackData.CenterPoint);
+		
 		// Enforce minimum track width - reduce corner offset reduction
 		var minWidthFactor = MinWidthFactor; // Use exported parameter
 		var maxWidthFactor = MaxWidthFactor; // Use exported parameter
 		
-		// For sharp corners, reduce the offset but enforce minimum width
-		if (angle < Mathf.Pi * 0.5f) // Less than 90 degrees
+		if (isReflex)
 		{
-			var factor = Mathf.Lerp(minWidthFactor, 1f, angle / (Mathf.Pi * 0.5f));
-			return baseOffset * factor;
+			// For reflex vertices, be more conservative to prevent self-intersections
+			var reflexFactor = 0.7f; // Slightly reduce offset for concave corners
+			
+			// For very sharp reflex angles, reduce more
+			if (angle < Mathf.Pi * 0.4f) // Less than 72 degrees
+			{
+				reflexFactor = Mathf.Lerp(0.4f, 0.7f, angle / (Mathf.Pi * 0.4f));
+			}
+			
+			return baseOffset * reflexFactor;
 		}
-		// For very obtuse angles, slightly increase offset for smoother curves
-		else if (angle > Mathf.Pi * 0.8f) // Greater than 144 degrees
+		else
 		{
-			var factor = Mathf.Lerp(1f, maxWidthFactor, (angle - Mathf.Pi * 0.8f) / (Mathf.Pi * 0.2f));
-			return baseOffset * factor;
+			// For convex vertices, use angle-based scaling
+			
+			// For sharp corners, reduce the offset but enforce minimum width
+			if (angle < Mathf.Pi * 0.5f) // Less than 90 degrees
+			{
+				var factor = Mathf.Lerp(minWidthFactor, 1f, angle / (Mathf.Pi * 0.5f));
+				return baseOffset * factor;
+			}
+			// For very obtuse angles, slightly increase offset for smoother curves
+			else if (angle > Mathf.Pi * 0.8f) // Greater than 144 degrees
+			{
+				var factor = Mathf.Lerp(1f, maxWidthFactor, (angle - Mathf.Pi * 0.8f) / (Mathf.Pi * 0.2f));
+				return baseOffset * factor;
+			}
 		}
 		
 		return baseOffset;
 	}
 	
-	private List<Vector2> SmoothEdgePoints(List<Vector2> points)
-	{
-		if (points.Count < 3) return points;
-		
-		var smoothedPoints = new List<Vector2>(points);
-		
-		// Apply multiple smoothing passes for better results
-		for (int pass = 0; pass < SmoothingPasses; pass++)
-		{
-			var tempPoints = new List<Vector2>();
-			
-			for (int i = 0; i < smoothedPoints.Count; i++)
-			{
-				var prevIndex = (i - 1 + smoothedPoints.Count) % smoothedPoints.Count;
-				var nextIndex = (i + 1) % smoothedPoints.Count;
-				
-				var prevPoint = smoothedPoints[prevIndex];
-				var currentPoint = smoothedPoints[i];
-				var nextPoint = smoothedPoints[nextIndex];
-				
-				// Use weighted averaging for smoother results
-				var smoothedPoint = (prevPoint * 0.25f + currentPoint * 0.5f + nextPoint * 0.25f);
-				tempPoints.Add(smoothedPoint);
-			}
-			
-			smoothedPoints = tempPoints;
-		}
-		
-		// Ensure the smoothed polygon is still closed
-		if (smoothedPoints.Count > 0 && smoothedPoints[0] != smoothedPoints[smoothedPoints.Count - 1])
-		{
-			smoothedPoints.Add(smoothedPoints[0]);
-		}
-		
-		return smoothedPoints;
-	}
 	
 	private List<Vector2> ApplyEnhancedSmoothing(List<Vector2> points)
 	{
@@ -496,6 +654,42 @@ public partial class TrackRenderer : Node2D
 		return new Rect2(minX, minY, maxX - minX, maxY - minY);
 	}
 	
+	/// <summary>
+	/// Determines if a vertex is reflex (concave) by checking if it points inward toward track center
+	/// </summary>
+	private bool IsVertexReflex(List<Vector2> points, int index, Vector2 trackCenter)
+	{
+		var prevIndex = (index - 1 + points.Count) % points.Count;
+		var nextIndex = (index + 1) % points.Count;
+		
+		var prevPoint = points[prevIndex];
+		var currentPoint = points[index];
+		var nextPoint = points[nextIndex];
+		
+		// Calculate cross product to determine vertex orientation
+		var edge1 = currentPoint - prevPoint;
+		var edge2 = nextPoint - currentPoint;
+		var crossProduct = edge1.X * edge2.Y - edge1.Y * edge2.X;
+		
+		// Calculate direction from vertex to track center
+		var toCenter = (trackCenter - currentPoint).Normalized();
+		
+		// Calculate the bisector direction of the angle
+		var dir1 = edge1.Normalized();
+		var dir2 = edge2.Normalized();
+		var bisector = (dir1 + dir2).Normalized();
+		
+		// If bisector length is too small, use perpendicular to one edge
+		if (bisector.LengthSquared() < 0.01f)
+		{
+			bisector = new Vector2(-dir2.Y, dir2.X);
+		}
+		
+		// A vertex is reflex if the bisector points toward the center
+		// (indicating the vertex "bends inward" toward the track center)
+		var dot = bisector.Dot(toCenter);
+		return dot > 0.1f; // Small threshold to avoid numerical issues
+	}
 	
 	
 	

@@ -17,6 +17,7 @@ public class TrackData
 	public float CellSize { get; set; }
 	public int StartPointIndex { get; set; }
 	
+	public Vector2 CenterPoint { get; set; }
 	public bool IsValid => SmoothTrackPoints.Count >= 3 && 
 	                      InnerEdgePoints.Count >= 3 && 
 	                      OuterEdgePoints.Count >= 3;
