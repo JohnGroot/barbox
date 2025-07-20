@@ -2,6 +2,20 @@ using Godot;
 using System;
 using System.Collections.Generic;
 
+
+/*
+Now that the @_Scripts/Games/RacingGame/GridTrackGenerator.cs is in a place I like, think about how we can write a script to parse the output into the track body and edges
+use this reference image as the guide for the strategy of parsing the track data from the grid-based context:
+- First use the grid based line of the track to draw the _inside_ edge of the track (shown in red in the image), using bezier curve logic (or a better alternative for the context you find via research)
+to smooth corners and the stairstepped nature of straightaways in  the grid based context
+- Then draw the outside edge the track width value's distance out from the inside edge, clamping to the screen margin as needed. This is shown in orange in the image
+- Then draw a "racing line" edge in the center of the track using dotted line drawing (use these docs for context on all of this 2d drawing: https://github.com/godotengine/godot-docs/blob/master/tutorials/2d/custom_drawing_in_2d.rst )
+- Then draw lines across the track to demarcate Checkpoints, shown as green dots in the image, which should be at the midpoint between each track point EXCEPT for the points by the "start" point (this can be seen in the image as well)
+- Finally draw the "start line" across the track at the "start point" of the track generation
+This track renderer system should be as encapsulated as possible, taking in an object with all necessary data and have it parse that track gen data into a new data structure that it utilizes in its _Draw method
+ * 
+ */
+
 [Tool]
 public partial class GridTrackGenerator : Node2D, ITrackGenerator
 {
@@ -15,15 +29,17 @@ public partial class GridTrackGenerator : Node2D, ITrackGenerator
 
 		[ExportCategory("Generation Settings")]
 		[Export(PropertyHint.Range, "1,50,1")] public int MaxRetries { get; set; } = 10;
-		[Export(PropertyHint.Range, "0.05,0.25,0.005")] public float CenterVariationFactor { get; set; } = 0.125f;
+		[Export(PropertyHint.Range, "0.00,0.25,0.005")] public float CenterVariationFactor { get; set; } = 0.125f;
 		[Export(PropertyHint.Range, "1,5,1")] public int BoundaryPadding { get; set; } = 2;
 		[Export(PropertyHint.Range, "3,8,1")] public int MinPointsForStraightaway { get; set; } = 4;
 		[Export(PropertyHint.Range, "1,5,1")] public int StraightawayDistance { get; set; } = 3;
 		[Export(PropertyHint.Range, "3,6,1")] public int MinValidTrackPoints { get; set; } = 3;
 
 		
-		[ExportCategory("Debug")]
-		[Export] public bool ShowDebugVisualization { get; set; } = true;
+		[ExportCategory("Track Rendering")]
+		[Export] public bool ShowTrackRenderer { get; set; } = true;
+		[Export] public bool ShowDebugVisualization { get; set; } = false;
+		[Export] public TrackRenderer TrackRenderer { get; private set; }
 
 		[ExportCategory("Controls")]
 		[ExportToolButton("Generate Track")]
@@ -38,10 +54,19 @@ public partial class GridTrackGenerator : Node2D, ITrackGenerator
 		private Vector2 _screenSize;
 		private float _cellSize;
 		private bool[,] _occupiedGrid;
+		private TrackRenderer _trackRenderer;
 
 		public override void _Ready()
 		{
 			InitializeGrid();
+			InitializeTrackRenderer();
+		}
+		
+		private void InitializeTrackRenderer()
+		{
+			_trackRenderer = new TrackRenderer();
+			TrackRenderer = _trackRenderer; // Expose for inspector access
+			AddChild(_trackRenderer);
 		}
 
 		private void InitializeGrid()
@@ -101,6 +126,9 @@ public partial class GridTrackGenerator : Node2D, ITrackGenerator
 					{
 						// Step 7: Convert to smooth curve for gameplay
 						ConvertToSmoothCurve();
+						
+						// Step 8: Update track renderer with generated data
+						UpdateTrackRenderer();
 						trackGenerated = true;
 					}
 				}
@@ -293,6 +321,20 @@ public partial class GridTrackGenerator : Node2D, ITrackGenerator
 
 			// Close the loop
 			_trackCurve.AddPoint(GridToWorld(_trackGridPoints[0]));
+		}
+		
+		private void UpdateTrackRenderer()
+		{
+			// Ensure track renderer is initialized (for editor context)
+			if (_trackRenderer == null)
+			{
+				InitializeTrackRenderer();
+			}
+			
+			if (_trackRenderer != null && _trackGridPoints.Count > 0)
+			{
+				_trackRenderer.SetTrackGeneratorData(_trackGridPoints, _startGridPoint, _cellSize, _screenSize);
+			}
 		}
 
 		private Vector2 GridToWorld(Vector2I gridPoint)
@@ -501,8 +543,17 @@ public partial class GridTrackGenerator : Node2D, ITrackGenerator
 
 		public override void _Draw()
 		{
-			if (!ShowDebugVisualization) return;
-			DrawDebugVisualization();
+			if (ShowDebugVisualization)
+			{
+				DrawDebugVisualization();
+			}
+			
+			// TrackRenderer handles its own drawing via its _Draw method
+			// We just need to ensure it's visible
+			if (_trackRenderer != null)
+			{
+				_trackRenderer.Visible = ShowTrackRenderer;
+			}
 		}
 
 		private void DrawDebugVisualization()
