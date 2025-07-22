@@ -6,5 +6,9 @@
 [node name="RacingGame" type="Node2D"]
 script = ExtResource("1_x9h8c")
 TrackScenes = Array[PackedScene]([ExtResource("2_didut")])
-MaxSpeed = 600.0
+MaxSpeed = 1200.0
+MinSpeed = 100.0
 MaxInputDistance = 500.0
+AccelerationRate = 1600.0
+DecelerationRate = 1200.0
+MaxTrailPoints = 1000

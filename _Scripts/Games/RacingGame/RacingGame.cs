@@ -36,6 +36,23 @@ public partial class RacingGame : Node2D
 	[Export] public float OffTrackTurnPenalty { get; set; } = 0.5f;
 	[Export] public float OffTrackAccelerationPenalty { get; set; } = 0.2f;
 
+	[ExportCategory("Car Settings")]
+	[Export] public Vector2 CarSize { get; set; } = new Vector2(80, 160);
+	[Export] public float RotationLerpSpeed { get; set; } = 5.0f;
+
+	[ExportCategory("Visual Feedback")]
+	[Export] public Color InputLineActiveColor { get; set; } = Colors.White;
+	[Export] public Color InputLineInactiveColor { get; set; } = Colors.Gray;
+	[Export] public Color MouseMovingColor { get; set; } = Colors.Cyan;
+	[Export] public Color MouseStationaryColor { get; set; } = Colors.LimeGreen;
+	[Export] public Color TireTrailColor { get; set; } = Colors.DarkGray;
+	[Export] public float InputLineWidth { get; set; } = 3.0f;
+	[Export] public float MouseIndicatorRadius { get; set; } = 25.0f;
+	[Export] public float TireTrailWidth { get; set; } = 2.0f;
+	[Export] public int MaxTrailPoints { get; set; } = 60;
+	[Export] public float TrailUpdateDistance { get; set; } = 3.0f;
+	[Export] public float TrailLifetime { get; set; } = 3000.0f; // How long trails stay visible (milliseconds)
+
 	// Game state
 	private bool _gameActive = false;
 	private bool _gamePaused = false;
@@ -67,6 +84,30 @@ public partial class RacingGame : Node2D
 	private bool _hasInput = false;
 	private Vector2 _velocity = Vector2.Zero;
 	private float _currentSpeed = 0.0f;
+
+	// Visual feedback
+	private List<(Vector2 position, ulong timestamp)> _leftTireTrail = new List<(Vector2, ulong)>();
+	private List<(Vector2 position, ulong timestamp)> _rightTireTrail = new List<(Vector2, ulong)>();
+	private Vector2 _lastTrailPosition = Vector2.Zero;
+	private bool _wasInputActive = false;
+	private Vector2 _lastMousePosition = Vector2.Zero;
+	private float _mouseStationaryTime = 0.0f;
+	private float _arcRotation = 0.0f;
+
+	// Centralized cached drawing/physics values
+	private Vector2 _cachedCarForward = Vector2.Zero;
+	private Vector2 _cachedCarRight = Vector2.Zero;
+	private Vector2 _cachedCarFrontPosition = Vector2.Zero;
+	private Vector2 _cachedCarBackPosition = Vector2.Zero;
+	private Vector2 _cachedLeftTirePosition = Vector2.Zero;
+	private Vector2 _cachedRightTirePosition = Vector2.Zero;
+	private Vector2 _cachedClampedTarget = Vector2.Zero;
+	private Vector2 _cachedDirectionToTarget = Vector2.Zero;
+	private float _cachedDistanceToTarget = 0.0f;
+	private Color _cachedInputLineColor = Colors.White;
+	private bool _cachedIsMouseMoving = false;
+	private float _cachedArcSweepAngle = 0.0f;
+	private float _cachedMovementArcRotation = 0.0f;
 
 	// Track system
 	private TrackDefinition _trackDefinition;
@@ -141,7 +182,9 @@ public partial class RacingGame : Node2D
 
 		UpdateCarPhysics(deltaF);
 		CheckStartLineCollision();
+		UpdateCachedValues(deltaF);
 		UpdateUI();
+		UpdateVisualFeedback(deltaF);
 	}
 
 	private void HandleCountdown(float delta)
@@ -250,6 +293,253 @@ public partial class RacingGame : Node2D
 		{
 			_hasInput = false;
 		}
+	}
+
+	public override void _Draw()
+	{
+		if (!_gameActive || _gamePaused || _inCountdown || _car == null) return;
+
+		// Draw input line from car front to mouse position
+		DrawInputLine();
+
+		// Draw mouse position indicators
+		DrawMouseIndicators();
+
+		// Draw tire trails
+		DrawTireTrails();
+	}
+
+	private void DrawInputLine()
+	{
+		if (_targetPosition == Vector2.Zero) return;
+		
+		// Only draw if there's input or car is still moving
+		if (!_hasInput && _currentSpeed < 1.0f) return;
+
+		// Use cached values - no recalculation needed
+		DrawDashedLine(_cachedCarFrontPosition, _cachedClampedTarget, _cachedInputLineColor, InputLineWidth, 10.0f, 5.0f);
+	}
+
+	private void DrawMouseIndicators()
+	{
+		if (_targetPosition == Vector2.Zero) return;
+		
+		// Only draw indicators if there's input or car is still moving
+		if (!_hasInput && _currentSpeed < 1.0f) return;
+
+		// Draw circle at the end of the input line (clamped target position)
+		if (_cachedClampedTarget != Vector2.Zero)
+		{
+			var circleColor = MouseStationaryColor;
+			DrawCircle(_cachedClampedTarget, MouseIndicatorRadius * 0.4f, circleColor);
+		}
+
+		// Draw arc under finger/mouse position only if there's active input
+		if (_hasInput)
+		{
+			var mousePos = _targetPosition;
+			var arcColor = MouseMovingColor;
+			
+			// Use movement-based rotation and speed-based sweep angle
+			var centerDirection = _cachedMovementArcRotation;
+			var sweepAngle = _cachedArcSweepAngle;
+			
+			// Only draw arc if there's some sweep angle (i.e., car is moving)
+			if (sweepAngle > 0.1f)
+			{
+				// Center the arc on the input direction by offsetting start angle
+				var startAngle = centerDirection - (sweepAngle / 2.0f);
+				var endAngle = centerDirection + (sweepAngle / 2.0f);
+				DrawArc(mousePos, MouseIndicatorRadius, startAngle, endAngle, 32, arcColor, 3.0f, true);
+			}
+		}
+	}
+
+	private void DrawTireTrails()
+	{
+		DrawTrailLine(_leftTireTrail);
+		DrawTrailLine(_rightTireTrail);
+	}
+
+	private void DrawTrailLine(List<(Vector2 position, ulong timestamp)> trail)
+	{
+		if (trail.Count < 2) return;
+
+		var currentTime = Time.GetTicksMsec();
+
+		for (int i = 0; i < trail.Count - 1; i++)
+		{
+			var age = (float)(currentTime - trail[i].timestamp);
+			var normalizedAge = Mathf.Clamp(age / TrailLifetime, 0.0f, 1.0f);
+			var alpha = 1.0f - normalizedAge; // Fade out as trail gets older
+			
+			var trailColor = TireTrailColor * new Color(1, 1, 1, alpha * 0.8f);
+			DrawLine(trail[i].position, trail[i + 1].position, trailColor, TireTrailWidth);
+		}
+	}
+
+	private void DrawDashedLine(Vector2 from, Vector2 to, Color color, float width, float dashLength, float gapLength)
+	{
+		var direction = (to - from).Normalized();
+		var totalDistance = from.DistanceTo(to);
+		var segmentLength = dashLength + gapLength;
+		
+		var currentPos = from;
+		var distanceTraveled = 0.0f;
+
+		while (distanceTraveled < totalDistance)
+		{
+			var remainingDistance = totalDistance - distanceTraveled;
+			var currentDashLength = Mathf.Min(dashLength, remainingDistance);
+			
+			var dashEnd = currentPos + direction * currentDashLength;
+			DrawLine(currentPos, dashEnd, color, width);
+			
+			distanceTraveled += segmentLength;
+			currentPos += direction * segmentLength;
+		}
+	}
+
+	private void UpdateCachedValues(float delta)
+	{
+		if (_car == null) return;
+
+		// Calculate car orientation vectors
+		_cachedCarForward = new Vector2(Mathf.Sin(_car.Rotation), -Mathf.Cos(_car.Rotation));
+		_cachedCarRight = new Vector2(_cachedCarForward.Y, -_cachedCarForward.X);
+
+		// Calculate car positions relative to car size
+		//_cachedCarRight * (-CarSize.X * 0.075f) + 
+		var halfLength = CarSize.Y * 0.5f; // Half of car length
+		var halfWidth = CarSize.X * 0.5f; // Half of car width
+		var frontOffset = _cachedCarRight * -halfWidth * 0.75f + _cachedCarForward * halfLength * 0.25f;
+		var backOffset = _cachedCarRight * -halfWidth * 0.75f - _cachedCarForward * halfLength * 1.5f;
+		
+		_cachedCarFrontPosition = _car.GlobalPosition + frontOffset;
+		_cachedCarBackPosition = _car.GlobalPosition + backOffset;
+
+		// Calculate tire positions (back corners of the car)
+		var tireOffset = halfWidth * 0.625f; // 62.5% of half width for tire spacing
+		_cachedLeftTirePosition = _cachedCarBackPosition - _cachedCarRight * tireOffset;
+		_cachedRightTirePosition = _cachedCarBackPosition + _cachedCarRight * tireOffset;
+
+		// Calculate target-related values
+		if (_targetPosition != Vector2.Zero)
+		{
+			_cachedDirectionToTarget = (_targetPosition - _car.GlobalPosition);
+			_cachedDistanceToTarget = _cachedDirectionToTarget.Length();
+			_cachedClampedTarget = _car.GlobalPosition + _cachedDirectionToTarget.Normalized() * Mathf.Min(_cachedDistanceToTarget, MaxInputDistance);
+		}
+		else
+		{
+			_cachedDirectionToTarget = Vector2.Zero;
+			_cachedDistanceToTarget = 0.0f;
+			_cachedClampedTarget = Vector2.Zero;
+		}
+
+		// Calculate input line color
+		_cachedInputLineColor = _hasInput ? InputLineActiveColor : 
+			(_currentSpeed > 1.0f ? InputLineInactiveColor : InputLineInactiveColor * new Color(1, 1, 1, 0.3f));
+
+		// Calculate mouse movement state
+		_cachedIsMouseMoving = _mouseStationaryTime < 0.2f;
+
+		// Calculate arc rotation based on input direction (direction of input line)
+		if (_cachedDirectionToTarget.Length() > 0.1f)
+		{
+			_cachedMovementArcRotation = _cachedDirectionToTarget.Angle();
+		}
+
+		// Calculate arc sweep angle based on current speed (0 to 270 degrees)
+		var normalizedSpeed = Mathf.Clamp(_currentSpeed / MaxSpeed, 0.0f, 1.0f);
+		_cachedArcSweepAngle = Mathf.Lerp(0.0f, Mathf.Pi , normalizedSpeed); // 0 to 270 degrees
+	}
+
+	private void UpdateVisualFeedback(float delta)
+	{
+		// Track mouse movement state
+		if (_targetPosition != _lastMousePosition)
+		{
+			_mouseStationaryTime = 0.0f;
+			_lastMousePosition = _targetPosition;
+		}
+		else
+		{
+			_mouseStationaryTime += delta;
+		}
+
+		// Update arc rotation for moving indicator
+		_arcRotation += delta * 3.0f; // Rotate at 3 rad/s
+		if (_arcRotation > Mathf.Pi * 2) _arcRotation -= Mathf.Pi * 2;
+
+		// Track input state changes for visual feedback
+		if (_hasInput != _wasInputActive)
+		{
+			_wasInputActive = _hasInput;
+			QueueRedraw(); // Trigger redraw when input state changes
+		}
+
+		// Queue redraw for animated elements
+		if (_hasInput || _mouseStationaryTime < 2.0f || _currentSpeed > 1.0f)
+		{
+			QueueRedraw();
+		}
+	}
+
+	private void UpdateTireTrails()
+	{
+		if (_car == null) return;
+
+		var currentTime = Time.GetTicksMsec();
+
+		// Clean up expired trail points
+		CleanupExpiredTrailPoints(_leftTireTrail, currentTime);
+		CleanupExpiredTrailPoints(_rightTireTrail, currentTime);
+
+		// Only create new trail points when moving at decent speed
+		if (_currentSpeed < 5.0f) return;
+
+		var carPosition = _car.GlobalPosition;
+		
+		// Only update trails if car has moved significantly
+		if (_lastTrailPosition.DistanceTo(carPosition) < TrailUpdateDistance) return;
+		
+		// Use cached tire positions with timestamp
+		AddTrailPoint(_leftTireTrail, _cachedLeftTirePosition, currentTime);
+		AddTrailPoint(_rightTireTrail, _cachedRightTirePosition, currentTime);
+		
+		_lastTrailPosition = carPosition;
+	}
+
+	private void AddTrailPoint(List<(Vector2 position, ulong timestamp)> trail, Vector2 point, ulong timestamp)
+	{
+		trail.Add((point, timestamp));
+		
+		// Remove old points to maintain max trail length (as backup limit)
+		while (trail.Count > MaxTrailPoints)
+		{
+			trail.RemoveAt(0);
+		}
+	}
+
+	private void CleanupExpiredTrailPoints(List<(Vector2 position, ulong timestamp)> trail, ulong currentTime)
+	{
+		// Remove points that are older than TrailLifetime
+		for (int i = trail.Count - 1; i >= 0; i--)
+		{
+			var age = (float)(currentTime - trail[i].timestamp);
+			if (age > TrailLifetime)
+			{
+				trail.RemoveAt(i);
+			}
+		}
+	}
+
+	private void ClearTireTrails()
+	{
+		_leftTireTrail.Clear();
+		_rightTireTrail.Clear();
+		_lastTrailPosition = Vector2.Zero;
 	}
 
 	private void SetupUI()
@@ -557,18 +847,20 @@ public partial class RacingGame : Node2D
 	private void SetupCar()
 	{
 		_car = new CharacterBody2D();
+
+		var carColor = Colors.Red;
 		
 		// Car visual
 		var carSprite = new ColorRect();
-		carSprite.Size = new Vector2(20, 40);
-		carSprite.Color = Colors.Red;
-		carSprite.Position = new Vector2(-10, -20);
+		carSprite.Size = CarSize;
+		carSprite.Color = carColor;
+		carSprite.Position = new Vector2(-CarSize.X * 0.125f, -CarSize.Y * 0.125f); // Offset by 12.5% of size
 		_car.AddChild(carSprite);
 
 		// Car collision
 		var carCollision = new CollisionShape2D();
 		var carShape = new RectangleShape2D();
-		carShape.Size = new Vector2(20, 40);
+		carShape.Size = CarSize;
 		carCollision.Shape = carShape;
 		_car.AddChild(carCollision);
 
@@ -789,7 +1081,7 @@ public partial class RacingGame : Node2D
 			targetSpeed = 0.0f;
 		}
 
-		// Apply track proximity modifiers
+		// Apply track proximity modifiers	
 		var carPosition = _car.GlobalPosition;
 		var accelerationModifier = GetTrackAccelerationModifier(carPosition);
 		var speedModifier = GetOffTrackSpeedModifier(carPosition);
@@ -810,12 +1102,22 @@ public partial class RacingGame : Node2D
 
 		if (_currentSpeed > 0.1f && inputDirection != Vector2.Zero)
 		{
-			// Apply turn penalty for off-track
-			var effectiveInputDirection = inputDirection * turnModifier;
-			_velocity = effectiveInputDirection * _currentSpeed;
+			// Lerp car rotation towards target direction
+			if (_hasInput)
+			{
+				var targetDirection = (_targetPosition - _car.GlobalPosition).Normalized();
+				var targetAngle = targetDirection.Angle() + Mathf.Pi / 2;
+				_car.Rotation = Mathf.LerpAngle(_car.Rotation, targetAngle, RotationLerpSpeed * delta);
+			}
+			else
+			{
+				// When not actively steering, rotate towards movement direction
+				_car.Rotation = Mathf.LerpAngle(_car.Rotation, _velocity.Angle() + Mathf.Pi / 2, RotationLerpSpeed * delta);
+			}
 			
-			// Rotate car to face movement direction
-			_car.Rotation = _velocity.Angle() + Mathf.Pi / 2;
+			// Calculate velocity relative to car's forward direction
+			var carForward = new Vector2(Mathf.Sin(_car.Rotation), -Mathf.Cos(_car.Rotation));
+			_velocity = carForward * _currentSpeed * turnModifier;
 		}
 		else
 		{
@@ -825,6 +1127,9 @@ public partial class RacingGame : Node2D
 		// Apply movement
 		_car.Velocity = _velocity;
 		_car.MoveAndSlide();
+
+		// Update tire trails
+		UpdateTireTrails();
 	}
 
 	private void CheckStartLineCollision()
@@ -1094,6 +1399,11 @@ public partial class RacingGame : Node2D
 		_currentLapTime = 0.0f;
 		_currentGapTime = 0.0f;
 
+		// Clear visual feedback state
+		ClearTireTrails();
+		_mouseStationaryTime = 0.0f;
+		_arcRotation = 0.0f;
+
 		_pauseOverlay.Visible = false;
 		_gameOverOverlay.Visible = false;
 
@@ -1129,6 +1439,11 @@ public partial class RacingGame : Node2D
 		_completedLapTimes.Clear();
 		_lapGapTimes.Clear();
 		_currentGapTime = 0.0f;
+
+		// Clear visual feedback state
+		ClearTireTrails();
+		_mouseStationaryTime = 0.0f;
+		_arcRotation = 0.0f;
 
 		_pauseOverlay.Visible = false;
 		_gameOverOverlay.Visible = false;
@@ -1191,6 +1506,12 @@ public partial class RacingGame : Node2D
 		_gameActive = false;
 		_inTimeTrialMode = false;
 		_gamePaused = false;
+		
+		// Clear visual feedback state
+		ClearTireTrails();
+		_mouseStationaryTime = 0.0f;
+		_arcRotation = 0.0f;
+		
 		StartPracticeMode();
 	}
 

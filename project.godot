@@ -28,9 +28,6 @@ FarmTimerService="*res://_Scripts/Core/Services/FarmTimerService.cs"
 
 window/size/viewport_width=1600
 window/size/viewport_height=2560
-window/size/mode=2
-window/size/resizable=false
-window/size/borderless=true
 
 [dotnet]
 

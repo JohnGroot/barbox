@@ -5,7 +5,7 @@
 [ext_resource type="PackedScene" uid="uid://c586onxqiifwa" path="res://_Scenes/Games/RacingGame/_Prefabs/CheckpointLineTrigger.tscn" id="3_eod1x"]
 
 [node name="OvalTrack" type="Node2D" node_paths=PackedStringArray("TrackLine")]
-scale = Vector2(10, 10)
+scale = Vector2(3, 3)
 script = ExtResource("1_xxinl")
 TrackLine = NodePath("TrackLine")
 TrackName = "Oval Track"
