@@ -1,0 +1,49 @@
+[gd_scene load_steps=4 format=3 uid="uid://byl7ua2lcaynm"]
+
+[ext_resource type="Script" uid="uid://b3irt6d1umwfs" path="res://_Scripts/Games/RacingGame/TrackDefinition.cs" id="1_xxinl"]
+[ext_resource type="PackedScene" uid="uid://b6u6rothy6r1q" path="res://_Scenes/Games/RacingGame/_Prefabs/StartLineTrigger.tscn" id="2_eod1x"]
+[ext_resource type="PackedScene" uid="uid://c586onxqiifwa" path="res://_Scenes/Games/RacingGame/_Prefabs/CheckpointLineTrigger.tscn" id="3_eod1x"]
+
+[node name="OvalTrack" type="Node2D" node_paths=PackedStringArray("TrackLine")]
+scale = Vector2(10, 10)
+script = ExtResource("1_xxinl")
+TrackLine = NodePath("TrackLine")
+TrackName = "Oval Track"
+StartLinePath = NodePath("TrackLine/StartLineTrigger")
+CheckpointTriggerPaths = Array[NodePath]([NodePath("TrackLine/CheckpointLineTrigger"), NodePath("TrackLine/CheckpointLineTrigger2"), NodePath("TrackLine/CheckpointLineTrigger3")])
+TrackDirectionPath = NodePath("TrackLine/TrackDirection")
+
+[node name="TrackLine" type="Line2D" parent="."]
+z_index = -5
+points = PackedVector2Array(200, 0, 150, -100, 50, -150, -50, -150, -150, -100, -200, 0, -150, 100, -50, 150, 50, 150, 150, 100)
+closed = true
+width = 60.0
+default_color = Color(0.17, 0.17, 0.17, 1)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+sharp_limit = 0.0
+round_precision = 32
+
+[node name="StartLineTrigger" parent="TrackLine" instance=ExtResource("2_eod1x")]
+position = Vector2(-0.800049, -151.4)
+scale = Vector2(1, 1)
+
+[node name="CheckpointLineTrigger" parent="TrackLine" instance=ExtResource("3_eod1x")]
+position = Vector2(193.2, -2.40002)
+rotation = 1.5708
+scale = Vector2(1, 1)
+
+[node name="CheckpointLineTrigger2" parent="TrackLine" instance=ExtResource("3_eod1x")]
+position = Vector2(-203.8, -3.40002)
+rotation = 1.5708
+scale = Vector2(1, 1)
+
+[node name="CheckpointLineTrigger3" parent="TrackLine" instance=ExtResource("3_eod1x")]
+position = Vector2(-2.80005, 149.6)
+scale = Vector2(1, 1)
+
+[node name="TrackDirection" type="RayCast2D" parent="TrackLine"]
+position = Vector2(-2.39999, -212.7)
+scale = Vector2(1, 1)
+target_position = Vector2(5, 0)

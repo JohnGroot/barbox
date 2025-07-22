@@ -16,6 +16,9 @@ public partial class RacingGame : Node2D
 	[Signal] public delegate void PlayerAddedEventHandler(string playerId);
 
 	// Game settings
+	[ExportCategory("Track Settings")]
+	[Export] public Godot.Collections.Array<PackedScene> TrackScenes { get; set; } = new Godot.Collections.Array<PackedScene>();
+
 	[ExportCategory("Game Settings")]
 	[Export] public float MaxSpeed { get; set; } = 400.0f;
 	[Export] public float MinSpeed { get; set; } = 50.0f;
@@ -37,11 +40,21 @@ public partial class RacingGame : Node2D
 	private bool _gameActive = false;
 	private bool _gamePaused = false;
 	private bool _inTimeTrialMode = false;
+	private bool _inCountdown = false;
+	private float _countdownTime = 0.0f;
+	private int _countdownNumber = 0;
 	private string _playerId = "player1";
 	private float _currentLapTime = 0.0f;
 	private float _bestLapTime = float.MaxValue;
 	private int _currentLap = 0;
 	private int _targetLaps = 3;
+
+	// Enhanced timing data
+	private List<float> _completedLapTimes = new List<float>();
+	private List<List<float>> _lapGapTimes = new List<List<float>>(); // Gap times for each checkpoint in each lap
+	private float _lastCompletedLapTime = 0.0f;
+	private float _currentGapTime = 0.0f; // Time since last checkpoint (practice mode)
+	private float _lastCheckpointTime = 0.0f;
 
 	// Context detection
 	private GameHost _gameHost;
@@ -56,15 +69,16 @@ public partial class RacingGame : Node2D
 	private float _currentSpeed = 0.0f;
 
 	// Track system
-	private ITrackGenerator _trackGenerator;
+	private TrackDefinition _trackDefinition;
 	private Curve2D _trackCurve;
-	private Path2D _trackPath;
-	private Line2D _trackVisual;
-	private Line2D _startLine;
-	private Area2D _startLineArea;
-	private Vector2[] _trackPoints;
 	private bool _crossedStartLine = false;
 	private float _lastStartLineCross = 0.0f;
+
+	// Checkpoint system
+	private CheckpointTrigger[] _checkpointTriggers;
+	private bool[] _checkpointsCrossed;
+	private int _nextCheckpointIndex = 0;
+
 
 	// Built-in UI elements
 	private CanvasLayer _uiLayer;
@@ -78,6 +92,16 @@ public partial class RacingGame : Node2D
 	private Control _pauseOverlay;
 	private Control _gameOverOverlay;
 	private Label _finalTimeLabel;
+
+	// Enhanced timing UI
+	private Label _gapTimeLabel;
+	private Label _lastLapLabel;
+	private VBoxContainer _lapTimesContainer;
+	private ScrollContainer _timingScrollContainer;
+
+	// Countdown UI
+	private Control _countdownOverlay;
+	private Label _countdownLabel;
 
 	// Daily seeded track generation
 	private const string TRACK_SEED_KEY = "track_seed_";
@@ -96,10 +120,23 @@ public partial class RacingGame : Node2D
 
 		float deltaF = (float)delta;
 
-		// Update lap timer
+		// Handle countdown for time attack
+		if (_inCountdown)
+		{
+			HandleCountdown(deltaF);
+			return; // Don't process other game logic during countdown
+		}
+
+		// Update lap timer for time attack mode
 		if (_inTimeTrialMode && _currentLap > 0)
 		{
 			_currentLapTime += deltaF;
+		}
+
+		// Update gap timer for practice mode (time since last checkpoint)
+		if (!_inTimeTrialMode && _gameActive)
+		{
+			_currentGapTime += deltaF;
 		}
 
 		UpdateCarPhysics(deltaF);
@@ -107,9 +144,50 @@ public partial class RacingGame : Node2D
 		UpdateUI();
 	}
 
+	private void HandleCountdown(float delta)
+	{
+		_countdownTime += delta;
+
+		int newCountdownNumber = 4 - (int)(_countdownTime / 1.0f);
+		
+		if (newCountdownNumber != _countdownNumber)
+		{
+			_countdownNumber = newCountdownNumber;
+			
+			if (_countdownNumber > 0)
+			{
+				_countdownLabel.Text = _countdownNumber.ToString();
+				GD.Print($"Countdown: {_countdownNumber}");
+			}
+			else
+			{
+				_countdownLabel.Text = "GO!";
+				GD.Print("Countdown: GO!");
+			}
+		}
+
+		// End countdown after 4 seconds (3-2-1-GO)
+		if (_countdownTime >= 4.0f)
+		{
+			EndCountdown();
+		}
+	}
+
+	private void EndCountdown()
+	{
+		_inCountdown = false;
+		_countdownOverlay.Visible = false;
+		
+		// Actually start the time trial now
+		_currentLap = 0;
+		_currentLapTime = 0.0f;
+		
+		GD.Print("Time Trial Started!");
+	}
+
 	public override void _Input(InputEvent inputEvent)
 	{
-		if (!_gameActive || _gamePaused) return;
+		if (!_gameActive || _gamePaused || _inCountdown) return;
 
 		// Handle pause key
 		if (inputEvent.IsActionPressed("ui_cancel") || 
@@ -258,16 +336,103 @@ public partial class RacingGame : Node2D
 		restartButton.Pressed += RestartPractice;
 		bottomBar.AddChild(restartButton);
 
-		var separator6 = new VSeparator();
-		bottomBar.AddChild(separator6);
-
-		var regenerateTrackButton = new Button();
-		regenerateTrackButton.Text = "New Track";
-		regenerateTrackButton.Pressed += RegenerateTrack;
-		bottomBar.AddChild(regenerateTrackButton);
-
+		SetupTimingPanel(mainUI);
+		SetupCountdownOverlay();
 		SetupPauseOverlay();
 		SetupGameOverOverlay();
+	}
+
+	private void SetupTimingPanel(Control mainUI)
+	{
+		// Right-side timing panel
+		var timingPanel = new Panel();
+		timingPanel.AnchorLeft = 1;
+		timingPanel.AnchorTop = 0;
+		timingPanel.AnchorRight = 1;
+		timingPanel.AnchorBottom = 1;
+		timingPanel.OffsetLeft = -300;
+		timingPanel.OffsetTop = 70;
+		timingPanel.OffsetBottom = -70;
+		timingPanel.MouseFilter = Control.MouseFilterEnum.Ignore;
+		mainUI.AddChild(timingPanel);
+
+		var timingVBox = new VBoxContainer();
+		timingVBox.AnchorLeft = 0;
+		timingVBox.AnchorTop = 0;
+		timingVBox.AnchorRight = 1;
+		timingVBox.AnchorBottom = 1;
+		timingVBox.OffsetLeft = 10;
+		timingVBox.OffsetTop = 10;
+		timingVBox.OffsetRight = -10;
+		timingVBox.OffsetBottom = -10;
+		timingPanel.AddChild(timingVBox);
+
+		// Gap time label (for practice mode)
+		_gapTimeLabel = new Label();
+		_gapTimeLabel.Text = "Gap: 0.0s";
+		_gapTimeLabel.HorizontalAlignment = HorizontalAlignment.Left;
+		timingVBox.AddChild(_gapTimeLabel);
+
+		// Last lap time label (for practice mode after time attack)
+		_lastLapLabel = new Label();
+		_lastLapLabel.Text = "";
+		_lastLapLabel.HorizontalAlignment = HorizontalAlignment.Left;
+		_lastLapLabel.Visible = false;
+		timingVBox.AddChild(_lastLapLabel);
+
+		// Separator
+		var separator = new HSeparator();
+		timingVBox.AddChild(separator);
+
+		// Scrollable container for lap times (time attack mode)
+		_timingScrollContainer = new ScrollContainer();
+		_timingScrollContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		_timingScrollContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+		_timingScrollContainer.Visible = false;
+		timingVBox.AddChild(_timingScrollContainer);
+
+		_lapTimesContainer = new VBoxContainer();
+		_timingScrollContainer.AddChild(_lapTimesContainer);
+	}
+
+	private void SetupCountdownOverlay()
+	{
+		_countdownOverlay = new Control();
+		_countdownOverlay.AnchorLeft = 0;
+		_countdownOverlay.AnchorTop = 0;
+		_countdownOverlay.AnchorRight = 1;
+		_countdownOverlay.AnchorBottom = 1;
+		_countdownOverlay.Visible = false;
+		_uiLayer.AddChild(_countdownOverlay);
+
+		var background = new ColorRect();
+		background.AnchorLeft = 0;
+		background.AnchorTop = 0;
+		background.AnchorRight = 1;
+		background.AnchorBottom = 1;
+		background.Color = new Color(0, 0, 0, 0.5f);
+		_countdownOverlay.AddChild(background);
+
+		_countdownLabel = new Label();
+		_countdownLabel.AnchorLeft = 0.5f;
+		_countdownLabel.AnchorTop = 0.5f;
+		_countdownLabel.AnchorRight = 0.5f;
+		_countdownLabel.AnchorBottom = 0.5f;
+		_countdownLabel.OffsetLeft = -100;
+		_countdownLabel.OffsetTop = -50;
+		_countdownLabel.OffsetRight = 100;
+		_countdownLabel.OffsetBottom = 50;
+		_countdownLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_countdownLabel.VerticalAlignment = VerticalAlignment.Center;
+		_countdownLabel.Text = "3";
+		
+		// Make the countdown text very large and bold
+		var labelSettings = new LabelSettings();
+		labelSettings.FontSize = 72;
+		labelSettings.FontColor = Colors.White;
+		_countdownLabel.LabelSettings = labelSettings;
+		
+		_countdownOverlay.AddChild(_countdownLabel);
 	}
 
 	private void SetupPauseOverlay()
@@ -420,57 +585,176 @@ public partial class RacingGame : Node2D
 		}
 	}
 
-	private void InitializeTrackGenerator()
+	private void LoadTrack(int trackIndex)
 	{
-		// Get or create GridTrackGenerator child node
-		_trackGenerator = GetNode<GridTrackGenerator>("GridTrackGenerator");
-		if (_trackGenerator == null)
+		if (TrackScenes == null || TrackScenes.Count == 0)
 		{
-			GD.PrintErr("RacingGame: GridTrackGenerator node not found");
+			GD.PrintErr("RacingGame: No track scenes configured. Add track scenes to TrackScenes array.");
 			return;
 		}
 
-		// Generate track
-		_trackGenerator.GenerateTrack();
-		_trackCurve = _trackGenerator.GetTrackCurve();
+		if (trackIndex < 0 || trackIndex >= TrackScenes.Count)
+		{
+			GD.PrintErr($"RacingGame: Invalid track index {trackIndex}. Available tracks: {TrackScenes.Count}");
+			return;
+		}
+
+		// Clear existing track if any
+		if (_trackDefinition != null)
+		{
+			DisconnectTrackSignals();
+			_trackDefinition.QueueFree();
+		}
+
+		// Load and instantiate new track scene
+		var trackScene = TrackScenes[trackIndex];
+		if (trackScene == null)
+		{
+			GD.PrintErr($"RacingGame: Track scene at index {trackIndex} is null");
+			return;
+		}
+
+		var trackInstance = trackScene.Instantiate();
+		if (trackInstance is TrackDefinition trackDef)
+		{
+			_trackDefinition = trackDef;
+			AddChild(_trackDefinition);
+			
+			// Center the track on screen
+			var viewport = GetViewport();
+			if (viewport != null)
+			{
+				var screenSize = viewport.GetVisibleRect().Size;
+				var screenCenter = screenSize / 2;
+				_trackDefinition.GlobalPosition = screenCenter;
+				GD.Print($"RacingGame: Positioned track '{_trackDefinition.TrackName}' at screen center {screenCenter}");
+			}
+			
+			GD.Print($"RacingGame: Loaded track '{_trackDefinition.TrackName}'");
+		}
+		else
+		{
+			GD.PrintErr($"RacingGame: Track scene at index {trackIndex} does not contain a TrackDefinition root node");
+			trackInstance.QueueFree();
+			return;
+		}
+
+		// Setup the loaded track
+		SetupLoadedTrack();
+	}
+
+	private void SetupLoadedTrack()
+	{
+		if (_trackDefinition == null) return;
+
+		// Setup track
+		_trackDefinition.SetupTrack();
+		_trackCurve = _trackDefinition.GetTrackCurve();
 		
-		CreateStartLine();
+		if (_trackCurve == null)
+		{
+			GD.PrintErr("RacingGame: Track definition failed to provide a valid curve");
+			return;
+		}
+		
+		// Update target laps from track definition
+		_targetLaps = _trackDefinition.NumberOfLaps;
+		
+		// Initialize checkpoint tracking from track definition
+		InitializeCheckpointTracking();
+		
+		// Connect signals from track definition's child nodes
+		ConnectTrackSignals();
+		
+		// Position car at start line
+		PositionCarAtStart();
+		
+		// Auto-start practice mode in development context
+		if (!_isProductionContext && !_gameActive)
+		{
+			StartPracticeMode();
+		}
+	}
+
+	private void InitializeTrackGenerator()
+	{
+		// Try to load first available track
+		if (TrackScenes != null && TrackScenes.Count > 0)
+		{
+			LoadTrack(0);
+		}
+		else
+		{
+			// Fallback: Look for existing TrackDefinition child node
+			foreach (Node child in GetChildren())
+			{
+				if (child is TrackDefinition trackDef)
+				{
+					_trackDefinition = trackDef;
+					GD.Print($"RacingGame: Using existing track definition '{child.Name}'");
+					SetupLoadedTrack();
+					return;
+				}
+			}
+			GD.PrintErr("RacingGame: No track scenes configured and no TrackDefinition child node found.");
+		}
 	}
 
 
-	private void CreateStartLine()
+	private void InitializeCheckpointTracking()
 	{
-		if (_trackCurve == null || _trackCurve.PointCount == 0) return;
+		if (_trackDefinition == null) return;
 
-		// Create start line at the first track point
-		var startPoint = _trackCurve.GetPointPosition(0);
-		var nextPoint = _trackCurve.GetPointPosition(1);
-		var direction = (nextPoint - startPoint).Normalized();
-		var perpendicular = new Vector2(-direction.Y, direction.X);
+		_checkpointTriggers = _trackDefinition.CheckpointTriggers;
+		if (_checkpointTriggers.Length == 0)
+		{
+			GD.Print("RacingGame: No checkpoints defined for this track");
+			return;
+		}
 
-		_startLine = new Line2D();
-		_startLine.Width = 4.0f;
-		_startLine.DefaultColor = Colors.Green;
-		_startLine.AddPoint(startPoint + perpendicular * 30);
-		_startLine.AddPoint(startPoint - perpendicular * 30);
-		AddChild(_startLine);
+		// Initialize checkpoint tracking arrays
+		_checkpointsCrossed = new bool[_checkpointTriggers.Length];
+		_nextCheckpointIndex = 0;
 
-		// Create area for collision detection
-		_startLineArea = new Area2D();
-		var startLineCollision = new CollisionShape2D();
-		var startLineShape = new RectangleShape2D();
-		startLineShape.Size = new Vector2(60, 10);
-		startLineCollision.Shape = startLineShape;
-		_startLineArea.AddChild(startLineCollision);
-		_startLineArea.GlobalPosition = startPoint;
-		_startLineArea.Rotation = direction.Angle();
-		_startLineArea.BodyEntered += OnStartLineEntered;
-		AddChild(_startLineArea);
+		GD.Print($"RacingGame: Initialized tracking for {_checkpointTriggers.Length} checkpoints");
+	}
+
+	private void ConnectTrackSignals()
+	{
+		if (_trackDefinition == null) return;
+
+		// Connect start line trigger signal
+		var startLineTrigger = _trackDefinition.StartLine;
+		if (startLineTrigger != null)
+		{
+			startLineTrigger.StartLineCrossed += OnStartLineTriggered;
+		}
+
+		// Connect checkpoint trigger signals
+		var checkpointTriggers = _trackDefinition.CheckpointTriggers;
+		for (int i = 0; i < checkpointTriggers.Length; i++)
+		{
+			var trigger = checkpointTriggers[i];
+			if (trigger != null)
+			{
+				trigger.CheckpointCrossed += OnCheckpointTriggered;
+			}
+		}
+	}
+
+	private void PositionCarAtStart()
+	{
+		if (_trackDefinition == null || _car == null) return;
+
+		var startPoint = _trackDefinition.GetStartLinePosition();
+		var perpendicular = _trackDefinition.GetStartLineDirection();
+		var trackDirection = new Vector2(perpendicular.Y, -perpendicular.X); // Convert perpendicular back to track direction
 
 		// Position car at start line
-		_car.GlobalPosition = startPoint - direction * 50;
-		_car.Rotation = direction.Angle() + Mathf.Pi / 2;
+		_car.GlobalPosition = startPoint - trackDirection * 50;
+		_car.Rotation = trackDirection.Angle() + Mathf.Pi / 2;
 	}
+
 
 	private void UpdateCarPhysics(float delta)
 	{
@@ -545,10 +829,11 @@ public partial class RacingGame : Node2D
 
 	private void CheckStartLineCollision()
 	{
-		if (_startLineArea == null || _car == null) return;
+		var startLineTrigger = _trackDefinition?.StartLine;
+		if (startLineTrigger == null || _car == null) return;
 
 		var carGlobalPos = _car.GlobalPosition;
-		var startLinePos = _startLineArea.GlobalPosition;
+		var startLinePos = startLineTrigger.GlobalPosition;
 		var distance = carGlobalPos.DistanceTo(startLinePos);
 
 		if (distance < 40.0f) // Within start line detection range
@@ -576,7 +861,8 @@ public partial class RacingGame : Node2D
 
 	private float GetTrackAccelerationModifier(Vector2 position)
 	{
-		if (_trackGenerator == null) return 1.0f;
+		if (_trackDefinition == null) 
+			return 1.0f;
 		
 		// Check if position is on track
 		if (!IsOnTrack(position))
@@ -599,8 +885,8 @@ public partial class RacingGame : Node2D
 
 	private bool IsOnTrack(Vector2 position)
 	{
-		if (_trackGenerator == null) return true;
-		return _trackGenerator.IsValidTrackPoint(position);
+		if (_trackDefinition == null) return true;
+		return _trackDefinition.IsValidTrackPoint(position);
 	}
 
 	private float GetOffTrackSpeedModifier(Vector2 position)
@@ -621,27 +907,112 @@ public partial class RacingGame : Node2D
 		return 1.0f;
 	}
 
-	private void OnStartLineEntered(Node2D body)
+	private void OnStartLineTriggered(Node2D body)
 	{
-		// This method exists for potential future use with Area2D signals
-		// Currently using distance-based detection in CheckStartLineCollision
+		if (body != _car) return;
+		
+		// Trigger-based start line detection
+		if (!_crossedStartLine)
+		{
+			_crossedStartLine = true;
+			_lastStartLineCross = (float)Time.GetUnixTimeFromSystem();
+			OnStartLineCrossed();
+		}
+	}
+
+	private void OnCheckpointTriggered(Node2D body, int checkpointIndex)
+	{
+		if (body != _car) return;
+
+		// Handle checkpoint crossing for both practice and time attack modes
+		if (_inTimeTrialMode)
+		{
+			// Time attack mode: check order and record gap times
+			if (checkpointIndex == _nextCheckpointIndex)
+			{
+				_checkpointsCrossed[checkpointIndex] = true;
+				_nextCheckpointIndex++;
+
+				// Record gap time for this checkpoint in current lap
+				if (_currentLap > 0 && _currentLap <= _lapGapTimes.Count)
+				{
+					var currentLapGapTimes = _lapGapTimes[_currentLap - 1];
+					if (checkpointIndex < currentLapGapTimes.Count)
+					{
+						currentLapGapTimes[checkpointIndex] = _currentLapTime;
+					}
+				}
+
+				// Mark checkpoint as crossed using the trigger system
+				var checkpointTriggers = _trackDefinition?.CheckpointTriggers;
+				if (checkpointTriggers != null && checkpointIndex < checkpointTriggers.Length && checkpointTriggers[checkpointIndex] != null)
+				{
+					checkpointTriggers[checkpointIndex].MarkAsCrossed();
+				}
+
+				var checkpointName = _checkpointTriggers[checkpointIndex]?.TriggerName ?? $"Checkpoint {checkpointIndex + 1}";
+				GD.Print($"Checkpoint {checkpointIndex + 1} crossed: {checkpointName} - Gap: {_currentLapTime:F2}s");
+
+				// Check if all checkpoints have been crossed
+				if (_nextCheckpointIndex >= _checkpointTriggers.Length)
+				{
+					GD.Print("All checkpoints crossed - ready for finish line");
+				}
+			}
+			else
+			{
+				GD.Print($"Checkpoint {checkpointIndex + 1} crossed out of order - expected checkpoint {_nextCheckpointIndex + 1}");
+			}
+		}
+		else
+		{
+			// Practice mode: just reset gap timer
+			_currentGapTime = 0.0f;
+			var checkpointName = _checkpointTriggers[checkpointIndex]?.TriggerName ?? $"Checkpoint {checkpointIndex + 1}";
+			GD.Print($"Checkpoint {checkpointIndex + 1} crossed: {checkpointName} (Practice Mode)");
+		}
 	}
 
 	private void OnStartLineCrossed()
 	{
-		if (!_inTimeTrialMode) return;
+		if (!_inTimeTrialMode) 
+		{
+			// In practice mode, just reset gap timer
+			_currentGapTime = 0.0f;
+			return;
+		}
 
 		if (_currentLap == 0)
 		{
 			// Starting first lap
 			_currentLap = 1;
 			_currentLapTime = 0.0f;
+			
+			// Initialize gap times storage for first lap
+			_lapGapTimes.Add(new List<float>());
+			for (int i = 0; i < _checkpointTriggers.Length; i++)
+			{
+				_lapGapTimes[_currentLap - 1].Add(0.0f);
+			}
+			
+			ResetCheckpoints();
 			GD.Print("Lap 1 started!");
 		}
 		else if (_currentLap <= _targetLaps)
 		{
+			// Check if all checkpoints were crossed before allowing lap completion
+			if (_checkpointTriggers.Length > 0 && _nextCheckpointIndex < _checkpointTriggers.Length)
+			{
+				GD.Print($"Cannot complete lap - only {_nextCheckpointIndex}/{_checkpointTriggers.Length} checkpoints crossed");
+				return;
+			}
+
 			// Completed a lap
 			GD.Print($"Lap {_currentLap} completed in {_currentLapTime:F2}s");
+			
+			// Store completed lap time
+			_completedLapTimes.Add(_currentLapTime);
+			_lastCompletedLapTime = _currentLapTime;
 			
 			if (_currentLapTime < _bestLapTime)
 			{
@@ -657,11 +1028,33 @@ public partial class RacingGame : Node2D
 			}
 			else
 			{
-				// Start next lap
+				// Start next lap - initialize gap times for this lap
+				_lapGapTimes.Add(new List<float>());
+				for (int i = 0; i < _checkpointTriggers.Length; i++)
+				{
+					_lapGapTimes[_currentLap - 1].Add(0.0f);
+				}
+				
 				_currentLapTime = 0.0f;
+				ResetCheckpoints();
 				GD.Print($"Lap {_currentLap} started!");
 			}
 		}
+	}
+
+	private void ResetCheckpoints()
+	{
+		if (_checkpointTriggers == null) return;
+
+		// Reset checkpoint tracking
+		for (int i = 0; i < _checkpointsCrossed.Length; i++)
+		{
+			_checkpointsCrossed[i] = false;
+		}
+		_nextCheckpointIndex = 0;
+
+		// Reset all checkpoint triggers to uncrossed state
+		_trackDefinition?.ResetAllCheckpoints();
 	}
 
 	private void DetectAndAdaptToContext()
@@ -686,8 +1079,7 @@ public partial class RacingGame : Node2D
 		{
 			_isProductionContext = false;
 			_playerId = "dev_player";
-			CallDeferred(MethodName.StartPracticeMode);
-			GD.Print("RacingGame: Development context detected - auto-starting practice mode");
+			GD.Print("RacingGame: Development context detected - will auto-start practice mode after track setup");
 		}
 	}
 
@@ -700,6 +1092,7 @@ public partial class RacingGame : Node2D
 		_inTimeTrialMode = false;
 		_currentLap = 0;
 		_currentLapTime = 0.0f;
+		_currentGapTime = 0.0f;
 
 		_pauseOverlay.Visible = false;
 		_gameOverOverlay.Visible = false;
@@ -730,36 +1123,38 @@ public partial class RacingGame : Node2D
 		_gameActive = true;
 		_gamePaused = false;
 		_inTimeTrialMode = true;
-		_currentLap = 0;
-		_currentLapTime = 0.0f;
 		_bestLapTime = float.MaxValue;
+
+		// Reset timing data
+		_completedLapTimes.Clear();
+		_lapGapTimes.Clear();
+		_currentGapTime = 0.0f;
 
 		_pauseOverlay.Visible = false;
 		_gameOverOverlay.Visible = false;
 
 		// Position car at start line
-		if (_trackCurve != null && _trackCurve.PointCount > 1)
-		{
-			var startPoint = _trackCurve.GetPointPosition(0);
-			var nextPoint = _trackCurve.GetPointPosition(1);
-			var direction = (nextPoint - startPoint).Normalized();
-			_car.GlobalPosition = startPoint - direction * 50;
-			_car.Rotation = direction.Angle() + Mathf.Pi / 2;
-		}
+		PositionCarAtStart();
+
+		// Start countdown instead of immediate start
+		StartCountdown();
 
 		EmitSignal(SignalName.GameStarted);
-		GD.Print("Racing Game - Time Trial Started!");
+		GD.Print("Racing Game - Time Trial Countdown Started!");
+	}
+
+	private void StartCountdown()
+	{
+		_inCountdown = true;
+		_countdownTime = 0.0f;
+		_countdownNumber = 3;
+		_countdownLabel.Text = "3";
+		_countdownOverlay.Visible = true;
 	}
 
 	public void EndTimeTrial()
 	{
 		if (!_inTimeTrialMode) return;
-
-		_gameActive = false;
-		_inTimeTrialMode = false;
-
-		_finalTimeLabel.Text = $"Best Lap: {_bestLapTime:F2}s";
-		_gameOverOverlay.Visible = true;
 
 		// Update high score in production context
 		if (_isProductionContext && _bestLapTime < float.MaxValue)
@@ -780,6 +1175,15 @@ public partial class RacingGame : Node2D
 		EmitSignal(SignalName.GameEnded);
 
 		GD.Print($"Time Trial Completed! Best Lap: {_bestLapTime:F2}s");
+
+		// Return to practice mode instead of showing game over
+		_inTimeTrialMode = false;
+		_currentLap = 0;
+		_currentLapTime = 0.0f;
+		_currentGapTime = 0.0f;
+		
+		// Keep _lastCompletedLapTime for display in practice mode
+		GD.Print($"Returning to practice mode. Last completed lap: {_lastCompletedLapTime:F2}s");
 	}
 
 	public void RestartPractice()
@@ -790,53 +1194,28 @@ public partial class RacingGame : Node2D
 		StartPracticeMode();
 	}
 
-	public void RegenerateTrack()
+
+	private void DisconnectTrackSignals()
 	{
-		if (_trackGenerator == null)
+		if (_trackDefinition == null) return;
+
+		// Disconnect start line trigger signal
+		var startLineTrigger = _trackDefinition.StartLine;
+		if (startLineTrigger != null)
 		{
-			GD.PrintErr("RacingGame: Cannot regenerate track - GridTrackGenerator not found");
-			return;
+			startLineTrigger.StartLineCrossed -= OnStartLineTriggered;
 		}
 
-		GD.Print("RacingGame: Regenerating track");
-		
-		// Clean up existing start line visuals
-		if (_startLine != null)
+		// Disconnect checkpoint trigger signals
+		var checkpointTriggers = _trackDefinition.CheckpointTriggers;
+		for (int i = 0; i < checkpointTriggers.Length; i++)
 		{
-			_startLine.QueueFree();
-			_startLine = null;
-		}
-		if (_startLineArea != null)
-		{
-			// Disconnect the signal if it was connected
-			_startLineArea.BodyEntered -= OnStartLineEntered;
-			_startLineArea.QueueFree();
-			_startLineArea = null;
-		}
-
-		// Generate new track
-		_trackGenerator.GenerateTrack();
-		_trackCurve = _trackGenerator.GetTrackCurve();
-		
-		// Recreate start line with new track
-		CreateStartLine();
-		
-		// Reset game state if currently playing
-		if (_gameActive)
-		{
-			_currentLap = 0;
-			_currentLapTime = 0.0f;
-			_crossedStartLine = false;
-			
-			// If in time trial, restart it
-			if (_inTimeTrialMode)
+			var trigger = checkpointTriggers[i];
+			if (trigger != null)
 			{
-				_inTimeTrialMode = false; // Prevent credit deduction
-				StartTimeTrial();
+				trigger.CheckpointCrossed -= OnCheckpointTriggered;
 			}
 		}
-
-		GD.Print("RacingGame: Track regenerated successfully!");
 	}
 
 	public void TogglePause()
@@ -878,6 +1257,8 @@ public partial class RacingGame : Node2D
 				_timeLabel.Text = "Time: --";
 		}
 
+		UpdateTimingUI();
+
 		if (_proximityLabel != null && _car != null)
 		{
 			var carPosition = _car.GlobalPosition;
@@ -901,4 +1282,105 @@ public partial class RacingGame : Node2D
 			}
 		}
 	}
+
+	private void UpdateTimingUI()
+	{
+		if (_inTimeTrialMode)
+		{
+			// Time Attack mode: show lap times and gap times
+			_gapTimeLabel.Visible = false;
+			_lastLapLabel.Visible = false;
+			_timingScrollContainer.Visible = true;
+
+			UpdateLapTimesDisplay();
+		}
+		else
+		{
+			// Practice mode: show gap time and last lap time
+			_timingScrollContainer.Visible = false;
+			_gapTimeLabel.Visible = true;
+			
+			if (_gapTimeLabel != null)
+			{
+				_gapTimeLabel.Text = $"Gap: {_currentGapTime:F1}s";
+			}
+
+			// Show last lap time if available
+			if (_lastCompletedLapTime > 0)
+			{
+				_lastLapLabel.Visible = true;
+				_lastLapLabel.Text = $"Last Lap: {_lastCompletedLapTime:F2}s";
+			}
+			else
+			{
+				_lastLapLabel.Visible = false;
+			}
+		}
+	}
+
+	private void UpdateLapTimesDisplay()
+	{
+		if (_lapTimesContainer == null) return;
+
+		// Clear existing lap time displays
+		foreach (Node child in _lapTimesContainer.GetChildren())
+		{
+			child.QueueFree();
+		}
+
+		// Add header
+		var header = new Label();
+		header.Text = "LAP TIMES";
+		header.HorizontalAlignment = HorizontalAlignment.Center;
+		_lapTimesContainer.AddChild(header);
+
+		// Add completed lap times
+		for (int i = 0; i < _completedLapTimes.Count; i++)
+		{
+			var lapLabel = new Label();
+			lapLabel.Text = $"Lap {i + 1}: {_completedLapTimes[i]:F2}s";
+			_lapTimesContainer.AddChild(lapLabel);
+
+			// Add gap times for this lap if available
+			if (i < _lapGapTimes.Count && _lapGapTimes[i].Count > 0)
+			{
+				for (int j = 0; j < _lapGapTimes[i].Count; j++)
+				{
+					if (_lapGapTimes[i][j] > 0)
+					{
+						var gapLabel = new Label();
+						gapLabel.Text = $"  CP{j + 1}: {_lapGapTimes[i][j]:F2}s";
+						gapLabel.Modulate = new Color(0.8f, 0.8f, 0.8f);
+						_lapTimesContainer.AddChild(gapLabel);
+					}
+				}
+			}
+		}
+
+		// Show current lap progress if in progress
+		if (_currentLap > 0 && _currentLap <= _targetLaps)
+		{
+			var currentLapLabel = new Label();
+			currentLapLabel.Text = $"Lap {_currentLap}: {_currentLapTime:F1}s";
+			currentLapLabel.Modulate = Colors.Yellow;
+			_lapTimesContainer.AddChild(currentLapLabel);
+
+			// Show current lap gap times
+			if (_currentLap <= _lapGapTimes.Count)
+			{
+				var currentGapTimes = _lapGapTimes[_currentLap - 1];
+				for (int i = 0; i < currentGapTimes.Count && i < _nextCheckpointIndex; i++)
+				{
+					if (currentGapTimes[i] > 0)
+					{
+						var gapLabel = new Label();
+						gapLabel.Text = $"  CP{i + 1}: {currentGapTimes[i]:F2}s";
+						gapLabel.Modulate = Colors.LightYellow;
+						_lapTimesContainer.AddChild(gapLabel);
+					}
+				}
+			}
+		}
+	}
+
 }

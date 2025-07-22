@@ -1,11 +1,11 @@
 using Godot;
 
-public interface ITrackGenerator
+public interface ITrackDefinition
 {
 	/// <summary>
-	/// Generate a new track using the configured parameters
+	/// Setups or resets the track for a race
 	/// </summary>
-	void GenerateTrack();
+	void SetupTrack();
 
 	/// <summary>
 	/// Get the generated track curve for gameplay
@@ -19,4 +19,15 @@ public interface ITrackGenerator
 	/// <param name="point">The point to check</param>
 	/// <returns>True if the point is valid for track generation</returns>
 	bool IsValidTrackPoint(Vector2 point);
+
+	/// <summary>
+	/// Get the world position of the starting line
+	/// </summary>
+	Vector2 GetStartLinePosition();
+
+	/// <summary>
+	/// Get the direction vector for the starting line (perpendicular to track)
+	/// </summary>
+	Vector2 GetStartLineDirection();
+
 }

@@ -1,36 +1,10 @@
-[gd_scene load_steps=4 format=3 uid="uid://bk8h5n2qp3m7x"]
+[gd_scene load_steps=3 format=3 uid="uid://bk8h5n2qp3m7x"]
 
 [ext_resource type="Script" uid="uid://dgm3rxt5i1tlc" path="res://_Scripts/Games/RacingGame/RacingGame.cs" id="1_x9h8c"]
-[ext_resource type="Script" uid="uid://bf4nadmeq00q6" path="res://_Scripts/Games/RacingGame/GridTrackGenerator.cs" id="2_grid_track_gen"]
-[ext_resource type="Script" uid="uid://w1seniawbih" path="res://_Scripts/Games/RacingGame/TrackRenderer.cs" id="3_csopi"]
+[ext_resource type="PackedScene" uid="uid://byl7ua2lcaynm" path="res://_Scenes/Games/RacingGame/_Tracks/OvalTrack.tscn" id="2_didut"]
 
 [node name="RacingGame" type="Node2D"]
 script = ExtResource("1_x9h8c")
+TrackScenes = Array[PackedScene]([ExtResource("2_didut")])
 MaxSpeed = 600.0
 MaxInputDistance = 500.0
-
-[node name="GridTrackGenerator" type="Node2D" parent="." node_paths=PackedStringArray("TrackRenderer")]
-script = ExtResource("2_grid_track_gen")
-GridSize = 60
-TrackPointCount = 15
-MinDistanceFromCenter = 0.25
-MaxDistanceFromCenter = 0.9
-MinDistanceBetweenPoints = 5
-AngleVariation = 10.0
-CenterVariationFactor = 0.0
-BoundaryPadding = 5
-TrackRenderer = NodePath("../TrackRenderer")
-
-[node name="TrackRenderer" type="Node2D" parent="."]
-script = ExtResource("3_csopi")
-TrackWidth = 120.0
-CheckpointColor = Color(0, 1, 0, 0)
-StartLineColor = Color(1, 1, 1, 0)
-CurveSmoothing = 1.0
-TessellationPoints = 100
-DashLength = 12.0
-DashGap = 9.0
-MaxWidthFactor = 1.4
-CatmullRomPasses = 3
-GaussianPasses = 3
-DesiredCheckpointsMax = 6

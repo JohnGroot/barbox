@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=3 uid="uid://c586onxqiifwa"]
+
+[ext_resource type="Script" uid="uid://c4u0f6fhmixmu" path="res://_Scripts/Games/RacingGame/StartLineTrigger.cs" id="1_w84u4"]
+
+[sub_resource type="SegmentShape2D" id="SegmentShape2D_mker3"]
+a = Vector2(0, 32)
+b = Vector2(0, -32)
+
+[node name="CheckpointLineTrigger" type="Area2D" node_paths=PackedStringArray("CollisionShape", "VisualLine")]
+script = ExtResource("1_w84u4")
+CollisionShape = NodePath("StartCollisionShape")
+VisualLine = NodePath("StartLine")
+metadata/_custom_type_script = "uid://c4u0f6fhmixmu"
+
+[node name="StartCollisionShape" type="CollisionShape2D" parent="."]
+shape = SubResource("SegmentShape2D_mker3")
+debug_color = Color(0.7, 0.7, 0.7, 0.419608)
+
+[node name="StartLine" type="Line2D" parent="."]
+points = PackedVector2Array(0, 32, 0, -32)
+width = 2.5
+default_color = Color(0.78, 0.78, 0.78, 0.360784)
