@@ -9,12 +9,21 @@ public partial class CheckpointTrigger : LineTrigger
 {
 	[Signal] public delegate void CheckpointCrossedEventHandler(Node2D body, int checkpointIndex);
 
+	public enum CheckpointState
+	{
+		Future,      // Not yet required (yellow)
+		NextRequired, // Next required checkpoint (bright/enhanced)
+		Crossed      // Already crossed (green)
+	}
+
 	[ExportCategory("Checkpoint State")]
 	[Export] public int CheckpointIndex { get; set; } = 0;
 	[Export] public bool IsCrossed { get; set; } = false;
 
 	private Color _uncrossedColor = Colors.Yellow;
 	private Color _crossedColor = Colors.Green;
+	private Color _nextRequiredColor = Colors.Cyan;
+	private CheckpointState _currentState = CheckpointState.Future;
 
 	public CheckpointTrigger()
 	{
@@ -45,6 +54,7 @@ public partial class CheckpointTrigger : LineTrigger
 	public void MarkAsCrossed()
 	{
 		IsCrossed = true;
+		_currentState = CheckpointState.Crossed;
 		SetLineColor(_crossedColor);
 	}
 
@@ -54,20 +64,77 @@ public partial class CheckpointTrigger : LineTrigger
 	public void ResetCrossed()
 	{
 		IsCrossed = false;
+		_currentState = CheckpointState.Future;
 		SetLineColor(_uncrossedColor);
 	}
 
 	/// <summary>
-	/// Set custom colors for crossed/uncrossed states
+	/// Mark this checkpoint as the next required checkpoint with enhanced visual
 	/// </summary>
-	/// <param name="uncrossed">Color when checkpoint hasn't been crossed</param>
+	public void SetNextRequiredState()
+	{
+		if (!IsCrossed)
+		{
+			_currentState = CheckpointState.NextRequired;
+			SetLineColor(_nextRequiredColor);
+		}
+	}
+
+	/// <summary>
+	/// Set this checkpoint to future state (not yet required)
+	/// </summary>
+	public void SetFutureState()
+	{
+		if (!IsCrossed)
+		{
+			_currentState = CheckpointState.Future;
+			SetLineColor(_uncrossedColor);
+		}
+	}
+
+	/// <summary>
+	/// Get current checkpoint state
+	/// </summary>
+	public CheckpointState GetCurrentState()
+	{
+		return _currentState;
+	}
+
+	/// <summary>
+	/// Set custom colors for checkpoint states
+	/// </summary>
+	/// <param name="uncrossed">Color when checkpoint is future/not yet required</param>
 	/// <param name="crossed">Color when checkpoint has been crossed</param>
-	public void SetCheckpointColors(Color uncrossed, Color crossed)
+	/// <param name="nextRequired">Color when checkpoint is next required (optional)</param>
+	public void SetCheckpointColors(Color uncrossed, Color crossed, Color? nextRequired = null)
 	{
 		_uncrossedColor = uncrossed;
 		_crossedColor = crossed;
+		if (nextRequired.HasValue)
+		{
+			_nextRequiredColor = nextRequired.Value;
+		}
 		
-		// Update current color based on state
-		SetLineColor(IsCrossed ? _crossedColor : _uncrossedColor);
+		// Update current color based on current state
+		UpdateVisualState();
+	}
+
+	/// <summary>
+	/// Update visual appearance based on current state
+	/// </summary>
+	private void UpdateVisualState()
+	{
+		switch (_currentState)
+		{
+			case CheckpointState.Future:
+				SetLineColor(_uncrossedColor);
+				break;
+			case CheckpointState.NextRequired:
+				SetLineColor(_nextRequiredColor);
+				break;
+			case CheckpointState.Crossed:
+				SetLineColor(_crossedColor);
+				break;
+		}
 	}
 }

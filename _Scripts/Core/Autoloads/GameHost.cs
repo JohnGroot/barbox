@@ -255,4 +255,100 @@ public partial class GameHost : AutoloadBase
 	{
 		return GetAutoload<GameHost>();
 	}
+
+	// ============================================================================
+	// Build Context Detection Utilities
+	// ============================================================================
+
+	/// <summary>
+	/// Determines if the game was launched from the Godot editor (Play button)
+	/// This includes both editor play mode and debug builds launched from editor
+	/// </summary>
+	/// <returns>True if launched from editor, false otherwise</returns>
+	public static bool IsLaunchedFromEditor()
+	{
+		const string editor = "editor";
+		return OS.HasFeature(editor);
+	}
+
+	/// <summary>
+	/// Determines if the game is running as an exported standalone build
+	/// This is true for all exported builds (debug or release)
+	/// </summary>
+	/// <returns>True if exported build, false otherwise</returns>
+	public static bool IsExportedBuild()
+	{
+		const string standalone = "standalone";
+		return OS.HasFeature(standalone);
+	}
+
+	/// <summary>
+	/// Determines if code is running in editor tool script context
+	/// This is true during editor tool execution, @tool scripts, editor extensions
+	/// </summary>
+	/// <returns>True if in editor tool context, false otherwise</returns>
+	public static bool IsEditorToolContext()
+	{
+		return Engine.IsEditorHint();
+	}
+
+	/// <summary>
+	/// Determines if the game is running in any development context
+	/// Includes both editor play mode and tool script contexts
+	/// </summary>
+	/// <returns>True if in development context, false for production</returns>
+	public static bool IsDevelopmentContext()
+	{
+		return IsLaunchedFromEditor() || IsEditorToolContext();
+	}
+
+	// ============================================================================
+	// Production/Development Context Detection
+	// ============================================================================
+
+	/// <summary>
+	/// Determines if the game is running in production context
+	/// Production context = exported standalone build
+	/// </summary>
+	/// <returns>True if in production context (exported build), false for development</returns>
+	public static bool IsProductionContext()
+	{
+		// Production = exported standalone build
+		return IsExportedBuild();
+	}
+
+	/// <summary>
+	/// Determines if credit costs should be bypassed for the current context
+	/// Credits are bypassed in any development context (editor play or tool scripts)
+	/// </summary>
+	/// <returns>True if credits should be bypassed (development), false if credits are required (production)</returns>
+	public static bool ShouldBypassCredits()
+	{
+		// Bypass credits in any development context
+		return IsDevelopmentContext();
+	}
+
+	/// <summary>
+	/// Gets a description of the current context for debugging purposes
+	/// </summary>
+	/// <returns>String describing the current context</returns>
+	public static string GetContextDescription()
+	{
+		if (IsEditorToolContext())
+		{
+			return "Development: Editor tool script context";
+		}
+
+		if (IsLaunchedFromEditor())
+		{
+			return "Development: Launched from Godot editor";
+		}
+
+		if (IsExportedBuild())
+		{
+			return "Production: Exported standalone build";
+		}
+
+		return "Unknown: Unable to determine build context";
+	}
 }

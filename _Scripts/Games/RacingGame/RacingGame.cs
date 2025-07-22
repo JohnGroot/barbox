@@ -1,5 +1,6 @@
 using Godot;
 using System.Collections.Generic;
+using System.Linq;
 
 /// <summary>
 /// 2D time trial racing game with daily seeded race tracks
@@ -72,8 +73,13 @@ public partial class RacingGame : Node2D
 	private float _lastCompletedLapTime = 0.0f;
 	private float _currentGapTime = 0.0f; // Time since last checkpoint (practice mode)
 	private float _lastCheckpointTime = 0.0f;
+	
+	// Last completed race data (for practice mode display)
+	private List<float> _lastRaceLapTimes = new List<float>();
+	private float _lastRaceBestLap = 0.0f;
+	private float _lastRaceTotalTime = 0.0f;
 
-	// Context detection
+	// Context detection (deprecated - use GameHost static methods)
 	private GameHost _gameHost;
 	private bool _isProductionContext = false;
 
@@ -961,11 +967,8 @@ public partial class RacingGame : Node2D
 		// Position car at start line
 		PositionCarAtStart();
 		
-		// Auto-start practice mode in development context
-		if (!_isProductionContext && !_gameActive)
-		{
-			StartPracticeMode();
-		}
+		// Always auto-start practice mode when a new track loads
+		StartPracticeMode();
 	}
 
 	private void InitializeTrackGenerator()
@@ -1007,6 +1010,9 @@ public partial class RacingGame : Node2D
 		// Initialize checkpoint tracking arrays
 		_checkpointsCrossed = new bool[_checkpointTriggers.Length];
 		_nextCheckpointIndex = 0;
+
+		// Set initial visual states (first checkpoint highlighted as next required)
+		UpdateCheckpointVisuals();
 
 		GD.Print($"RacingGame: Initialized tracking for {_checkpointTriggers.Length} checkpoints");
 	}
@@ -1102,17 +1108,20 @@ public partial class RacingGame : Node2D
 
 		if (_currentSpeed > 0.1f && inputDirection != Vector2.Zero)
 		{
+			// Apply off-track turn penalty to rotation speed
+			var effectiveRotationSpeed = RotationLerpSpeed * turnModifier * delta;
+			
 			// Lerp car rotation towards target direction
 			if (_hasInput)
 			{
 				var targetDirection = (_targetPosition - _car.GlobalPosition).Normalized();
 				var targetAngle = targetDirection.Angle() + Mathf.Pi / 2;
-				_car.Rotation = Mathf.LerpAngle(_car.Rotation, targetAngle, RotationLerpSpeed * delta);
+				_car.Rotation = Mathf.LerpAngle(_car.Rotation, targetAngle, effectiveRotationSpeed);
 			}
 			else
 			{
 				// When not actively steering, rotate towards movement direction
-				_car.Rotation = Mathf.LerpAngle(_car.Rotation, _velocity.Angle() + Mathf.Pi / 2, RotationLerpSpeed * delta);
+				_car.Rotation = Mathf.LerpAngle(_car.Rotation, _velocity.Angle() + Mathf.Pi / 2, effectiveRotationSpeed);
 			}
 			
 			// Calculate velocity relative to car's forward direction
@@ -1258,6 +1267,9 @@ public partial class RacingGame : Node2D
 				var checkpointName = _checkpointTriggers[checkpointIndex]?.TriggerName ?? $"Checkpoint {checkpointIndex + 1}";
 				GD.Print($"Checkpoint {checkpointIndex + 1} crossed: {checkpointName} - Gap: {_currentLapTime:F2}s");
 
+				// Update visual states to highlight next required checkpoint
+				UpdateCheckpointVisuals();
+
 				// Check if all checkpoints have been crossed
 				if (_nextCheckpointIndex >= _checkpointTriggers.Length)
 				{
@@ -1360,32 +1372,63 @@ public partial class RacingGame : Node2D
 
 		// Reset all checkpoint triggers to uncrossed state
 		_trackDefinition?.ResetAllCheckpoints();
+		
+		// Update visual states to highlight next required checkpoint
+		UpdateCheckpointVisuals();
+	}
+
+	private void UpdateCheckpointVisuals()
+	{
+		if (_checkpointTriggers == null || _checkpointTriggers.Length == 0) return;
+
+		// Update visual state for each checkpoint based on _nextCheckpointIndex
+		for (int i = 0; i < _checkpointTriggers.Length; i++)
+		{
+			var checkpoint = _checkpointTriggers[i];
+			if (checkpoint == null) continue;
+
+			if (i < _nextCheckpointIndex)
+			{
+				// This checkpoint has been crossed
+				checkpoint.MarkAsCrossed();
+			}
+			else if (i == _nextCheckpointIndex)
+			{
+				// This is the next required checkpoint - highlight it
+				checkpoint.SetNextRequiredState();
+			}
+			else
+			{
+				// This checkpoint is in the future
+				checkpoint.SetFutureState();
+			}
+		}
 	}
 
 	private void DetectAndAdaptToContext()
 	{
+		// Use centralized context detection from GameHost
 		_gameHost = GameHost.GetInstance();
+		_isProductionContext = GameHost.IsProductionContext(); // For backward compatibility
 		
-		if (_gameHost != null)
+		if (GameHost.IsProductionContext())
 		{
-			_isProductionContext = true;
-			var playerSession = _gameHost.GetPlayerSession("default");
+			var playerSession = _gameHost?.GetPlayerSession("default");
 			if (playerSession != null)
 			{
 				_playerId = playerSession.PlayerId;
 			}
 			else
 			{
-				_playerId = _gameHost.GetCurrentPlayerId();
+				_playerId = _gameHost?.GetCurrentPlayerId() ?? "unknown";
 			}
-			GD.Print("RacingGame: Production context detected with GameHost autoload");
 		}
 		else
 		{
-			_isProductionContext = false;
 			_playerId = "dev_player";
-			GD.Print("RacingGame: Development context detected - will auto-start practice mode after track setup");
 		}
+		
+		GD.Print($"RacingGame: {GameHost.GetContextDescription()}");
 	}
 
 	public void StartPracticeMode()
@@ -1415,9 +1458,10 @@ public partial class RacingGame : Node2D
 
 	public void StartTimeTrial()
 	{
-		if (_isProductionContext)
+		// Check if credits should be bypassed (editor/development mode)
+		if (!GameHost.ShouldBypassCredits())
 		{
-			// Check and deduct credits for time trial
+			// Production context - check and deduct credits for time trial
 			var userManager = UserManager.GetAutoload();
 			if (userManager != null)
 			{
@@ -1428,6 +1472,10 @@ public partial class RacingGame : Node2D
 				}
 				GD.Print("1 credit deducted for time trial");
 			}
+		}
+		else
+		{
+			GD.Print($"Credits bypassed - {GameHost.GetContextDescription()}");
 		}
 
 		_gameActive = true;
@@ -1472,7 +1520,7 @@ public partial class RacingGame : Node2D
 		if (!_inTimeTrialMode) return;
 
 		// Update high score in production context
-		if (_isProductionContext && _bestLapTime < float.MaxValue)
+		if (GameHost.IsProductionContext() && _bestLapTime < float.MaxValue)
 		{
 			var userManager = UserManager.GetAutoload();
 			if (userManager != null)
@@ -1491,14 +1539,31 @@ public partial class RacingGame : Node2D
 
 		GD.Print($"Time Trial Completed! Best Lap: {_bestLapTime:F2}s");
 
-		// Return to practice mode instead of showing game over
-		_inTimeTrialMode = false;
-		_currentLap = 0;
-		_currentLapTime = 0.0f;
-		_currentGapTime = 0.0f;
+		// Show game over overlay with race results
+		ShowRaceResults();
+	}
+
+	private void ShowRaceResults()
+	{
+		// Preserve race data for practice mode display
+		_lastRaceLapTimes.Clear();
+		_lastRaceLapTimes.AddRange(_completedLapTimes);
+		_lastRaceBestLap = _bestLapTime;
+		_lastRaceTotalTime = _completedLapTimes.Count > 0 ? _completedLapTimes.Sum() : 0.0f;
 		
-		// Keep _lastCompletedLapTime for display in practice mode
-		GD.Print($"Returning to practice mode. Last completed lap: {_lastCompletedLapTime:F2}s");
+		// Update final time label with comprehensive results
+		var resultText = $"Race Complete!\n\nTotal Time: {_lastRaceTotalTime:F2}s\nBest Lap: {_lastRaceBestLap:F2}s\n\nLap Times:\n";
+		
+		for (int i = 0; i < _completedLapTimes.Count; i++)
+		{
+			resultText += $"Lap {i + 1}: {_completedLapTimes[i]:F2}s\n";
+		}
+		
+		_finalTimeLabel.Text = resultText;
+		
+		// Show the game over overlay
+		_gameOverOverlay.Visible = true;
+		_gamePaused = true; // Pause the game so player can see results
 	}
 
 	public void RestartPractice()
@@ -1507,6 +1572,10 @@ public partial class RacingGame : Node2D
 		_inTimeTrialMode = false;
 		_gamePaused = false;
 		
+		// Hide overlays
+		_gameOverOverlay.Visible = false;
+		_pauseOverlay.Visible = false;
+		
 		// Clear visual feedback state
 		ClearTireTrails();
 		_mouseStationaryTime = 0.0f;
@@ -1514,7 +1583,6 @@ public partial class RacingGame : Node2D
 		
 		StartPracticeMode();
 	}
-
 
 	private void DisconnectTrackSignals()
 	{
@@ -1565,20 +1633,41 @@ public partial class RacingGame : Node2D
 		if (_lapLabel != null)
 		{
 			if (_inTimeTrialMode)
-				_lapLabel.Text = $"Lap: {_currentLap}/{_targetLaps}";
+			{
+				if (_inCountdown)
+					_lapLabel.Text = $"Starting Race ({_targetLaps} Laps)";
+				else
+					_lapLabel.Text = $"Lap: {_currentLap}/{_targetLaps}";
+			}
 			else
-				_lapLabel.Text = "Practice Mode";
+			{
+				// Show different practice mode labels based on context
+				if (_lastRaceLapTimes.Count > 0)
+					_lapLabel.Text = $"Post-Race Practice (Best: {_lastRaceBestLap:F2}s)";
+				else
+					_lapLabel.Text = "Practice Mode";
+			}
 		}
 
 		if (_timeLabel != null)
 		{
-			if (_inTimeTrialMode && _currentLap > 0)
-				_timeLabel.Text = $"Time: {_currentLapTime:F1}s";
+			if (_inTimeTrialMode)
+			{
+				if (_inCountdown)
+					_timeLabel.Text = "Starting...";
+				else if (_currentLap > 0)
+					_timeLabel.Text = $"Time: {_currentLapTime:F1}s";
+				else
+					_timeLabel.Text = "Time: --";
+			}
 			else
+			{
 				_timeLabel.Text = "Time: --";
+			}
 		}
 
 		UpdateTimingUI();
+		UpdateButtonStates();
 
 		if (_proximityLabel != null && _car != null)
 		{
@@ -1617,8 +1706,7 @@ public partial class RacingGame : Node2D
 		}
 		else
 		{
-			// Practice mode: show gap time and last lap time
-			_timingScrollContainer.Visible = false;
+			// Practice mode: show gap time, last lap time, and last race data
 			_gapTimeLabel.Visible = true;
 			
 			if (_gapTimeLabel != null)
@@ -1626,7 +1714,7 @@ public partial class RacingGame : Node2D
 				_gapTimeLabel.Text = $"Gap: {_currentGapTime:F1}s";
 			}
 
-			// Show last lap time if available
+			// Show last lap time if available (from individual lap practice)
 			if (_lastCompletedLapTime > 0)
 			{
 				_lastLapLabel.Visible = true;
@@ -1635,6 +1723,17 @@ public partial class RacingGame : Node2D
 			else
 			{
 				_lastLapLabel.Visible = false;
+			}
+
+			// Show last race data if available
+			if (_lastRaceLapTimes.Count > 0)
+			{
+				_timingScrollContainer.Visible = true;
+				UpdateLastRaceDisplay();
+			}
+			else
+			{
+				_timingScrollContainer.Visible = false;
 			}
 		}
 	}
@@ -1701,6 +1800,81 @@ public partial class RacingGame : Node2D
 					}
 				}
 			}
+		}
+	}
+
+	private void UpdateButtonStates()
+	{
+		if (_timeTrialButton != null)
+		{
+			if (_inTimeTrialMode)
+			{
+				_timeTrialButton.Disabled = true;
+				_timeTrialButton.Text = "Time Trial In Progress...";
+			}
+			else if (_inCountdown)
+			{
+				_timeTrialButton.Disabled = true;
+				_timeTrialButton.Text = "Starting Time Trial...";
+			}
+			else
+			{
+				_timeTrialButton.Disabled = false;
+				_timeTrialButton.Text = "Start Time Trial (3 Laps)";
+			}
+		}
+	}
+
+	private void UpdateLastRaceDisplay()
+	{
+		if (_lapTimesContainer == null) return;
+
+		// Clear existing displays
+		foreach (Node child in _lapTimesContainer.GetChildren())
+		{
+			child.QueueFree();
+		}
+
+		// Add header for last race
+		var header = new Label();
+		header.Text = "LAST RACE";
+		header.HorizontalAlignment = HorizontalAlignment.Center;
+		header.Modulate = Colors.Cyan;
+		_lapTimesContainer.AddChild(header);
+
+		// Show race summary
+		var summaryLabel = new Label();
+		summaryLabel.Text = $"Total: {_lastRaceTotalTime:F2}s";
+		summaryLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_lapTimesContainer.AddChild(summaryLabel);
+
+		var bestLapLabel = new Label();
+		bestLapLabel.Text = $"Best: {_lastRaceBestLap:F2}s";
+		bestLapLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		bestLapLabel.Modulate = Colors.Yellow;
+		_lapTimesContainer.AddChild(bestLapLabel);
+
+		// Add separator
+		var separator = new HSeparator();
+		_lapTimesContainer.AddChild(separator);
+
+		// Show individual lap times from last race
+		for (int i = 0; i < _lastRaceLapTimes.Count; i++)
+		{
+			var lapLabel = new Label();
+			lapLabel.Text = $"Lap {i + 1}: {_lastRaceLapTimes[i]:F2}s";
+			
+			// Highlight best lap
+			if (_lastRaceLapTimes[i] == _lastRaceBestLap)
+			{
+				lapLabel.Modulate = Colors.Yellow;
+			}
+			else
+			{
+				lapLabel.Modulate = Colors.LightGray;
+			}
+			
+			_lapTimesContainer.AddChild(lapLabel);
 		}
 	}
 

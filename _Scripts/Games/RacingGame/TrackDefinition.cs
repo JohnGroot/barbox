@@ -118,12 +118,12 @@ public partial class TrackDefinition : Node2D, ITrackDefinition
 		// Convert global point to local coordinates relative to this TrackDefinition node
 		var localPoint = ToLocal(point);
 		var result = LineUtils.IsPointNearLine2D(localPoint, TrackLine);
-		
-		// Debug logging for coordinate transformation (remove after testing)
-		if (GD.Randf() < 0.01f) // Log ~1% of checks to avoid spam
-		{
-			GD.Print($"Track Check - Global: {point}, Local: {localPoint}, OnTrack: {result}, LineWidth: {TrackLine.Width}");
-		}
+
+		// // Debug logging for coordinate transformation (remove after testing)
+		// if (GD.Randf() < 0.01f) // Log ~1% of checks to avoid spam
+		// {
+		// 	GD.Print($"Track Check - Global: {point}, Local: {localPoint}, OnTrack: {result}, LineWidth: {TrackLine.Width}");
+		// }
 		
 		return result;
 	}
