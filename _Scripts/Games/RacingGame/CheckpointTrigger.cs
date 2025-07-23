@@ -7,7 +7,6 @@ using Godot;
 [GlobalClass]
 public partial class CheckpointTrigger : LineTrigger
 {
-	[Signal] public delegate void CheckpointCrossedEventHandler(Node2D body, int checkpointIndex);
 
 	public enum CheckpointState
 	{
@@ -43,8 +42,8 @@ public partial class CheckpointTrigger : LineTrigger
 
 	protected override void OnBodyEntered(Node2D body)
 	{
-		// Emit both the generic trigger hit and specific checkpoint crossed signals
-		base.OnBodyEntered(body);
+		// Emit generic trigger hit and specific checkpoint crossed signals (not start line)
+		EmitSignal(SignalName.TriggerHit, body, this);
 		EmitSignal(SignalName.CheckpointCrossed, body, CheckpointIndex);
 	}
 

@@ -1,16 +1,17 @@
 [gd_scene load_steps=4 format=3 uid="uid://byl7ua2lcaynm"]
 
 [ext_resource type="Script" uid="uid://b3irt6d1umwfs" path="res://_Scripts/Games/RacingGame/TrackDefinition.cs" id="1_xxinl"]
-[ext_resource type="PackedScene" uid="uid://b6u6rothy6r1q" path="res://_Scenes/Games/RacingGame/_Prefabs/StartLineTrigger.tscn" id="2_eod1x"]
-[ext_resource type="PackedScene" uid="uid://c586onxqiifwa" path="res://_Scenes/Games/RacingGame/_Prefabs/CheckpointLineTrigger.tscn" id="3_eod1x"]
+[ext_resource type="PackedScene" uid="uid://cox26ci3xoa0j" path="res://_Scenes/Games/RacingGame/_Prefabs/StartTrigger.tscn" id="2_eod1x"]
+[ext_resource type="PackedScene" uid="uid://dvhpvabp3qn3w" path="res://_Scenes/Games/RacingGame/_Prefabs/CheckpointTrigger.tscn" id="2_xxinl"]
 
 [node name="OvalTrack" type="Node2D" node_paths=PackedStringArray("TrackLine")]
-scale = Vector2(3, 3)
+scale = Vector2(6, 6)
 script = ExtResource("1_xxinl")
 TrackLine = NodePath("TrackLine")
 TrackName = "Oval Track"
-StartLinePath = NodePath("TrackLine/StartLineTrigger")
-CheckpointTriggerPaths = Array[NodePath]([NodePath("TrackLine/CheckpointLineTrigger"), NodePath("TrackLine/CheckpointLineTrigger2"), NodePath("TrackLine/CheckpointLineTrigger3")])
+StartLinePath = NodePath("TrackLine/StartTrigger")
+FinishLinePath = NodePath("TrackLine/StartTrigger")
+CheckpointTriggerPaths = Array[NodePath]([NodePath("TrackLine/CheckpointTrigger1"), NodePath("TrackLine/CheckpointTrigger2"), NodePath("TrackLine/CheckpointTrigger3")])
 TrackDirectionPath = NodePath("TrackLine/TrackDirection")
 
 [node name="TrackLine" type="Line2D" parent="."]
@@ -25,25 +26,50 @@ end_cap_mode = 2
 sharp_limit = 0.0
 round_precision = 32
 
-[node name="StartLineTrigger" parent="TrackLine" instance=ExtResource("2_eod1x")]
-position = Vector2(-0.800049, -151.4)
-scale = Vector2(1, 1)
+[node name="StartTrigger" parent="TrackLine" instance=ExtResource("2_eod1x")]
+z_index = 1
+position = Vector2(0, -150)
 
-[node name="CheckpointLineTrigger" parent="TrackLine" instance=ExtResource("3_eod1x")]
-position = Vector2(193.2, -2.40002)
+[node name="CheckpointTrigger1" parent="TrackLine" instance=ExtResource("2_xxinl")]
+z_index = 1
+position = Vector2(198, 0)
 rotation = 1.5708
-scale = Vector2(1, 1)
 
-[node name="CheckpointLineTrigger2" parent="TrackLine" instance=ExtResource("3_eod1x")]
-position = Vector2(-203.8, -3.40002)
+[node name="CheckpointTrigger2" parent="TrackLine" instance=ExtResource("2_xxinl")]
+z_index = 1
+position = Vector2(0, 150)
+
+[node name="CheckpointTrigger3" parent="TrackLine" instance=ExtResource("2_xxinl")]
+z_index = 1
+position = Vector2(-198, 0)
 rotation = 1.5708
-scale = Vector2(1, 1)
-
-[node name="CheckpointLineTrigger3" parent="TrackLine" instance=ExtResource("3_eod1x")]
-position = Vector2(-2.80005, 149.6)
-scale = Vector2(1, 1)
 
 [node name="TrackDirection" type="RayCast2D" parent="TrackLine"]
 position = Vector2(-2.39999, -212.7)
-scale = Vector2(1, 1)
 target_position = Vector2(5, 0)
+
+[node name="InnerEdgeLine" type="Line2D" parent="."]
+z_index = -3
+position = Vector2(-3.83333, -1)
+points = PackedVector2Array(169.667, 1.16667, 130.833, -76, 46.6667, -118, -38.8333, -118.167, -123, -76.1667, -161.667, 1, -123, 78, -39.3333, 119.833, 46.8333, 119.833, 130.833, 77.8333)
+closed = true
+width = 2.0
+default_color = Color(0.606375, 0.5985, 0.63, 1)
+texture_mode = 1
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+
+[node name="OuterEdgeLine" type="Line2D" parent="."]
+z_index = -3
+position = Vector2(-3.16667, -1.16667)
+points = PackedVector2Array(235, 1.33333, 207, -60.3333, 176.667, -120.667, 121.667, -149.167, 62.3333, -178.5, 3.16667, -179.833, -53.5, -179.5, -112.667, -150.333, -169.333, -120.333, -199.5, -61.3333, -228.167, 1.16667, -199.5, 62.6667, -169.667, 121.333, -107.667, 155.167, -52.6667, 180.833, 3.33333, 182, 62.3333, 180.833, 122.5, 151, 177.5, 122.833, 207.333, 63.6667)
+closed = true
+width = 2.0
+default_color = Color(0.606375, 0.5985, 0.63, 1)
+texture_mode = 1
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+round_precision = 32
+antialiased = true

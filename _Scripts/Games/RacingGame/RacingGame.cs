@@ -36,10 +36,14 @@ public partial class RacingGame : Node2D
 	[Export] public float OffTrackSpeedPenalty { get; set; } = 0.3f;
 	[Export] public float OffTrackTurnPenalty { get; set; } = 0.5f;
 	[Export] public float OffTrackAccelerationPenalty { get; set; } = 0.2f;
+	[Export] public float OffTrackPenaltyLerpSpeed { get; set; } = 3.0f;
 
 	[ExportCategory("Car Settings")]
 	[Export] public Vector2 CarSize { get; set; } = new Vector2(80, 160);
 	[Export] public float RotationLerpSpeed { get; set; } = 5.0f;
+
+	[ExportCategory("Screen Boundaries")]
+	[Export] public float ScreenEdgeColliderThickness { get; set; } = 50.0f;
 
 	[ExportCategory("Visual Feedback")]
 	[Export] public Color InputLineActiveColor { get; set; } = Colors.White;
@@ -115,6 +119,12 @@ public partial class RacingGame : Node2D
 	private float _cachedArcSweepAngle = 0.0f;
 	private float _cachedMovementArcRotation = 0.0f;
 
+	// Off-track penalty state
+	private bool _isCurrentlyOffTrack = false;
+	private float _currentSpeedPenaltyMultiplier = 1.0f;
+	private float _currentTurnPenaltyMultiplier = 1.0f;
+	private float _currentAccelerationPenaltyMultiplier = 1.0f;
+
 	// Track system
 	private TrackDefinition _trackDefinition;
 	private Curve2D _trackCurve;
@@ -157,6 +167,7 @@ public partial class RacingGame : Node2D
 	{
 		SetupUI();
 		SetupCar();
+		SetupScreenEdgeColliders();
 		InitializeTrackGenerator();
 		DetectAndAdaptToContext();
 	}
@@ -171,6 +182,9 @@ public partial class RacingGame : Node2D
 		if (_inCountdown)
 		{
 			HandleCountdown(deltaF);
+			// Still update cached values and visual feedback for input line drawing during countdown
+			UpdateCachedValues(deltaF);
+			UpdateVisualFeedback(deltaF);
 			return; // Don't process other game logic during countdown
 		}
 
@@ -187,8 +201,8 @@ public partial class RacingGame : Node2D
 		}
 
 		UpdateCarPhysics(deltaF);
-		CheckStartLineCollision();
 		UpdateCachedValues(deltaF);
+		UpdateOffTrackPenalties(deltaF);
 		UpdateUI();
 		UpdateVisualFeedback(deltaF);
 	}
@@ -227,16 +241,29 @@ public partial class RacingGame : Node2D
 		_inCountdown = false;
 		_countdownOverlay.Visible = false;
 		
-		// Actually start the time trial now
-		_currentLap = 0;
+		// Actually start the time trial now - begin first lap immediately
+		_currentLap = 1;
 		_currentLapTime = 0.0f;
 		
-		GD.Print("Time Trial Started!");
+		// Initialize gap times storage for first lap
+		_lapGapTimes.Add(new List<float>());
+		for (int i = 0; i < _checkpointTriggers.Length; i++)
+		{
+			_lapGapTimes[_currentLap - 1].Add(0.0f);
+		}
+		
+		// Reset checkpoints for the race
+		ResetCheckpoints();
+		
+		// Reset start line crossing flag so first crossing doesn't count as finish
+		_crossedStartLine = false;
+		
+		GD.Print($"[DEBUG] Time Trial Started - Lap 1 in progress! State: crossedStartLine={_crossedStartLine}, nextCheckpoint={_nextCheckpointIndex}/{(_checkpointTriggers?.Length ?? 0)}");
 	}
 
 	public override void _Input(InputEvent inputEvent)
 	{
-		if (!_gameActive || _gamePaused || _inCountdown) return;
+		if (!_gameActive || _gamePaused) return;
 
 		// Handle pause key
 		if (inputEvent.IsActionPressed("ui_cancel") || 
@@ -245,6 +272,9 @@ public partial class RacingGame : Node2D
 			TogglePause();
 			return;
 		}
+
+		// During countdown, allow input collection for visual feedback but don't use it for physics
+		// The physics are already blocked in UpdateCarPhysics by checking _inCountdown
 
 		Vector2 inputPosition = Vector2.Zero;
 		bool inputActive = false;
@@ -303,7 +333,7 @@ public partial class RacingGame : Node2D
 
 	public override void _Draw()
 	{
-		if (!_gameActive || _gamePaused || _inCountdown || _car == null) return;
+		if (!_gameActive || _gamePaused || _car == null) return;
 
 		// Draw input line from car front to mouse position
 		DrawInputLine();
@@ -883,6 +913,34 @@ public partial class RacingGame : Node2D
 		}
 	}
 
+	private void SetupScreenEdgeColliders()
+	{
+		var viewport = GetViewport();
+		if (viewport == null) return;
+
+		var screenSize = viewport.GetVisibleRect().Size;
+
+		// Create four StaticBody2D colliders for screen edges
+		CreateScreenEdgeCollider(new Vector2(-ScreenEdgeColliderThickness / 2, screenSize.Y / 2), new Vector2(ScreenEdgeColliderThickness, screenSize.Y)); // Left
+		CreateScreenEdgeCollider(new Vector2(screenSize.X + ScreenEdgeColliderThickness / 2, screenSize.Y / 2), new Vector2(ScreenEdgeColliderThickness, screenSize.Y)); // Right
+		CreateScreenEdgeCollider(new Vector2(screenSize.X / 2, -ScreenEdgeColliderThickness / 2), new Vector2(screenSize.X, ScreenEdgeColliderThickness)); // Top
+		CreateScreenEdgeCollider(new Vector2(screenSize.X / 2, screenSize.Y + ScreenEdgeColliderThickness / 2), new Vector2(screenSize.X, ScreenEdgeColliderThickness)); // Bottom
+	}
+
+	private void CreateScreenEdgeCollider(Vector2 position, Vector2 size)	
+	{
+		var staticBody = new StaticBody2D();
+		staticBody.GlobalPosition = position;
+
+		var collisionShape = new CollisionShape2D();
+		var rectangleShape = new RectangleShape2D();
+		rectangleShape.Size = size;
+		collisionShape.Shape = rectangleShape;
+
+		staticBody.AddChild(collisionShape);
+		AddChild(staticBody);
+	}
+
 	private void LoadTrack(int trackIndex)
 	{
 		if (TrackScenes == null || TrackScenes.Count == 0)
@@ -1028,6 +1086,19 @@ public partial class RacingGame : Node2D
 			startLineTrigger.StartLineCrossed += OnStartLineTriggered;
 		}
 
+		// Connect finish line trigger signal (may be same as start line for looping tracks)
+		var finishLineTrigger = _trackDefinition.FinishLine;
+		if (finishLineTrigger != null && finishLineTrigger != startLineTrigger)
+		{
+			// Only connect finish line handler if it's a different line than start line
+			finishLineTrigger.StartLineCrossed += OnFinishLineTriggered;
+			GD.Print("[DEBUG] Connected separate finish line trigger");
+		}
+		else if (finishLineTrigger == startLineTrigger)
+		{
+			GD.Print("[DEBUG] Start line = finish line, using unified handler in OnStartLineTriggered");
+		}
+
 		// Connect checkpoint trigger signals
 		var checkpointTriggers = _trackDefinition.CheckpointTriggers;
 		for (int i = 0; i < checkpointTriggers.Length; i++)
@@ -1046,17 +1117,40 @@ public partial class RacingGame : Node2D
 
 		var startPoint = _trackDefinition.GetStartLinePosition();
 		var perpendicular = _trackDefinition.GetStartLineDirection();
-		var trackDirection = new Vector2(perpendicular.Y, -perpendicular.X); // Convert perpendicular back to track direction
-
-		// Position car at start line
-		_car.GlobalPosition = startPoint - trackDirection * 50;
-		_car.Rotation = trackDirection.Angle() + Mathf.Pi / 2;
+		
+		// Check if we have a valid start line position
+		if (startPoint == Vector2.Zero)
+		{
+			GD.PrintErr("PositionCarAtStart: Start line position is Vector2.Zero - start line may not be properly configured");
+			// Fallback to center of screen
+			var viewport = GetViewport();
+			if (viewport != null)
+			{
+				var screenSize = viewport.GetVisibleRect().Size;
+				_car.GlobalPosition = screenSize / 2;
+				GD.Print($"PositionCarAtStart: Using fallback position at screen center: {_car.GlobalPosition}");
+			}
+			return;
+		}
+		
+		// The perpendicular direction IS the start line's direction (how it's oriented)
+		// To face forward through the start line, car should be aligned with this direction
+		var startLineDirection = perpendicular;
+		
+		// Position car behind the start line (opposite to the forward direction)
+		var carPosition = startPoint - startLineDirection * 50;
+		_car.GlobalPosition = carPosition;
+		
+		// Car should face the same direction as the start line (forward through it)
+		_car.Rotation = startLineDirection.Angle() + Mathf.Pi / 2;
+		
+		GD.Print($"PositionCarAtStart: Positioned car at {carPosition}, start line at {startPoint}, direction: {startLineDirection}");
 	}
 
 
 	private void UpdateCarPhysics(float delta)
 	{
-		if (_car == null) return;
+		if (_car == null || _inCountdown) return;
 
 		Vector2 inputDirection = Vector2.Zero;
 		float targetSpeed = 0.0f;
@@ -1141,29 +1235,6 @@ public partial class RacingGame : Node2D
 		UpdateTireTrails();
 	}
 
-	private void CheckStartLineCollision()
-	{
-		var startLineTrigger = _trackDefinition?.StartLine;
-		if (startLineTrigger == null || _car == null) return;
-
-		var carGlobalPos = _car.GlobalPosition;
-		var startLinePos = startLineTrigger.GlobalPosition;
-		var distance = carGlobalPos.DistanceTo(startLinePos);
-
-		if (distance < 40.0f) // Within start line detection range
-		{
-			if (!_crossedStartLine)
-			{
-				_crossedStartLine = true;
-				_lastStartLineCross = (float)Time.GetUnixTimeFromSystem();
-				OnStartLineCrossed();
-			}
-		}
-		else if (distance > 60.0f) // Far enough to reset detection
-		{
-			_crossedStartLine = false;
-		}
-	}
 
 	private float GetDistanceToTrackCenterLine(Vector2 position)
 	{
@@ -1178,23 +1249,20 @@ public partial class RacingGame : Node2D
 		if (_trackDefinition == null) 
 			return 1.0f;
 		
-		// Check if position is on track
-		if (!IsOnTrack(position))
+		// Start with lerped off-track penalty multiplier
+		float accelerationModifier = _currentAccelerationPenaltyMultiplier;
+		
+		// Apply center line bonus if on track and within proximity range
+		if (IsOnTrack(position))
 		{
-			return OffTrackAccelerationPenalty;
+			var distanceToCenter = GetDistanceToTrackCenterLine(position);
+			if (distanceToCenter <= CenterLineProximityRange)
+			{
+				accelerationModifier = Mathf.Max(accelerationModifier, CenterLineAccelerationBonus);
+			}
 		}
 		
-		// Get distance to center line
-		var distanceToCenter = GetDistanceToTrackCenterLine(position);
-		
-		// Apply center line bonus if within proximity range
-		if (distanceToCenter <= CenterLineProximityRange)
-		{
-			return CenterLineAccelerationBonus;
-		}
-		
-		// Normal acceleration when on track but not in center line bonus zone
-		return 1.0f;
+		return accelerationModifier;
 	}
 
 	private bool IsOnTrack(Vector2 position)
@@ -1205,31 +1273,86 @@ public partial class RacingGame : Node2D
 
 	private float GetOffTrackSpeedModifier(Vector2 position)
 	{
-		if (!IsOnTrack(position))
-		{
-			return OffTrackSpeedPenalty;
-		}
-		return 1.0f;
+		// Use lerped penalty multiplier instead of immediate binary check
+		return _currentSpeedPenaltyMultiplier;
 	}
 
 	private float GetOffTrackTurnModifier(Vector2 position)
 	{
-		if (!IsOnTrack(position))
-		{
-			return OffTrackTurnPenalty;
-		}
-		return 1.0f;
+		// Use lerped penalty multiplier instead of immediate binary check
+		return _currentTurnPenaltyMultiplier;
+	}
+
+	private void UpdateOffTrackPenalties(float delta)
+	{
+		if (_car == null) return;
+
+		var carPosition = _car.GlobalPosition;
+		bool isOnTrack = IsOnTrack(carPosition);
+		
+		// Update current off-track state
+		_isCurrentlyOffTrack = !isOnTrack;
+
+		// Target multipliers based on current track state
+		float targetSpeedMultiplier = isOnTrack ? 1.0f : OffTrackSpeedPenalty;
+		float targetTurnMultiplier = isOnTrack ? 1.0f : OffTrackTurnPenalty;
+		float targetAccelerationMultiplier = isOnTrack ? 1.0f : OffTrackAccelerationPenalty;
+
+		// Lerp current multipliers toward target values
+		float lerpSpeed = OffTrackPenaltyLerpSpeed * delta;
+		_currentSpeedPenaltyMultiplier = Mathf.Lerp(_currentSpeedPenaltyMultiplier, targetSpeedMultiplier, lerpSpeed);
+		_currentTurnPenaltyMultiplier = Mathf.Lerp(_currentTurnPenaltyMultiplier, targetTurnMultiplier, lerpSpeed);
+		_currentAccelerationPenaltyMultiplier = Mathf.Lerp(_currentAccelerationPenaltyMultiplier, targetAccelerationMultiplier, lerpSpeed);
 	}
 
 	private void OnStartLineTriggered(Node2D body)
 	{
 		if (body != _car) return;
 		
-		// Trigger-based start line detection
+		GD.Print($"[DEBUG] Start line triggered - lap: {_currentLap}, timeTrialMode: {_inTimeTrialMode}, crossedStartLine: {_crossedStartLine}, nextCheckpoint: {_nextCheckpointIndex}/{(_checkpointTriggers?.Length ?? 0)}");
+		
+		// For looping tracks where start line = finish line, determine if this is a finish line crossing
+		if (_inTimeTrialMode && _currentLap > 0 && 
+			(_trackDefinition.FinishLine == null || _trackDefinition.FinishLine == _trackDefinition.StartLine))
+		{
+			// Check if this should be treated as a lap completion (finish line crossing)
+			bool shouldTreatAsFinishLine = false;
+			
+			if (_checkpointTriggers.Length == 0)
+			{
+				// No checkpoints - treat as finish line only if we've completed at least one crossing before
+				// The first crossing after race start should NOT count as a finish
+				shouldTreatAsFinishLine = _crossedStartLine;
+			}
+			else
+			{
+				// Has checkpoints - only treat as finish line if all checkpoints crossed
+				shouldTreatAsFinishLine = (_nextCheckpointIndex >= _checkpointTriggers.Length);
+			}
+			
+			if (shouldTreatAsFinishLine)
+			{
+				GD.Print($"[DEBUG] Start line crossing treated as finish line - checkpoints: {_nextCheckpointIndex}/{_checkpointTriggers.Length}, crossedStartLine: {_crossedStartLine}");
+				OnFinishLineCrossed();
+				return;
+			}
+			else
+			{
+				GD.Print($"[DEBUG] Start line crossing ignored - not ready for lap completion (checkpoints: {_nextCheckpointIndex}/{_checkpointTriggers.Length}, crossedStartLine: {_crossedStartLine})");
+			}
+		}
+		
+		// Track first start line crossing for reference
 		if (!_crossedStartLine)
 		{
 			_crossedStartLine = true;
 			_lastStartLineCross = (float)Time.GetUnixTimeFromSystem();
+			GD.Print($"[DEBUG] First start line crossing recorded at lap {_currentLap}");
+			OnStartLineCrossed();
+		}
+		else if (!_inTimeTrialMode)
+		{
+			// In practice mode, allow multiple start line crossings
 			OnStartLineCrossed();
 		}
 	}
@@ -1299,33 +1422,59 @@ public partial class RacingGame : Node2D
 			return;
 		}
 
-		if (_currentLap == 0)
+		// In time trial mode, start line crossings during a lap are informational only
+		// The first lap is already started after countdown ends
+		// For looping tracks, this would be handled by finish line logic
+		GD.Print($"[DEBUG] Start line crossed during lap {_currentLap} at time {_currentLapTime:F2}s");
+	}
+
+	private void OnFinishLineTriggered(Node2D body)
+	{
+		if (body != _car) return;
+		
+		// Handle finish line crossing for lap completion
+		OnFinishLineCrossed();
+	}
+
+	private void OnFinishLineCrossed()
+	{
+		if (!_inTimeTrialMode) 
 		{
-			// Starting first lap
-			_currentLap = 1;
-			_currentLapTime = 0.0f;
-			
-			// Initialize gap times storage for first lap
-			_lapGapTimes.Add(new List<float>());
-			for (int i = 0; i < _checkpointTriggers.Length; i++)
-			{
-				_lapGapTimes[_currentLap - 1].Add(0.0f);
-			}
-			
-			ResetCheckpoints();
-			GD.Print("Lap 1 started!");
+			// In practice mode, just reset gap timer
+			_currentGapTime = 0.0f;
+			return;
 		}
-		else if (_currentLap <= _targetLaps)
+
+		if (_currentLap > 0 && _currentLap <= _targetLaps)
 		{
 			// Check if all checkpoints were crossed before allowing lap completion
 			if (_checkpointTriggers.Length > 0 && _nextCheckpointIndex < _checkpointTriggers.Length)
 			{
-				GD.Print($"Cannot complete lap - only {_nextCheckpointIndex}/{_checkpointTriggers.Length} checkpoints crossed");
-				return;
+				GD.Print($"WARNING: Lap completion attempted with only {_nextCheckpointIndex}/{_checkpointTriggers.Length} checkpoints crossed");
+				GD.Print($"Missing checkpoints: {string.Join(", ", Enumerable.Range(_nextCheckpointIndex, _checkpointTriggers.Length - _nextCheckpointIndex).Select(i => i + 1))}");
+				
+				// Show visual feedback to player about missing checkpoints
+				if (_proximityLabel != null)
+				{
+					_proximityLabel.Text = $"Missing {_checkpointTriggers.Length - _nextCheckpointIndex} checkpoints!";
+					_proximityLabel.Modulate = Colors.Red;
+				}
+				
+				// In development/debug mode, allow completion anyway but mark as invalid
+				if (!GameHost.IsProductionContext())
+				{
+					GD.Print("DEBUG MODE: Allowing lap completion despite missing checkpoints");
+					// Continue with lap completion but add penalty time
+					_currentLapTime += 10.0f; // 10 second penalty
+				}
+				else
+				{
+					return; // Block completion in production
+				}
 			}
 
 			// Completed a lap
-			GD.Print($"Lap {_currentLap} completed in {_currentLapTime:F2}s");
+			GD.Print($"[DEBUG] Lap {_currentLap} completed in {_currentLapTime:F2}s");
 			
 			// Store completed lap time
 			_completedLapTimes.Add(_currentLapTime);
@@ -1334,13 +1483,17 @@ public partial class RacingGame : Node2D
 			if (_currentLapTime < _bestLapTime)
 			{
 				_bestLapTime = _currentLapTime;
+				GD.Print($"[DEBUG] New best lap time: {_bestLapTime:F2}s");
 			}
 
+			GD.Print($"[DEBUG] Completed lap {_currentLap}, incrementing to next lap");
 			_currentLap++;
 			
+			GD.Print($"[DEBUG] Now on lap {_currentLap}, target laps: {_targetLaps}");
 			if (_currentLap > _targetLaps)
 			{
 				// Race completed
+				GD.Print($"[DEBUG] Race complete! All {_targetLaps} laps finished, ending time trial");
 				EndTimeTrial();
 			}
 			else
@@ -1353,6 +1506,8 @@ public partial class RacingGame : Node2D
 				}
 				
 				_currentLapTime = 0.0f;
+				// Reset crossedStartLine flag to allow multiple lap detections
+				_crossedStartLine = false;
 				ResetCheckpoints();
 				GD.Print($"Lap {_currentLap} started!");
 			}
@@ -1362,6 +1517,13 @@ public partial class RacingGame : Node2D
 	private void ResetCheckpoints()
 	{
 		if (_checkpointTriggers == null) return;
+
+		// Ensure checkpoint arrays are properly sized
+		if (_checkpointsCrossed == null || _checkpointsCrossed.Length != _checkpointTriggers.Length)
+		{
+			_checkpointsCrossed = new bool[_checkpointTriggers.Length];
+			GD.Print($"[DEBUG] Checkpoint arrays resized to {_checkpointTriggers.Length} elements");
+		}
 
 		// Reset checkpoint tracking
 		for (int i = 0; i < _checkpointsCrossed.Length; i++)
@@ -1373,8 +1535,13 @@ public partial class RacingGame : Node2D
 		// Reset all checkpoint triggers to uncrossed state
 		_trackDefinition?.ResetAllCheckpoints();
 		
+		// Reset start line color to default
+		_trackDefinition?.ResetStartLineColor();
+		
 		// Update visual states to highlight next required checkpoint
 		UpdateCheckpointVisuals();
+		
+		GD.Print($"[DEBUG] Checkpoints reset - {_checkpointTriggers.Length} checkpoints, next required: {_nextCheckpointIndex}");
 	}
 
 	private void UpdateCheckpointVisuals()
@@ -1392,14 +1559,14 @@ public partial class RacingGame : Node2D
 				// This checkpoint has been crossed
 				checkpoint.MarkAsCrossed();
 			}
-			else if (i == _nextCheckpointIndex)
+			else if (i == _nextCheckpointIndex && _inTimeTrialMode)
 			{
-				// This is the next required checkpoint - highlight it
+				// This is the next required checkpoint - highlight it (only in time trial mode)
 				checkpoint.SetNextRequiredState();
 			}
 			else
 			{
-				// This checkpoint is in the future
+				// This checkpoint is in the future (or in practice mode)
 				checkpoint.SetFutureState();
 			}
 		}
@@ -1441,6 +1608,20 @@ public partial class RacingGame : Node2D
 		_currentLap = 0;
 		_currentLapTime = 0.0f;
 		_currentGapTime = 0.0f;
+
+		// Reset checkpoint tracking state and visuals using centralized method
+		if (_checkpointTriggers != null)
+		{
+			_checkpointsCrossed = new bool[_checkpointTriggers.Length];
+			// Use centralized reset method to ensure synchronization
+			ResetCheckpoints();
+		}
+
+		// Reset off-track penalty state
+		_isCurrentlyOffTrack = false;
+		_currentSpeedPenaltyMultiplier = 1.0f;
+		_currentTurnPenaltyMultiplier = 1.0f;
+		_currentAccelerationPenaltyMultiplier = 1.0f;
 
 		// Clear visual feedback state
 		ClearTireTrails();
@@ -1488,6 +1669,27 @@ public partial class RacingGame : Node2D
 		_lapGapTimes.Clear();
 		_currentGapTime = 0.0f;
 
+		// Reset car physics state
+		_currentSpeed = 0.0f;
+		_velocity = Vector2.Zero;
+		_hasInput = false;
+		_targetPosition = Vector2.Zero;
+
+		// Reset race state flags and checkpoint state
+		_crossedStartLine = false;
+		if (_checkpointTriggers != null)
+		{
+			_checkpointsCrossed = new bool[_checkpointTriggers.Length];
+			_nextCheckpointIndex = 0;
+			GD.Print($"[DEBUG] StartTimeTrial - Reset checkpoint state: {_checkpointTriggers.Length} checkpoints, nextIndex=0");
+		}
+
+		// Reset off-track penalty state
+		_isCurrentlyOffTrack = false;
+		_currentSpeedPenaltyMultiplier = 1.0f;
+		_currentTurnPenaltyMultiplier = 1.0f;
+		_currentAccelerationPenaltyMultiplier = 1.0f;
+
 		// Clear visual feedback state
 		ClearTireTrails();
 		_mouseStationaryTime = 0.0f;
@@ -1513,11 +1715,23 @@ public partial class RacingGame : Node2D
 		_countdownNumber = 3;
 		_countdownLabel.Text = "3";
 		_countdownOverlay.Visible = true;
+		
+		// Clear any existing input state to prevent unexpected movement after countdown
+		_hasInput = false;
+		_targetPosition = Vector2.Zero;
+		_lastTargetPosition = Vector2.Zero;
+		
+		GD.Print($"[DEBUG] Countdown started - car positioned, input cleared, race will begin in 4 seconds");
 	}
 
 	public void EndTimeTrial()
 	{
 		if (!_inTimeTrialMode) return;
+
+		// Cancel all input to prevent car movement after race ends
+		_hasInput = false;
+		_targetPosition = Vector2.Zero;
+		_lastTargetPosition = Vector2.Zero;
 
 		// Update high score in production context
 		if (GameHost.IsProductionContext() && _bestLapTime < float.MaxValue)
@@ -1576,10 +1790,35 @@ public partial class RacingGame : Node2D
 		_gameOverOverlay.Visible = false;
 		_pauseOverlay.Visible = false;
 		
+		// Reset car physics state and position
+		_currentSpeed = 0.0f;
+		_velocity = Vector2.Zero;
+		_hasInput = false;
+		_targetPosition = Vector2.Zero;
+		_lastTargetPosition = Vector2.Zero;
+		
+		// Reset off-track penalty state
+		_isCurrentlyOffTrack = false;
+		_currentSpeedPenaltyMultiplier = 1.0f;
+		_currentTurnPenaltyMultiplier = 1.0f;
+		_currentAccelerationPenaltyMultiplier = 1.0f;
+		
 		// Clear visual feedback state
 		ClearTireTrails();
 		_mouseStationaryTime = 0.0f;
 		_arcRotation = 0.0f;
+		
+		// Explicitly reset checkpoint visuals before starting practice mode
+		if (_checkpointTriggers != null)
+		{
+			_checkpointsCrossed = new bool[_checkpointTriggers.Length];
+			_nextCheckpointIndex = 0;
+			_crossedStartLine = false;
+			ResetCheckpoints();
+		}
+		
+		// Position car back at start line
+		PositionCarAtStart();
 		
 		StartPracticeMode();
 	}
@@ -1593,6 +1832,14 @@ public partial class RacingGame : Node2D
 		if (startLineTrigger != null)
 		{
 			startLineTrigger.StartLineCrossed -= OnStartLineTriggered;
+		}
+
+		// Disconnect finish line trigger signal
+		var finishLineTrigger = _trackDefinition.FinishLine;
+		if (finishLineTrigger != null && finishLineTrigger != startLineTrigger)
+		{
+			// Only disconnect if it was a separate finish line
+			finishLineTrigger.StartLineCrossed -= OnFinishLineTriggered;
 		}
 
 		// Disconnect checkpoint trigger signals

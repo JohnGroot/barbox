@@ -15,18 +15,21 @@ public partial class TrackDefinition : Node2D, ITrackDefinition
 
 	[ExportCategory("Scene Node References")]
 	[Export] public NodePath StartLinePath { get; set; }
+	[Export] public NodePath FinishLinePath { get; set; }
 	[Export] public Godot.Collections.Array<NodePath> CheckpointTriggerPaths { get; set; } = new Godot.Collections.Array<NodePath>();
 	[Export] public NodePath TrackDirectionPath { get; set; }
 
 	private Curve2D _cachedCurve;
 
 	// Cached references to avoid repeated GetNode calls
-	private StartLineTrigger _startLineCache;
+	private LineTrigger _startLineCache;
+	private LineTrigger _finishLineCache;
 	private CheckpointTrigger[] _checkpointTriggersCache;
 	private RayCast2D _trackDirectionCache;
 
 	// Properties that lazily load and cache the actual node references
-	public StartLineTrigger StartLine => _startLineCache ??= GetNodeOrNull<StartLineTrigger>(StartLinePath);
+	public LineTrigger StartLine => _startLineCache ??= GetNodeOrNull<LineTrigger>(StartLinePath);
+	public LineTrigger FinishLine => _finishLineCache ??= GetNodeOrNull<LineTrigger>(FinishLinePath);
 	public RayCast2D TrackDirection => _trackDirectionCache ??= GetNodeOrNull<RayCast2D>(TrackDirectionPath);
 
 	public CheckpointTrigger[] CheckpointTriggers
@@ -148,6 +151,28 @@ public partial class TrackDefinition : Node2D, ITrackDefinition
 		return Vector2.FromAngle(StartLine.Rotation);
 	}
 
+	/// <summary>
+	/// Get the world position of the finish line from the FinishLine trigger
+	/// Falls back to StartLine if FinishLine is not configured (looping track)
+	/// </summary>
+	public Vector2 GetFinishLinePosition()
+	{
+		return FinishLine?.GlobalPosition ?? StartLine?.GlobalPosition ?? Vector2.Zero;
+	}
+
+	/// <summary>
+	/// Get the direction vector for the finish line from the FinishLine trigger rotation
+	/// Falls back to StartLine if FinishLine is not configured (looping track)
+	/// </summary>
+	public Vector2 GetFinishLineDirection()
+	{
+		if (FinishLine != null)
+			return Vector2.FromAngle(FinishLine.Rotation);
+		if (StartLine != null)
+			return Vector2.FromAngle(StartLine.Rotation);
+		return Vector2.Right;
+	}
+
 	public void ResetAllCheckpoints()
 	{
 		var triggers = CheckpointTriggers; // Get the cached array once
@@ -161,11 +186,21 @@ public partial class TrackDefinition : Node2D, ITrackDefinition
 	}
 
 	/// <summary>
+	/// Reset start line color to default state
+	/// </summary>
+	public void ResetStartLineColor()
+	{
+		// Reset start line color to default (usually white or track color)
+		StartLine?.SetLineColor(Colors.White);
+	}
+
+	/// <summary>
 	/// Clear cached node references to force fresh lookups
 	/// </summary>
 	public void ClearCache()
 	{
 		_startLineCache = null;
+		_finishLineCache = null;
 		_checkpointTriggersCache = null;
 		_trackDirectionCache = null;
 	}
