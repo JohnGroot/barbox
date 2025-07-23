@@ -195,6 +195,64 @@ public partial class TrackDefinition : Node2D, ITrackDefinition
 	}
 
 	/// <summary>
+	/// Calculate the centroid (center point) of the track based on all track points
+	/// </summary>
+	public Vector2 GetTrackCentroid()
+	{
+		if (TrackLine == null || TrackLine.GetPointCount() == 0)
+			return Vector2.Zero;
+
+		Vector2 centroid = Vector2.Zero;
+		int pointCount = TrackLine.GetPointCount();
+
+		for (int i = 0; i < pointCount; i++)
+		{
+			centroid += TrackLine.GetPointPosition(i);
+		}
+
+		centroid /= pointCount;
+		
+		// Convert to global coordinates
+		return ToGlobal(centroid);
+	}
+
+	/// <summary>
+	/// Get the bounding rectangle that contains the entire track including width
+	/// </summary>
+	public Rect2 GetTrackBounds()
+	{
+		if (TrackLine == null || TrackLine.GetPointCount() == 0)
+			return new Rect2();
+		
+		Vector2 minPoint = TrackLine.GetPointPosition(0);
+		Vector2 maxPoint = TrackLine.GetPointPosition(0);
+
+		// Find min/max points
+		for (int i = 1; i < TrackLine.GetPointCount(); i++)
+		{
+			Vector2 point = TrackLine.GetPointPosition(i);
+			minPoint = new Vector2(Mathf.Min(minPoint.X, point.X), Mathf.Min(minPoint.Y, point.Y));
+			maxPoint = new Vector2(Mathf.Max(maxPoint.X, point.X), Mathf.Max(maxPoint.Y, point.Y));
+		}
+
+		// Expand bounds by track width to include the full track area
+		float halfWidth = TrackLine.Width / 2.0f;
+		minPoint -= new Vector2(halfWidth, halfWidth);
+		maxPoint += new Vector2(halfWidth, halfWidth);
+
+		// Create bounds rectangle
+		Vector2 size = maxPoint - minPoint;
+		var localBounds = new Rect2(minPoint, size);
+
+		// Convert to global coordinates - transform both position and size through node scale
+		Vector2 globalTopLeft = ToGlobal(localBounds.Position);
+		Vector2 globalBottomRight = ToGlobal(localBounds.Position + localBounds.Size);
+		Vector2 globalSize = globalBottomRight - globalTopLeft;
+
+		return new Rect2(globalTopLeft, globalSize);
+	}
+
+	/// <summary>
 	/// Clear cached node references to force fresh lookups
 	/// </summary>
 	public void ClearCache()

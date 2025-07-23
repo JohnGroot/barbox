@@ -87,6 +87,9 @@ public partial class RacingGame : Node2D
 	private GameHost _gameHost;
 	private bool _isProductionContext = false;
 
+	// Input management
+	private InputManager _inputManager;
+
 	// Car physics
 	private CharacterBody2D _car;
 	private Vector2 _targetPosition;
@@ -131,6 +134,10 @@ public partial class RacingGame : Node2D
 	private bool _crossedStartLine = false;
 	private float _lastStartLineCross = 0.0f;
 
+	// Camera system
+	private Camera2D _trackCamera;
+	private List<StaticBody2D> _screenEdgeColliders = new List<StaticBody2D>();
+
 	// Checkpoint system
 	private CheckpointTrigger[] _checkpointTriggers;
 	private bool[] _checkpointsCrossed;
@@ -149,6 +156,10 @@ public partial class RacingGame : Node2D
 	private Control _pauseOverlay;
 	private Control _gameOverOverlay;
 	private Label _finalTimeLabel;
+	
+	// Track selection UI
+	private Button[] _trackSelectionButtons;
+	private int _currentTrackIndex = 0;
 
 	// Enhanced timing UI
 	private Label _gapTimeLabel;
@@ -163,13 +174,227 @@ public partial class RacingGame : Node2D
 	// Daily seeded track generation
 	private const string TRACK_SEED_KEY = "track_seed_";
 
+	/// <summary>
+	/// Transform screen coordinates to world coordinates accounting for camera position and zoom
+	/// </summary>
+	private Vector2 TransformScreenToWorldPosition(Vector2 screenPosition)
+	{
+		if (_trackCamera == null)
+		{
+			// Fallback: no transformation if no camera
+			return screenPosition;
+		}
+
+		var viewport = GetViewport();
+		if (viewport == null)
+		{
+			return screenPosition;
+		}
+
+		// Get viewport size
+		Vector2 viewportSize = viewport.GetVisibleRect().Size;
+		
+		// Convert screen position to normalized coordinates (0 to 1)
+		Vector2 normalizedPosition = screenPosition / viewportSize;
+		
+		// Convert to camera-relative coordinates (-0.5 to 0.5, with 0,0 at center)
+		Vector2 cameraRelative = normalizedPosition - new Vector2(0.5f, 0.5f);
+		
+		// Account for camera zoom (larger zoom = smaller world area visible)
+		Vector2 cameraZoom = _trackCamera.Zoom;
+		Vector2 worldSize = viewportSize / cameraZoom;
+		
+		// Scale the relative position by the actual world size visible
+		Vector2 worldOffset = cameraRelative * worldSize;
+		
+		// Add camera position to get final world position
+		Vector2 worldPosition = _trackCamera.GlobalPosition + worldOffset;
+		
+		return worldPosition;
+	}
+
+	private string[] GetTrackNames()
+	{
+		if (TrackScenes == null || TrackScenes.Count == 0)
+			return new string[0];
+
+		var trackNames = new string[TrackScenes.Count];
+		for (int i = 0; i < TrackScenes.Count; i++)
+		{
+			var trackScene = TrackScenes[i];
+			if (trackScene != null)
+			{
+				var trackInstance = trackScene.Instantiate();
+				if (trackInstance is TrackDefinition trackDef)
+				{
+					trackNames[i] = trackDef.TrackName;
+					trackInstance.QueueFree();
+				}
+				else
+				{
+					trackNames[i] = $"Track {i + 1}";
+					trackInstance.QueueFree();
+				}
+			}
+			else
+			{
+				trackNames[i] = $"Track {i + 1}";
+			}
+		}
+		return trackNames;
+	}
+
+	private void SetupTrackSelectionButtons(HBoxContainer bottomBar)
+	{
+		var trackNames = GetTrackNames();
+		if (trackNames.Length == 0) return;
+
+		_trackSelectionButtons = new Button[trackNames.Length];
+
+		for (int i = 0; i < trackNames.Length; i++)
+		{
+			var trackButton = new Button();
+			trackButton.Text = trackNames[i];
+			
+			// Capture the index for the lambda
+			int trackIndex = i;
+			trackButton.Pressed += () => SelectTrack(trackIndex);
+			
+			_trackSelectionButtons[i] = trackButton;
+			bottomBar.AddChild(trackButton);
+
+			// Add separator between track buttons (but not after the last one)
+			if (i < trackNames.Length - 1)
+			{
+				var separator = new VSeparator();
+				bottomBar.AddChild(separator);
+			}
+		}
+	}
+
+	private void SelectTrack(int trackIndex)
+	{
+		// Don't allow track switching during time trials or countdown
+		if (_inTimeTrialMode || _inCountdown)
+			return;
+
+		// Don't select the same track
+		if (trackIndex == _currentTrackIndex)
+			return;
+
+		// Validate track index
+		if (trackIndex < 0 || trackIndex >= TrackScenes.Count)
+		{
+			GD.PrintErr($"SelectTrack: Invalid track index {trackIndex}");
+			return;
+		}
+
+		_currentTrackIndex = trackIndex;
+		
+		// Load the new track
+		LoadTrack(trackIndex);
+		
+		GD.Print($"Track switched to: {trackIndex}");
+	}
+
+	private void UpdateTrackSelectionUI()
+	{
+		if (_trackSelectionButtons == null) return;
+
+		for (int i = 0; i < _trackSelectionButtons.Length; i++)
+		{
+			var button = _trackSelectionButtons[i];
+			if (button == null) continue;
+
+			// Disable all track buttons during time trials or countdown
+			bool shouldDisable = _inTimeTrialMode || _inCountdown;
+			button.Disabled = shouldDisable;
+
+			// Visual feedback for currently selected track
+			if (i == _currentTrackIndex)
+			{
+				button.Modulate = shouldDisable ? Colors.Gray : Colors.Yellow;
+			}
+			else
+			{
+				button.Modulate = shouldDisable ? Colors.DarkGray : Colors.White;
+			}
+		}
+	}
+
 	public override void _Ready()
 	{
 		SetupUI();
 		SetupCar();
-		SetupScreenEdgeColliders();
+		SetupCamera();
 		InitializeTrackGenerator();
 		DetectAndAdaptToContext();
+		SetupInputManager();
+	}
+
+	private void SetupInputManager()
+	{
+		_inputManager = InputManager.GetAutoload();
+		if (_inputManager != null)
+		{
+			// Connect to InputManager signals for input state management (start/end only)
+			_inputManager.TouchStarted += OnTouchStarted;
+			_inputManager.TouchEnded += OnTouchEnded;
+			_inputManager.ClickStarted += OnClickStarted;
+			_inputManager.ClickEnded += OnClickEnded;
+			
+			GD.Print("RacingGame: Connected to InputManager signals (hybrid polling mode)");
+		}
+		else
+		{
+			GD.Print("RacingGame: InputManager not available, using direct input handling");
+		}
+	}
+
+	// InputManager signal handlers - only handle input state management (start/end)
+	private void OnTouchStarted(Vector2 position, int fingerId)
+	{
+		if (!_gameActive || _gamePaused) return;
+		
+		// Set input state - position will be polled in _Process
+		_hasInput = true;
+	}
+
+	private void OnTouchEnded(Vector2 position, int fingerId)
+	{
+		if (!_gameActive || _gamePaused) return;
+		
+		_hasInput = false;
+	}
+
+	private void OnClickStarted(Vector2 position)
+	{
+		if (!_gameActive || _gamePaused) return;
+		
+		// Set input state - position will be polled in _Process
+		_hasInput = true;
+	}
+
+	private void OnClickEnded(Vector2 position)
+	{
+		if (!_gameActive || _gamePaused) return;
+		
+		_hasInput = false;
+	}
+
+
+	public override void _ExitTree()
+	{
+		base._ExitTree();
+		
+		// Disconnect InputManager signals (start/end only in hybrid polling mode)
+		if (_inputManager != null && IsInstanceValid(_inputManager))
+		{
+			_inputManager.TouchStarted -= OnTouchStarted;
+			_inputManager.TouchEnded -= OnTouchEnded;
+			_inputManager.ClickStarted -= OnClickStarted;
+			_inputManager.ClickEnded -= OnClickEnded;
+		}
 	}
 
 	public override void _Process(double delta)
@@ -177,6 +402,25 @@ public partial class RacingGame : Node2D
 		if (!_gameActive || _gamePaused) return;
 
 		float deltaF = (float)delta;
+
+		// Poll InputManager for current input position (hybrid polling model)
+		if (_inputManager != null && _hasInput)
+		{
+			// Use InputManager polling for smooth, frame-consistent input updates
+			if (_inputManager.IsTouchActive())
+			{
+				Vector2 screenPosition = _inputManager.GetTouchPosition();
+				Vector2 worldPosition = TransformScreenToWorldPosition(screenPosition);
+				_targetPosition = worldPosition;
+				_lastTargetPosition = worldPosition;
+			}
+			else
+			{
+				// InputManager reports no active input but we think we have input
+				// This can happen during rapid touch events - sync our state
+				_hasInput = false;
+			}
+		}
 
 		// Handle countdown for time attack
 		if (_inCountdown)
@@ -284,7 +528,7 @@ public partial class RacingGame : Node2D
 		{
 			if (touch.Pressed)
 			{
-				inputPosition = touch.Position;
+				inputPosition = TransformScreenToWorldPosition(touch.Position);
 				inputActive = true;
 			}
 			else
@@ -294,7 +538,7 @@ public partial class RacingGame : Node2D
 		}
 		else if (inputEvent is InputEventScreenDrag drag)
 		{
-			inputPosition = drag.Position;
+			inputPosition = TransformScreenToWorldPosition(drag.Position);
 			inputActive = true;
 		}
 		// Handle mouse input
@@ -304,7 +548,7 @@ public partial class RacingGame : Node2D
 			{
 				if (mouse.Pressed)
 				{
-					inputPosition = mouse.Position;
+					inputPosition = TransformScreenToWorldPosition(mouse.Position);
 					inputActive = true;
 				}
 				else
@@ -315,7 +559,7 @@ public partial class RacingGame : Node2D
 		}
 		else if (inputEvent is InputEventMouseMotion motion && _hasInput)
 		{
-			inputPosition = motion.Position;
+			inputPosition = TransformScreenToWorldPosition(motion.Position);
 			inputActive = true;
 		}
 
@@ -657,6 +901,12 @@ public partial class RacingGame : Node2D
 		var separator5 = new VSeparator();
 		bottomBar.AddChild(separator5);
 
+		// Track selection buttons
+		SetupTrackSelectionButtons(bottomBar);
+
+		var separator6 = new VSeparator();
+		bottomBar.AddChild(separator6);
+
 		var restartButton = new Button();
 		restartButton.Text = "Restart Practice";
 		restartButton.Pressed += RestartPractice;
@@ -913,18 +1163,127 @@ public partial class RacingGame : Node2D
 		}
 	}
 
+	private void SetupCamera()
+	{
+		_trackCamera = new Camera2D();
+		_trackCamera.Enabled = true;
+		AddChild(_trackCamera);
+
+		// Position camera at screen center initially
+		var viewport = GetViewport();
+		if (viewport != null)
+		{
+			var screenSize = viewport.GetVisibleRect().Size;
+			_trackCamera.GlobalPosition = screenSize / 2;
+		}
+	}
+
+	/// <summary>
+	/// Position the camera over the track centroid and zoom to fit the entire track
+	/// </summary>
+	private void PositionCameraOverTrack()
+	{
+		if (_trackDefinition == null || _trackCamera == null)
+		{
+			GD.PrintErr("PositionCameraOverTrack: Missing track definition or camera");
+			return;
+		}
+
+		// Get track geometry
+		Vector2 trackCentroid = _trackDefinition.GetTrackCentroid();
+		Vector2 trackCenter = _trackDefinition.GlobalPosition;
+		Rect2 trackBounds = _trackDefinition.GetTrackBounds();
+
+		if (trackBounds.Size == Vector2.Zero)
+		{
+			GD.PrintErr("PositionCameraOverTrack: Track bounds are zero");
+			return;
+		}
+
+		// Position camera at track centroid
+		_trackCamera.GlobalPosition = trackCenter;
+
+		// Calculate and apply zoom to fit track
+		float requiredZoom = GetRequiredZoomForTrackBounds(trackBounds);
+		_trackCamera.Zoom = new Vector2(requiredZoom, requiredZoom);
+
+		GD.Print($"Camera positioned at track centroid {trackCentroid} with zoom {requiredZoom:F2}");
+		GD.Print($"Track bounds: Position={trackBounds.Position}, Size={trackBounds.Size}");
+	}
+
+	/// <summary>
+	/// Calculate the required zoom level to fit the track bounds within the viewport
+	/// </summary>
+	private float GetRequiredZoomForTrackBounds(Rect2 trackBounds)
+	{
+		var viewport = GetViewport();
+		if (viewport == null)
+			return 1.0f;
+
+		Vector2 viewportSize = viewport.GetVisibleRect().Size;
+		
+		// Add moderate padding around the track (20% extra space around the track)
+		float padding = 0.05f;
+		Vector2 paddedTrackSize = trackBounds.Size * (1.0f + padding * 2.0f);
+
+		// Calculate how much we need to scale the viewport to fit the padded track
+		float scaleX = viewportSize.X / paddedTrackSize.X;
+		float scaleY = viewportSize.Y / paddedTrackSize.Y;
+
+		// Use the smaller scale to ensure entire track fits with padding
+		float scale = Mathf.Min(scaleX, scaleY);
+
+		// In Godot Camera2D: zoom > 1.0 = zoom in, zoom < 1.0 = zoom out
+		// Scale represents how much of the track fits in viewport
+		// If scale = 0.5, track is 2x larger than viewport, so zoom = 0.5 (zoom out 2x)
+		float zoom = scale;
+
+		// Clamp to reasonable gameplay values, but don't allow too much zoom out
+		// 0.3 = reasonably zoomed out, 1.0 = normal zoom
+		zoom = Mathf.Clamp(zoom, 0.3f, 1.0f);
+		
+		GD.Print($"Track bounds: {trackBounds.Size}, Padded: {paddedTrackSize}, Scale: {scale:F3}, Zoom: {zoom:F3}");
+		
+		return zoom;
+	}
+
 	private void SetupScreenEdgeColliders()
 	{
 		var viewport = GetViewport();
-		if (viewport == null) return;
+		if (viewport == null || _trackCamera == null) return;
 
-		var screenSize = viewport.GetVisibleRect().Size;
+		// Clear existing edge colliders
+		ClearScreenEdgeColliders();
 
-		// Create four StaticBody2D colliders for screen edges
-		CreateScreenEdgeCollider(new Vector2(-ScreenEdgeColliderThickness / 2, screenSize.Y / 2), new Vector2(ScreenEdgeColliderThickness, screenSize.Y)); // Left
-		CreateScreenEdgeCollider(new Vector2(screenSize.X + ScreenEdgeColliderThickness / 2, screenSize.Y / 2), new Vector2(ScreenEdgeColliderThickness, screenSize.Y)); // Right
-		CreateScreenEdgeCollider(new Vector2(screenSize.X / 2, -ScreenEdgeColliderThickness / 2), new Vector2(screenSize.X, ScreenEdgeColliderThickness)); // Top
-		CreateScreenEdgeCollider(new Vector2(screenSize.X / 2, screenSize.Y + ScreenEdgeColliderThickness / 2), new Vector2(screenSize.X, ScreenEdgeColliderThickness)); // Bottom
+		// Calculate the visible area based on camera position and zoom
+		Vector2 viewportSize = viewport.GetVisibleRect().Size;
+		Vector2 cameraPos = _trackCamera.GlobalPosition;
+		Vector2 cameraZoom = _trackCamera.Zoom;
+		
+		// Calculate the actual view area in world coordinates
+		Vector2 viewSize = viewportSize / cameraZoom;
+		Vector2 viewTopLeft = cameraPos - viewSize / 2;
+		Vector2 viewBottomRight = cameraPos + viewSize / 2;
+
+		// Create four StaticBody2D colliders for screen edges relative to camera view
+		CreateScreenEdgeCollider(new Vector2(viewTopLeft.X - ScreenEdgeColliderThickness / 2, cameraPos.Y), new Vector2(ScreenEdgeColliderThickness, viewSize.Y)); // Left
+		CreateScreenEdgeCollider(new Vector2(viewBottomRight.X + ScreenEdgeColliderThickness / 2, cameraPos.Y), new Vector2(ScreenEdgeColliderThickness, viewSize.Y)); // Right
+		CreateScreenEdgeCollider(new Vector2(cameraPos.X, viewTopLeft.Y - ScreenEdgeColliderThickness / 2), new Vector2(viewSize.X, ScreenEdgeColliderThickness)); // Top
+		CreateScreenEdgeCollider(new Vector2(cameraPos.X, viewBottomRight.Y + ScreenEdgeColliderThickness / 2), new Vector2(viewSize.X, ScreenEdgeColliderThickness)); // Bottom
+		
+		GD.Print($"Screen edge colliders positioned around camera view area: {viewTopLeft} to {viewBottomRight}");
+	}
+
+	private void ClearScreenEdgeColliders()
+	{
+		foreach (var collider in _screenEdgeColliders)
+		{
+			if (GodotObject.IsInstanceValid(collider))
+			{
+				collider.QueueFree();
+			}
+		}
+		_screenEdgeColliders.Clear();
 	}
 
 	private void CreateScreenEdgeCollider(Vector2 position, Vector2 size)	
@@ -939,6 +1298,9 @@ public partial class RacingGame : Node2D
 
 		staticBody.AddChild(collisionShape);
 		AddChild(staticBody);
+		
+		// Track the collider for cleanup
+		_screenEdgeColliders.Add(staticBody);
 	}
 
 	private void LoadTrack(int trackIndex)
@@ -1013,6 +1375,12 @@ public partial class RacingGame : Node2D
 			return;
 		}
 		
+		// Position camera over track centroid and zoom to fit
+		PositionCameraOverTrack();
+		
+		// Setup screen edge colliders now that camera is positioned
+		SetupScreenEdgeColliders();
+		
 		// Update target laps from track definition
 		_targetLaps = _trackDefinition.NumberOfLaps;
 		
@@ -1034,6 +1402,7 @@ public partial class RacingGame : Node2D
 		// Try to load first available track
 		if (TrackScenes != null && TrackScenes.Count > 0)
 		{
+			_currentTrackIndex = 0;
 			LoadTrack(0);
 		}
 		else
@@ -1044,6 +1413,7 @@ public partial class RacingGame : Node2D
 				if (child is TrackDefinition trackDef)
 				{
 					_trackDefinition = trackDef;
+					_currentTrackIndex = 0; // Default to index 0 even for existing track
 					GD.Print($"RacingGame: Using existing track definition '{child.Name}'");
 					SetupLoadedTrack();
 					return;
@@ -2070,6 +2440,9 @@ public partial class RacingGame : Node2D
 				_timeTrialButton.Text = "Start Time Trial (3 Laps)";
 			}
 		}
+
+		// Update track selection button states
+		UpdateTrackSelectionUI();
 	}
 
 	private void UpdateLastRaceDisplay()
