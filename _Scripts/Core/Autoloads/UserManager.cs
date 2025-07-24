@@ -44,6 +44,55 @@ public partial class UserManager : AutoloadBase
 		return false;
 	}
 
+	/// <summary>
+	/// Development context login - creates debug account if doesn't exist
+	/// Only works in development context (editor mode)
+	/// </summary>
+	public bool LoginUserDevelopment(string userId)
+	{
+		if (string.IsNullOrEmpty(userId))
+			return false;
+
+		// Only allow in development context
+		if (!GameHost.IsDevelopmentContext())
+		{
+			LogError("LoginUserDevelopment can only be used in development context");
+			return false;
+		}
+
+		// Don't allow same user to be logged in multiple times
+		if (_loggedInUsers.ContainsKey(userId))
+			return false;
+
+		// Try to load existing user data
+		var userData = LoadUserData(userId);
+		
+		// If user doesn't exist, create a debug account
+		if (userData == null)
+		{
+			userData = new UserData
+			{
+				UserId = userId,
+				Pin = "debug", // Default PIN for debug accounts
+				Credits = 1000, // Generous credits for development
+				HighScores = new Godot.Collections.Dictionary<string, int>()
+			};
+			
+			// Save the debug account for future use
+			SaveUserData(userData);
+			_cachedUsers[userId] = userData;
+			
+			LogInfo($"Created debug account for user '{userId}' with 1000 credits");
+		}
+
+		// Log in the user
+		_loggedInUsers[userId] = userData;
+		EmitSignal(SignalName.UserLoggedIn, userData);
+		
+		LogInfo($"Debug login successful for user '{userId}' - Credits: {userData.Credits}");
+		return true;
+	}
+
 	public void LogoutUser(string userId)
 	{
 		if (_loggedInUsers.ContainsKey(userId))

@@ -883,6 +883,19 @@ public partial class RacingGame : Node2D
 		_pauseButton.Pressed += TogglePause;
 		topBar.AddChild(_pauseButton);
 
+		// Add subtle exit hint in production context
+		if (GameHost.IsProductionContext())
+		{
+			var exitSeparator = new VSeparator();
+			topBar.AddChild(exitSeparator);
+
+			var exitHintLabel = new Label();
+			exitHintLabel.Text = "ESC = Exit";
+			exitHintLabel.HorizontalAlignment = HorizontalAlignment.Center;
+			exitHintLabel.Modulate = Colors.LightGray;
+			topBar.AddChild(exitHintLabel);
+		}
+
 		// Bottom controls
 		var bottomBar = new HBoxContainer();
 		bottomBar.AnchorLeft = 0;
@@ -1066,6 +1079,16 @@ public partial class RacingGame : Node2D
 		restartButton.Text = "Restart";
 		restartButton.Pressed += RestartPractice;
 		vbox.AddChild(restartButton);
+
+		// Show Return to Menu if GameHost is available
+		var gameHost = GameHost.GetInstance();
+		if (gameHost != null)
+		{
+			var returnToMenuButton = new Button();
+			returnToMenuButton.Text = "Return to Menu";
+			returnToMenuButton.Pressed += ReturnToMainMenu;
+			vbox.AddChild(returnToMenuButton);
+		}
 	}
 
 	private void SetupGameOverOverlay()
@@ -1128,6 +1151,16 @@ public partial class RacingGame : Node2D
 		practiceButton.Text = "Practice Mode";
 		practiceButton.Pressed += RestartPractice;
 		vbox.AddChild(practiceButton);
+
+		// Show Return to Menu if GameHost is available
+		var gameHost = GameHost.GetInstance();
+		if (gameHost != null)
+		{
+			var returnToMenuButton = new Button();
+			returnToMenuButton.Text = "Return to Menu";
+			returnToMenuButton.Pressed += ReturnToMainMenu;
+			vbox.AddChild(returnToMenuButton);
+		}
 	}
 
 	private void SetupCar()
@@ -2191,6 +2224,61 @@ public partial class RacingGame : Node2D
 		PositionCarAtStart();
 		
 		StartPracticeMode();
+	}
+
+	/// <summary>
+	/// GameHost lifecycle method - cleanly ends the game and prepares for unloading
+	/// Can be called by GameHost via reflection for game cleanup
+	/// </summary>
+	public void EndGame()
+	{
+		// Stop any active game modes
+		_gameActive = false;
+		_inTimeTrialMode = false;
+		_gamePaused = false;
+		_inCountdown = false;
+		
+		// Clear input state
+		_hasInput = false;
+		_targetPosition = Vector2.Zero;
+		_lastTargetPosition = Vector2.Zero;
+		
+		// Stop timers and clear physics
+		_currentSpeed = 0.0f;
+		_velocity = Vector2.Zero;
+		
+		// Hide all overlays
+		if (_pauseOverlay != null) _pauseOverlay.Visible = false;
+		if (_gameOverOverlay != null) _gameOverOverlay.Visible = false;
+		if (_countdownOverlay != null) _countdownOverlay.Visible = false;
+		
+		// Disconnect track signals for cleanup
+		DisconnectTrackSignals();
+		
+		// Clear visual elements
+		ClearTireTrails();
+		
+		// Emit GameHost integration signal
+		EmitSignal(SignalName.GameEnded);
+		
+		GD.Print("RacingGame: Game ended and cleaned up for GameHost");
+	}
+
+	/// <summary>
+	/// Return to main menu - available when GameHost is present
+	/// </summary>
+	private void ReturnToMainMenu()
+	{
+		// Use GameHost to return to main menu
+		var gameHost = GameHost.GetInstance();
+		if (gameHost != null)
+		{
+			gameHost.ReturnToMainMenu();
+		}
+		else
+		{
+			GD.PrintErr("GameHost not available for returning to main menu");
+		}
 	}
 
 	private void DisconnectTrackSignals()

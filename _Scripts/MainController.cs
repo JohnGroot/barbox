@@ -20,12 +20,19 @@ public partial class MainController : Control
 	private UserManager _userManager;
 	private GameRegistry _gameRegistry;
 	private SceneManager _sceneManager;
+	private Node _onscreenKeyboard;
 	
 	public override void _Ready()
 	{
 		_userManager = UserManager.GetAutoload();
 		_gameRegistry = GameRegistry.GetAutoload();
 		_sceneManager = SceneManager.GetAutoload();
+		
+		// Get reference to onscreen keyboard
+		_onscreenKeyboard = GetNode<Node>("OnscreenKeyboard");
+		
+		// Enable keyboard for main menu (disabled by default in scene)
+		EnableKeyboardAutoShow();
 		
 		ConnectSignals();
 		SetupUI();
@@ -101,6 +108,13 @@ public partial class MainController : Control
 		if (GameSelectionPanel != null)
 			GameSelectionPanel.Visible = userLoggedIn;
 
+		// Show development mode indicator
+		if (GameHost.IsDevelopmentContext() && StatusLabel != null)
+		{
+			StatusLabel.Text = "Development Mode - PIN optional for debug accounts";
+			StatusLabel.Modulate = Colors.Orange;
+		}
+
 		if (userLoggedIn)
 		{
 			PopulateGameList();
@@ -131,7 +145,7 @@ public partial class MainController : Control
 	private void CreateGameButton(GameMetadata gameData)
 	{
 		var button = new Button();
-		button.Text = $"{gameData.DisplayName}\nCredits: {gameData.CreditCost}";
+		button.Text = $"{gameData.DisplayName}\nPremium features: {gameData.CreditCost} credit{(gameData.CreditCost != 1 ? "s" : "")}";
 		button.CustomMinimumSize = new Vector2(200, 80);
 		
 		button.Pressed += () => OnGameSelected(gameData.GameId);
@@ -147,22 +161,15 @@ public partial class MainController : Control
 		var gameData = _gameRegistry?.GetGameData(gameId);
 		if (gameData == null) return;
 
-		if (currentUser.Credits >= gameData.CreditCost)
+		// Load game directly - games handle their own credit economy
+		var gameHost = GameHost.Instance;
+		if (gameHost != null)
 		{
-			// Direct GameHost autoload call - no scene switching needed
-			var gameHost = GameHost.Instance;
-			if (gameHost != null)
-			{
-				gameHost.LoadGameOverlay(gameId, currentUser);
-			}
-			else
-			{
-				GD.PrintErr("GameHost autoload not available");
-			}
+			gameHost.LoadGameOverlay(gameId, currentUser);
 		}
 		else
 		{
-			ShowInsufficientCreditsMessage();
+			GD.PrintErr("GameHost autoload not available");
 		}
 	}
 
@@ -212,11 +219,16 @@ public partial class MainController : Control
 
 	private void OnLogoutPressed()
 	{
+		// Dismiss keyboard before logout
+		DismissKeyboard();
 		_userManager?.LogoutUser();
 	}
 
 	private void OnLoginPressed()
 	{
+		// Dismiss keyboard when login button is pressed
+		DismissKeyboard();
+		
 		if (UserIdInput == null || PinInput == null || _userManager == null)
 		{
 			ShowStatusMessage("Login system not properly initialized", false);
@@ -226,9 +238,34 @@ public partial class MainController : Control
 		string userId = UserIdInput.Text.Trim();
 		string pin = PinInput.Text.Trim();
 
+		// Development context: allow empty PIN for debug account
+		if (GameHost.IsDevelopmentContext() && !string.IsNullOrEmpty(userId) && string.IsNullOrEmpty(pin))
+		{
+			GD.Print($"Development mode: Attempting debug login for user '{userId}'");
+			bool debugLoginSuccess = _userManager.LoginUserDevelopment(userId);
+			if (debugLoginSuccess)
+			{
+				ShowStatusMessage("Debug login successful! (Development Mode)", true);
+				ClearLoginFields();
+			}
+			else
+			{
+				ShowStatusMessage("Debug login failed", false);
+			}
+			return;
+		}
+
+		// Production context: require both User ID and PIN
 		if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(pin))
 		{
-			ShowStatusMessage("Please enter both User ID and PIN", false);
+			if (GameHost.IsDevelopmentContext())
+			{
+				ShowStatusMessage("Enter User ID (PIN optional in dev mode)", false);
+			}
+			else
+			{
+				ShowStatusMessage("Please enter both User ID and PIN", false);
+			}
 			return;
 		}
 
@@ -246,6 +283,9 @@ public partial class MainController : Control
 
 	private void OnCreateUserPressed()
 	{
+		// Dismiss keyboard when create user button is pressed
+		DismissKeyboard();
+		
 		if (UserIdInput == null || PinInput == null || _userManager == null)
 		{
 			ShowStatusMessage("User creation system not properly initialized", false);
@@ -287,5 +327,69 @@ public partial class MainController : Control
 		if (UserIdInput != null) UserIdInput.Text = "";
 		if (PinInput != null) PinInput.Text = "";
 		if (StatusLabel != null) StatusLabel.Text = "";
+	}
+
+	/// <summary>
+	/// Hide the main UI when a game is loaded - called by GameHost
+	/// </summary>
+	public void HideMainUI()
+	{
+		// Disable keyboard auto_show during game
+		DisableKeyboardAutoShow();
+		
+		var uiContainer = GetNode<VBoxContainer>("UI");
+		if (uiContainer != null)
+		{
+			uiContainer.Visible = false;
+		}
+	}
+
+	/// <summary>
+	/// Show the main UI when returning from a game - called by GameHost
+	/// </summary>
+	public void ShowMainUI()
+	{
+		var uiContainer = GetNode<VBoxContainer>("UI");
+		if (uiContainer != null)
+		{
+			uiContainer.Visible = true;
+		}
+
+		// Re-enable keyboard auto_show when returning to main menu
+		EnableKeyboardAutoShow();
+	}
+
+	/// <summary>
+	/// Dismiss the onscreen keyboard
+	/// </summary>
+	private void DismissKeyboard()
+	{
+		if (_onscreenKeyboard != null && _onscreenKeyboard.HasMethod("hide"))
+		{
+			_onscreenKeyboard.Call("hide");
+		}
+	}
+
+	/// <summary>
+	/// Disable keyboard completely to prevent it from appearing during games
+	/// </summary>
+	private void DisableKeyboardAutoShow()
+	{
+		if (_onscreenKeyboard != null)
+		{
+			_onscreenKeyboard.Set("auto_show", false);
+			_onscreenKeyboard.Call("hide");
+		}
+	}
+
+	/// <summary>
+	/// Re-enable keyboard when returning to main menu
+	/// </summary>
+	private void EnableKeyboardAutoShow()
+	{
+		if (_onscreenKeyboard != null)
+		{
+			_onscreenKeyboard.Set("auto_show", true);
+		}
 	}
 }

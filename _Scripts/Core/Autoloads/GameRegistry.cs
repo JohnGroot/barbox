@@ -68,16 +68,19 @@ public partial class GameRegistry : AutoloadBase
 		// Load from _Data/GameRegistry.json when available
 		// For now, register sample games manually
 		
-		// Rapid prototype game demonstrating new GameHost architecture
+		// 2D time trial racing game with daily seeded race tracks
 		RegisterGame(new GameMetadata
 		{
-			GameId = "simple_sample_game",
-			DisplayName = "Simple Sample Game",
-			Description = "Rapid prototype game demonstrating single-file development with GameHost",
-			ScenePath = "res://_Scenes/Games/SampleGame/SimpleSampleGame.tscn",
-			ThumbnailPath = "res://_Scenes/Games/SampleGame/Assets/Sprites/thumbnail.png",
+			GameId = "racing_game",
+			DisplayName = "Racing Game",
+			Description = "2D time trial racing game with multiple tracks and competitive timing",
+			ScenePath = "res://_Scenes/Games/RacingGame/RacingGame.tscn",
+			ThumbnailPath = "res://_Scenes/Games/RacingGame/Assets/thumbnail.png",
 			MaxPlayers = 1,
-			IsActive = true
+			CreditCost = 1,
+			IsActive = true,
+			Category = "Racing",
+			DifficultyRating = 2.0f
 		});
 	}
 }

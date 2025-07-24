@@ -34,7 +34,8 @@ public partial class GameHost : AutoloadBase
 
 	/// <summary>
 	/// Loads a game as an overlay on the current scene
-	/// Handles user context, credit deduction, and PlayerSession creation
+	/// Handles user context and PlayerSession creation
+	/// Games handle their own credit economy internally
 	/// </summary>
 	public void LoadGameOverlay(string gameId, UserData userData)
 	{
@@ -47,22 +48,6 @@ public partial class GameHost : AutoloadBase
 		{
 			LogError($"Game {gameId} not found or inactive");
 			return;
-		}
-
-		// Handle credit deduction
-		if (_userManager != null && userData != null)
-		{
-			var currentUser = _userManager.GetCurrentUser();
-			if (currentUser != null && currentUser.Credits >= gameData.CreditCost)
-			{
-				_userManager.SpendCredits(gameData.CreditCost);
-				LogInfo($"Deducted {gameData.CreditCost} credits for {gameId}");
-			}
-			else
-			{
-				LogError("Insufficient credits or no user logged in");
-				return;
-			}
 		}
 
 		// Create player session
@@ -94,6 +79,9 @@ public partial class GameHost : AutoloadBase
 		_currentGame = scene.Instantiate();
 		_currentGameId = gameId;
 
+		// Hide main UI before adding game overlay
+		HideMainUI();
+
 		// Add as child of current scene (overlay pattern)
 		var currentScene = GetTree().CurrentScene;
 		currentScene?.AddChild(_currentGame);
@@ -118,6 +106,9 @@ public partial class GameHost : AutoloadBase
 			_currentGame.QueueFree();
 			_currentGame = null;
 		}
+
+		// Show main UI when game is stopped
+		ShowMainUI();
 
 		_currentGameId = string.Empty;
 		_playerSessions.Clear();
@@ -350,5 +341,29 @@ public partial class GameHost : AutoloadBase
 		}
 
 		return "Unknown: Unable to determine build context";
+	}
+
+	/// <summary>
+	/// Hide the main UI - calls MainController if available
+	/// </summary>
+	private void HideMainUI()
+	{
+		var currentScene = GetTree().CurrentScene;
+		if (currentScene != null && currentScene.HasMethod("HideMainUI"))
+		{
+			currentScene.Call("HideMainUI");
+		}
+	}
+
+	/// <summary>
+	/// Show the main UI - calls MainController if available
+	/// </summary>
+	private void ShowMainUI()
+	{
+		var currentScene = GetTree().CurrentScene;
+		if (currentScene != null && currentScene.HasMethod("ShowMainUI"))
+		{
+			currentScene.Call("ShowMainUI");
+		}
 	}
 }
