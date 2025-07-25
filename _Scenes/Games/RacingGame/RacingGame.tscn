@@ -7,12 +7,3 @@
 [node name="RacingGame" type="Node2D"]
 script = ExtResource("1_x9h8c")
 TrackScenes = Array[PackedScene]([ExtResource("2_didut"), ExtResource("2_csopi")])
-MaxSpeed = 1800.0
-MinSpeed = 100.0
-MaxInputDistance = 500.0
-AccelerationRate = 300.0
-OffTrackTurnPenalty = 0.3
-OffTrackAccelerationPenalty = 0.3
-CarSize = Vector2(40, 80)
-ScreenEdgeColliderThickness = 8.0
-MaxTrailPoints = 1000

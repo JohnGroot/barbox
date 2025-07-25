@@ -7,7 +7,7 @@ public abstract partial class BasePlayer : Node2D
 	[Signal] public delegate void PlayerDestroyedEventHandler();
 
 	[ExportCategory("Player Identity")]
-	[Export] public int PlayerId { get; set; } = 0;
+	[Export] public string PlayerId { get; set; } = "player1";
 	[Export] public string PlayerName { get; set; } = "Player";
 	
 	protected UserData _userData;
