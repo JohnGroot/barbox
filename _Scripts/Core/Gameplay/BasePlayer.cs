@@ -38,6 +38,13 @@ public abstract partial class BasePlayer : Node2D
 		EmitSignal(SignalName.PlayerDestroyed);
 	}
 
+	public override void _ExitTree()
+	{
+		// Clean up any signals that might be connected
+		// Subclasses should override this to disconnect their specific signals
+		base._ExitTree();
+	}
+
 	public UserData GetUserData() => _userData;
 	public bool IsActive() => _isActive;
 	public void SetActive(bool active) => _isActive = active;

@@ -4,29 +4,26 @@ using Godot;
 public partial class MainController : Control
 {
 	[ExportCategory("UI References")]
-	[Export] public Control LoginPanel { get; set; }
 	[Export] public Control GameSelectionPanel { get; set; }
 	[Export] public VBoxContainer GameList { get; set; }
 	[Export] public Label UserInfoLabel { get; set; }
-	[Export] public Button LogoutButton { get; set; }
-	
-	[ExportCategory("Login UI")]
-	[Export] public LineEdit UserIdInput { get; set; }
-	[Export] public LineEdit PinInput { get; set; }
-	[Export] public Button LoginButton { get; set; }
-	[Export] public Button CreateUserButton { get; set; }
-	[Export] public Label StatusLabel { get; set; }
 
 	private UserManager _userManager;
 	private GameRegistry _gameRegistry;
 	private SceneManager _sceneManager;
+	private GameHost _gameHost;
 	private Node _onscreenKeyboard;
 	
 	public override void _Ready()
 	{
+		GD.Print("[MainController] _Ready() starting");
+		
 		_userManager = UserManager.GetAutoload();
 		_gameRegistry = GameRegistry.GetAutoload();
 		_sceneManager = SceneManager.GetAutoload();
+		_gameHost = GameHost.Instance;
+		
+		GD.Print($"[MainController] Services loaded - UserManager: {_userManager != null}, GameRegistry: {_gameRegistry != null}");
 		
 		// Get reference to onscreen keyboard
 		_onscreenKeyboard = GetNode<Node>("OnscreenKeyboard");
@@ -37,6 +34,8 @@ public partial class MainController : Control
 		ConnectSignals();
 		SetupUI();
 		UpdateUI();
+		
+		GD.Print("[MainController] _Ready() completed");
 	}
 
 	public override void _Notification(int what)
@@ -55,21 +54,6 @@ public partial class MainController : Control
 			_userManager.UserLoggedOut += OnUserLoggedOut;
 			_userManager.UserDataUpdated += OnUserDataUpdated;
 		}
-
-		if (LogoutButton != null)
-		{
-			LogoutButton.Pressed += OnLogoutPressed;
-		}
-
-		if (LoginButton != null)
-		{
-			LoginButton.Pressed += OnLoginPressed;
-		}
-
-		if (CreateUserButton != null)
-		{
-			CreateUserButton.Pressed += OnCreateUserPressed;
-		}
 	}
 
 	private void DisconnectSignals()
@@ -80,45 +64,20 @@ public partial class MainController : Control
 			_userManager.UserLoggedOut -= OnUserLoggedOut;
 			_userManager.UserDataUpdated -= OnUserDataUpdated;
 		}
-
-		if (GodotObject.IsInstanceValid(LogoutButton))
-		{
-			LogoutButton.Pressed -= OnLogoutPressed;
-		}
-
-		if (GodotObject.IsInstanceValid(LoginButton))
-		{
-			LoginButton.Pressed -= OnLoginPressed;
-		}
-
-		if (GodotObject.IsInstanceValid(CreateUserButton))
-		{
-			CreateUserButton.Pressed -= OnCreateUserPressed;
-		}
 	}
 
 	private void SetupUI()
 	{
-		// Show login panel initially if no user is logged in
-		bool userLoggedIn = _userManager?.IsUserLoggedIn() ?? false;
+		GD.Print("[MainController] SetupUI() starting");
 		
-		if (LoginPanel != null)
-			LoginPanel.Visible = !userLoggedIn;
-		
+		// Always show game selection panel - login is handled by UIManager modal
 		if (GameSelectionPanel != null)
-			GameSelectionPanel.Visible = userLoggedIn;
+			GameSelectionPanel.Visible = true; // Always show game selection
 
-		// Show development mode indicator
-		if (GameHost.IsDevelopmentContext() && StatusLabel != null)
-		{
-			StatusLabel.Text = "Development Mode - PIN optional for debug accounts";
-			StatusLabel.Modulate = Colors.Orange;
-		}
-
-		if (userLoggedIn)
-		{
-			PopulateGameList();
-		}
+		// Always populate game list, regardless of login status
+		PopulateGameList();
+		
+		GD.Print("[MainController] SetupUI() completed");
 	}
 
 	private void PopulateGameList()
@@ -145,8 +104,9 @@ public partial class MainController : Control
 	private void CreateGameButton(GameMetadata gameData)
 	{
 		var button = new Button();
-		button.Text = $"{gameData.DisplayName}\nPremium features: {gameData.CreditCost} credit{(gameData.CreditCost != 1 ? "s" : "")}";
-		button.CustomMinimumSize = new Vector2(200, 80);
+		// Show that practice mode is free
+		button.Text = $"{gameData.DisplayName}\nPractice Mode: FREE\nPremium features: {gameData.CreditCost} credit{(gameData.CreditCost != 1 ? "s" : "")}";
+		button.CustomMinimumSize = new Vector2(250, 100);
 		
 		button.Pressed += () => OnGameSelected(gameData.GameId);
 		
@@ -155,13 +115,13 @@ public partial class MainController : Control
 
 	private void OnGameSelected(string gameId)
 	{
-		var currentUser = _userManager?.GetCurrentUser();
-		if (currentUser == null) return;
-
 		var gameData = _gameRegistry?.GetGameData(gameId);
 		if (gameData == null) return;
 
-		// Load game directly - games handle their own credit economy
+		// Get current user if logged in (can be null)
+		var currentUser = _userManager?.GetCurrentUser();
+
+		// Load game - it will run in practice mode if no user is logged in
 		var gameHost = GameHost.Instance;
 		if (gameHost != null)
 		{
@@ -183,32 +143,28 @@ public partial class MainController : Control
 	{
 		var currentUser = _userManager?.GetCurrentUser();
 		
-		if (UserInfoLabel != null && currentUser != null)
+		if (UserInfoLabel != null)
 		{
-			UserInfoLabel.Text = $"User: {currentUser.UserId}\nCredits: {currentUser.Credits}";
+			if (currentUser != null)
+			{
+				UserInfoLabel.Text = $"User: {currentUser.UserId}\nCredits: {currentUser.Credits}";
+			}
+			else
+			{
+				UserInfoLabel.Text = "Not logged in\nPractice mode only";
+			}
 		}
 	}
 
 	private void OnUserLoggedIn(UserData userData)
 	{
-		if (LoginPanel != null)
-			LoginPanel.Visible = false;
-		
-		if (GameSelectionPanel != null)
-			GameSelectionPanel.Visible = true;
-		
-		PopulateGameList();
+		// Game selection panel stays visible - no login panel switching needed
 		UpdateUI();
 	}
 
 	private void OnUserLoggedOut()
 	{
-		if (LoginPanel != null)
-			LoginPanel.Visible = true;
-		
-		if (GameSelectionPanel != null)
-			GameSelectionPanel.Visible = false;
-		
+		// Game selection panel stays visible - login handled by UIManager modal
 		UpdateUI();
 	}
 
@@ -217,117 +173,6 @@ public partial class MainController : Control
 		UpdateUI();
 	}
 
-	private void OnLogoutPressed()
-	{
-		// Dismiss keyboard before logout
-		DismissKeyboard();
-		_userManager?.LogoutUser();
-	}
-
-	private void OnLoginPressed()
-	{
-		// Dismiss keyboard when login button is pressed
-		DismissKeyboard();
-		
-		if (UserIdInput == null || PinInput == null || _userManager == null)
-		{
-			ShowStatusMessage("Login system not properly initialized", false);
-			return;
-		}
-
-		string userId = UserIdInput.Text.Trim();
-		string pin = PinInput.Text.Trim();
-
-		// Development context: allow empty PIN for debug account
-		if (GameHost.IsDevelopmentContext() && !string.IsNullOrEmpty(userId) && string.IsNullOrEmpty(pin))
-		{
-			GD.Print($"Development mode: Attempting debug login for user '{userId}'");
-			bool debugLoginSuccess = _userManager.LoginUserDevelopment(userId);
-			if (debugLoginSuccess)
-			{
-				ShowStatusMessage("Debug login successful! (Development Mode)", true);
-				ClearLoginFields();
-			}
-			else
-			{
-				ShowStatusMessage("Debug login failed", false);
-			}
-			return;
-		}
-
-		// Production context: require both User ID and PIN
-		if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(pin))
-		{
-			if (GameHost.IsDevelopmentContext())
-			{
-				ShowStatusMessage("Enter User ID (PIN optional in dev mode)", false);
-			}
-			else
-			{
-				ShowStatusMessage("Please enter both User ID and PIN", false);
-			}
-			return;
-		}
-
-		bool loginSuccess = _userManager.LoginUser(userId, pin);
-		if (loginSuccess)
-		{
-			ShowStatusMessage("Login successful!", true);
-			ClearLoginFields();
-		}
-		else
-		{
-			ShowStatusMessage("Invalid credentials", false);
-		}
-	}
-
-	private void OnCreateUserPressed()
-	{
-		// Dismiss keyboard when create user button is pressed
-		DismissKeyboard();
-		
-		if (UserIdInput == null || PinInput == null || _userManager == null)
-		{
-			ShowStatusMessage("User creation system not properly initialized", false);
-			return;
-		}
-
-		string userId = UserIdInput.Text.Trim();
-		string pin = PinInput.Text.Trim();
-
-		if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(pin))
-		{
-			ShowStatusMessage("Please enter both User ID and PIN", false);
-			return;
-		}
-
-		var newUser = _userManager.CreateUser(userId, pin);
-		if (newUser != null)
-		{
-			ShowStatusMessage("User created successfully!", true);
-			ClearLoginFields();
-		}
-		else
-		{
-			ShowStatusMessage("User creation failed - ID may already exist", false);
-		}
-	}
-
-	private void ShowStatusMessage(string message, bool isSuccess)
-	{
-		if (StatusLabel != null)
-		{
-			StatusLabel.Text = message;
-			StatusLabel.Modulate = isSuccess ? Colors.Green : Colors.Red;
-		}
-	}
-
-	private void ClearLoginFields()
-	{
-		if (UserIdInput != null) UserIdInput.Text = "";
-		if (PinInput != null) PinInput.Text = "";
-		if (StatusLabel != null) StatusLabel.Text = "";
-	}
 
 	/// <summary>
 	/// Hide the main UI when a game is loaded - called by GameHost
@@ -392,4 +237,5 @@ public partial class MainController : Control
 			_onscreenKeyboard.Set("auto_show", true);
 		}
 	}
+	
 }

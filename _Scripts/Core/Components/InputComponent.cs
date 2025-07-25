@@ -27,15 +27,13 @@ public partial class InputComponent : Node
 		}
 	}
 
-	public override void _Notification(int what)
+	public override void _ExitTree()
 	{
-		if (what == NotificationExitTree)
+		if (GodotObject.IsInstanceValid(_inputManager))
 		{
-			if (GodotObject.IsInstanceValid(_inputManager))
-			{
-				DisconnectInputSignals();
-			}
+			DisconnectInputSignals();
 		}
+		base._ExitTree();
 	}
 
 	private void ConnectInputSignals()

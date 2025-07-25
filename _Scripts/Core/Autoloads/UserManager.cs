@@ -10,13 +10,18 @@ public partial class UserManager : AutoloadBase
 	[Signal] public delegate void UserDataUpdatedEventHandler(UserData userData);
 
 	private const string USER_DATA_PATH = "user://user_profiles/";
+	private const float IDLE_TIMEOUT_SECONDS = 600.0f; // 10 minutes
+	
 	private Dictionary<string, UserData> _loggedInUsers = new();
 	private Dictionary<string, UserData> _cachedUsers = new();
+	private Dictionary<string, float> _userIdleTimers = new();
+	private Timer _idleCheckTimer;
 
 	protected override void OnServiceReady()
 	{
 		EnsureUserDataDirectory();
 		LoadUserCache();
+		SetupIdleTimer();
 	}
 
 	public static UserManager GetAutoload()
@@ -37,6 +42,7 @@ public partial class UserManager : AutoloadBase
 		if (userData != null && userData.Pin == pin)
 		{
 			_loggedInUsers[userId] = userData;
+			_userIdleTimers[userId] = 0.0f; // Initialize idle timer
 			EmitSignal(SignalName.UserLoggedIn, userData);
 			return true;
 		}
@@ -87,6 +93,7 @@ public partial class UserManager : AutoloadBase
 
 		// Log in the user
 		_loggedInUsers[userId] = userData;
+		_userIdleTimers[userId] = 0.0f; // Initialize idle timer
 		EmitSignal(SignalName.UserLoggedIn, userData);
 		
 		LogInfo($"Debug login successful for user '{userId}' - Credits: {userData.Credits}");
@@ -100,6 +107,7 @@ public partial class UserManager : AutoloadBase
 			var userData = _loggedInUsers[userId];
 			SaveUserData(userData);
 			_loggedInUsers.Remove(userId);
+			_userIdleTimers.Remove(userId);
 			EmitSignal(SignalName.UserLoggedOut);
 		}
 	}
@@ -314,6 +322,92 @@ public partial class UserManager : AutoloadBase
 		{
 			var json = Json.Stringify(userData.ToDictionary());
 			file.StoreString(json);
+		}
+	}
+	
+	// ============================================================================
+	// Idle Timeout Management
+	// ============================================================================
+	
+	private void SetupIdleTimer()
+	{
+		_idleCheckTimer = new Timer();
+		_idleCheckTimer.WaitTime = 1.0f; // Check every second
+		_idleCheckTimer.Timeout += OnIdleTimerTick;
+		AddChild(_idleCheckTimer);
+		_idleCheckTimer.Start();
+	}
+	
+	private void OnIdleTimerTick()
+	{
+		var usersToLogout = new List<string>();
+		
+		// Update idle timers
+		var keys = _userIdleTimers.Keys.ToList();
+		foreach (var userId in keys)
+		{
+			_userIdleTimers[userId] += (float)_idleCheckTimer.WaitTime;
+			
+			if (_userIdleTimers[userId] >= IDLE_TIMEOUT_SECONDS)
+			{
+				usersToLogout.Add(userId);
+			}
+		}
+		
+		// Logout idle users
+		foreach (var userId in usersToLogout)
+		{
+			LogInfo($"Auto-logout user {userId} due to idle timeout");
+			LogoutUser(userId);
+		}
+	}
+	
+	/// <summary>
+	/// Reset idle timer for a user when they interact with the system
+	/// </summary>
+	public void ResetUserIdleTimer(string userId = null)
+	{
+		if (userId == null)
+		{
+			// Reset all logged in users if no specific user provided
+			foreach (var loggedInUserId in _loggedInUsers.Keys)
+			{
+				_userIdleTimers[loggedInUserId] = 0.0f;
+			}
+		}
+		else if (_userIdleTimers.ContainsKey(userId))
+		{
+			_userIdleTimers[userId] = 0.0f;
+		}
+	}
+	
+	/// <summary>
+	/// Add credits for debug/testing purposes
+	/// </summary>
+	public void AddDebugCredits(string userId, int amount)
+	{
+		if (!GameHost.IsDevelopmentContext())
+		{
+			LogError("AddDebugCredits can only be used in development context");
+			return;
+		}
+		
+		AddCredits(userId, amount);
+		LogInfo($"Added {amount} debug credits to user {userId}");
+	}
+	
+	protected override void OnServiceDestroyed()
+	{
+		if (_idleCheckTimer != null)
+		{
+			_idleCheckTimer.Stop();
+			_idleCheckTimer.QueueFree();
+		}
+		
+		// Save all user data before shutdown
+		foreach (var userData in _loggedInUsers.Values)
+		{
+			SaveUserData(userData);
 		}
 	}
 }

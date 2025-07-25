@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 [GlobalClass]
-public abstract partial class GameController : Node2D
+public abstract partial class GameController : Node2D, IGameUIIntegration
 {
 	[Signal] public delegate void GameStartedEventHandler();
 	[Signal] public delegate void GameEndedEventHandler();
@@ -28,13 +28,16 @@ public abstract partial class GameController : Node2D
 	protected GameMode _currentGameMode = GameMode.Practice;
 	protected float _gameTime = 0.0f;
 	protected Timer _gameTimer;
+	private GameHost _gameHost;
 
 	public override void _Ready()
 	{
 		_gameMetadata = GameRegistry.GetAutoload()?.GetGameData(GameId);
+		_gameHost = GameHost.GetInstance();
 		
 		SetupGameTimer();
 		InitializeGame();
+		SetupUI();
 	}
 
 	public override void _Process(double delta)
@@ -206,12 +209,15 @@ public abstract partial class GameController : Node2D
 		{
 			foreach (var player in _players)
 			{
-				var userData = player.GetUserData();
-				if (userData != null && _playerScores.ContainsKey(player.PlayerId))
+				if (GodotObject.IsInstanceValid(player))
 				{
-					// Convert float score to int for UserManager compatibility
-					int intScore = (int)_playerScores[player.PlayerId];
-					userManager.UpdateHighScore(GameId, intScore);
+					var userData = player.GetUserData();
+					if (userData != null && _playerScores.ContainsKey(player.PlayerId))
+					{
+						// Convert float score to int for UserManager compatibility
+						int intScore = (int)_playerScores[player.PlayerId];
+						userManager.UpdateHighScore(GameId, intScore);
+					}
 				}
 			}
 		}
@@ -227,4 +233,150 @@ public abstract partial class GameController : Node2D
 	public GameMode GetGameMode() => _currentGameMode;
 	public void SetGameMode(GameMode mode) => _currentGameMode = mode;
 	public float GetTimeRemaining() => (float)(_gameTimer?.TimeLeft ?? 0.0f);
+
+	// ============================================================================
+	// UI Integration
+	// ============================================================================
+
+	/// <summary>
+	/// Set up UI integration when the game starts
+	/// </summary>
+	private void SetupUI()
+	{
+		if (_gameHost != null)
+		{
+			// Set up the game context in the top menu
+			var contextButtons = GetContextButtons();
+			_gameHost.SetTopMenuContext(GetGameTitle(), contextButtons);
+			OnUIContextSetup();
+			
+			GD.Print($"[GameController] UI context set up for '{GetGameTitle()}' with {contextButtons?.Length ?? 0} buttons");
+		}
+		else
+		{
+			GD.Print("[GameController] GameHost not available - UI integration skipped (development mode)");
+		}
+	}
+
+	/// <summary>
+	/// Clean up UI integration when the game ends
+	/// </summary>
+	private void CleanupUI()
+	{
+		if (_gameHost != null)
+		{
+			_gameHost.ClearTopMenuContext();
+			OnUIContextTeardown();
+			GD.Print("[GameController] UI context cleaned up");
+		}
+	}
+
+	public override void _ExitTree()
+	{
+		// Disconnect timer signal if it exists
+		if (GodotObject.IsInstanceValid(_gameTimer))
+		{
+			_gameTimer.Timeout -= OnTimeUp;
+		}
+		
+		CleanupUI();
+		base._ExitTree();
+	}
+
+	// ============================================================================
+	// IGameUIIntegration Implementation
+	// ============================================================================
+
+	/// <summary>
+	/// Gets the display title for the game in the top menu bar
+	/// Override this to provide a custom title, defaults to game metadata display name
+	/// </summary>
+	public virtual string GetGameTitle()
+	{
+		return _gameMetadata?.DisplayName ?? GameId;
+	}
+
+	/// <summary>
+	/// Gets the context buttons this game wants to display in the top menu bar
+	/// Override this to provide custom buttons for your game
+	/// </summary>
+	public virtual ContextButtonData[] GetContextButtons()
+	{
+		var buttons = new List<ContextButtonData>();
+
+		// Standard "Return to Menu" button
+		buttons.Add(GameContextButton.CreateReturnToMenuButton(() => {
+			var userManager = UserManager.GetAutoload();
+			userManager?.ResetUserIdleTimer();
+			ReturnToMainMenu();
+		}));
+
+		// Add pause/resume button if the game supports pausing
+		if (CanPause)
+		{
+			if (_isGamePaused)
+			{
+				buttons.Add(GameContextButton.CreateResumeButton(() => {
+					ResumeGame();
+					RefreshUI();
+				}));
+			}
+			else if (_isGameActive)
+			{
+				buttons.Add(GameContextButton.CreatePauseButton(() => {
+					PauseGame();
+					RefreshUI();
+				}));
+			}
+		}
+
+		return buttons.ToArray();
+	}
+
+	/// <summary>
+	/// Called when the game's UI context is being set up
+	/// Override this to perform any additional UI initialization
+	/// </summary>
+	public virtual void OnUIContextSetup()
+	{
+	}
+
+	/// <summary>
+	/// Called when the game's UI context is being torn down
+	/// Override this to perform any UI cleanup
+	/// </summary>
+	public virtual void OnUIContextTeardown()
+	{
+	}
+
+	/// <summary>
+	/// Called to update the game's UI state (e.g., button enabled/disabled states)
+	/// Override this to customize UI state updates
+	/// </summary>
+	public virtual void UpdateUIState()
+	{
+		// Refresh the context buttons with updated state
+		RefreshUI();
+	}
+
+	/// <summary>
+	/// Refresh the UI context with current game state
+	/// Call this when game state changes that affect UI (pause/resume, etc.)
+	/// </summary>
+	protected void RefreshUI()
+	{
+		if (_gameHost != null)
+		{
+			var contextButtons = GetContextButtons();
+			_gameHost.SetTopMenuContext(GetGameTitle(), contextButtons);
+		}
+	}
+
+	/// <summary>
+	/// Return to the main menu - can be overridden for custom behavior
+	/// </summary>
+	protected virtual void ReturnToMainMenu()
+	{
+		_gameHost?.ReturnToMainMenu();
+	}
 }

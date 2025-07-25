@@ -24,6 +24,7 @@ public partial class RacingGame : GameController
 	[Export] public int TargetLaps { get; set; } = 3;
 	[Export] public bool ShowCountdown { get; set; } = true;
 	[Export] public float CountdownDuration { get; set; } = 4.0f; // 3-2-1-GO = 4 seconds
+	[Export] public int TimeTrialCreditCost { get; set; } = 1; // Credit cost for time trial mode
 
 	[ExportCategory("Track Settings")]
 	[Export] public Godot.Collections.Array<PackedScene> TrackScenes { get; set; } = new Godot.Collections.Array<PackedScene>();
@@ -63,6 +64,13 @@ public partial class RacingGame : GameController
 	[Export] public int MaxTrailPoints { get; set; } = 1000;
 	[Export] public float TrailUpdateDistance { get; set; } = 3.0f;
 	[Export] public float TrailLifetime { get; set; } = 3000.0f;
+
+	// ================================================================
+	// CONSTANTS
+	// ================================================================
+	
+	// Total height reserved for TopMenuBar (100px) + ContextButtonBar (50px)
+	private const float TOP_MENU_HEIGHT = 150.0f;
 
 	// ================================================================
 	// RACING STATE AND ENUMS
@@ -112,11 +120,13 @@ public partial class RacingGame : GameController
 	
 	// Built-in UI elements
 	private CanvasLayer _uiLayer;
+	private Label _modeLabel;
+	private Label _proximityLabel;
+	
+	// Status display labels
 	private Label _speedLabel;
 	private Label _lapLabel;
 	private Label _timeLabel;
-	private Label _modeLabel;
-	private Label _proximityLabel;
 	private Button _pauseButton;
 	private Button _timeTrialButton;
 	private Control _pauseOverlay;
@@ -156,6 +166,7 @@ public partial class RacingGame : GameController
 	public override void _Ready()
 	{
 		base._Ready();
+		GD.Print("[RacingGame] _Ready() starting");
 		GameId = "racing_game";
 		SetGameMode(GameMode.Practice); // Start in practice mode
 		
@@ -164,6 +175,8 @@ public partial class RacingGame : GameController
 		SetupRacingCar();
 		InitializeTrackSystem();
 		DetectAndAdaptToContext();
+		
+		GD.Print("[RacingGame] _Ready() completed");
 	}
 
 	protected override void InitializeGame()
@@ -220,9 +233,32 @@ public partial class RacingGame : GameController
 	/// <summary>
 	/// Start a time trial race with countdown
 	/// </summary>
-	public virtual void StartTimeTrial()
+	public virtual async void StartTimeTrial()
 	{
 		if (_isGameActive) return;
+		
+		// Check if credits are required and handle credit spending
+		if (TimeTrialCreditCost > 0)
+		{
+			var creditManager = CreditManager.GetInstance();
+			if (creditManager != null && GodotObject.IsInstanceValid(creditManager))
+			{
+				// Reset idle timer when starting a premium feature
+				var userManager = UserManager.GetAutoload();
+				if (userManager != null && GodotObject.IsInstanceValid(userManager))
+				{
+					userManager.ResetUserIdleTimer();
+				}
+				
+				bool creditsSpent = await creditManager.CheckAndSpendCredits(TimeTrialCreditCost, "Time Trial Race");
+				if (!creditsSpent)
+				{
+					// Credits not spent - don't start the race
+					GD.Print("Time trial cancelled - credits not spent");
+					return;
+				}
+			}
+		}
 		
 		SetGameMode(GameMode.TimeTrial);
 		ResetRacingData();
@@ -517,10 +553,18 @@ public partial class RacingGame : GameController
 			if (viewport == null) return screenPosition;
 
 			Vector2 viewportSize = viewport.GetVisibleRect().Size;
-			Vector2 normalizedPosition = screenPosition / viewportSize;
+			
+			// Account for top menu bar - adjust screen position relative to playable area
+			Vector2 playableAreaSize = new Vector2(viewportSize.X, viewportSize.Y - TOP_MENU_HEIGHT);
+			Vector2 adjustedScreenPosition = new Vector2(
+				screenPosition.X,
+				Mathf.Max(0, screenPosition.Y - TOP_MENU_HEIGHT) // Clamp to playable area
+			);
+			
+			Vector2 normalizedPosition = adjustedScreenPosition / playableAreaSize;
 			Vector2 cameraRelative = normalizedPosition - new Vector2(0.5f, 0.5f);
 			Vector2 cameraZoom = ParentGame._trackCamera.Zoom;
-			Vector2 worldSize = viewportSize / cameraZoom;
+			Vector2 worldSize = playableAreaSize / cameraZoom;
 			Vector2 worldOffset = cameraRelative * worldSize;
 			Vector2 worldPosition = ParentGame._trackCamera.GlobalPosition + worldOffset;
 
@@ -621,12 +665,14 @@ public partial class RacingGame : GameController
 			_trackDefinition = trackDef;
 			AddChild(_trackDefinition);
 			
-			// Center track on screen
+			// Center track in playable area (below top menu bar)
 			var viewport = GetViewport();
 			if (viewport != null)
 			{
 				var screenSize = viewport.GetVisibleRect().Size;
-				_trackDefinition.GlobalPosition = screenSize / 2;
+				Vector2 playableCenter = new Vector2(screenSize.X / 2, TOP_MENU_HEIGHT + (screenSize.Y - TOP_MENU_HEIGHT) / 2);
+				_trackDefinition.GlobalPosition = playableCenter;
+				GD.Print($"[RacingGame] Track positioned at playable center: {playableCenter}");
 			}
 			
 			SetupLoadedTrack();
@@ -678,7 +724,8 @@ public partial class RacingGame : GameController
 			if (viewport != null)
 			{
 				var screenSize = viewport.GetVisibleRect().Size;
-				_racingCar.GlobalPosition = screenSize / 2;
+				Vector2 playableCenter = new Vector2(screenSize.X / 2, TOP_MENU_HEIGHT + (screenSize.Y - TOP_MENU_HEIGHT) / 2);
+				_racingCar.GlobalPosition = playableCenter;
 			}
 			return;
 		}
@@ -722,7 +769,10 @@ public partial class RacingGame : GameController
 		if (viewport != null)
 		{
 			var screenSize = viewport.GetVisibleRect().Size;
-			_trackCamera.GlobalPosition = screenSize / 2;
+			
+			// Account for top menu bar - position camera in center of playable area
+			Vector2 playableCenter = new Vector2(screenSize.X / 2, TOP_MENU_HEIGHT + (screenSize.Y - TOP_MENU_HEIGHT) / 2);
+			_trackCamera.GlobalPosition = playableCenter;
 		}
 	}
 
@@ -736,20 +786,36 @@ public partial class RacingGame : GameController
 		Vector2 trackCenter = _trackDefinition.GlobalPosition;
 		Rect2 trackBounds = _trackDefinition.GetTrackBounds();
 		
-		if (trackBounds.Size == Vector2.Zero) return;
-
-		_trackCamera.GlobalPosition = trackCenter;
+		GD.Print($"[RacingGame] Track center: {trackCenter}, Track bounds: {trackBounds}");
+		
+		if (trackBounds.Size == Vector2.Zero) 
+		{
+			GD.PrintErr("[RacingGame] Track bounds size is zero - cannot calculate zoom");
+			return;
+		}
 		
 		var viewport = GetViewport();
 		if (viewport != null)
 		{
 			Vector2 viewportSize = viewport.GetVisibleRect().Size;
-			float padding = 0.05f;
+			
+			// Account for top menu bar in playable area calculation
+			Vector2 playableArea = new Vector2(viewportSize.X, viewportSize.Y - TOP_MENU_HEIGHT);
+			
+			float padding = 0.15f; // Increased from 5% to 15% for better visual breathing room
 			Vector2 paddedTrackSize = trackBounds.Size * (1.0f + padding * 2.0f);
-			float scaleX = viewportSize.X / paddedTrackSize.X;
-			float scaleY = viewportSize.Y / paddedTrackSize.Y;
-			float zoom = Mathf.Clamp(Mathf.Min(scaleX, scaleY), 0.3f, 1.0f);
+			float scaleX = playableArea.X / paddedTrackSize.X;
+			float scaleY = playableArea.Y / paddedTrackSize.Y;
+			float zoom = Mathf.Clamp(Mathf.Min(scaleX, scaleY), 0.2f, 1.0f); // Lowered minimum from 0.3f to 0.2f
 			_trackCamera.Zoom = new Vector2(zoom, zoom);
+			
+			GD.Print($"[RacingGame] Track bounds: {trackBounds.Size}, Playable area: {playableArea}, Calculated zoom: {zoom}");
+			
+			// Center camera in playable area
+			Vector2 playableCenter = new Vector2(viewportSize.X / 2, TOP_MENU_HEIGHT + playableArea.Y / 2);
+			_trackCamera.GlobalPosition = playableCenter;
+			
+			GD.Print($"[RacingGame] Camera positioned at: {playableCenter}");
 		}
 	}
 
@@ -764,13 +830,17 @@ public partial class RacingGame : GameController
 		ClearScreenEdgeColliders();
 
 		Vector2 viewportSize = viewport.GetVisibleRect().Size;
+		
+		// Account for top menu bar in playable area calculation
+		Vector2 playableAreaSize = new Vector2(viewportSize.X, viewportSize.Y - TOP_MENU_HEIGHT);
+		
 		Vector2 cameraPos = _trackCamera.GlobalPosition;
 		Vector2 cameraZoom = _trackCamera.Zoom;
-		Vector2 viewSize = viewportSize / cameraZoom;
+		Vector2 viewSize = playableAreaSize / cameraZoom;
 		Vector2 viewTopLeft = cameraPos - viewSize / 2;
 		Vector2 viewBottomRight = cameraPos + viewSize / 2;
 
-		// Create four edge colliders
+		// Create four edge colliders within playable area
 		CreateScreenEdgeCollider(new Vector2(viewTopLeft.X - ScreenEdgeColliderThickness / 2, cameraPos.Y), new Vector2(ScreenEdgeColliderThickness, viewSize.Y));
 		CreateScreenEdgeCollider(new Vector2(viewBottomRight.X + ScreenEdgeColliderThickness / 2, cameraPos.Y), new Vector2(ScreenEdgeColliderThickness, viewSize.Y));
 		CreateScreenEdgeCollider(new Vector2(cameraPos.X, viewTopLeft.Y - ScreenEdgeColliderThickness / 2), new Vector2(viewSize.X, ScreenEdgeColliderThickness));
@@ -855,16 +925,16 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void DisconnectTrackSignals()
 	{
-		if (_trackDefinition == null) return;
+		if (_trackDefinition == null || !GodotObject.IsInstanceValid(_trackDefinition)) return;
 
 		var startLineTrigger = _trackDefinition.StartLine;
-		if (startLineTrigger != null)
+		if (startLineTrigger != null && GodotObject.IsInstanceValid(startLineTrigger))
 		{
 			startLineTrigger.StartLineCrossed -= OnStartLineTriggered;
 		}
 
 		var finishLineTrigger = _trackDefinition.FinishLine;
-		if (finishLineTrigger != null && finishLineTrigger != startLineTrigger)
+		if (finishLineTrigger != null && GodotObject.IsInstanceValid(finishLineTrigger) && finishLineTrigger != startLineTrigger)
 		{
 			finishLineTrigger.StartLineCrossed -= OnFinishLineTriggered;
 		}
@@ -874,7 +944,7 @@ public partial class RacingGame : GameController
 			for (int i = 0; i < _checkpointTriggers.Length; i++)
 			{
 				var trigger = _checkpointTriggers[i];
-				if (trigger != null)
+				if (trigger != null && GodotObject.IsInstanceValid(trigger))
 				{
 					trigger.CheckpointCrossed -= OnCheckpointTriggered;
 				}
@@ -1035,31 +1105,33 @@ public partial class RacingGame : GameController
 		mainUI.MouseFilter = Control.MouseFilterEnum.Ignore;
 		_uiLayer.AddChild(mainUI);
 
-		// Top bar
-		var topBar = new HBoxContainer();
-		topBar.AnchorLeft = 0;
-		topBar.AnchorTop = 0;
-		topBar.AnchorRight = 1;
-		topBar.AnchorBottom = 0;
-		topBar.OffsetBottom = 60;
-		topBar.Alignment = BoxContainer.AlignmentMode.Center;
-		mainUI.AddChild(topBar);
+		// Game status display bar above bottom controls
+		var statusBar = new HBoxContainer();
+		statusBar.AnchorLeft = 0;
+		statusBar.AnchorTop = 1;
+		statusBar.AnchorRight = 1;
+		statusBar.AnchorBottom = 1;
+		statusBar.OffsetTop = -120; // Position above bottom controls
+		statusBar.OffsetBottom = -80;
+		statusBar.Alignment = BoxContainer.AlignmentMode.Center;
+		mainUI.AddChild(statusBar);
 
 		_speedLabel = new Label() { Text = "Speed: 0", HorizontalAlignment = HorizontalAlignment.Center };
-		topBar.AddChild(_speedLabel);
-		topBar.AddChild(new VSeparator());
+		_speedLabel.AddThemeColorOverride("font_color", Colors.White);
+		_speedLabel.AddThemeFontSizeOverride("font_size", 16);
+		statusBar.AddChild(_speedLabel);
+		statusBar.AddChild(new VSeparator());
 
 		_lapLabel = new Label() { Text = "Practice Mode", HorizontalAlignment = HorizontalAlignment.Center };
-		topBar.AddChild(_lapLabel);
-		topBar.AddChild(new VSeparator());
+		_lapLabel.AddThemeColorOverride("font_color", Colors.White);
+		_lapLabel.AddThemeFontSizeOverride("font_size", 16);
+		statusBar.AddChild(_lapLabel);
+		statusBar.AddChild(new VSeparator());
 
-		_timeLabel = new Label() { Text = "Time: 0.0s", HorizontalAlignment = HorizontalAlignment.Center };
-		topBar.AddChild(_timeLabel);
-		topBar.AddChild(new VSeparator());
-
-		_pauseButton = new Button() { Text = "Pause" };
-		_pauseButton.Pressed += () => { if (CanPause) PauseGame(); };
-		topBar.AddChild(_pauseButton);
+		_timeLabel = new Label() { Text = "Gap: 0.0s", HorizontalAlignment = HorizontalAlignment.Center };
+		_timeLabel.AddThemeColorOverride("font_color", Colors.White);
+		_timeLabel.AddThemeFontSizeOverride("font_size", 16);
+		statusBar.AddChild(_timeLabel);
 
 		// Bottom controls
 		var bottomBar = new HBoxContainer();
@@ -1071,13 +1143,28 @@ public partial class RacingGame : GameController
 		bottomBar.Alignment = BoxContainer.AlignmentMode.Center;
 		mainUI.AddChild(bottomBar);
 
-		_timeTrialButton = new Button() { Text = "Start Time Trial (3 Laps)" };
+		// Update button text to show credit cost if applicable
+		string timeTrialText = "Start Time Trial (3 Laps)";
+		if (TimeTrialCreditCost > 0 && !GameHost.ShouldBypassCredits())
+		{
+			timeTrialText += $" - {TimeTrialCreditCost} Credit{(TimeTrialCreditCost != 1 ? "s" : "")}";
+		}
+		_timeTrialButton = new Button() { Text = timeTrialText };
 		_timeTrialButton.Pressed += () => { if (!IsGameActive()) StartTimeTrial(); };
 		bottomBar.AddChild(_timeTrialButton);
 		bottomBar.AddChild(new VSeparator());
 
 		var restartButton = new Button() { Text = "Restart Practice" };
-		restartButton.Pressed += () => { EndGame(); StartPractice(); };
+		restartButton.Pressed += () => { 
+			// Reset idle timer on interaction
+			var userManager = UserManager.GetAutoload();
+			if (userManager != null && GodotObject.IsInstanceValid(userManager))
+			{
+				userManager.ResetUserIdleTimer();
+			}
+			EndGame(); 
+			StartPractice(); 
+		};
 		bottomBar.AddChild(restartButton);
 
 		// Track selection buttons
@@ -1133,6 +1220,13 @@ public partial class RacingGame : GameController
 		if (IsGameActive() && GetGameMode() == GameMode.TimeTrial) 
 		{
 			return; // Don't allow track switching during time trial
+		}
+		
+		// Reset idle timer on interaction
+		var userManager = UserManager.GetAutoload();
+		if (userManager != null && GodotObject.IsInstanceValid(userManager))
+		{
+			userManager.ResetUserIdleTimer();
 		}
 		
 		_currentTrackIndex = trackIndex;
@@ -1248,8 +1342,42 @@ public partial class RacingGame : GameController
 		vbox.AddChild(resumeButton);
 
 		var restartButton = new Button() { Text = "Restart" };
-		restartButton.Pressed += () => { ResumeGame(); EndGame(); StartPractice(); };
+		restartButton.Pressed += () => { 
+			// Reset idle timer on interaction
+			var userManager = UserManager.GetAutoload();
+			if (userManager != null && GodotObject.IsInstanceValid(userManager))
+			{
+				userManager.ResetUserIdleTimer();
+			}
+			ResumeGame(); 
+			EndGame(); 
+			StartPractice(); 
+		};
 		vbox.AddChild(restartButton);
+		
+		var mainMenuButton = new Button() { Text = "Main Menu" };
+		mainMenuButton.Pressed += () => {
+			// Reset idle timer on interaction
+			var userManager = UserManager.GetAutoload();
+			if (userManager != null && GodotObject.IsInstanceValid(userManager))
+			{
+				userManager.ResetUserIdleTimer();
+			}
+			
+			// Return to main menu via GameHost
+			var gameHost = GameHost.GetInstance();
+			if (gameHost != null && GodotObject.IsInstanceValid(gameHost))
+			{
+				gameHost.ReturnToMainMenu();
+			}
+			else
+			{
+				// Fallback: just end the game
+				ResumeGame();
+				EndGame();
+			}
+		};
+		vbox.AddChild(mainMenuButton);
 	}
 
 	private void SetupGameOverOverlay()
@@ -1300,15 +1428,59 @@ public partial class RacingGame : GameController
 		vbox.AddChild(_finalTimeLabel);
 
 		var raceAgainButton = new Button() { Text = "Race Again" };
-		raceAgainButton.Pressed += () => { _gameOverOverlay.Visible = false; StartTimeTrial(); };
+		raceAgainButton.Pressed += () => { 
+			// Reset idle timer on interaction
+			var userManager = UserManager.GetAutoload();
+			if (userManager != null && GodotObject.IsInstanceValid(userManager))
+			{
+				userManager.ResetUserIdleTimer();
+			}
+			_gameOverOverlay.Visible = false; 
+			StartTimeTrial(); 
+		};
 		vbox.AddChild(raceAgainButton);
 
 		var practiceButton = new Button() { Text = "Practice Mode" };
-		practiceButton.Pressed += () => { _gameOverOverlay.Visible = false; StartPractice(); };
+		practiceButton.Pressed += () => { 
+			// Reset idle timer on interaction
+			var userManager = UserManager.GetAutoload();
+			if (userManager != null && GodotObject.IsInstanceValid(userManager))
+			{
+				userManager.ResetUserIdleTimer();
+			}
+			_gameOverOverlay.Visible = false; 
+			StartPractice(); 
+		};
 		vbox.AddChild(practiceButton);
 	}
 
 	private void UpdateUI()
+	{
+		if (_racingCar == null) return;
+
+		// Update status display labels directly
+		UpdateStatusLabels();
+
+		// Update button states
+		if (_timeTrialButton != null)
+		{
+			_timeTrialButton.Disabled = IsGameActive() || IsInCountdown();
+		}
+
+		// Update track selection buttons
+		UpdateTrackSelectionButtons();
+
+		// Update pause overlay
+		if (_pauseOverlay != null)
+		{
+			_pauseOverlay.Visible = IsGamePaused();
+		}
+	}
+
+	/// <summary>
+	/// Update the status labels in the bottom status bar
+	/// </summary>
+	private void UpdateStatusLabels()
 	{
 		if (_racingCar == null) return;
 
@@ -1318,7 +1490,7 @@ public partial class RacingGame : GameController
 			_speedLabel.Text = $"Speed: {(int)_racingCar.GetCurrentSpeed()}";
 		}
 
-		// Update lap display
+		// Update lap/mode display
 		if (_lapLabel != null)
 		{
 			if (GetGameMode() == GameMode.Practice)
@@ -1345,21 +1517,6 @@ public partial class RacingGame : GameController
 				float lapTime = GetPlayerCurrentLapTime(_racingCar.PlayerId);
 				_timeLabel.Text = $"Time: {lapTime:F1}s";
 			}
-		}
-
-		// Update button states
-		if (_timeTrialButton != null)
-		{
-			_timeTrialButton.Disabled = IsGameActive() || IsInCountdown();
-		}
-
-		// Update track selection buttons
-		UpdateTrackSelectionButtons();
-
-		// Update pause overlay
-		if (_pauseOverlay != null)
-		{
-			_pauseOverlay.Visible = IsGamePaused();
 		}
 	}
 
@@ -1473,6 +1630,8 @@ public partial class RacingGame : GameController
 
 	private void CleanupExpiredTrailPoints(List<(Vector2 position, ulong timestamp)> trail, ulong currentTime)
 	{
+		if (trail == null) return;
+		
 		for (int i = trail.Count - 1; i >= 0; i--)
 		{
 			var age = (float)(currentTime - trail[i].timestamp);
@@ -1603,7 +1762,9 @@ public partial class RacingGame : GameController
 
 	private void DetectAndAdaptToContext()
 	{
+		GD.Print("[RacingGame] DetectAndAdaptToContext() called");
 		var gameHost = GameHost.GetInstance();
+		GD.Print($"[RacingGame] GameHost instance: {gameHost != null}");
 		
 		if (gameHost != null)
 		{
@@ -1637,4 +1798,107 @@ public partial class RacingGame : GameController
 	public RacingState GetRacingState() => _racingState;
 	public bool IsInCountdown() => _inCountdown;
 	public int GetCountdownNumber() => _countdownNumber;
+	
+	// ================================================================
+	// UI INTEGRATION OVERRIDES
+	// ================================================================
+
+	/// <summary>
+	/// Override to provide racing-specific context buttons
+	/// </summary>
+	public override ContextButtonData[] GetContextButtons()
+	{
+		var buttons = new List<ContextButtonData>();
+
+		// Standard "Return to Menu" button
+		buttons.Add(GameContextButton.CreateReturnToMenuButton(() => {
+			var userManager = UserManager.GetAutoload();
+			if (userManager != null && GodotObject.IsInstanceValid(userManager))
+			{
+				userManager.ResetUserIdleTimer();
+			}
+			ReturnToMainMenu();
+		}));
+
+		// Racing-specific pause/resume button
+		if (CanPause)
+		{
+			if (_isGamePaused)
+			{
+				buttons.Add(GameContextButton.CreateResumeButton(() => {
+					ResumeGame();
+					RefreshUI();
+				}));
+			}
+			else if (_isGameActive)
+			{
+				buttons.Add(GameContextButton.CreatePauseButton(() => {
+					PauseGame();
+					RefreshUI();
+				}));
+			}
+		}
+
+		// Racing-specific restart button (only in practice mode)
+		if (GetGameMode() == GameMode.Practice && !_inCountdown)
+		{
+			buttons.Add(new ContextButtonData("Restart", () => {
+				var userManager = UserManager.GetAutoload();
+				if (userManager != null && GodotObject.IsInstanceValid(userManager))
+				{
+					userManager.ResetUserIdleTimer();
+				}
+				EndGame();
+				StartPractice();
+			}, "🔄", true, "Restart practice session"));
+		}
+
+		return buttons.ToArray();
+	}
+
+	/// <summary>
+	/// Override to provide racing game title
+	/// </summary>
+	public override string GetGameTitle()
+	{
+		if (GetGameMode() == GameMode.Practice)
+		{
+			return "Racing Game - Practice";  
+		}
+		else if (GetGameMode() == GameMode.TimeTrial)
+		{
+			return "Racing Game - Time Trial";
+		}
+		return "Racing Game";
+	}
+
+	/// <summary>
+	/// Handle viewport size changes (e.g., window resize, orientation change)
+	/// </summary>
+	public override void _Notification(int what)
+	{
+		base._Notification(what);
+		
+		if (what == NotificationWMSizeChanged)
+		{
+			// Recalculate camera positioning and zoom when viewport changes
+			if (_trackDefinition != null && _trackCamera != null)
+			{
+				CallDeferred(MethodName.PositionCameraOverTrack);
+				CallDeferred(MethodName.SetupScreenEdgeColliders);
+			}
+		}
+		else if (what == NotificationExitTree)
+		{
+			// Clean up signals and references
+			DisconnectTrackSignals();
+			
+			if (_racingCar != null && GodotObject.IsInstanceValid(_racingCar))
+			{
+				_racingCar.CarMoved -= OnCarMoved;
+			}
+			
+			ClearScreenEdgeColliders();
+		}
+	}
 }

@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://boyeuot3nu0dq" path="res://_Scripts/MainController.cs" id="1_1x2qy"]
 [ext_resource type="Script" uid="uid://chadnu3h7vnwl" path="res://addons/onscreenkeyboard/onscreen_keyboard.gd" id="2_keyboard"]
 
-[node name="Main" type="Control" node_paths=PackedStringArray("LoginPanel", "GameSelectionPanel", "GameList", "UserInfoLabel", "LogoutButton", "UserIdInput", "PinInput", "LoginButton", "CreateUserButton", "StatusLabel")]
+[node name="Main" type="Control" node_paths=PackedStringArray("GameSelectionPanel", "GameList", "UserInfoLabel")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -11,16 +11,9 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_1x2qy")
-LoginPanel = NodePath("UI/LoginPanel")
 GameSelectionPanel = NodePath("UI/GameSelectionPanel")
 GameList = NodePath("UI/GameSelectionPanel/GameContainer/GameList")
 UserInfoLabel = NodePath("UI/GameSelectionPanel/GameContainer/UserInfoLabel")
-LogoutButton = NodePath("UI/GameSelectionPanel/GameContainer/LogoutButton")
-UserIdInput = NodePath("UI/LoginPanel/LoginContainer/UserIdInput")
-PinInput = NodePath("UI/LoginPanel/LoginContainer/PinInput")
-LoginButton = NodePath("UI/LoginPanel/LoginContainer/LoginButton")
-CreateUserButton = NodePath("UI/LoginPanel/LoginContainer/CreateUserButton")
-StatusLabel = NodePath("UI/LoginPanel/LoginContainer/StatusLabel")
 
 [node name="UI" type="VBoxContainer" parent="."]
 layout_mode = 1
@@ -29,63 +22,15 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -200.0
-offset_top = -150.0
-offset_right = 200.0
-offset_bottom = 150.0
+offset_left = -300.0
+offset_top = -190.0
+offset_right = 300.0
+offset_bottom = 290.0
 grow_horizontal = 2
 grow_vertical = 2
-
-[node name="LoginPanel" type="Panel" parent="UI"]
-unique_name_in_owner = true
-layout_mode = 2
-
-[node name="LoginContainer" type="VBoxContainer" parent="UI/LoginPanel"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 10.0
-offset_top = 10.0
-offset_right = -10.0
-offset_bottom = -10.0
-grow_horizontal = 2
-grow_vertical = 2
-
-[node name="TitleLabel" type="Label" parent="UI/LoginPanel/LoginContainer"]
-layout_mode = 2
-text = "BarBox Arcade"
-horizontal_alignment = 1
-
-[node name="UserIdInput" type="LineEdit" parent="UI/LoginPanel/LoginContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-placeholder_text = "User ID"
-
-[node name="PinInput" type="LineEdit" parent="UI/LoginPanel/LoginContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-placeholder_text = "PIN"
-secret = true
-
-[node name="LoginButton" type="Button" parent="UI/LoginPanel/LoginContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Login"
-
-[node name="CreateUserButton" type="Button" parent="UI/LoginPanel/LoginContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Create User"
-
-[node name="StatusLabel" type="Label" parent="UI/LoginPanel/LoginContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-horizontal_alignment = 1
 
 [node name="GameSelectionPanel" type="Panel" parent="UI"]
 unique_name_in_owner = true
-visible = false
 layout_mode = 2
 
 [node name="GameContainer" type="VBoxContainer" parent="UI/GameSelectionPanel"]
@@ -109,11 +54,6 @@ text = "User: Guest"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
-
-[node name="LogoutButton" type="Button" parent="UI/GameSelectionPanel/GameContainer"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Logout"
 
 [node name="OnscreenKeyboard" type="PanelContainer" parent="."]
 visible = false

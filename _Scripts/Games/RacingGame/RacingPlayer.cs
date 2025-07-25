@@ -74,7 +74,7 @@ public partial class RacingPlayer : BasePlayer
 	protected virtual void SetupInputManager()
 	{
 		_inputManager = InputManager.GetAutoload();
-		if (_inputManager != null)
+		if (_inputManager != null && GodotObject.IsInstanceValid(_inputManager))
 		{
 			_inputManager.TouchStarted += OnTouchStarted;
 			_inputManager.TouchEnded += OnTouchEnded;
@@ -90,7 +90,7 @@ public partial class RacingPlayer : BasePlayer
 		float deltaF = (float)delta;
 
 		// Poll for current input position
-		if (_inputManager != null && _hasInput)
+		if (_inputManager != null && GodotObject.IsInstanceValid(_inputManager) && _hasInput)
 		{
 			if (_inputManager.IsTouchActive())
 			{
@@ -233,19 +233,16 @@ public partial class RacingPlayer : BasePlayer
 	protected virtual float GetTurnModifier() => 1.0f;
 
 	// Cleanup
-	public override void _Notification(int what)
+	public override void _ExitTree()
 	{
-		if (what == NotificationExitTree)
+		if (_inputManager != null && GodotObject.IsInstanceValid(_inputManager))
 		{
-			if (_inputManager != null && GodotObject.IsInstanceValid(_inputManager))
-			{
-				_inputManager.TouchStarted -= OnTouchStarted;
-				_inputManager.TouchEnded -= OnTouchEnded;
-				_inputManager.ClickStarted -= OnClickStarted;
-				_inputManager.ClickEnded -= OnClickEnded;
-			}
+			_inputManager.TouchStarted -= OnTouchStarted;
+			_inputManager.TouchEnded -= OnTouchEnded;
+			_inputManager.ClickStarted -= OnClickStarted;
+			_inputManager.ClickEnded -= OnClickEnded;
 		}
-		base._Notification(what);
+		base._ExitTree();
 	}
 
 	// Public accessors

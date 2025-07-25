@@ -22,6 +22,7 @@ public partial class GameHost : AutoloadBase
 	private UserManager _userManager;
 	private GameRegistry _gameRegistry;
 	private SceneManager _sceneManager;
+	private UIManager _uiManager;
 
 	protected override void OnServiceReady()
 	{
@@ -30,14 +31,26 @@ public partial class GameHost : AutoloadBase
 		_userManager = GetAutoload<UserManager>();
 		_gameRegistry = GetAutoload<GameRegistry>();
 		_sceneManager = GetAutoload<SceneManager>();
+		
+		// Create and add UI manager
+		_uiManager = new UIManager();
+		AddChild(_uiManager);
+		
+		// Connect UI manager signals
+		_uiManager.LoginRequested += OnLoginRequested;
+		_uiManager.LogoutRequested += OnLogoutRequested;
+		_uiManager.ReturnToMenuRequested += OnReturnToMenuRequested;
+		
+		LogInfo("GameHost initialized with UIManager");
 	}
 
 	/// <summary>
 	/// Loads a game as an overlay on the current scene
-	/// Handles user context and PlayerSession creation
+	/// Handles optional user context and PlayerSession creation
 	/// Games handle their own credit economy internally
+	/// UserData can be null for anonymous/practice mode
 	/// </summary>
-	public void LoadGameOverlay(string gameId, UserData userData)
+	public void LoadGameOverlay(string gameId, UserData userData = null)
 	{
 		// Stop any current game first
 		StopCurrentGame();
@@ -89,6 +102,9 @@ public partial class GameHost : AutoloadBase
 		// Connect game signals for optional integration
 		ConnectGameSignals(_currentGame);
 
+		// Game will set its own context in its _Ready method
+		// Don't override the context here as it would clear any buttons the game sets up
+
 		LogInfo($"Loaded {gameId} as overlay");
 	}
 
@@ -106,6 +122,9 @@ public partial class GameHost : AutoloadBase
 			_currentGame.QueueFree();
 			_currentGame = null;
 		}
+
+		// Clear game context from top menu
+		ClearTopMenuContext();
 
 		// Show main UI when game is stopped
 		ShowMainUI();
@@ -134,6 +153,14 @@ public partial class GameHost : AutoloadBase
 	{
 		StopCurrentGame();
 		_sceneManager?.ReturnToMainMenu();
+	}
+
+	/// <summary>
+	/// Get the UIManager instance for games to access UI functionality
+	/// </summary>
+	public UIManager GetUIManager()
+	{
+		return _uiManager;
 	}
 
 	// PlayerSession management
@@ -364,6 +391,76 @@ public partial class GameHost : AutoloadBase
 		if (currentScene != null && currentScene.HasMethod("ShowMainUI"))
 		{
 			currentScene.Call("ShowMainUI");
+		}
+	}
+
+	// ============================================================================
+	// UI Manager Integration
+	// ============================================================================
+
+	/// <summary>
+	/// Set the game context in the top menu bar using simplified ContextButtonData structures
+	/// </summary>
+	public void SetTopMenuContext(string gameTitle, ContextButtonData[] contextButtons = null)
+	{
+		LogInfo($"Setting top menu context: '{gameTitle}' with {contextButtons?.Length ?? 0} buttons");
+		_uiManager?.SetGameContext(gameTitle, contextButtons);
+	}
+
+
+	/// <summary>
+	/// Clear game context and return to main menu state
+	/// </summary>
+	public void ClearTopMenuContext()
+	{
+		_uiManager?.ClearGameContext();
+	}
+
+	/// <summary>
+	/// Update user display in the top menu
+	/// </summary>
+	public void UpdateTopMenuUserDisplay()
+	{
+		_uiManager?.UpdateUserDisplay();
+	}
+
+	/// <summary>
+	/// Show or hide the top menu bar
+	/// </summary>
+	public void SetTopMenuVisible(bool visible)
+	{
+		_uiManager?.SetTopMenuVisible(visible);
+	}
+
+	// UI Manager signal handlers
+
+	private void OnLoginRequested()
+	{
+		LogInfo("Login requested from top menu");
+		// Show login modal via UIManager
+		_uiManager?.ShowLoginModal();
+	}
+
+	private void OnLogoutRequested()
+	{
+		LogInfo("Logout requested from top menu");
+		_userManager?.LogoutUser();
+	}
+
+	private void OnReturnToMenuRequested()
+	{
+		LogInfo("Return to menu requested from top menu");
+		StopCurrentGame();
+	}
+
+	protected override void OnServiceDestroyed()
+	{
+		// Disconnect UI manager signals
+		if (GodotObject.IsInstanceValid(_uiManager))
+		{
+			_uiManager.LoginRequested -= OnLoginRequested;
+			_uiManager.LogoutRequested -= OnLogoutRequested;
+			_uiManager.ReturnToMenuRequested -= OnReturnToMenuRequested;
 		}
 	}
 }
