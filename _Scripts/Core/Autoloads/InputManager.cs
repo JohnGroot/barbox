@@ -115,10 +115,7 @@ public partial class InputManager : AutoloadBase
 
 	public Vector2 GetTouchPosition(int fingerId = 0)
 	{
-		if (_activeTouches.ContainsKey(fingerId))
-			return _activeTouches[fingerId];
-		
-		return _mousePosition;
+		return _activeTouches.GetValueOrDefault(fingerId, _mousePosition);
 	}
 
 	public Vector2[] GetAllTouchPositions()

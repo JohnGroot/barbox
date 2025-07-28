@@ -21,7 +21,7 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	// EXPORT PROPERTIES - RACING SETTINGS
 	// ================================================================
-	
+	 
 	[ExportCategory("Racing Settings")]
 	[Export] public int TargetLaps 
 	{ 
@@ -99,8 +99,6 @@ namespace BarBox.Games.Racing
 	// Direct input handling (restored for arc positioning fix)
 	private Vector2 _directTargetPosition = Vector2.Zero;
 	private bool _hasDirectInput = false;
-
-
 
 	// ================================================================
 	// INITIALIZATION
