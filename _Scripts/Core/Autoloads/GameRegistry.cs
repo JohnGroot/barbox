@@ -82,5 +82,20 @@ public partial class GameRegistry : AutoloadBase
 			Category = "Racing",
 			DifficultyRating = 2.0f
 		});
+
+		// Traditional board game with physics-based gameplay
+		RegisterGame(new GameMetadata
+		{
+			GameId = "carrom_game",
+			DisplayName = "Carrom",
+			Description = "Traditional board game featuring physics-based striking and strategic pocket play",
+			ScenePath = "res://_Scenes/Games/CarromGame/CarromGame.tscn",
+			ThumbnailPath = "res://_Scenes/Games/CarromGame/Assets/thumbnail.png",
+			MaxPlayers = 4,
+			CreditCost = 1,
+			IsActive = true,
+			Category = "Board",
+			DifficultyRating = 3.0f
+		});
 	}
 }

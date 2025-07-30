@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="CarromPhysicsConfig" load_steps=2 format=3 uid="uid://dqa1j8i4cv7rx"]
+
+[ext_resource type="Script" uid="uid://dkfvhygsky5l7" path="res://_Scripts/Games/CarromGame/CarromPhysicsConfig.cs" id="1_y0unv"]
+
+[resource]
+script = ExtResource("1_y0unv")
+PieceStopThreshold = 20.0
+StopConfirmationTime = 0.2
+StopHysteresisFactor = 1.2
+LinearDamping = 2.0
+AngularDamping = 3.0
+DefaultMass = 1.0
+StrikerMass = 1.5
+PieceFriction = 0.1
+PieceBounce = 0.8
+BoardFriction = 0.2
+BoardBounce = 0.3
+DefaultPieceRadius = 12.0
+StrikerRadius = 15.0
+MaxContactsReported = 10
+ContactMonitor = true
+metadata/_custom_type_script = "uid://dkfvhygsky5l7"
