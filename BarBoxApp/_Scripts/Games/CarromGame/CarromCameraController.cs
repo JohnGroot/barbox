@@ -105,9 +105,9 @@ public partial class CarromCameraController : Node
 		}
 
 		// Get board dimensions
-		Vector2 boardSize = _board.BoardSize;
+		float boardSize = _board.BoardSize;
 		float padding = 0.1f; // 10% padding for visual breathing room
-		Vector2 paddedBoardSize = boardSize * (1.0f + padding * 2.0f);
+		Vector2 paddedBoardSize = Vector2.One * boardSize * (1.0f + padding * 2.0f);
 		
 		// Prevent division by zero
 		if (paddedBoardSize.X <= 0 || paddedBoardSize.Y <= 0 || playableArea.X <= 0 || playableArea.Y <= 0)

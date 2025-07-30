@@ -20,8 +20,7 @@ GameId = "carrom_game"
 
 [node name="CarromBoard" type="Node2D" parent="."]
 script = ExtResource("2_mm0sl")
-BoardSize = Vector2(700, 700)
-BorderWidth = 20.0
+EdgeColor = Color(0.647059, 0.270588, 0, 1)
 
 [node name="CarromInputController" type="Node2D" parent="."]
 script = ExtResource("3_1r7uy")
