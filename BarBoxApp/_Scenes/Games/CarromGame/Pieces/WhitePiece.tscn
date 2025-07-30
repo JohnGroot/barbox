@@ -4,7 +4,7 @@
 [ext_resource type="Resource" uid="uid://dqa1j8i4cv7rx" path="res://_Scenes/Games/CarromGame/CarromPhysicsConfig.tres" id="2_aenjn"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_white"]
-radius = 12.0
+radius = 15.0
 
 [node name="WhitePiece" type="RigidBody2D"]
 gravity_scale = 0.0
@@ -24,10 +24,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -12.0
-offset_top = -12.0
-offset_right = 12.0
-offset_bottom = 12.0
+offset_left = -15.0
+offset_top = -15.0
+offset_right = 15.0
+offset_bottom = 15.0
 grow_horizontal = 2
 grow_vertical = 2
 text = "W"

@@ -28,6 +28,11 @@ public partial class CarromPiece : RigidBody2D
 	private float _stoppedTimer = 0.0f;
 	private int _physicsFramesAfterStrike = 0;
 
+	// Realistic physics constants
+	private const float MIN_VELOCITY_THRESHOLD = 1.0f;
+	private const float ANGULAR_MIN_THRESHOLD = 0.1f;
+	private const float ANGULAR_TORQUE_SCALE = 50.0f;
+
 	public override void _Ready()
 	{
 		ValidateExports();
@@ -161,11 +166,31 @@ public partial class CarromPiece : RigidBody2D
 		{
 			// Calculate impact force for sound/visual effects
 			Vector2 relativeVelocity = LinearVelocity - otherPiece.LinearVelocity;
+			float impactSpeed = relativeVelocity.Length();
 			Vector2 impactForce = relativeVelocity * Mass;
+			
+			// Apply realistic collision physics
+			ApplyRealisticCollisionResponse(otherPiece, relativeVelocity, impactSpeed);
 			
 			EmitSignal(SignalName.PieceCollided, this, otherPiece, impactForce);
 			
 			GD.Print($"[CarromPiece] {Type} collided with {otherPiece.Type}, impact: {impactForce.Length():F1}");
+		}
+	}
+
+	/// <summary>
+	/// Apply realistic collision response with velocity-dependent restitution
+	/// Works with Godot's physics by modifying material properties
+	/// </summary>
+	private void ApplyRealisticCollisionResponse(CarromPiece otherPiece, Vector2 relativeVelocity, float impactSpeed)
+	{
+		// Calculate velocity-dependent restitution for realistic physics
+		float dynamicRestitution = PhysicsConfig.CalculateCollisionRestitution(impactSpeed);
+		
+		// Apply to physics material (let Godot handle the collision response)
+		if (PhysicsMaterialOverride != null)
+		{
+			PhysicsMaterialOverride.Bounce = dynamicRestitution;
 		}
 	}
 
@@ -203,6 +228,12 @@ public partial class CarromPiece : RigidBody2D
 		if (_physicsFramesAfterStrike > 0)
 		{
 			_physicsFramesAfterStrike--;
+		}
+
+		// Apply realistic physics-based deceleration
+		if (!IsStopped())
+		{
+			ApplyRealisticFriction((float)delta);
 		}
 	}
 	
@@ -373,6 +404,34 @@ public partial class CarromPiece : RigidBody2D
 	public float GetSpeed()
 	{
 		return LinearVelocity.Length();
+	}
+
+	/// <summary>
+	/// Apply realistic friction-based deceleration using force-based approach
+	/// Uses Godot's physics engine correctly with velocity-dependent friction
+	/// </summary>
+	private void ApplyRealisticFriction(float delta)
+	{
+		Vector2 currentVelocity = LinearVelocity;
+		float currentSpeed = currentVelocity.Length();
+		
+		if (currentSpeed < MIN_VELOCITY_THRESHOLD) return;
+
+		// Calculate friction force based on current velocity
+		float frictionForce = PhysicsConfig.CalculateDecelerationForce(currentSpeed, Mass);
+		
+		// Apply friction force in opposite direction of motion (let Godot handle integration)
+		Vector2 frictionForceVector = -currentVelocity.Normalized() * frictionForce;
+		ApplyCentralForce(frictionForceVector);
+		
+		// Apply angular friction using torque
+		float angularSpeed = Mathf.Abs(AngularVelocity);
+		if (angularSpeed > ANGULAR_MIN_THRESHOLD)
+		{
+			float angularFriction = PhysicsConfig.CalculateVelocityFriction(angularSpeed);
+			float angularTorque = -Mathf.Sign(AngularVelocity) * angularFriction * Mass * ANGULAR_TORQUE_SCALE;
+			ApplyTorque(angularTorque);
+		}
 	}
 
 
