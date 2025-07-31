@@ -17,6 +17,11 @@ public interface ICarromModeManager
 	void SetPhaseManager(CarromPhaseManager phaseManager);
 
 	/// <summary>
+	/// Set the piece factory for centralized piece creation
+	/// </summary>
+	void SetPieceFactory(CarromPieceFactory pieceFactory);
+
+	/// <summary>
 	/// Setup the game mode (pieces, players, etc.)
 	/// </summary>
 	void SetupMode();

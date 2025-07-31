@@ -14,6 +14,7 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	private CarromBoard _board;
 	private CarromInputController _inputController;
 	private CarromPhysicsConfig _physicsConfig;
+	private CarromPieceFactory _pieceFactory;
 
 	// Practice mode state
 	private Dictionary<CarromPiece, Vector2> _practiceInitialPositions = new Dictionary<CarromPiece, Vector2>();
@@ -60,6 +61,15 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	{
 		_phaseManager = phaseManager;
 		GD.Print("[CarromPracticeModeManager] Phase manager set");
+	}
+
+	/// <summary>
+	/// Set the piece factory for centralized piece creation
+	/// </summary>
+	public void SetPieceFactory(CarromPieceFactory pieceFactory)
+	{
+		_pieceFactory = pieceFactory;
+		GD.Print("[CarromPracticeModeManager] Piece factory set");
 	}
 	
 	/// <summary>
@@ -184,36 +194,21 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Create a practice piece
+	/// Create a practice piece using the centralized piece factory
 	/// </summary>
 	private CarromPiece CreatePracticePiece(PieceType type, Vector2 position)
 	{
-		PackedScene template = type == PieceType.Striker ? _strikerTemplate : _blackPieceTemplate;
-		
-		if (template == null)
+		if (_pieceFactory == null)
 		{
-			GD.PrintErr($"[CarromPracticeModeManager] No template found for piece type: {type}");
+			GD.PrintErr("[CarromPracticeModeManager] Piece factory not set - cannot create pieces");
 			return null;
 		}
 		
-		// Instantiate the scene
-		var piece = template.Instantiate<CarromPiece>();
-		if (piece == null)
-		{
-			GD.PrintErr($"[CarromPracticeModeManager] Failed to instantiate piece of type: {type}");
-			return null;
-		}
+		// Use centralized piece factory which applies physics parameters
+		var piece = _pieceFactory.CreatePiece(type, position);
 		
-		// Configure the piece
-		piece.Type = type;
-		piece.PhysicsConfig = _physicsConfig;
-		piece.Position = position;
-		
-		// Add to board
-		_board.AddChild(piece);
-		
-		// Track practice pieces
-		if (type != PieceType.Striker)
+		// Track practice pieces (factory handles board addition and physics setup)
+		if (piece != null && type != PieceType.Striker)
 		{
 			_practicePieces.Add(piece);
 		}

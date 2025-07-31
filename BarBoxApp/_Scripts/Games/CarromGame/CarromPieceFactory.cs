@@ -24,6 +24,13 @@ public partial class CarromPieceFactory : Node2D
 	// Piece tracking
 	private List<CarromPiece> _allPieces = new List<CarromPiece>();
 
+	// Physics limits - set by CarromGame.cs
+	private float _minVelocityThreshold = 1.0f;
+	private float _angularMinThreshold = 0.1f;
+	private float _maxVelocityLimit = 2000.0f;
+	private float _maxAngularVelocity = 50.0f;
+	private float _velocityAlertThreshold = 1800.0f;
+
 	/// <summary>
 	/// Initialize the piece factory
 	/// </summary>
@@ -52,6 +59,21 @@ public partial class CarromPieceFactory : Node2D
 	}
 
 	/// <summary>
+	/// Set physics limits from CarromGame
+	/// </summary>
+	public void SetPhysicsLimits(float minVelocityThreshold, float angularMinThreshold, 
+		float maxVelocityLimit, float maxAngularVelocity, float velocityAlertThreshold)
+	{
+		_minVelocityThreshold = minVelocityThreshold;
+		_angularMinThreshold = angularMinThreshold;
+		_maxVelocityLimit = maxVelocityLimit;
+		_maxAngularVelocity = maxAngularVelocity;
+		_velocityAlertThreshold = velocityAlertThreshold;
+		
+		GD.Print($"[CarromPieceFactory] Physics limits set: MaxVel {_maxVelocityLimit}, Alert {_velocityAlertThreshold}");
+	}
+
+	/// <summary>
 	/// Create a carrom piece of specified type
 	/// </summary>
 	public CarromPiece CreatePiece(PieceType type, Vector2 position)
@@ -76,6 +98,10 @@ public partial class CarromPieceFactory : Node2D
 		piece.Type = type;
 		piece.PhysicsConfig = _physicsConfig;
 		piece.Position = position; // Use local position relative to board
+		
+		// Apply centralized physics limits
+		piece.SetPhysicsLimits(_minVelocityThreshold, _angularMinThreshold, 
+			_maxVelocityLimit, _maxAngularVelocity, _velocityAlertThreshold);
 		
 		// Connect piece signals
 		piece.PieceStopped += OnPieceStopped;

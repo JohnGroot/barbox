@@ -18,6 +18,7 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	private CarromBoard _board;
 	private CarromInputController _inputController;
 	private CarromPhysicsConfig _physicsConfig;
+	private CarromPieceFactory _pieceFactory;
 
 	// Competitive mode state
 	private List<CarromPiece> _competitivePieces = new List<CarromPiece>();
@@ -70,6 +71,15 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	{
 		_phaseManager = phaseManager;
 		GD.Print("[CarromCompetitiveModeManager] Phase manager set");
+	}
+
+	/// <summary>
+	/// Set the piece factory for centralized piece creation
+	/// </summary>
+	public void SetPieceFactory(CarromPieceFactory pieceFactory)
+	{
+		_pieceFactory = pieceFactory;
+		GD.Print("[CarromCompetitiveModeManager] Piece factory set");
 	}
 	
 	/// <summary>
@@ -241,36 +251,21 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Create a competitive piece
+	/// Create a competitive piece using the centralized piece factory
 	/// </summary>
 	private CarromPiece CreateCompetitivePiece(PieceType type, Vector2 position)
 	{
-		PackedScene template = GetPieceTemplate(type);
-		
-		if (template == null)
+		if (_pieceFactory == null)
 		{
-			GD.PrintErr($"[CarromCompetitiveModeManager] No template found for piece type: {type}");
+			GD.PrintErr("[CarromCompetitiveModeManager] Piece factory not set - cannot create pieces");
 			return null;
 		}
 		
-		// Instantiate the scene
-		var piece = template.Instantiate<CarromPiece>();
-		if (piece == null)
-		{
-			GD.PrintErr($"[CarromCompetitiveModeManager] Failed to instantiate piece of type: {type}");
-			return null;
-		}
+		// Use centralized piece factory which applies physics parameters
+		var piece = _pieceFactory.CreatePiece(type, position);
 		
-		// Configure the piece
-		piece.Type = type;
-		piece.PhysicsConfig = _physicsConfig;
-		piece.Position = position;
-		
-		// Add to board
-		_board.AddChild(piece);
-		
-		// Track competitive pieces
-		if (type != PieceType.Striker)
+		// Track competitive pieces (factory handles board addition and physics setup)
+		if (piece != null && type != PieceType.Striker)
 		{
 			_competitivePieces.Add(piece);
 		}

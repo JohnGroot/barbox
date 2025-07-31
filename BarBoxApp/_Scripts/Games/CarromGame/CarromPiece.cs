@@ -28,10 +28,21 @@ public partial class CarromPiece : RigidBody2D
 	private float _stoppedTimer = 0.0f;
 	private int _physicsFramesAfterStrike = 0;
 
+	// Physics limits - set by CarromGame.cs
+	private float _minVelocityThreshold = 1.0f;
+	private float _angularMinThreshold = 0.1f;
+	private float _maxVelocityLimit = 2000.0f;
+	private float _maxAngularVelocity = 50.0f;  
+	private float _velocityAlertThreshold = 1800.0f;
+	
 	// Realistic physics constants
-	private const float MIN_VELOCITY_THRESHOLD = 1.0f;
-	private const float ANGULAR_MIN_THRESHOLD = 0.1f;
 	private const float ANGULAR_TORQUE_SCALE = 50.0f;
+	
+	// Collision detection state tracking
+	private bool _useCcdCollision = false;
+	
+	// Velocity monitoring for tunneling protection validation
+	private float _maxSpeedAchieved = 0.0f;
 
 	public override void _Ready()
 	{
@@ -43,6 +54,21 @@ public partial class CarromPiece : RigidBody2D
 		ConnectSignals();
 		
 		GD.Print($"[CarromPiece] {Type} piece initialized");
+	}
+
+	/// <summary>
+	/// Set physics limits from CarromGame
+	/// </summary>
+	public void SetPhysicsLimits(float minVelocityThreshold, float angularMinThreshold, 
+		float maxVelocityLimit, float maxAngularVelocity, float velocityAlertThreshold)
+	{
+		_minVelocityThreshold = minVelocityThreshold;
+		_angularMinThreshold = angularMinThreshold;
+		_maxVelocityLimit = maxVelocityLimit;
+		_maxAngularVelocity = maxAngularVelocity;
+		_velocityAlertThreshold = velocityAlertThreshold;
+		
+		GD.Print($"[CarromPiece] {Type} physics limits set: MaxVel {_maxVelocityLimit}, Alert {_velocityAlertThreshold}");
 	}
 
 	/// <summary>
@@ -69,8 +95,14 @@ public partial class CarromPiece : RigidBody2D
 		ContactMonitor = PhysicsConfig.ContactMonitor;
 		MaxContactsReported = PhysicsConfig.MaxContactsReported;
 		
+		// Enable Continuous Collision Detection for high-speed collision accuracy
+		// CastShape provides better collision detection for circular pieces than CastRay
+		ContinuousCd = CcdMode.CastShape;
+		
 		// Set mass based on piece type
 		Mass = PhysicsConfig.GetMassForPieceType(Type);
+		
+		GD.Print($"[CarromPiece] {Type} piece physics setup with CCD enabled");
 	}
 
 	/// <summary>
@@ -83,13 +115,14 @@ public partial class CarromPiece : RigidBody2D
 		if (_collisionShape2D?.Shape is CircleShape2D existingShape)
 		{
 			_collisionShape = existingShape;
-			_collisionShape.Radius = PhysicsConfig.GetRadiusForPieceType(Type);
+			// Use collision radius with safety margin to prevent tunneling
+			_collisionShape.Radius = PhysicsConfig.GetCollisionRadiusForPieceType(Type);
 		}
 		else
 		{
 			// Fallback: create new collision shape if not found
 			_collisionShape = new CircleShape2D();
-			_collisionShape.Radius = PhysicsConfig.GetRadiusForPieceType(Type);
+			_collisionShape.Radius = PhysicsConfig.GetCollisionRadiusForPieceType(Type);
 			
 			if (_collisionShape2D == null)
 			{
@@ -98,6 +131,7 @@ public partial class CarromPiece : RigidBody2D
 			}
 			_collisionShape2D.Shape = _collisionShape;
 		}
+		
 	}
 
 	/// <summary>
@@ -111,6 +145,7 @@ public partial class CarromPiece : RigidBody2D
 		if (_pieceLabel != null)
 		{
 			_pieceLabel.Text = GetPieceText();
+			// Use visual radius for label sizing (not collision radius)
 			float radius = PhysicsConfig.GetRadiusForPieceType(Type);
 			float size = radius * 2;
 			_pieceLabel.Size = new Vector2(size, size);
@@ -134,6 +169,7 @@ public partial class CarromPiece : RigidBody2D
 	{
 		BodyEntered += OnBodyEntered;
 	}
+	
 
 	/// <summary>
 	/// Get color for piece type
@@ -170,30 +206,14 @@ public partial class CarromPiece : RigidBody2D
 			float impactSpeed = relativeVelocity.Length();
 			Vector2 impactForce = relativeVelocity * Mass;
 			
-			// Apply realistic collision physics
-			ApplyRealisticCollisionResponse(otherPiece, relativeVelocity, impactSpeed);
 			
 			EmitSignal(SignalName.PieceCollided, this, otherPiece, impactForce);
 			
-			GD.Print($"[CarromPiece] {Type} collided with {otherPiece.Type}, impact: {impactForce.Length():F1}");
+			GD.Print($"[CarromPiece] {Type} collided with {otherPiece.Type}, impact: {impactSpeed:F1}");
 		}
 	}
 
-	/// <summary>
-	/// Apply realistic collision response with velocity-dependent restitution
-	/// Works with Godot's physics by modifying material properties
-	/// </summary>
-	private void ApplyRealisticCollisionResponse(CarromPiece otherPiece, Vector2 relativeVelocity, float impactSpeed)
-	{
-		// Calculate velocity-dependent restitution for realistic physics
-		float dynamicRestitution = PhysicsConfig.CalculateCollisionRestitution(impactSpeed);
-		
-		// Apply to physics material (let Godot handle the collision response)
-		if (PhysicsMaterialOverride != null)
-		{
-			PhysicsMaterialOverride.Bounce = dynamicRestitution;
-		}
-	}
+	
 
 	/// <summary>
 	/// Apply strike force to piece
@@ -221,7 +241,7 @@ public partial class CarromPiece : RigidBody2D
 	}
 
 	/// <summary>
-	/// Process physics frame counting
+	/// Process physics frame counting and enhanced collision detection
 	/// </summary>
 	public override void _PhysicsProcess(double delta)
 	{
@@ -231,12 +251,59 @@ public partial class CarromPiece : RigidBody2D
 			_physicsFramesAfterStrike--;
 		}
 
-		// Apply realistic physics-based deceleration
-		if (!IsStopped())
+		// Update collision detection based on velocity
+		UpdateCollisionDetection();
+
+	}
+	
+	/// <summary>
+	/// Minimal physics integration with only essential velocity clamping
+	/// </summary>
+	public override void _IntegrateForces(PhysicsDirectBodyState2D state)
+	{
+		// Only clamp velocities to prevent physics instability - let Godot handle everything else
+		Vector2 velocity = state.LinearVelocity;
+		if (velocity.Length() > _maxVelocityLimit) // Max velocity limit
 		{
-			ApplyRealisticFriction((float)delta);
+			state.LinearVelocity = velocity.Normalized() * _maxVelocityLimit;
+		}
+		
+		if (Mathf.Abs(state.AngularVelocity) > _maxAngularVelocity) // Max angular velocity limit
+		{
+			state.AngularVelocity = Mathf.Sign(state.AngularVelocity) * _maxAngularVelocity;
 		}
 	}
+	
+	/// <summary>
+	/// Update collision detection state tracking (CCD is always enabled now)
+	/// </summary>
+	private void UpdateCollisionDetection()
+	{
+		float currentSpeed = LinearVelocity.Length();
+		bool isHighSpeed = PhysicsConfig.IsHighSpeedVelocity(currentSpeed);
+		
+		// Track maximum speed achieved for tunneling protection validation
+		if (currentSpeed > _maxSpeedAchieved)
+		{
+			_maxSpeedAchieved = currentSpeed;
+			if (_maxSpeedAchieved > _velocityAlertThreshold) // Alert when approaching velocity limit
+			{
+				GD.Print($"[CarromPiece] {Type} approaching max velocity: {_maxSpeedAchieved:F1} (limit: {_maxVelocityLimit})");
+			}
+		}
+		
+		// Update state tracking for debug display (CCD is always enabled)
+		if (isHighSpeed != _useCcdCollision)
+		{
+			_useCcdCollision = isHighSpeed;
+			
+			if (_useCcdCollision)
+			{
+				GD.Print($"[CarromPiece] {Type} high-speed collision at speed: {currentSpeed:F1}");
+			}
+		}
+	}
+	
 	
 	/// <summary>
 	/// Process movement and stop detection
@@ -392,7 +459,7 @@ public partial class CarromPiece : RigidBody2D
 	/// </summary>
 	public Vector2 GetMovementDirection()
 	{
-		if (LinearVelocity.Length() > 1.0f)
+		if (LinearVelocity.Length() > _minVelocityThreshold)
 		{
 			return LinearVelocity.Normalized();
 		}
@@ -407,33 +474,6 @@ public partial class CarromPiece : RigidBody2D
 		return LinearVelocity.Length();
 	}
 
-	/// <summary>
-	/// Apply realistic friction-based deceleration using force-based approach
-	/// Uses Godot's physics engine correctly with velocity-dependent friction
-	/// </summary>
-	private void ApplyRealisticFriction(float delta)
-	{
-		Vector2 currentVelocity = LinearVelocity;
-		float currentSpeed = currentVelocity.Length();
-		
-		if (currentSpeed < MIN_VELOCITY_THRESHOLD) return;
-
-		// Calculate friction force based on current velocity
-		float frictionForce = PhysicsConfig.CalculateDecelerationForce(currentSpeed, Mass);
-		
-		// Apply friction force in opposite direction of motion (let Godot handle integration)
-		Vector2 frictionForceVector = -currentVelocity.Normalized() * frictionForce;
-		ApplyCentralForce(frictionForceVector);
-		
-		// Apply angular friction using torque
-		float angularSpeed = Mathf.Abs(AngularVelocity);
-		if (angularSpeed > ANGULAR_MIN_THRESHOLD)
-		{
-			float angularFriction = PhysicsConfig.CalculateVelocityFriction(angularSpeed);
-			float angularTorque = -Mathf.Sign(AngularVelocity) * angularFriction * Mass * ANGULAR_TORQUE_SCALE;
-			ApplyTorque(angularTorque);
-		}
-	}
 
 
 	/// <summary>
@@ -452,6 +492,7 @@ public partial class CarromPiece : RigidBody2D
 	/// </summary>
 	public override void _Draw()
 	{
+		// Use visual radius (not collision radius) for drawing
 		float radius = PhysicsConfig.GetRadiusForPieceType(Type);
 		
 		// Draw piece as a circle with proper colors and highlights
@@ -463,6 +504,12 @@ public partial class CarromPiece : RigidBody2D
 		
 		// Add border
 		DrawArc(Vector2.Zero, radius, 0, Mathf.Tau, 32, Colors.Black, 2.0f);
+		
+		// Debug: Show CCD collision detection state
+		if (_useCcdCollision && !Engine.IsEditorHint())
+		{
+			DrawArc(Vector2.Zero, radius * 1.1f, 0, Mathf.Tau, 16, Colors.Blue, 1.0f);
+		}
 	}
 
 	/// <summary>
@@ -477,6 +524,7 @@ public partial class CarromPiece : RigidBody2D
 			{
 				BodyEntered -= OnBodyEntered;
 			}
+			
 		}
 	}
 

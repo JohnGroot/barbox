@@ -26,6 +26,27 @@ public partial class CarromGame : GameController
 	[Export] public float TurnTimeLimit { get; set; } = 30.0f;
 	[Export] public CarromPhysicsConfig PhysicsConfig { get; set; }
 
+	[ExportCategory("Strike Controls")]
+	[Export] public float MaxStrikePower { get; set; } = 2000.0f;
+	[Export] public float MinStrikePower { get; set; } = 200.0f;
+	[Export] public float StrikeDeadZone { get; set; } = 30.0f;
+	[Export] public float MaxAimDistance { get; set; } = 200.0f;
+	[Export] public float LateralSensitivity { get; set; } = 1.5f;
+	[Export(PropertyHint.Range, "5.0,90.0,1.0")] public float LateralAngleThreshold { get; set; } = 45.0f;
+	[Export(PropertyHint.Range, "30.0,90.0,5.0")] public float MaxStrikeAngle { get; set; } = 60.0f;
+
+	[ExportCategory("Physics Limits")]
+	[Export] public float MaxVelocityLimit { get; set; } = 2000.0f;
+	[Export] public float MaxAngularVelocity { get; set; } = 50.0f;
+	[Export] public float VelocityAlertThreshold { get; set; } = 1800.0f;
+	[Export] public float MinVelocityThreshold { get; set; } = 1.0f;
+	[Export] public float AngularMinThreshold { get; set; } = 0.1f;
+
+	[ExportCategory("Visual Feedback")]
+	[Export] public float AimLineLength { get; set; } = 100.0f;
+	[Export] public float PowerBarWidth { get; set; } = 60.0f;
+	[Export] public float PowerBarHeight { get; set; } = 8.0f;
+
 	// Board settings are now managed by the CarromBoard component itself
 
 	[ExportCategory("Piece Templates")]
@@ -212,6 +233,11 @@ public partial class CarromGame : GameController
 			_inputController.InitializeWithBoard(_board);
 			_inputController.SetCameraController(_cameraController);
 			_inputController.SetPhaseManager(_phaseManager);
+			
+			// Pass centralized parameters to input controller
+			_inputController.SetStrikeParameters(MaxStrikePower, MinStrikePower, StrikeDeadZone, 
+				MaxAimDistance, LateralSensitivity, LateralAngleThreshold, MaxStrikeAngle);
+			_inputController.SetVisualParameters(AimLineLength, PowerBarWidth, PowerBarHeight);
 		}
 		
 		GD.Print("[CarromGame] Components initialized in order");
@@ -241,17 +267,23 @@ public partial class CarromGame : GameController
 		AddChild(_pieceFactory);
 		_pieceFactory.Initialize(_board, PhysicsConfig, WhitePieceTemplate, BlackPieceTemplate, RedPieceTemplate, StrikerTemplate);
 		
+		// Pass centralized physics limits to piece factory
+		_pieceFactory.SetPhysicsLimits(MinVelocityThreshold, AngularMinThreshold, 
+			MaxVelocityLimit, MaxAngularVelocity, VelocityAlertThreshold);
+		
 		// Initialize practice mode manager
 		_practiceModeManager = new CarromPracticeModeManager();
 		AddChild(_practiceModeManager);
 		_practiceModeManager.Initialize(_board, _inputController, PhysicsConfig, BlackPieceTemplate, StrikerTemplate);
 		_practiceModeManager.SetPhaseManager(_phaseManager);
+		_practiceModeManager.SetPieceFactory(_pieceFactory);
 		
 		// Initialize competitive mode manager
 		_competitiveModeManager = new CarromCompetitiveModeManager();
 		AddChild(_competitiveModeManager);
 		_competitiveModeManager.Initialize(_board, _inputController, PhysicsConfig, WhitePieceTemplate, BlackPieceTemplate, RedPieceTemplate, StrikerTemplate, CompetitiveCreditCost);
 		_competitiveModeManager.SetPhaseManager(_phaseManager);
+		_competitiveModeManager.SetPieceFactory(_pieceFactory);
 		
 		// Connect manager signals
 		ConnectManagerSignals();

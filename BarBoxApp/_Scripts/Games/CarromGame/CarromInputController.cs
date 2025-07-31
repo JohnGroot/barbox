@@ -10,13 +10,19 @@ public partial class CarromInputController : Node2D
 	[Signal] public delegate void AimingStateChangedEventHandler(bool isAiming, Vector2 aimDirection, float power);
 	[Signal] public delegate void StrikerPositionChangedEventHandler(Vector2 newPosition);
 
-	[ExportCategory("Input Settings")]
-	[Export] public float MaxStrikePower { get; set; } = 2000.0f;
-	[Export] public float MinStrikePower { get; set; } = 200.0f;
-	[Export] public float DeadZone { get; set; } = 30.0f;
-	[Export] public float MaxAimDistance { get; set; } = 200.0f;
-	[Export] public float LateralSensitivity { get; set; } = 1.5f; // Sensitivity for lateral striker movement
-	[Export(PropertyHint.Range, "5.0,90.0,1.0")] public float LateralAngleThreshold { get; set; } = 45.0f; // Degrees, range 5-90°
+	// Strike parameters - set by CarromGame.cs
+	private float _maxStrikePower = 2000.0f;
+	private float _minStrikePower = 200.0f;
+	private float _deadZone = 30.0f;
+	private float _maxAimDistance = 200.0f;
+	private float _lateralSensitivity = 1.5f;
+	private float _lateralAngleThreshold = 45.0f;
+	private float _maxStrikeAngle = 60.0f;
+
+	// Visual parameters - set by CarromGame.cs  
+	private float _aimLineLength = 100.0f;
+	private float _powerBarWidth = 60.0f;
+	private float _powerBarHeight = 8.0f;
 
 	[ExportCategory("Visual Feedback")]
 	[Export] public bool ShowAimingLine { get; set; } = true;
@@ -52,6 +58,35 @@ public partial class CarromInputController : Node2D
 	{
 		SetProcessInput(true);
 		GD.Print("[CarromInputController] Input controller ready - waiting for explicit initialization");
+	}
+
+	/// <summary>
+	/// Set strike parameters from CarromGame
+	/// </summary>
+	public void SetStrikeParameters(float maxStrikePower, float minStrikePower, float deadZone, 
+		float maxAimDistance, float lateralSensitivity, float lateralAngleThreshold, float maxStrikeAngle)
+	{
+		_maxStrikePower = maxStrikePower;
+		_minStrikePower = minStrikePower;
+		_deadZone = deadZone;
+		_maxAimDistance = maxAimDistance;
+		_lateralSensitivity = lateralSensitivity;
+		_lateralAngleThreshold = lateralAngleThreshold;
+		_maxStrikeAngle = maxStrikeAngle;
+		
+		GD.Print($"[CarromInputController] Strike parameters set: Power {_minStrikePower}-{_maxStrikePower}, Angle ±{_maxStrikeAngle}°");
+	}
+
+	/// <summary>
+	/// Set visual parameters from CarromGame
+	/// </summary>
+	public void SetVisualParameters(float aimLineLength, float powerBarWidth, float powerBarHeight)
+	{
+		_aimLineLength = aimLineLength;
+		_powerBarWidth = powerBarWidth;
+		_powerBarHeight = powerBarHeight;
+		
+		GD.Print($"[CarromInputController] Visual parameters set: AimLine {_aimLineLength}, PowerBar {_powerBarWidth}x{_powerBarHeight}");
 	}
 
 	/// <summary>
@@ -200,7 +235,7 @@ public partial class CarromInputController : Node2D
 		float inputDistance = inputVector.Length();
 		
 		// Determine input mode based on movement direction
-		if (_currentInputMode == InputMode.None && inputDistance > DeadZone)
+		if (_currentInputMode == InputMode.None && inputDistance > _deadZone)
 		{
 			DetermineInputMode(inputVector);
 		}
@@ -251,7 +286,7 @@ public partial class CarromInputController : Node2D
 		if (_baselinePositions == null || _baselinePositions.Length == 0) return;
 		
 		Vector2 baselineDirection = GetBaselineDirection();
-		float lateralMovement = inputVector.Dot(baselineDirection) * LateralSensitivity;
+		float lateralMovement = inputVector.Dot(baselineDirection) * _lateralSensitivity;
 		
 		// Calculate new position by offsetting from the original striker start position
 		// Since board is at origin, striker positions are already in board coordinates
@@ -275,15 +310,15 @@ public partial class CarromInputController : Node2D
 	{
 		// Calculate power based on total input distance
 		float inputDistance = inputVector.Length();
-		float clampedDistance = Mathf.Clamp(inputDistance, 0, MaxAimDistance);
-		float power = clampedDistance / MaxAimDistance;
+		float clampedDistance = Mathf.Clamp(inputDistance, 0, _maxAimDistance);
+		float power = clampedDistance / _maxAimDistance;
 		
 		// Calculate aim direction from input vector, then clamp to valid angle range
 		Vector2 rawAimDirection = -inputVector.Normalized(); // Opposite of pull direction
 		Vector2 forwardDirection = GetForwardDirection();
 		
-		// Clamp aim direction to valid angle range (±60° from forward)
-		float maxAngleRad = Mathf.DegToRad(60.0f);
+		// Clamp aim direction to valid angle range (±maxStrikeAngle from forward)
+		float maxAngleRad = Mathf.DegToRad(_maxStrikeAngle);
 		float currentAngle = forwardDirection.AngleTo(rawAimDirection);
 		
 		Vector2 aimDirection;
@@ -330,18 +365,18 @@ public partial class CarromInputController : Node2D
 		Vector2 inputVector = _currentAimPosition - _aimStartPosition;
 		float inputDistance = inputVector.Length();
 		
-		if (inputDistance > DeadZone)
+		if (inputDistance > _deadZone)
 		{
-			float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
-			float powerRatio = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
-			float strikePower = Mathf.Lerp(MinStrikePower, MaxStrikePower, powerRatio);
+			float clampedDistance = Mathf.Clamp(inputDistance, _deadZone, _maxAimDistance);
+			float powerRatio = (clampedDistance - _deadZone) / (_maxAimDistance - _deadZone);
+			float strikePower = Mathf.Lerp(_minStrikePower, _maxStrikePower, powerRatio);
 			
 			// Calculate strike direction with angle clamping (same as HandlePowerAiming)
 			Vector2 rawStrikeDirection = -inputVector.Normalized(); // Opposite of pull direction
 			Vector2 forwardDirection = GetForwardDirection();
 			
-			// Clamp strike direction to valid angle range (±60° from forward)
-			float maxAngleRad = Mathf.DegToRad(60.0f);
+			// Clamp strike direction to valid angle range (±maxStrikeAngle from forward)
+			float maxAngleRad = Mathf.DegToRad(_maxStrikeAngle);
 			float currentAngle = forwardDirection.AngleTo(rawStrikeDirection);
 			
 			Vector2 strikeDirection;
@@ -518,14 +553,14 @@ public partial class CarromInputController : Node2D
 		Vector2 inputVector = currentPos - _aimStartPosition;
 		float inputDistance = inputVector.Length();
 		
-		if (inputDistance > DeadZone)
+		if (inputDistance > _deadZone)
 		{
 			// Calculate aim direction with angle clamping (same as HandlePowerAiming)
 			Vector2 rawAimDirection = -inputVector.Normalized(); // Opposite of pull direction
 			Vector2 forwardDirection = GetForwardDirection();
 			
-			// Clamp aim direction to valid angle range (±60° from forward)
-			float maxAngleRad = Mathf.DegToRad(60.0f);
+			// Clamp aim direction to valid angle range (±maxStrikeAngle from forward)
+			float maxAngleRad = Mathf.DegToRad(_maxStrikeAngle);
 			float currentAngle = forwardDirection.AngleTo(rawAimDirection);
 			
 			Vector2 aimDirection;
@@ -541,7 +576,7 @@ public partial class CarromInputController : Node2D
 				aimDirection = forwardDirection.Rotated(clampedAngle);
 			}
 			
-			Vector2 aimEnd = strikerPos + aimDirection * 100.0f; // Fixed length for visibility
+			Vector2 aimEnd = strikerPos + aimDirection * _aimLineLength; // Fixed length for visibility
 			
 			DrawLine(strikerPos, aimEnd, AimingLineColor, AimingLineWidth);
 			
@@ -562,15 +597,15 @@ public partial class CarromInputController : Node2D
 		Vector2 inputVector = currentPos - _aimStartPosition;
 		float inputDistance = inputVector.Length();
 		
-		if (inputDistance > DeadZone)
+		if (inputDistance > _deadZone)
 		{
-			float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
-			float power = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
+			float clampedDistance = Mathf.Clamp(inputDistance, _deadZone, _maxAimDistance);
+			float power = (clampedDistance - _deadZone) / (_maxAimDistance - _deadZone);
 			
 			// Draw power bar
 			Vector2 barPosition = strikerPos + Vector2.Up * 40;
-			float barWidth = 60.0f;
-			float barHeight = 8.0f;
+			float barWidth = _powerBarWidth;
+			float barHeight = _powerBarHeight;
 			
 			// Background
 			DrawRect(new Rect2(barPosition - Vector2.Right * barWidth / 2, 
@@ -636,8 +671,8 @@ public partial class CarromInputController : Node2D
 	// Public accessors
 	public bool IsInputEnabled() => CanAcceptInput();
 	public CarromPiece GetStriker() => _striker;
-	public float GetMaxStrikePower() => MaxStrikePower;
-	public float GetDeadZone() => DeadZone;
+	public float GetMaxStrikePower() => _maxStrikePower;
+	public float GetDeadZone() => _deadZone;
 	public string GetPhaseStatus() => _phaseManager?.GetPhaseStatus() ?? "No phase manager";
 	public bool HasPhaseManager() => _phaseManager != null;
 }
