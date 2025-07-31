@@ -408,18 +408,24 @@ public partial class CarromInputController : Node2D
 	}
 
 	/// <summary>
-	/// Clamp position to baseline using smooth projection
+	/// Clamp position to baseline using smooth projection based on board geometry
 	/// </summary>
 	private Vector2 ClampToBaseline(Vector2 position)
 	{
-		if (_baselinePositions == null || _baselinePositions.Length < 2)
+		if (_board == null)
 		{
 			return position;
 		}
 
-		// Get baseline endpoints (first and last positions)
-		Vector2 baselineStart = _baselinePositions[0];
-		Vector2 baselineEnd = _baselinePositions[_baselinePositions.Length - 1];
+		// Get baseline center and geometry from board
+		Vector2 baselineCenter = _board.GetBaselinePosition(_currentPlayerIndex);
+		float baselineLength = _board.BaselineLength - (_board.BaselineCapRadius * 2);
+		Vector2 baselineDirection = GetBaselineDirection();
+		
+		// Calculate baseline endpoints using actual board geometry
+		float halfLength = baselineLength / 2;
+		Vector2 baselineStart = baselineCenter - baselineDirection * halfLength;
+		Vector2 baselineEnd = baselineCenter + baselineDirection * halfLength;
 		
 		// Project position onto baseline line segment
 		Vector2 baselineVector = baselineEnd - baselineStart;

@@ -50,7 +50,17 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 		_physicsConfig = physicsConfig;
 		IsActive = true;
 		
-		GD.Print("[CarromCompetitiveModeManager] Initialized");
+		// Configure physics config with official board scaling for proportional piece sizes
+		if (_board != null && _physicsConfig != null)
+		{
+			_physicsConfig.SetBoardScaling(
+				_board.ScaleFactor,
+				_board.PieceRadius,
+				_board.OfficialStrikerRadius
+			);
+		}
+		
+		GD.Print("[CarromCompetitiveModeManager] Initialized with board scaling");
 	}
 	
 	/// <summary>

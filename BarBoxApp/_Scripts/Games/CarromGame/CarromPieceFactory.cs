@@ -38,7 +38,17 @@ public partial class CarromPieceFactory : Node2D
 		_redPieceTemplate = redTemplate;
 		_strikerTemplate = strikerTemplate;
 		
-		GD.Print("[CarromPieceFactory] Initialized");
+		// Configure physics config with official board scaling for proportional piece sizes
+		if (_board != null && _physicsConfig != null)
+		{
+			_physicsConfig.SetBoardScaling(
+				_board.ScaleFactor,
+				_board.PieceRadius,
+				_board.OfficialStrikerRadius
+			);
+		}
+		
+		GD.Print("[CarromPieceFactory] Initialized with board scaling");
 	}
 
 	/// <summary>

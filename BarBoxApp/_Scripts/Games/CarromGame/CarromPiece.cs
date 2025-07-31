@@ -54,6 +54,7 @@ public partial class CarromPiece : RigidBody2D
 		if (PhysicsConfig == null)
 		{
 			PhysicsConfig = new CarromPhysicsConfig();
+			GD.PrintErr("[CarromPiece] No PhysicsConfig provided - using fallback values without board scaling. This may result in incorrect piece proportions.");
 		}
 	}
 

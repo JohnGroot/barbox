@@ -8,6 +8,7 @@ radius = 19.5
 
 [node name="StrikerPiece" type="RigidBody2D"]
 gravity_scale = 0.0
+continuous_cd = 2
 contact_monitor = true
 max_contacts_reported = 10
 linear_damp = 2.0

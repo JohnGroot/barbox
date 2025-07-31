@@ -18,14 +18,10 @@ public partial class CarromBoard : Node2D
 	[Export] public Color PocketColor { get; set; } = Colors.Black;
 
 	/// <summary>
-	/// Get horizontal baseline distance (for top/bottom players)
+	/// Get baseline distance from board edge to baseline center (same for all sides since board is square)
 	/// </summary>
-	public float GetHorizontalBaselineDistance() => BoardSize * F_BASELINE_MARGIN_PERCENT;
+	public float GetBaselineDistanceFromEdge() => BaselineDistanceFromEdge;
 
-	/// <summary>
-	/// Get vertical baseline distance (for left/right players)
-	/// </summary>
-	public float GetVerticalBaselineDistance() => BoardSize * F_BASELINE_MARGIN_PERCENT;
 	// Physics and collision setup
 	private StaticBody2D _boardPhysics;
 	private List<CarromPocket> _pockets = new List<CarromPocket>();
@@ -41,7 +37,7 @@ public partial class CarromBoard : Node2D
 	private const float B_BORDER_WIDTH_CM = 7.0f; // Frame width 6.35-7.60cm
 	private const float C_POCKET_DIAMETER_CM = 4.45f; // Pocket diameter 4.45cm (±0.15cm)
 	private const float BASELINE_LENGTH_CM = 47.0f; // Official specification: "Two straight lines of 47 cm each in length" (±0.30cm)
-	private const float E_BASELINE_BOTTOM_LINE_CM = 0.45f; // Bottom line: 3x corner line thickness (0.15 × 3)
+	private const float E_BASELINE_BOTTOM_LINE_CM = 0.575f; // Official baseline thickness: 0.50-0.65cm (using mid-range)
 	private const float CORNER_LINE_THICKNESS_CM = 0.15f; // Corner line thickness from diagram
 	private const float F_BASELINE_DISTANCE_CM = 10.15f; // Lower baseline 10.15cm from frame
 	private float F_BASELINE_MARGIN_PERCENT = 0.068f; // F=10.15cm out of 74cm, closer to edge
@@ -55,6 +51,10 @@ public partial class CarromBoard : Node2D
 	private const float L_CENTER_RING_DIAMETER_CM = 17.0f; // Center ring diameter
 	private const float M_CORNER_ARC_WIDTH_CM = 6.35f; // M dimension: corner arc width
 	private const float STRIKER_DIAMETER_CM = 4.13f; // Official striker max diameter from carrom laws
+	
+	// Official piece dimensions from https://www.indiancarrom.co.in/laws-of-carrom/
+	private const float PIECE_DIAMETER_CM = 3.1f; // Mid-range of official 3.02-3.18cm diameter
+	private const float PIECE_THICKNESS_CM = 0.8f; // Mid-range of official 0.70-0.90cm thickness
 
 	// Physics constants
 	private const float BOARD_FRICTION = 0.05f; // Very low friction for smooth sliding
@@ -77,6 +77,20 @@ public partial class CarromBoard : Node2D
 	public float CenterDotRadius => (K_CENTER_DOT_DIAMETER_CM / 2) * ScaleFactor; // K dimension
 	public float CenterRingRadius => (L_CENTER_RING_DIAMETER_CM / 2) * ScaleFactor; // L dimension
 	public float StrikerDiameter => STRIKER_DIAMETER_CM * ScaleFactor; // For end cap ring sizing
+	
+	// Official piece dimensions scaled to board size
+	public float PieceRadius => (PIECE_DIAMETER_CM / 2) * ScaleFactor; // Official piece radius (1.55cm scaled)
+	public float PieceDiameter => PIECE_DIAMETER_CM * ScaleFactor; // Official piece diameter (3.1cm scaled)
+	public float PieceThickness => PIECE_THICKNESS_CM * ScaleFactor; // Official piece thickness (0.8cm scaled)
+	public float OfficialStrikerRadius => (STRIKER_DIAMETER_CM / 2) * ScaleFactor; // Official striker radius (2.065cm scaled)
+	
+	// Baseline positioning properties (computed from official Carrom dimensions)
+	public float BoardHalfSize => BoardSize / 2;
+	public float BaselineStrikerDiameter => BaselineCapRadius * 2; // Official striker diameter for baseline calculations
+	public float ThickLineDistanceFromCenter => BoardHalfSize - BaselineDistance; // Distance from center to thick exterior baseline
+	public float ThinLineDistanceFromCenter => BoardHalfSize - BaselineDistance - BaselineStrikerDiameter; // Distance from center to thin interior baseline
+	public float BaselineCenterDistanceFromCenter => (ThickLineDistanceFromCenter + ThinLineDistanceFromCenter) / 2; // Distance from center to baseline center
+	public float BaselineDistanceFromEdge => BaselineDistance + BaselineStrikerDiameter / 2; // Distance from board edge to baseline center
 
 	public override void _Ready()
 	{
@@ -111,30 +125,29 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	private void CreateBorderCollisions()
 	{
-		Vector2 halfSize = Vector2.One * (BoardSize / 2);
 		float totalBorder = BorderWidth + LineWidth;
 
 		// Top border
 		CreateBorderSegment(
-			new Vector2(0, -halfSize.Y - totalBorder / 2),
+			new Vector2(0, -BoardHalfSize - totalBorder / 2),
 			new Vector2(BoardSize + totalBorder * 2, totalBorder)
 		);
 
 		// Bottom border
 		CreateBorderSegment(
-			new Vector2(0, halfSize.Y + totalBorder / 2),
+			new Vector2(0, BoardHalfSize + totalBorder / 2),
 			new Vector2(BoardSize + totalBorder * 2, totalBorder)
 		);
 
 		// Left border
 		CreateBorderSegment(
-			new Vector2(-halfSize.X - totalBorder / 2, 0),
+			new Vector2(-BoardHalfSize - totalBorder / 2, 0),
 			new Vector2(totalBorder, BoardSize)
 		);
 
 		// Right border
 		CreateBorderSegment(
-			new Vector2(halfSize.X + totalBorder / 2, 0),
+			new Vector2(BoardHalfSize + totalBorder / 2, 0),
 			new Vector2(totalBorder, BoardSize)
 		);
 	}
@@ -175,16 +188,15 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	private void CalculatePocketPositions()
 	{
-		Vector2 halfSize = Vector2.One * (BoardSize / 2);
 		// Pockets are positioned at corners - C dimension (4.45cm) defines both diameter and edge-to-edge distance
 		float pocketCenterOffset = PocketRadius; // Distance from board edge to pocket center
 		
 		_pocketPositions = new Vector2[]
 		{
-			new Vector2(-halfSize.X + pocketCenterOffset, -halfSize.Y + pocketCenterOffset), // Top-left corner
-			new Vector2(halfSize.X - pocketCenterOffset, -halfSize.Y + pocketCenterOffset),  // Top-right corner
-			new Vector2(-halfSize.X + pocketCenterOffset, halfSize.Y - pocketCenterOffset),  // Bottom-left corner
-			new Vector2(halfSize.X - pocketCenterOffset, halfSize.Y - pocketCenterOffset)    // Bottom-right corner
+			new Vector2(-BoardHalfSize + pocketCenterOffset, -BoardHalfSize + pocketCenterOffset), // Top-left corner
+			new Vector2(BoardHalfSize - pocketCenterOffset, -BoardHalfSize + pocketCenterOffset),  // Top-right corner
+			new Vector2(-BoardHalfSize + pocketCenterOffset, BoardHalfSize - pocketCenterOffset),  // Bottom-left corner
+			new Vector2(BoardHalfSize - pocketCenterOffset, BoardHalfSize - pocketCenterOffset)    // Bottom-right corner
 		};
 
 		// Position the pocket nodes
@@ -204,7 +216,6 @@ public partial class CarromBoard : Node2D
 
 		DrawBoard();
 		DrawBorders();
-		DrawInnerPlayingArea();
 		DrawBaselines();
 		DrawOfficialArrows(); // Official 4 arrows pointing toward pockets
 		DrawCenterCircle();
@@ -216,8 +227,8 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	private void DrawBoard()
 	{
-		Vector2 halfSize = Vector2.One * (BoardSize / 2);
-		Rect2 boardRect = new Rect2(-halfSize, Vector2.One * BoardSize);
+		Vector2 halfSizeVector = Vector2.One * BoardHalfSize;
+		Rect2 boardRect = new Rect2(-halfSizeVector, Vector2.One * BoardSize);
 		DrawRect(boardRect, BoardColor);
 	}
 
@@ -227,24 +238,24 @@ public partial class CarromBoard : Node2D
 	private void DrawBorders()
 	{
 		Vector2 fullSize = Vector2.One * BoardSize;
-		Vector2 halfSize = Vector2.One * (BoardSize / 2);
+		Vector2 halfSizeVector = Vector2.One * BoardHalfSize;
 		
 		// Outer border
-		Rect2 outerBorder = new Rect2(-halfSize - Vector2.One * BorderWidth, 
+		Rect2 outerBorder = new Rect2(-halfSizeVector - Vector2.One * BorderWidth, 
 			fullSize + Vector2.One * BorderWidth * 2);
 		DrawRect(outerBorder, EdgeColor);
 		
 		// Inner board surface (to create border effect)
-		Rect2 innerBoard = new Rect2(-halfSize, fullSize);
+		Rect2 innerBoard = new Rect2(-halfSizeVector, fullSize);
 		DrawRect(innerBoard, BoardColor);
 		
 		// Inner border line
 		var points = new[] {
-			new Vector2(-halfSize.X, -halfSize.Y),
-			new Vector2(halfSize.X, -halfSize.Y),
-			new Vector2(halfSize.X, halfSize.Y),
-			new Vector2(-halfSize.X, halfSize.Y),
-			new Vector2(-halfSize.X, -halfSize.Y)
+			new Vector2(-BoardHalfSize, -BoardHalfSize),
+			new Vector2(BoardHalfSize, -BoardHalfSize),
+			new Vector2(BoardHalfSize, BoardHalfSize),
+			new Vector2(-BoardHalfSize, BoardHalfSize),
+			new Vector2(-BoardHalfSize, -BoardHalfSize)
 		};
 		for (int i = 0; i < points.Length - 1; i++)
 		{
@@ -254,84 +265,27 @@ public partial class CarromBoard : Node2D
 
 	/// <summary>
 	/// Draw baselines using official 6-element system with correct F dimension positioning
+	/// Each baseline consists of: thick exterior line, thin interior line, and 2 end cap circles with solid centers
 	/// </summary>
 	private void DrawBaselines()
 	{
-		// F dimension: 10.15cm from edge to EXTERIOR (thick) line of baseline
-		float fDistance = BaselineDistance; // F: 10.15cm from frame to exterior thick line
-		float baselineDiameter = BaselineCapRadius * 2; // Use official striker diameter (4.13cm max)
+		// Use computed properties for consistent baseline positioning across the entire codebase
+		// F dimension: 10.15cm from board edge to EXTERIOR (thick) line of baseline
 		
-		// Calculate baseline positions with correct F dimension interpretation
-		float halfSize = BoardSize / 2;
+		// Draw all 4 baselines with proper 6-element structure using computed properties
+		// Bottom baseline (player 0) - horizontal baseline at bottom
+		DrawProperBaseline(new Vector2(0, BaselineCenterDistanceFromCenter), true, 0, ThickLineDistanceFromCenter, ThinLineDistanceFromCenter);
 		
-		// Exterior line positions (F distance from edge) - thick line towards walls
-		float exteriorLineY = halfSize - fDistance;
-		float exteriorLineX = halfSize - fDistance;
+		// Top baseline (player 1) - horizontal baseline at top
+		DrawProperBaseline(new Vector2(0, -BaselineCenterDistanceFromCenter), true, 1, -ThickLineDistanceFromCenter, -ThinLineDistanceFromCenter);
 		
-		// Interior line positions (F + striker diameter from edge) - thin line towards center
-		float interiorLineY = halfSize - fDistance - baselineDiameter;
-		float interiorLineX = halfSize - fDistance - baselineDiameter;
+		// Left baseline (player 2) - vertical baseline at left
+		DrawProperBaseline(new Vector2(-BaselineCenterDistanceFromCenter, 0), false, 2, -ThickLineDistanceFromCenter, -ThinLineDistanceFromCenter);
 		
-		// Baseline center positions (midpoint between exterior and interior lines)
-		float centerY = (exteriorLineY + interiorLineY) / 2;
-		float centerX = (exteriorLineX + interiorLineX) / 2;
-		
-		// Draw all 4 baselines with proper 6-element structure
-		// Bottom baseline (player 0)
-		DrawProperBaseline(new Vector2(0, centerY), true, 0, exteriorLineY, interiorLineY);
-		
-		// Top baseline (player 1)
-		DrawProperBaseline(new Vector2(0, -centerY), true, 1, -exteriorLineY, -interiorLineY);
-		
-		// Left baseline (player 2)
-		DrawProperBaseline(new Vector2(-centerX, 0), false, 2, -exteriorLineX, -interiorLineX);
-		
-		// Right baseline (player 3)
-		DrawProperBaseline(new Vector2(centerX, 0), false, 3, exteriorLineX, interiorLineX);
+		// Right baseline (player 3) - vertical baseline at right
+		DrawProperBaseline(new Vector2(BaselineCenterDistanceFromCenter, 0), false, 3, ThickLineDistanceFromCenter, ThinLineDistanceFromCenter);
 	}
 
-	/// <summary>
-	/// Draw inner playing area defined by the 4 baseline inner lines (official specification)
-	/// </summary>
-	private void DrawInnerPlayingArea()
-	{
-		// Inner playing area is defined by the 4 baseline inner lines, not an arbitrary square
-		// Calculate positions of the 4 baseline inner lines
-		float baselineDistance = BaselineDistance; // F: 10.15cm from frame
-		float innerOffset = BaselineBottomLineThickness / 2 + CornerLineThickness;
-		float halfBaselineLength = BaselineLength / 2;
-		
-		// Calculate inner boundary positions (defined by baseline inner lines)
-		float boardHalfSize = BoardSize / 2;
-		float innerBoundaryY = boardHalfSize - baselineDistance - innerOffset; // Top of bottom baseline inner line
-		float innerBoundaryX = boardHalfSize - baselineDistance - innerOffset; // Left of right baseline inner line
-		
-		// Draw the 4 inner boundary lines (these ARE the baseline inner lines, so they're drawn in DrawBaselines)
-		// This method is now primarily for reference - the actual inner area is defined by baseline inner lines
-		// We can draw connecting lines at the corners if needed for visual clarity
-		
-		// Optional: Draw corner connecting lines (very thin) to complete the inner boundary
-		var cornerPoints = new[] {
-			new Vector2(-halfBaselineLength, -innerBoundaryY), // Bottom-left baseline end to top-left baseline end
-			new Vector2(-innerBoundaryX, -halfBaselineLength), // Top-left baseline end to left-top baseline end
-			
-			new Vector2(halfBaselineLength, -innerBoundaryY),  // Bottom-right baseline end to top-right baseline end
-			new Vector2(innerBoundaryX, -halfBaselineLength),  // Top-right baseline end to right-top baseline end
-			
-			new Vector2(halfBaselineLength, innerBoundaryY),   // Top-right baseline end to bottom-right baseline end
-			new Vector2(innerBoundaryX, halfBaselineLength),   // Bottom-right baseline end to right-bottom baseline end
-			
-			new Vector2(-halfBaselineLength, innerBoundaryY),  // Top-left baseline end to bottom-left baseline end
-			new Vector2(-innerBoundaryX, halfBaselineLength)   // Bottom-left baseline end to left-bottom baseline end
-		};
-		
-		// Draw thin connecting lines at corners (0.15cm thickness like corner lines)
-		// for (int i = 0; i < cornerPoints.Length; i += 2)
-		// {
-		// 	DrawLine(cornerPoints[i], cornerPoints[i + 1], LineColor, CornerLineThickness);
-		// }
-	}
-	
 	/// <summary>
 	/// Draw center elements: L ring (piece containment) + K dot (queen position)
 	/// </summary>
@@ -393,24 +347,14 @@ public partial class CarromBoard : Node2D
 		// Official specification: "Two straight lines of 47 cm each in length... 
 		// The base lines shall be closed by circles of 3.18 cm in diameter at both ends."
 		// This means: 47cm = straight line length, endcaps are added at both ends
-		
+
 		float lineLength = BaselineLength; // 47cm straight line portion
 		float endcapRadius = BaselineCapRadius; // 1.59cm radius (3.18cm diameter / 2)
 		float halfLineLength = (lineLength / 2) - endcapRadius; // 23.5cm from center to line end
 		float endcapCenterOffset = halfLineLength; // Position endcap center beyond line end
-		
+
 		Vector2 leftEndPos = baselineCenter + (isHorizontal ? new Vector2(-endcapCenterOffset, 0) : new Vector2(0, -endcapCenterOffset));
 		Vector2 rightEndPos = baselineCenter + (isHorizontal ? new Vector2(endcapCenterOffset, 0) : new Vector2(0, endcapCenterOffset));
-		
-		// Debug output to verify calculations
-		if (isHorizontal) // Only log for horizontal baselines to avoid spam
-		{
-			float centerToCenterDistance = leftEndPos.DistanceTo(rightEndPos);
-			float totalVisualSpan = centerToCenterDistance + (endcapRadius * 2); // Add one radius on each side
-			GD.Print($"[CarromBoard] Baseline calculation: LineLength={lineLength:F2}, EndcapRadius={endcapRadius:F2}");
-			GD.Print($"[CarromBoard] Center-to-center={centerToCenterDistance:F2}, Total visual span={totalVisualSpan:F2} (should be ~{lineLength + endcapRadius * 2:F2})");
-		}
-		
 		return (leftEndPos, rightEndPos);
 	}
 
@@ -510,7 +454,6 @@ public partial class CarromBoard : Node2D
 		// Arrow length not exceeding 26.70 cm (I dimension)
 		// Arrows leave 5.00 cm from pocket edge (J dimension)
 		
-		float boardHalfSize = BoardSize / 2;
 		float arrowMaxLength = I_CORNER_LINE_LENGTH_CM * ScaleFactor; // 26.70cm max
 		float pocketClearance = J_CORNER_LINE_POCKET_DISTANCE_CM * ScaleFactor; // 5.00cm from pocket
 		
@@ -520,10 +463,10 @@ public partial class CarromBoard : Node2D
 		// Arrow start positions - positioned between baselines, not on them
 		Vector2[] arrowStarts = new[]
 		{
-			new Vector2(-boardHalfSize * 0.3f, -boardHalfSize * 0.3f), // Top-left quadrant
-			new Vector2(boardHalfSize * 0.3f, -boardHalfSize * 0.3f),  // Top-right quadrant
-			new Vector2(-boardHalfSize * 0.3f, boardHalfSize * 0.3f),  // Bottom-left quadrant
-			new Vector2(boardHalfSize * 0.3f, boardHalfSize * 0.3f)    // Bottom-right quadrant
+			new Vector2(-BoardHalfSize * 0.3f, -BoardHalfSize * 0.3f), // Top-left quadrant
+			new Vector2(BoardHalfSize * 0.3f, -BoardHalfSize * 0.3f),  // Top-right quadrant
+			new Vector2(-BoardHalfSize * 0.3f, BoardHalfSize * 0.3f),  // Bottom-left quadrant
+			new Vector2(BoardHalfSize * 0.3f, BoardHalfSize * 0.3f)    // Bottom-right quadrant
 		};
 		
 		// Arrow directions - pointing toward corners at 45-degree angles
@@ -634,10 +577,9 @@ public partial class CarromBoard : Node2D
 		Vector2 baseTangentEnd = new Vector2(-Mathf.Sin(endAngle), Mathf.Cos(endAngle));
 		
 		// Determine which direction points more toward the corners
-		float boardHalfSize = BoardSize / 2;
 		Vector2 nearestCorner = new Vector2(
-			arrowDirection.X > 0 ? boardHalfSize : -boardHalfSize,
-			arrowDirection.Y > 0 ? boardHalfSize : -boardHalfSize
+			arrowDirection.X > 0 ? BoardHalfSize : -BoardHalfSize,
+			arrowDirection.Y > 0 ? BoardHalfSize : -BoardHalfSize
 		);
 		
 		// For START triangle: choose tangent direction that points more toward corner
@@ -698,15 +640,14 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	public Vector2 GetBaselinePosition(int playerIndex)
 	{
-		float halfSize = BoardSize / 2;
-		
+		// Use computed properties for consistent positioning
 		return playerIndex switch
 		{
-			0 => new Vector2(0, halfSize - GetHorizontalBaselineDistance()),     // Bottom (Player 1)
-			1 => new Vector2(0, -(halfSize - GetHorizontalBaselineDistance())), // Top (Player 2)  
-			2 => new Vector2(-(halfSize - GetVerticalBaselineDistance()), 0),   // Left (Player 3)
-			3 => new Vector2(halfSize - GetVerticalBaselineDistance(), 0),      // Right (Player 4)
-			_ => new Vector2(0, halfSize - GetHorizontalBaselineDistance())     // Default to bottom
+			0 => new Vector2(0, BaselineCenterDistanceFromCenter),     // Bottom (Player 1)
+			1 => new Vector2(0, -BaselineCenterDistanceFromCenter),    // Top (Player 2)  
+			2 => new Vector2(-BaselineCenterDistanceFromCenter, 0),    // Left (Player 3)
+			3 => new Vector2(BaselineCenterDistanceFromCenter, 0),     // Right (Player 4)
+			_ => new Vector2(0, BaselineCenterDistanceFromCenter)      // Default to bottom
 		};
 	}
 
@@ -743,9 +684,8 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	public bool IsOnBoard(Vector2 position)
 	{
-		Vector2 halfSize = Vector2.One * (BoardSize / 2);;
-		return position.X >= -halfSize.X && position.X <= halfSize.X &&
-			   position.Y >= -halfSize.Y && position.Y <= halfSize.Y;
+		return position.X >= -BoardHalfSize && position.X <= BoardHalfSize &&
+			   position.Y >= -BoardHalfSize && position.Y <= BoardHalfSize;
 	}
 
 	/// <summary>

@@ -193,6 +193,16 @@ public partial class CarromGame : GameController
 			// Board should be self-contained and fully initialized from its own exports
 			_board.RefreshBoard(); // Ensure board is fully initialized
 			
+			// Configure physics config with official board scaling for proportional piece sizes
+			if (PhysicsConfig != null)
+			{
+				PhysicsConfig.SetBoardScaling(
+					_board.ScaleFactor,
+					_board.PieceRadius,
+					_board.OfficialStrikerRadius
+				);
+			}
+			
 			GD.Print($"[CarromGame] Board initialized with size: {_board.BoardSize}, border: {_board.BorderWidth}");
 		}
 		

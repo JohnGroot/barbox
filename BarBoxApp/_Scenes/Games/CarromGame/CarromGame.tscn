@@ -24,3 +24,6 @@ EdgeColor = Color(0.647059, 0.270588, 0, 1)
 
 [node name="CarromInputController" type="Node2D" parent="."]
 script = ExtResource("3_1r7uy")
+MaxStrikePower = 4500.0
+MaxAimDistance = 300.0
+LateralAngleThreshold = 60.0

@@ -34,8 +34,14 @@ public partial class CarromPhysicsConfig : Resource
 // Always use realistic physics - no toggle needed
 
 	[ExportCategory("Piece Sizes")]
-	[Export(PropertyHint.Range, "8.0,20.0,0.5")] public float DefaultPieceRadius { get; set; } = 12.0f;
-	[Export(PropertyHint.Range, "14.0,20.0,0.5")] public float StrikerRadius { get; set; } = 15.0f;
+	[Export(PropertyHint.Range, "8.0,20.0,0.5")] public float DefaultPieceRadius { get; set; } = 12.0f; // Fallback when no board scaling available
+	[Export(PropertyHint.Range, "14.0,20.0,0.5")] public float StrikerRadius { get; set; } = 15.0f; // Fallback when no board scaling available
+	
+	// Board scaling properties for official proportions
+	private float _scaleFactor = 1.0f;
+	private float _officialPieceRadius = 0.0f;
+	private float _officialStrikerRadius = 0.0f;
+	private bool _useOfficialScaling = false;
 
 	[ExportCategory("Collision Detection")]
 	[Export(PropertyHint.Range, "5,20,1")] public int MaxContactsReported { get; set; } = 10;
@@ -72,10 +78,30 @@ public partial class CarromPhysicsConfig : Resource
 	}
 
 	/// <summary>
-	/// Get radius for piece type
+	/// Configure physics config to use official board scaling
+	/// Should be called by the game controller when board is available
+	/// </summary>
+	public void SetBoardScaling(float scaleFactor, float officialPieceRadius, float officialStrikerRadius)
+	{
+		_scaleFactor = scaleFactor;
+		_officialPieceRadius = officialPieceRadius;
+		_officialStrikerRadius = officialStrikerRadius;
+		_useOfficialScaling = true;
+		
+		GD.Print($"[CarromPhysicsConfig] Using official scaling: ScaleFactor={scaleFactor:F2}, PieceRadius={officialPieceRadius:F1}, StrikerRadius={officialStrikerRadius:F1}");
+	}
+
+	/// <summary>
+	/// Get radius for piece type (uses official board scaling if available, otherwise fallback values)
 	/// </summary>
 	public float GetRadiusForPieceType(PieceType type)
 	{
+		if (_useOfficialScaling)
+		{
+			return type == PieceType.Striker ? _officialStrikerRadius : _officialPieceRadius;
+		}
+		
+		// Fallback to export values when no board scaling available
 		return type == PieceType.Striker ? StrikerRadius : DefaultPieceRadius;
 	}
 
