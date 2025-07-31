@@ -50,6 +50,7 @@ public partial class CarromBoard : Node2D
 	private const float K_CENTER_DOT_DIAMETER_CM = 3.18f; // Center dot diameter
 	private const float L_CENTER_RING_DIAMETER_CM = 17.0f; // Center ring diameter
 	private const float M_CORNER_ARC_WIDTH_CM = 6.35f; // M dimension: corner arc width
+	private const float N_CORNER_BASELINE_SPACING = 1.27f; // N dimension: corner line spacing between baseline tips
 	private const float STRIKER_DIAMETER_CM = 4.13f; // Official striker max diameter from carrom laws
 	
 	// Official piece dimensions from https://www.indiancarrom.co.in/laws-of-carrom/
@@ -76,6 +77,7 @@ public partial class CarromBoard : Node2D
 	public float CornerLinePocketDistance => J_CORNER_LINE_POCKET_DISTANCE_CM * ScaleFactor; // J dimension
 	public float CenterDotRadius => (K_CENTER_DOT_DIAMETER_CM / 2) * ScaleFactor; // K dimension
 	public float CenterRingRadius => (L_CENTER_RING_DIAMETER_CM / 2) * ScaleFactor; // L dimension
+	public float CornerBaselineDiameter => N_CORNER_BASELINE_SPACING * ScaleFactor;
 	public float StrikerDiameter => STRIKER_DIAMETER_CM * ScaleFactor; // For end cap ring sizing
 	
 	// Official piece dimensions scaled to board size
@@ -220,6 +222,7 @@ public partial class CarromBoard : Node2D
 		DrawOfficialArrows(); // Official 4 arrows pointing toward pockets
 		DrawCenterCircle();
 		DrawPockets();
+		DrawCirclesBetweenBaselines();
 	}
 
 	/// <summary>
@@ -287,15 +290,57 @@ public partial class CarromBoard : Node2D
 	}
 
 	/// <summary>
-	/// Draw center elements: L ring (piece containment) + K dot (queen position)
+	/// Draw center elements: L ring (piece containment) + K dot (queen position) + 8-sided star
 	/// </summary>
 	private void DrawCenterCircle()
 	{
 		// Draw center ring using L dimension (ring that fits all pieces)
-		DrawArc(Vector2.Zero, CenterRingRadius, 0, Mathf.Tau, 64, LineColor, LineWidth);
+		DrawArc(Vector2.Zero, CenterRingRadius, 0, Mathf.Tau, 64, LineColor, LineWidth, true);
+		
+		// Draw 8-sided star within the center circle
+		DrawEightSidedStar();
 		
 		// Draw center dot using K dimension (where queen goes)
 		DrawCircle(Vector2.Zero, CenterDotRadius, LineColor);
+	}
+
+	/// <summary>
+	/// Draw an 8-sided star within the center circle
+	/// </summary>
+	private void DrawEightSidedStar()
+	{
+		// Calculate star dimensions based on center ring radius
+		float outerRadius = CenterRingRadius; // Star fits within the center ring
+		float innerRadius = outerRadius * 0.2f; // Inner radius for star points
+		
+		Vector2[] starPoints = new Vector2[16]; // 8 outer points + 8 inner points
+		
+		// Generate 8-sided star points
+		for (int i = 0; i < 8; i++)
+		{
+			float outerAngle = (i * Mathf.Tau) / 8f;
+			float innerAngle = ((i + 0.5f) * Mathf.Tau) / 8f;
+			
+			// Outer point (star tip)
+			starPoints[i * 2] = Vector2.Zero + new Vector2(
+				Mathf.Cos(outerAngle) * outerRadius,
+				Mathf.Sin(outerAngle) * outerRadius
+			);
+			
+			// Inner point (between star tips)
+			starPoints[i * 2 + 1] = Vector2.Zero + new Vector2(
+				Mathf.Cos(innerAngle) * innerRadius,
+				Mathf.Sin(innerAngle) * innerRadius
+			);
+		}
+		
+		// Draw the star outline
+		for (int i = 0; i < starPoints.Length; i++)
+		{
+			Vector2 currentPoint = starPoints[i];
+			Vector2 nextPoint = starPoints[(i + 1) % starPoints.Length];
+			DrawLine(currentPoint, nextPoint, LineColor, LineWidth * 0.85f, true);
+		}
 	}
 
 	/// <summary>
@@ -318,18 +363,59 @@ public partial class CarromBoard : Node2D
 		foreach (Vector2 pocketPos in _pocketPositions)
 		{
 			// Outer pocket ring
-			DrawCircle(pocketPos, PocketRadius, PocketColor);
+			DrawCircle(pocketPos, PocketRadius, PocketColor, true, -1f, true);
 			
 			// Inner pocket hole (darker)
-			DrawCircle(pocketPos, PocketRadius * POCKET_INNER_MULTIPLIER, PocketColor.Darkened(0.3f));
+			DrawCircle(pocketPos, PocketRadius * POCKET_INNER_MULTIPLIER, PocketColor.Darkened(0.3f), true, -1f, true);
 			
 			// Highlight ring
 			DrawArc(pocketPos, PocketRadius * POCKET_HIGHLIGHT_MULTIPLIER, 0, Mathf.Tau, 32, 
-					PocketColor.Lightened(0.2f), 2.0f);
+					PocketColor.Lightened(0.2f), 2.0f, true);
 		}
 	}
-
-
+	
+	/// <summary>
+	/// Draw inner playing area defined by the 4 baseline inner lines (official specification)
+	/// </summary>
+	private void DrawCirclesBetweenBaselines()
+	{
+		// Inner playing area is defined by the 4 baseline inner lines, not an arbitrary square
+		// Calculate positions of the 4 baseline inner lines
+		float baselineDistance = BaselineDistance; // F: 10.15cm from frame
+		float innerOffset = BaselineBottomLineThickness / 2 + CornerLineThickness;
+		float halfBaselineLength = BaselineLength / 2;
+		
+		// Calculate inner boundary positions (defined by baseline inner lines)
+		float boardHalfSize = BoardSize / 2;
+		float innerBoundaryY = boardHalfSize - baselineDistance - innerOffset; // Top of bottom baseline inner line
+		float innerBoundaryX = boardHalfSize - baselineDistance - innerOffset; // Left of right baseline inner line
+		
+		// Draw the 4 inner boundary lines (these ARE the baseline inner lines, so they're drawn in DrawBaselines)
+		// This method is now primarily for reference - the actual inner area is defined by baseline inner lines
+		// We can draw connecting lines at the corners if needed for visual clarity
+		
+		// Optional: Draw corner connecting lines (very thin) to complete the inner boundary
+		var cornerPoints = new[] {
+			new Vector2(-halfBaselineLength, -innerBoundaryY), // Bottom-left baseline end to top-left baseline end
+			new Vector2(-innerBoundaryX, -halfBaselineLength), // Top-left baseline end to left-top baseline end
+			
+			new Vector2(halfBaselineLength, -innerBoundaryY),  // Bottom-right baseline end to top-right baseline end
+			new Vector2(innerBoundaryX, -halfBaselineLength),  // Top-right baseline end to right-top baseline end
+			
+			new Vector2(halfBaselineLength, innerBoundaryY),   // Top-right baseline end to bottom-right baseline end
+			new Vector2(innerBoundaryX, halfBaselineLength),   // Bottom-right baseline end to right-bottom baseline end
+			
+			new Vector2(-halfBaselineLength, innerBoundaryY),  // Top-left baseline end to bottom-left baseline end
+			new Vector2(-innerBoundaryX, halfBaselineLength)   // Bottom-left baseline end to left-bottom baseline end
+		};
+		
+		// Draw thin connecting lines at corners (0.15cm thickness like corner lines)
+		for (int i = 0; i < cornerPoints.Length; i += 2)
+		{
+			DrawArc(cornerPoints[i].Lerp(cornerPoints[i + 1], 0.5f), CornerBaselineDiameter, 0, Mathf.Tau, 32, LineColor, LineWidth / 2f, true);
+		}
+	}
+	
 	/// <summary>
 	/// Handle piece being pocketed
 	/// </summary>
@@ -433,7 +519,11 @@ public partial class CarromBoard : Node2D
 	private void DrawBaselineEndCapRing(Vector2 center)
 	{
 		float ringRadius = BaselineCapRadius;
-		DrawArc(center, ringRadius, 0, Mathf.Tau, 32, LineColor, BaselineBottomLineThickness);
+		
+		// Draw a circle to cover up the lines underneath
+		DrawCircle(center, ringRadius * 1.2f, BoardColor, true, -1f, true);
+
+		DrawArc(center, ringRadius, 0, Mathf.Tau, 32, LineColor, BaselineBottomLineThickness / 2f, true);
 	}
 	
 	/// <summary>
@@ -441,7 +531,7 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	private void DrawBaselineEndCapSolidCircle(Vector2 center)
 	{
-		DrawCircle(center, BaselineCapInnerRadius * .8f, LineColor);
+		DrawCircle(center, BaselineCapInnerRadius * .7f, LineColor, true, -1f, true);
 	}
 	
 	/// <summary>
@@ -504,7 +594,7 @@ public partial class CarromBoard : Node2D
 			_cornerArrowEnds[i] = arrowEnd;
 			
 			// Draw the arrow line
-			DrawLine(arrowStart, arrowEnd, LineColor, CornerLineThickness);
+			DrawLine(arrowStart, arrowEnd, LineColor, CornerLineThickness, true);
 			
 			// Draw filled triangle tip pointing toward pocket
 			DrawArrowTriangleTip(arrowEnd, arrowDirection, pocketPos);
@@ -539,7 +629,7 @@ public partial class CarromBoard : Node2D
 		Vector2 baseRight = arrowEnd - perpendicular * (triangleSideLength / 2);
 		
 		// Draw filled equilateral triangle
-		Vector2[] trianglePoints = { tipPoint, baseLeft, baseRight };
+		Vector2[] trianglePoints = [tipPoint, baseLeft, baseRight];
 		DrawColoredPolygon(trianglePoints, LineColor);
 	}
 
@@ -563,7 +653,7 @@ public partial class CarromBoard : Node2D
 		Vector2 arcCenter = arrowStart - (oppositeDirection.Normalized() * arcRadius);
 		
 		// Draw the corner arc centered at arrow start position, facing back toward start
-		DrawArc(arcCenter, arcRadius, startAngle, endAngle, 32, LineColor, CornerLineThickness);
+		DrawArc(arcCenter, arcRadius, startAngle, endAngle, 32, LineColor, CornerLineThickness, true);
 		
 		// Draw triangle arrow tips at the two ends of the arc (where corner lines start)
 		Vector2 arcStartPoint = arcCenter + new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle)) * arcRadius;

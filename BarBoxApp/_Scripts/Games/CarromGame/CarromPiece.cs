@@ -496,19 +496,19 @@ public partial class CarromPiece : RigidBody2D
 		float radius = PhysicsConfig.GetRadiusForPieceType(Type);
 		
 		// Draw piece as a circle with proper colors and highlights
-		DrawCircle(Vector2.Zero, radius, GetPieceColor());
+		DrawCircle(Vector2.Zero, radius, GetPieceColor(), true, -1f, true);
 		
 		// Add highlight for 3D effect
 		Vector2 highlightOffset = new Vector2(-3, -3);
-		DrawCircle(highlightOffset, radius * 0.3f, GetPieceColor().Lightened(0.3f));
+		DrawCircle(highlightOffset, radius * 0.3f, GetPieceColor().Lightened(0.3f), true, -1f, true);
 		
 		// Add border
-		DrawArc(Vector2.Zero, radius, 0, Mathf.Tau, 32, Colors.Black, 2.0f);
+		DrawArc(Vector2.Zero, radius, 0, Mathf.Tau, 32, Colors.Black, 0.75f, true);
 		
 		// Debug: Show CCD collision detection state
 		if (_useCcdCollision && !Engine.IsEditorHint())
 		{
-			DrawArc(Vector2.Zero, radius * 1.1f, 0, Mathf.Tau, 16, Colors.Blue, 1.0f);
+			DrawArc(Vector2.Zero, radius * 1.1f, 0, Mathf.Tau, 16, Colors.Blue, 1.0f, true);
 		}
 	}
 

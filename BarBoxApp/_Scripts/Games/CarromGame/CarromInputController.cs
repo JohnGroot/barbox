@@ -578,14 +578,14 @@ public partial class CarromInputController : Node2D
 			
 			Vector2 aimEnd = strikerPos + aimDirection * _aimLineLength; // Fixed length for visibility
 			
-			DrawLine(strikerPos, aimEnd, AimingLineColor, AimingLineWidth);
+			DrawLine(strikerPos, aimEnd, AimingLineColor, AimingLineWidth, true);
 			
 			// Draw arrowhead
 			Vector2 arrowBase = aimEnd - aimDirection * 15.0f;
 			Vector2 perpendicular = aimDirection.Rotated(Mathf.Pi / 2) * 8.0f;
 			
-			DrawLine(aimEnd, arrowBase + perpendicular, AimingLineColor, AimingLineWidth);
-			DrawLine(aimEnd, arrowBase - perpendicular, AimingLineColor, AimingLineWidth);
+			DrawLine(aimEnd, arrowBase + perpendicular, AimingLineColor, AimingLineWidth, true);
+			DrawLine(aimEnd, arrowBase - perpendicular, AimingLineColor, AimingLineWidth, true);
 		}
 	}
 
@@ -609,13 +609,13 @@ public partial class CarromInputController : Node2D
 			
 			// Background
 			DrawRect(new Rect2(barPosition - Vector2.Right * barWidth / 2, 
-							   new Vector2(barWidth, barHeight)), Colors.Gray);
+							   new Vector2(barWidth, barHeight)), Colors.Gray, true, -1f, true);
 			
 			// Power fill
 			Color powerColor = power > 0.8f ? Colors.Red : 
 							  power > 0.5f ? Colors.Yellow : PowerBarColor;
 			DrawRect(new Rect2(barPosition - Vector2.Right * barWidth / 2, 
-							   new Vector2(barWidth * power, barHeight)), powerColor);
+							   new Vector2(barWidth * power, barHeight)), powerColor, true, -1f, true);
 		}
 	}
 
