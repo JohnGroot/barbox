@@ -30,13 +30,10 @@ public partial class CarromGame : GameController
 	private bool _settlementDetected = false;
 
 	[ExportCategory("Strike Controls")]
-	[Export] public float MaxStrikePower { get; set; } = 2000.0f;
-	[Export] public float MinStrikePower { get; set; } = 200.0f;
 	[Export] public float StrikeDeadZone { get; set; } = 30.0f;
 	[Export] public float MaxAimDistance { get; set; } = 200.0f;
 	[Export] public float LateralSensitivity { get; set; } = 1.5f;
 	[Export(PropertyHint.Range, "5.0,90.0,1.0")] public float LateralAngleThreshold { get; set; } = 45.0f;
-	[Export(PropertyHint.Range, "30.0,180.0,5.0")] public float MaxStrikeAngle { get; set; } = 60.0f;
 
 	[ExportCategory("Physics Limits")]
 	[Export] public float MaxVelocityLimit { get; set; } = 2000.0f;
@@ -242,10 +239,11 @@ public partial class CarromGame : GameController
 			_inputController.InitializeWithBoard(_board);
 			_inputController.SetCameraController(_cameraController);
 			_inputController.SetPhaseManager(_phaseManager);
+			_inputController.SetPhysicsConfig(PhysicsConfig);
 			
-			// Pass centralized parameters to input controller
-			_inputController.SetStrikeParameters(MaxStrikePower, MinStrikePower, StrikeDeadZone, 
-				MaxAimDistance, LateralSensitivity, LateralAngleThreshold, MaxStrikeAngle);
+			// Pass centralized parameters to input controller (strike power now from physics config)
+			_inputController.SetStrikeParameters(PhysicsConfig.MaxStrikePower, PhysicsConfig.MinStrikePower, StrikeDeadZone, 
+				MaxAimDistance, LateralSensitivity, LateralAngleThreshold, PhysicsConfig.MaxStrikeAngle);
 			_inputController.SetVisualParameters(AimLineLength, PowerBarWidth, PowerBarHeight);
 		}
 		

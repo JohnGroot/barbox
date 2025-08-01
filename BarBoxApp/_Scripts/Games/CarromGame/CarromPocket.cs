@@ -17,7 +17,7 @@ public partial class CarromPocket : Area2D
 
 	[ExportCategory("Detection Settings")]
 	[Export] public bool RequireSlowEntry { get; set; } = true; // Pieces must be moving slowly to be pocketed
-	[Export] public float MaxPocketingSpeed { get; set; } = 100.0f; // Max speed for pocketing
+	[Export] public float MaxPocketingSpeed { get; set; } = 100.0f; // Legacy fallback - use physics config instead
 	[Export] public float PocketingDelay { get; set; } = 0.1f; // Delay before confirming pocket
 	[Export] public CarromPhysicsConfig PhysicsConfig { get; set; } // Physics configuration for enhanced pocket behavior
 
@@ -45,8 +45,7 @@ public partial class CarromPocket : Area2D
 	{
 		Outside,     // Not in any pocket zone
 		Influence,   // In influence zone - gradual attraction
-		Rim,         // In rim zone - collision detection active
-		Capture      // In capture zone - guaranteed pocketing
+		Capture      // In capture zone - hole detection active
 	}
 
 	public override void _Ready()
@@ -153,7 +152,7 @@ public partial class CarromPocket : Area2D
 	private bool CanStartPocketing(CarromPiece piece)
 	{
 		// Don't pocket pieces that are moving too fast
-		if (RequireSlowEntry && piece.GetSpeed() > MaxPocketingSpeed)
+		if (RequireSlowEntry && piece.GetSpeed() > GetMaxPocketingSpeed())
 		{
 			return false;
 		}
@@ -180,7 +179,7 @@ public partial class CarromPocket : Area2D
 		}
 		
 		// Check speed requirement if enabled
-		if (RequireSlowEntry && piece.GetSpeed() > MaxPocketingSpeed)
+		if (RequireSlowEntry && piece.GetSpeed() > GetMaxPocketingSpeed())
 		{
 			return false;
 		}
@@ -361,22 +360,12 @@ public partial class CarromPocket : Area2D
 	}
 
 	/// <summary>
-	/// Get rim zone radius
+	/// Get hole zone radius for capture detection
 	/// </summary>
-	private float GetRimZoneRadius()
+	private float GetHoleZoneRadius()
 	{
 		if (PhysicsConfig != null)
-			return PocketRadius * PhysicsConfig.PocketRimZoneMultiplier;
-		return PocketRadius * 1.15f; // Fallback
-	}
-
-	/// <summary>
-	/// Get capture zone radius
-	/// </summary>
-	private float GetCaptureZoneRadius()
-	{
-		if (PhysicsConfig != null)
-			return PocketRadius * PhysicsConfig.PocketCaptureZoneMultiplier;
+			return PocketRadius * PhysicsConfig.PocketHoleZoneMultiplier;
 		return PocketRadius * 0.75f; // Fallback
 	}
 
@@ -387,11 +376,9 @@ public partial class CarromPocket : Area2D
 	{
 		float distanceToCenter = GlobalPosition.DistanceTo(piece.GlobalPosition);
 		
-		if (distanceToCenter <= GetCaptureZoneRadius())
+		if (distanceToCenter <= GetHoleZoneRadius())
 			return PocketZone.Capture;
-		if (distanceToCenter <= GetRimZoneRadius())
-			return PocketZone.Rim;
-		
+			
 		return distanceToCenter <= GetInfluenceZoneRadius() ? PocketZone.Influence : PocketZone.Outside;
 	}
 
@@ -475,7 +462,7 @@ public partial class CarromPocket : Area2D
 		}
 		
 		// Fallback logic
-		return pieceSpeed < MaxPocketingSpeed;
+		return pieceSpeed < GetMaxPocketingSpeed();
 	}
 
 	/// <summary>
@@ -494,12 +481,8 @@ public partial class CarromPocket : Area2D
 				ApplyInfluenceForces(piece, toPocketCenter, distanceToCenter, delta);
 				break;
 				
-			case PocketZone.Rim:
-				ApplyRimPhysics(piece, toPocketCenter, distanceToCenter, delta);
-				break;
-				
 			case PocketZone.Capture:
-				ApplyCaptureForces(piece, toPocketCenter, distanceToCenter, delta);
+				ApplyHolePhysics(piece, toPocketCenter, distanceToCenter, delta);
 				break;
 		}
 	}
@@ -522,122 +505,74 @@ public partial class CarromPocket : Area2D
 		piece.ApplyForce(frictionForce * delta);
 	}
 
+
 	/// <summary>
-	/// Apply rim collision physics and stronger attraction
+	/// Apply hole zone physics - position-based capture detection
 	/// </summary>
-	private void ApplyRimPhysics(CarromPiece piece, Vector2 toPocketCenter, float distanceToCenter, float delta)
+	private void ApplyHolePhysics(CarromPiece piece, Vector2 toPocketCenter, float distanceToCenter, float delta)
 	{
-		float pieceRadius = PhysicsConfig?.GetRadiusForPieceType(piece.Type) ?? 12.0f;
-		float physicalPocketEdge = PocketRadius - pieceRadius; // Actual pocket edge where piece center can't go
-		
-		// Only apply rim collision if piece is actually at the physical pocket edge
-		// AND meets the conditions for bouncing (high speed or bad angle)
-		if (distanceToCenter <= physicalPocketEdge && ShouldBounceOffRim(piece))
+		// Check if piece should be captured in the hole
+		if (ShouldCaptureInHole(piece))
 		{
-			// Piece should bounce off rim
-			ApplyRimCollision(piece, toPocketCenter, distanceToCenter, pieceRadius);
+			PocketPiece(piece);
+			return;
 		}
-		else
+		
+		// Apply attraction forces to guide piece toward hole center
+		if (distanceToCenter >= 1.0f)
 		{
-			// Apply strong attraction forces to guide piece toward capture zone
-			float forceStrength = PhysicsConfig.CalculatePocketRadialForce(distanceToCenter, PocketRadius) * 2.0f;
+			float forceStrength = PhysicsConfig.CalculatePocketRadialForce(distanceToCenter, PocketRadius) * 3.0f;
 			Vector2 attractionForce = toPocketCenter.Normalized() * forceStrength;
 			piece.ApplyForce(attractionForce * delta);
+			
+			// High friction to help pieces settle
+			Vector2 frictionForce = -piece.LinearVelocity * PhysicsConfig.PocketFrictionMultiplier * 2.0f;
+			piece.ApplyForce(frictionForce * delta);
+		}
+	}
+	
+	/// <summary>
+	/// Check if piece should be captured in hole based on position and physics
+	/// </summary>
+	private bool ShouldCaptureInHole(CarromPiece piece)
+	{
+		float distanceToCenter = GlobalPosition.DistanceTo(piece.GlobalPosition);
+		float pieceRadius = PhysicsConfig?.GetRadiusForPieceType(piece.Type) ?? 12.0f;
+		
+		// Real carrom physics: piece falls through when its center gets close enough to hole edge
+		float holeRadius = PocketRadius; // 4.45cm diameter from real carrom specs
+		float captureThreshold = holeRadius - pieceRadius;
+		
+		// Basic position check
+		if (distanceToCenter > captureThreshold)
+			return false;
+			
+		// Validate approach angle - pieces moving away shouldn't fall in
+		if (PhysicsConfig != null)
+		{
+			Vector2 pocketDirection = (GlobalPosition - piece.GlobalPosition).Normalized();
+			bool validAngle = PhysicsConfig.IsValidPocketApproachAngle(piece.LinearVelocity, pocketDirection);
+			if (!validAngle)
+				return false;
 		}
 		
-		// Apply moderate friction (reduced from previous version)
-		Vector2 frictionForce = -piece.LinearVelocity * PhysicsConfig.PocketFrictionMultiplier * 0.7f;
-		piece.ApplyForce(frictionForce * delta);
-	}
-
-	/// <summary>
-	/// Apply capture zone physics - strong attraction
-	/// </summary>
-	private void ApplyCaptureForces(CarromPiece piece, Vector2 toPocketCenter, float distanceToCenter, float delta)
-	{
-		if (distanceToCenter < 1.0f) return;
-		
-		// Very strong attraction in capture zone
-		float forceStrength = PhysicsConfig.CalculatePocketRadialForce(distanceToCenter, PocketRadius) * 3.0f;
-		Vector2 attractionForce = toPocketCenter.Normalized() * forceStrength;
-		piece.ApplyForce(attractionForce * delta);
-		
-		// High friction to ensure pieces settle in center
-		Vector2 frictionForce = -piece.LinearVelocity * PhysicsConfig.PocketFrictionMultiplier * 2.0f;
-		piece.ApplyForce(frictionForce * delta);
-	}
-
-	/// <summary>
-	/// Determine if piece should bounce off rim based on speed and approach angle
-	/// </summary>
-	private bool ShouldBounceOffRim(CarromPiece piece)
-	{
-		if (PhysicsConfig == null) 
-			return false;
-		
+		// Check speed requirements
 		float pieceSpeed = piece.GetSpeed();
-		Vector2 pocketDirection = (GlobalPosition - piece.GlobalPosition).Normalized();
-		float slowSpeedThreshold = PhysicsConfig.PocketMaxCaptureSpeed * 0.5f;
-		
-		// Very slow pieces should never bounce - they can "roll" into pocket
-		if (pieceSpeed < slowSpeedThreshold)
-		{
-			return false;
-		}
-		
-		// Very fast pieces should likely bounce
-		if (pieceSpeed > PhysicsConfig.PocketBounceOutSpeed)
-		{
-			return true;
-		}
-		
-		// Medium speed pieces - check approach angle
-		bool validApproachAngle = PhysicsConfig.IsValidPocketApproachAngle(piece.LinearVelocity, pocketDirection);
-		if (!validApproachAngle)
-		{
-			// Bad approach angle at medium speed - likely to bounce
-			bool bounceFromAngle = pieceSpeed > PhysicsConfig.PocketMaxCaptureSpeed;
-			return bounceFromAngle;
-		}
-		
-		// Good approach angle at medium speed - use probability
-		float captureChance = PhysicsConfig.CalculatePocketCaptureChance(pieceSpeed);
-		float randomValue = GD.Randf();
-		bool shouldBounce = randomValue > captureChance;
-		
-		return shouldBounce;
+		return pieceSpeed <= GetMaxPocketingSpeed();
 	}
+
+
+
 
 	/// <summary>
-	/// Apply rim collision physics with realistic bounce
+	/// Get max pocketing speed from physics config or fallback
 	/// </summary>
-	private void ApplyRimCollision(CarromPiece piece, Vector2 toPocketCenter, float distanceToCenter, float pieceRadius)
+	private float GetMaxPocketingSpeed()
 	{
-		float rimEdgeDistance = PocketRadius - pieceRadius;
-		float penetrationDepth = distanceToCenter - rimEdgeDistance;
-		
-		if (penetrationDepth > 0)
-		{
-			// Calculate collision normal (pointing away from pocket center)
-			Vector2 collisionNormal = -toPocketCenter.Normalized();
-			
-			// Separate the piece from the rim
-			Vector2 separation = collisionNormal * penetrationDepth;
-			piece.GlobalPosition += separation;
-			
-			// Apply velocity reflection with restitution
-			Vector2 velocity = piece.LinearVelocity;
-			float normalVelocity = velocity.Dot(collisionNormal);
-			
-			if (normalVelocity < 0) // Moving into the rim
-			{
-				float restitution = PhysicsConfig?.PocketRimRestitution ?? 0.4f;
-				Vector2 reflectedVelocity = velocity - (1 + restitution) * normalVelocity * collisionNormal;
-				piece.LinearVelocity = reflectedVelocity;
-			}
-		}
+		if (PhysicsConfig != null)
+			return PhysicsConfig.PocketSlowCaptureSpeed;
+		return MaxPocketingSpeed; // Legacy fallback
 	}
-
 
 	/// <summary>
 	/// Clean up invalid piece references

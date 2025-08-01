@@ -47,20 +47,25 @@ public partial class CarromPhysicsConfig : Resource
 	[Export(PropertyHint.Range, "5,20,1")] public int MaxContactsReported { get; set; } = 10;
 	[Export] public bool ContactMonitor { get; set; } = true;
 
+	[ExportCategory("Strike Physics")]
+	[Export(PropertyHint.Range, "50.0,500.0,25.0")] public float MinStrikePower { get; set; } = 150.0f; // From scene settings
+	[Export(PropertyHint.Range, "1000.0,6000.0,100.0")] public float MaxStrikePower { get; set; } = 4500.0f; // From scene settings
+	[Export(PropertyHint.Range, "30.0,180.0,5.0")] public float MaxStrikeAngle { get; set; } = 90.0f; // From scene settings
+	
 	[ExportCategory("Pocket Physics")]
 	[Export(PropertyHint.Range, "1.2,2.5,0.1")] public float PocketInfluenceZoneMultiplier { get; set; } = 1.8f; // Multiplier of pocket radius for influence zone
-	[Export(PropertyHint.Range, "1.0,1.4,0.05")] public float PocketRimZoneMultiplier { get; set; } = 1.15f; // Multiplier of pocket radius for rim collision zone
-	[Export(PropertyHint.Range, "0.6,0.9,0.05")] public float PocketCaptureZoneMultiplier { get; set; } = 0.75f; // Multiplier of pocket radius for guaranteed capture
+	[Export(PropertyHint.Range, "0.6,0.9,0.05")] public float PocketHoleZoneMultiplier { get; set; } = 0.75f; // Multiplier of pocket radius for hole detection
 	
-	[Export(PropertyHint.Range, "50.0,400.0,10.0")] public float PocketMaxCaptureSpeed { get; set; } = 300.0f; // Max speed for reliable pocketing
-	[Export(PropertyHint.Range, "400.0,1000.0,25.0")] public float PocketBounceOutSpeed { get; set; } = 800.0f; // Speed above which pieces likely bounce out
+	[ExportCategory("Speed Ratios")]
+	[Export(PropertyHint.Range, "0.02,1,0.005")] public float PocketSlowCaptureSpeedRatio { get; set; } = 0.05f; // 5% of max strike power
+	[Export(PropertyHint.Range, "0.1,1,0.01")] public float PocketMaxCaptureSpeedRatio { get; set; } = 0.15f; // 15% of max strike power
+	[Export(PropertyHint.Range, "0.3,0.6,0.01")] public float PocketBounceOutSpeedRatio { get; set; } = 0.4f; // 40% of max strike power
 	[Export(PropertyHint.Range, "0.0,1.0,0.1")] public float PocketSpeedCaptureChance { get; set; } = 0.9f; // Base capture chance for medium speeds
 	
 	[Export(PropertyHint.Range, "10.0,100.0,5.0")] public float PocketRadialForceStrength { get; set; } = 40.0f; // Strength of inward attraction force
 	[Export(PropertyHint.Range, "1.0,5.0,0.2")] public float PocketFrictionMultiplier { get; set; } = 2.5f; // Extra friction near pocket edges
-	[Export(PropertyHint.Range, "0.2,0.8,0.05")] public float PocketRimRestitution { get; set; } = 0.4f; // Bounce coefficient for rim collisions
 	
-	[Export(PropertyHint.Range, "15.0,60.0,5.0")] public float PocketMaxApproachAngle { get; set; } = 45.0f; // Max approach angle (degrees) for successful entry
+	[Export(PropertyHint.Range, "15.0,120.0,5.0")] public float PocketMaxApproachAngle { get; set; } = 45.0f; // Max approach angle (degrees) for successful entry
 
 	/// <summary>
 	/// Create physics material for pieces
@@ -160,26 +165,45 @@ public partial class CarromPhysicsConfig : Resource
 	}
 
 	/// <summary>
+	/// Get slow capture speed threshold (always captured)
+	/// </summary>
+	public float PocketSlowCaptureSpeed => MaxStrikePower * PocketSlowCaptureSpeedRatio;
+	
+	/// <summary>
+	/// Get max capture speed threshold (reliable pocketing)
+	/// </summary>
+	public float PocketMaxCaptureSpeed => MaxStrikePower * PocketMaxCaptureSpeedRatio;
+	
+	/// <summary>
+	/// Get bounce out speed threshold (pieces likely bounce out)
+	/// </summary>
+	public float PocketBounceOutSpeed => MaxStrikePower * PocketBounceOutSpeedRatio;
+
+	/// <summary>
 	/// Calculate capture probability based on piece speed
 	/// </summary>
 	public float CalculatePocketCaptureChance(float pieceSpeed)
 	{
+		if (pieceSpeed <= PocketSlowCaptureSpeed)
+		{
+			return 1.0f; // Guaranteed capture for very slow pieces
+		}
+		
 		if (pieceSpeed <= PocketMaxCaptureSpeed)
 		{
 			return 1.0f; // Guaranteed capture for slow pieces
 		}
-		else if (pieceSpeed >= PocketBounceOutSpeed)
+
+		if (pieceSpeed >= PocketBounceOutSpeed)
 		{
 			return 0.0f; // No capture for very fast pieces
 		}
-		else
-		{
-			// Linear interpolation between max capture speed and bounce out speed
-			float speedRange = PocketBounceOutSpeed - PocketMaxCaptureSpeed;
-			float speedOffset = pieceSpeed - PocketMaxCaptureSpeed;
-			float speedFactor = 1.0f - (speedOffset / speedRange);
-			return PocketSpeedCaptureChance * speedFactor;
-		}
+
+		// Linear interpolation between max capture speed and bounce out speed
+		float speedRange = PocketBounceOutSpeed - PocketMaxCaptureSpeed;
+		float speedOffset = pieceSpeed - PocketMaxCaptureSpeed;
+		float speedFactor = 1.0f - (speedOffset / speedRange);
+		return PocketSpeedCaptureChance * speedFactor;
 	}
 
 	/// <summary>

@@ -68,6 +68,7 @@ public partial class CarromBoard : Node2D
 	public float BorderWidth => B_BORDER_WIDTH_CM * ScaleFactor;
 	public float PocketRadius => (C_POCKET_DIAMETER_CM / 2) * ScaleFactor;
 	public float BaselineLength => BASELINE_LENGTH_CM * ScaleFactor; // Official 47cm straight line portion (endcaps close the baseline)
+	public float HalfBaseLineLength => (BaselineLength / 2) - BaselineCapRadius;
 	public float BaselineBottomLineThickness => E_BASELINE_BOTTOM_LINE_CM * ScaleFactor; // E: 0.45cm
 	public float CornerLineThickness => CORNER_LINE_THICKNESS_CM * ScaleFactor; // 0.15cm
 	public float BaselineDistance => F_BASELINE_DISTANCE_CM * ScaleFactor; // F: 10.15cm from frame
@@ -100,7 +101,6 @@ public partial class CarromBoard : Node2D
 		SetupPockets();
 		CalculatePocketPositions();
 		QueueRedraw(); // Trigger initial draw
-		
 	}
 
 	/// <summary>
@@ -432,9 +432,9 @@ public partial class CarromBoard : Node2D
 		// The base lines shall be closed by circles of 3.18 cm in diameter at both ends."
 		// This means: 47cm = straight line length, endcaps are added at both ends
 
-		float lineLength = BaselineLength; // 47cm straight line portion
-		float endcapRadius = BaselineCapRadius; // 1.59cm radius (3.18cm diameter / 2)
-		float halfLineLength = (lineLength / 2) - endcapRadius; // 23.5cm from center to line end
+		// float lineLength = BaselineLength; // 47cm straight line portion
+		//float endcapRadius = BaselineCapRadius; // 1.59cm radius (3.18cm diameter / 2)
+		float halfLineLength = HalfBaseLineLength; // 23.5cm from center to line end
 		float endcapCenterOffset = halfLineLength; // Position endcap center beyond line end
 
 		Vector2 leftEndPos = baselineCenter + (isHorizontal ? new Vector2(-endcapCenterOffset, 0) : new Vector2(0, -endcapCenterOffset));
@@ -452,7 +452,7 @@ public partial class CarromBoard : Node2D
 		
 		// Baseline lines should span exactly 47cm (straight line portion)
 		// Lines connect from one endcap edge to the other endcap edge
-		float halfLineLength = (BaselineLength / 2) - BaselineCapRadius; // 23.5cm from center to line end
+		float halfLineLength = HalfBaseLineLength; // 23.5cm from center to line end
 		
 		// Element 1: Exterior (thick) line (E dimension) - 3x corner line thickness (0.45cm) - towards walls  
 		DrawBaselineOutsideLine(center, isHorizontal, halfLineLength, baselineIndex, exteriorLinePos);
@@ -765,6 +765,46 @@ public partial class CarromBoard : Node2D
 		}
 		
 		return positions;
+	}
+
+	/// <summary>
+	/// Get the closest position on baseline for a given global position
+	/// </summary>
+	public Vector2 GetClosestPositionOnBaseline(Vector2 globalPosition, int playerIndex)
+	{
+		Vector2 baselineCenter = GetBaselinePosition(playerIndex);
+		bool isHorizontalBaseline = playerIndex <= 1; // Players 0,1 use horizontal baselines
+		
+		// Calculate baseline geometry
+		float halfBaselineLength = HalfBaseLineLength;
+		Vector2 baselineStart, baselineEnd;
+		if (isHorizontalBaseline)
+		{
+			// Horizontal baseline (players 0,1)
+			baselineStart = baselineCenter + new Vector2(-halfBaselineLength, 0);
+			baselineEnd = baselineCenter + new Vector2(halfBaselineLength, 0);
+		}
+		else
+		{
+			// Vertical baseline (players 2,3)
+			baselineStart = baselineCenter + new Vector2(0, -halfBaselineLength);
+			baselineEnd = baselineCenter + new Vector2(0, halfBaselineLength);
+		}
+		
+		// Project position onto baseline line segment
+		Vector2 baselineVector = baselineEnd - baselineStart;
+		Vector2 positionVector = globalPosition - baselineStart;
+		
+		// Calculate projection parameter (0.0 = start, 1.0 = end)
+		float projectionParam = positionVector.Dot(baselineVector) / baselineVector.LengthSquared();
+		
+		// Clamp to baseline segment bounds
+		projectionParam = Mathf.Clamp(projectionParam, 0.0f, 1.0f);
+		
+		// Calculate final projected position
+		Vector2 projectedPosition = baselineStart + baselineVector * projectionParam;
+		
+		return projectedPosition;
 	}
 
 	/// <summary>
