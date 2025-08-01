@@ -61,7 +61,6 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 			);
 		}
 		
-		GD.Print("[CarromCompetitiveModeManager] Initialized with board scaling");
 	}
 	
 	/// <summary>
@@ -70,7 +69,6 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	public void SetPhaseManager(CarromPhaseManager phaseManager)
 	{
 		_phaseManager = phaseManager;
-		GD.Print("[CarromCompetitiveModeManager] Phase manager set");
 	}
 
 	/// <summary>
@@ -79,7 +77,6 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	public void SetPieceFactory(CarromPieceFactory pieceFactory)
 	{
 		_pieceFactory = pieceFactory;
-		GD.Print("[CarromCompetitiveModeManager] Piece factory set");
 	}
 	
 	/// <summary>
@@ -123,11 +120,10 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 				}
 			}
 		}
-		
+
 		// Setup competitive mode
 		SetupCompetitiveMode();
-		
-		GD.Print("[CarromCompetitiveModeManager] Competitive mode started");
+
 		return true;
 	}
 
@@ -168,7 +164,6 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 		// Setup players for competitive mode
 		SetupCompetitivePlayers();
 		
-		GD.Print("[CarromCompetitiveModeManager] Competitive mode setup complete");
 		EmitSignal(SignalName.CompetitiveModeSetupComplete);
 	}
 
@@ -318,7 +313,6 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 		_striker.LinearVelocity = Vector2.Zero;
 		_striker.AngularVelocity = 0.0f;
 		
-		GD.Print($"[CarromCompetitiveModeManager] Striker positioned at baseline: {baselinePosition}");
 	}
 
 	/// <summary>
@@ -338,7 +332,6 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 		var currentPlayer = GetCurrentPlayer();
 		EmitSignal(SignalName.TurnChanged, currentPlayer?.PlayerId ?? "unknown", _currentPlayerIndex + 1);
 		
-		GD.Print($"[CarromCompetitiveModeManager] Switched to player: {currentPlayer?.PlayerId}");
 	}
 
 	/// <summary>

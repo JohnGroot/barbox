@@ -58,7 +58,6 @@ public partial class CarromCameraController : Node
 		// Position camera to center on board at origin
 		PositionCameraOverBoard();
 		
-		GD.Print("[CarromCameraController] Camera initialized and positioned over board");
 	}
 
 	// ================================================================
@@ -90,7 +89,6 @@ public partial class CarromCameraController : Node
 		// Calculate zoom to fit board in playable area
 		CalculateAndSetZoom(playableArea);
 		
-		GD.Print($"[CarromCameraController] Camera positioned at origin with offset: {_boardCamera.Offset}, zoom: {_boardCamera.Zoom}");
 	}
 
 	/// <summary>
@@ -124,7 +122,6 @@ public partial class CarromCameraController : Node
 		
 		_boardCamera.Zoom = new Vector2(zoom, zoom);
 		
-		GD.Print($"[CarromCameraController] Board size: {boardSize}, Playable area: {playableArea}, Calculated zoom: {zoom}");
 	}
 
 	// ================================================================

@@ -47,6 +47,21 @@ public partial class CarromPhysicsConfig : Resource
 	[Export(PropertyHint.Range, "5,20,1")] public int MaxContactsReported { get; set; } = 10;
 	[Export] public bool ContactMonitor { get; set; } = true;
 
+	[ExportCategory("Pocket Physics")]
+	[Export(PropertyHint.Range, "1.2,2.5,0.1")] public float PocketInfluenceZoneMultiplier { get; set; } = 1.8f; // Multiplier of pocket radius for influence zone
+	[Export(PropertyHint.Range, "1.0,1.4,0.05")] public float PocketRimZoneMultiplier { get; set; } = 1.15f; // Multiplier of pocket radius for rim collision zone
+	[Export(PropertyHint.Range, "0.6,0.9,0.05")] public float PocketCaptureZoneMultiplier { get; set; } = 0.75f; // Multiplier of pocket radius for guaranteed capture
+	
+	[Export(PropertyHint.Range, "50.0,400.0,10.0")] public float PocketMaxCaptureSpeed { get; set; } = 300.0f; // Max speed for reliable pocketing
+	[Export(PropertyHint.Range, "400.0,1000.0,25.0")] public float PocketBounceOutSpeed { get; set; } = 800.0f; // Speed above which pieces likely bounce out
+	[Export(PropertyHint.Range, "0.0,1.0,0.1")] public float PocketSpeedCaptureChance { get; set; } = 0.9f; // Base capture chance for medium speeds
+	
+	[Export(PropertyHint.Range, "10.0,100.0,5.0")] public float PocketRadialForceStrength { get; set; } = 40.0f; // Strength of inward attraction force
+	[Export(PropertyHint.Range, "1.0,5.0,0.2")] public float PocketFrictionMultiplier { get; set; } = 2.5f; // Extra friction near pocket edges
+	[Export(PropertyHint.Range, "0.2,0.8,0.05")] public float PocketRimRestitution { get; set; } = 0.4f; // Bounce coefficient for rim collisions
+	
+	[Export(PropertyHint.Range, "15.0,60.0,5.0")] public float PocketMaxApproachAngle { get; set; } = 45.0f; // Max approach angle (degrees) for successful entry
+
 	/// <summary>
 	/// Create physics material for pieces
 	/// </summary>
@@ -100,7 +115,6 @@ public partial class CarromPhysicsConfig : Resource
 		_officialStrikerRadius = officialStrikerRadius;
 		_useOfficialScaling = true;
 		
-		GD.Print($"[CarromPhysicsConfig] Using official scaling: ScaleFactor={scaleFactor:F2}, PieceRadius={officialPieceRadius:F1}, StrikerRadius={officialStrikerRadius:F1}");
 	}
 
 	/// <summary>
@@ -143,6 +157,61 @@ public partial class CarromPhysicsConfig : Resource
 		float angularThreshold = PieceStopThreshold * 0.05f;
 		
 		return linearSpeed < effectiveThreshold && Mathf.Abs(angularVelocity) < angularThreshold;
+	}
+
+	/// <summary>
+	/// Calculate capture probability based on piece speed
+	/// </summary>
+	public float CalculatePocketCaptureChance(float pieceSpeed)
+	{
+		if (pieceSpeed <= PocketMaxCaptureSpeed)
+		{
+			return 1.0f; // Guaranteed capture for slow pieces
+		}
+		else if (pieceSpeed >= PocketBounceOutSpeed)
+		{
+			return 0.0f; // No capture for very fast pieces
+		}
+		else
+		{
+			// Linear interpolation between max capture speed and bounce out speed
+			float speedRange = PocketBounceOutSpeed - PocketMaxCaptureSpeed;
+			float speedOffset = pieceSpeed - PocketMaxCaptureSpeed;
+			float speedFactor = 1.0f - (speedOffset / speedRange);
+			return PocketSpeedCaptureChance * speedFactor;
+		}
+	}
+
+	/// <summary>
+	/// Calculate radial attraction force strength based on distance to pocket center
+	/// </summary>
+	public float CalculatePocketRadialForce(float distanceToCenter, float pocketRadius)
+	{
+		float influenceRadius = pocketRadius * PocketInfluenceZoneMultiplier;
+		
+		if (distanceToCenter >= influenceRadius)
+		{
+			return 0.0f; // No force outside influence zone
+		}
+		
+		// Force increases as piece gets closer to center (inverse square law)
+		float normalizedDistance = distanceToCenter / influenceRadius;
+		float forceMultiplier = 1.0f - (normalizedDistance * normalizedDistance);
+		
+		return PocketRadialForceStrength * forceMultiplier;
+	}
+
+	/// <summary>
+	/// Calculate approach angle validity for pocket entry
+	/// </summary>
+	public bool IsValidPocketApproachAngle(Vector2 pieceVelocity, Vector2 pocketDirection)
+	{
+		if (pieceVelocity.Length() < 1.0f) return true; // Very slow pieces can enter from any angle
+		
+		float approachAngle = Mathf.Abs(pieceVelocity.Normalized().AngleTo(pocketDirection.Normalized()));
+		float maxAngleRadians = Mathf.DegToRad(PocketMaxApproachAngle);
+		
+		return approachAngle <= maxAngleRadians;
 	}
 
 }

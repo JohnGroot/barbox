@@ -55,7 +55,6 @@ public partial class CarromPieceFactory : Node2D
 			);
 		}
 		
-		GD.Print("[CarromPieceFactory] Initialized with board scaling");
 	}
 
 	/// <summary>
@@ -70,7 +69,6 @@ public partial class CarromPieceFactory : Node2D
 		_maxAngularVelocity = maxAngularVelocity;
 		_velocityAlertThreshold = velocityAlertThreshold;
 		
-		GD.Print($"[CarromPieceFactory] Physics limits set: MaxVel {_maxVelocityLimit}, Alert {_velocityAlertThreshold}");
 	}
 
 	/// <summary>
@@ -121,7 +119,6 @@ public partial class CarromPieceFactory : Node2D
 		
 		EmitSignal(SignalName.PieceCreated, piece);
 		
-		GD.Print($"[CarromPieceFactory] Created {type} piece at position: {position}");
 		return piece;
 	}
 
@@ -288,7 +285,6 @@ public partial class CarromPieceFactory : Node2D
 		}
 		_allPieces.Clear();
 		
-		GD.Print("[CarromPieceFactory] All pieces cleared");
 	}
 
 	/// <summary>
@@ -344,7 +340,6 @@ public partial class CarromPieceFactory : Node2D
 	/// </summary>
 	private void OnPieceStopped(CarromPiece piece)
 	{
-		GD.Print($"[CarromPieceFactory] Piece stopped: {piece.Type}");
 	}
 
 	/// <summary>
@@ -352,7 +347,6 @@ public partial class CarromPieceFactory : Node2D
 	/// </summary>
 	private void OnPieceCollided(CarromPiece thisPiece, CarromPiece otherPiece, Vector2 impactForce)
 	{
-		GD.Print($"[CarromPieceFactory] Collision: {thisPiece.Type} hit {otherPiece.Type}");
 	}
 
 	/// <summary>

@@ -20,6 +20,10 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	private Dictionary<CarromPiece, Vector2> _practiceInitialPositions = new Dictionary<CarromPiece, Vector2>();
 	private List<CarromPiece> _practicePieces = new List<CarromPiece>();
 	private CarromPiece _striker;
+	
+	// Settlement confirmation timer
+	private float _settlementConfirmationTimer = 0.0f;
+	private const float SETTLEMENT_CONFIRMATION_TIME = 0.1f; // Wait 0.1 seconds to confirm settlement
 
 	// Piece templates
 	private PackedScene _blackPieceTemplate;
@@ -51,7 +55,6 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 			);
 		}
 		
-		GD.Print("[CarromPracticeModeManager] Initialized with board scaling");
 	}
 	
 	/// <summary>
@@ -60,7 +63,6 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	public void SetPhaseManager(CarromPhaseManager phaseManager)
 	{
 		_phaseManager = phaseManager;
-		GD.Print("[CarromPracticeModeManager] Phase manager set");
 	}
 
 	/// <summary>
@@ -69,7 +71,6 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	public void SetPieceFactory(CarromPieceFactory pieceFactory)
 	{
 		_pieceFactory = pieceFactory;
-		GD.Print("[CarromPracticeModeManager] Piece factory set");
 	}
 	
 	/// <summary>
@@ -109,23 +110,31 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 		ClearPracticePieces();
 		_practiceInitialPositions.Clear();
 		
-		// Create striker
+		// Get initial positions using global coordinates for consistency
+		var strikerInitialPosition = _board.ToGlobal(_board.GetBaselinePosition(0));
+		var centerPieceInitialPosition = _board.ToGlobal(Vector2.Zero); // Center of board in global coords
+		
+		// Create striker at baseline position
 		_striker = CreatePracticePiece(PieceType.Striker, Vector2.Zero);
 		_inputController?.SetStriker(_striker);
 		
 		// Create single practice piece in center
 		var centerPiece = CreatePracticePiece(PieceType.Black, Vector2.Zero);
 		
-		// Store initial position for practice piece (center of board)
-		if (centerPiece != null)
+		// Store initial positions for both pieces using global coordinates
+		if (_striker != null)
 		{
-			_practiceInitialPositions[centerPiece] = Vector2.Zero;
+			_practiceInitialPositions[_striker] = strikerInitialPosition;
 		}
 		
-		// Position striker at baseline
-		PositionStrikerAtBaseline();
+		if (centerPiece != null)
+		{
+			_practiceInitialPositions[centerPiece] = centerPieceInitialPosition;
+		}
 		
-		GD.Print("[CarromPracticeModeManager] Practice mode setup complete");
+		// Position pieces at their initial positions
+		PositionPiecesAtInitialPositions();
+		
 		EmitSignal(SignalName.PracticeModeSetupComplete);
 	}
 
@@ -134,11 +143,20 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	/// </summary>
 	public void OnPiecePocketed(CarromPiece piece)
 	{
-		if (piece.Type != PieceType.Striker)
+		if (piece == null || !GodotObject.IsInstanceValid(piece))
 		{
-			// Reset practice mode after a short delay
-			SchedulePracticeReset();
+			GD.PrintErr("[CarromPracticeModeManager] ERROR: OnPiecePocketed called with invalid piece");
+			return;
 		}
+		
+		// Check if phase manager allows reset operations
+		if (_phaseManager != null && !_phaseManager.CanExecuteAdminOperation("Practice mode reset after pocketing"))
+		{
+			return;
+		}
+		
+		// Reset practice mode after piece is pocketed
+		ResetPracticeMode();
 	}
 	
 	/// <summary>
@@ -146,36 +164,9 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	/// </summary>
 	public void OnPiecesSettled()
 	{
-		GD.Print("[CarromPracticeModeManager] OnPiecesSettled() called - starting reset sequence");
-		
-		// In practice mode, automatically reset when pieces settle
-		SchedulePracticeReset();
-		
-		GD.Print("[CarromPracticeModeManager] Reset scheduled, pieces being reset with frozen/deferred unfreeze");
-		
-		// CRITICAL: Defer the phase transition until after pieces are unfrozen
-		// This prevents the race condition where phase becomes Active while pieces are still frozen
-		CallDeferred(MethodName.DeferredPhaseTransition);
+		// Start settlement confirmation timer to ensure pieces are truly settled
+		_settlementConfirmationTimer = SETTLEMENT_CONFIRMATION_TIME;
 	}
-	
-	/// <summary>
-	/// Deferred phase transition to ensure pieces are unfrozen before accepting input
-	/// </summary>
-	private void DeferredPhaseTransition()
-	{
-		GD.Print("[CarromPracticeModeManager] Deferred phase transition - pieces should be unfrozen now");
-		_phaseManager?.TransitionTo(GamePhase.Active);
-		GD.Print("[CarromPracticeModeManager] Phase transitioned to Active, ready for next strike");
-	}
-
-	/// <summary>
-	/// Reset practice mode immediately
-	/// </summary>
-	public void SchedulePracticeReset()
-	{
-		ResetPracticeMode();
-	}
-
 	/// <summary>
 	/// Reset practice mode to initial state
 	/// </summary>
@@ -186,11 +177,35 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 		{
 			return;
 		}
-		
-		// Reset all pieces to their initial positions immediately
-		ResetAllPiecesToStart();
-		
+
+		// Log current piece states for debugging
+		foreach (var kvp in _practiceInitialPositions)
+		{
+			var piece = kvp.Key;
+			if (IsInstanceValid(piece))
+			{
+				var currentPos = piece.GlobalPosition;
+				var velocity = piece.LinearVelocity;
+				var isStopped = piece.IsStopped();
+			}
+		}
+
+		// Reset all pieces to their stored initial positions using immediate method
+		foreach (var kvp in _practiceInitialPositions)
+		{
+			var piece = kvp.Key;
+			var initialGlobalPosition = kvp.Value;
+			
+			if (IsInstanceValid(piece))
+			{
+				ResetPieceToStartImmediate(piece, initialGlobalPosition);
+			}
+		}
+
 		EmitSignal(SignalName.PracticeResetRequested);
+
+		// Immediate phase transition after reset
+		_phaseManager?.TransitionTo(GamePhase.Active);
 	}
 
 	/// <summary>
@@ -200,7 +215,7 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	{
 		if (_pieceFactory == null)
 		{
-			GD.PrintErr("[CarromPracticeModeManager] Piece factory not set - cannot create pieces");
+			GD.PrintErr("[CarromPracticeModeManager] ERROR: Piece factory not set - cannot create pieces");
 			return null;
 		}
 		
@@ -217,19 +232,46 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Position striker at baseline
+	/// Position all pieces at their initial positions using global coordinates
+	/// </summary>
+	private void PositionPiecesAtInitialPositions()
+	{
+		foreach (var kvp in _practiceInitialPositions)
+		{
+			var piece = kvp.Key;
+			var globalPosition = kvp.Value;
+
+			if (IsInstanceValid(piece))
+			{
+				piece.GlobalPosition = globalPosition;
+				piece.LinearVelocity = Vector2.Zero;
+				piece.AngularVelocity = 0.0f;
+			}
+		}
+	}
+	
+	/// <summary>
+	/// Position striker at baseline (legacy method - now uses stored positions)
 	/// </summary>
 	private void PositionStrikerAtBaseline()
 	{
-		if (_striker == null || _board == null) return;
-		
-		// Use board's proportional baseline positioning for player 1 (bottom baseline)
-		Vector2 baselinePosition = _board.GetBaselinePosition(0); // Player 0 = bottom baseline
-		_striker.Position = baselinePosition; // Use local position relative to board
+		if (_striker == null || _board == null)
+			return;
+
+		// Use stored initial position instead of recalculating
+		if (_practiceInitialPositions.TryGetValue(_striker, out var storedPosition))
+		{
+			_striker.GlobalPosition = storedPosition;
+		}
+		else
+		{
+			// Fallback: calculate baseline position
+			Vector2 baselinePosition = _board.GetBaselinePosition(0);
+			_striker.Position = baselinePosition;
+		}
+
 		_striker.LinearVelocity = Vector2.Zero;
 		_striker.AngularVelocity = 0.0f;
-		
-		GD.Print($"[CarromPracticeModeManager] Striker positioned at baseline: {baselinePosition}");
 	}
 
 	/// <summary>
@@ -239,14 +281,14 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	{
 		foreach (var piece in _practicePieces)
 		{
-			if (GodotObject.IsInstanceValid(piece))
+			if (IsInstanceValid(piece))
 			{
 				piece.QueueFree();
 			}
 		}
 		_practicePieces.Clear();
 		
-		if (_striker != null && GodotObject.IsInstanceValid(_striker))
+		if (_striker != null && IsInstanceValid(_striker))
 		{
 			_striker.QueueFree();
 			_striker = null;
@@ -254,44 +296,22 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Reset all pieces to their starting positions
+	/// Reset a single piece to its starting position using immediate synchronous method
 	/// </summary>
-	private void ResetAllPiecesToStart()
+	private void ResetPieceToStartImmediate(CarromPiece piece, Vector2 globalPosition)
 	{
-		// Reset striker to baseline
-		if (_striker != null && GodotObject.IsInstanceValid(_striker))
-		{
-			ResetPieceToStart(_striker, _board?.GetBaselinePosition(0) ?? Vector2.Zero);
-		}
-		
-		// Reset all other pieces to their initial positions
-		foreach (var kvp in _practiceInitialPositions)
-		{
-			var piece = kvp.Key;
-			var initialPosition = kvp.Value;
-			
-			if (IsInstanceValid(piece))
-			{
-				ResetPieceToStart(piece, initialPosition);
-			}
-		}
-	}
+		if (!IsInstanceValid(piece)) 
+			return;
 
-	/// <summary>
-	/// Reset a single piece to its starting position
-	/// </summary>
-	private void ResetPieceToStart(CarromPiece piece, Vector2 position)
-	{
-		if (!IsInstanceValid(piece)) return;
-		
-		GD.Print($"[CarromPracticeModeManager] Resetting {piece.Type} to position {position}");
-		
-		// Use the optimized physics-safe reset method
-		piece.ResetToPosition(position);
-		
-		GD.Print($"[CarromPracticeModeManager] Reset {piece.Type} using optimized method");
-	}
+		// First restore from pocketed state if the piece was pocketed
+		if (!piece.Visible) // Check if piece was pocketed (invisible)
+		{
+			piece.Reset();
+		}
 
+		// Then use the immediate synchronous reset method for positioning
+		piece.Reset(globalPosition);
+	}
 
 	/// <summary>
 	/// Get current striker
@@ -302,11 +322,40 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Get all practice pieces
+	/// Process settlement confirmation timer
 	/// </summary>
-	public List<CarromPiece> GetPracticePieces()
+	public override void _Process(double delta)
 	{
-		return new List<CarromPiece>(_practicePieces);
+		// Handle settlement confirmation timer
+		if (_settlementConfirmationTimer > 0)
+		{
+			float deltaF = (float)delta;
+			_settlementConfirmationTimer -= deltaF;
+			
+			// Check if timer expired and pieces are still settled
+			if (_settlementConfirmationTimer <= 0)
+			{
+				if (AreAllPiecesStopped())
+				{
+					ResetPracticeMode();
+				}
+				else
+				{
+				}
+				_settlementConfirmationTimer = 0.0f;
+			}
+		}
+	}
+
+	/// <summary>
+	/// Cancel pending reset operations (called when new strike is initiated)
+	/// </summary>
+	public void CancelPendingReset()
+	{
+		if (_settlementConfirmationTimer > 0)
+		{
+			_settlementConfirmationTimer = 0.0f;
+		}
 	}
 	
 	/// <summary>
@@ -315,7 +364,7 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	public List<CarromPiece> GetActivePieces()
 	{
 		var allPieces = new List<CarromPiece>(_practicePieces);
-		if (_striker != null && GodotObject.IsInstanceValid(_striker))
+		if (_striker != null && IsInstanceValid(_striker))
 		{
 			allPieces.Add(_striker);
 		}
@@ -342,7 +391,8 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 		// Check all practice pieces
 		foreach (CarromPiece piece in _practicePieces)
 		{
-			if (!IsInstanceValid(piece)) continue;
+			if (!IsInstanceValid(piece)) 
+				continue;
 			
 			if (piece.Visible && !piece.IsStopped())
 			{
@@ -358,5 +408,4 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 		
 		return true;
 	}
-
 }

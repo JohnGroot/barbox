@@ -27,7 +27,6 @@ public partial class CarromPlayer : BasePlayer
 	{
 		base.InitializePlayer();
 		ResetGameStats();
-		GD.Print($"[CarromPlayer] Player {PlayerId} initialized");
 	}
 
 	/// <summary>

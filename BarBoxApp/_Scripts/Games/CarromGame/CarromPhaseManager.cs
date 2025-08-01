@@ -25,7 +25,6 @@ public partial class CarromPhaseManager : Node
 		// Skip validation for no-op transitions
 		if (_currentPhase == newPhase)
 		{
-			GD.Print($"[CarromPhaseManager] No-op transition: {_currentPhase} (already in this phase)");
 			return true;
 		}
 		
@@ -175,7 +174,6 @@ public partial class CarromPhaseManager : Node
 	public bool CanExecuteAdminOperation(string operationName = "Admin operation")
 	{
 		// Admin operations are always allowed regardless of phase
-		GD.Print($"[CarromPhaseManager] {operationName} allowed (admin operation)");
 		return true;
 	}
 	

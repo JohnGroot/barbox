@@ -57,7 +57,6 @@ public partial class CarromInputController : Node2D
 	public override void _Ready()
 	{
 		SetProcessInput(true);
-		GD.Print("[CarromInputController] Input controller ready - waiting for explicit initialization");
 	}
 
 	/// <summary>
@@ -74,7 +73,6 @@ public partial class CarromInputController : Node2D
 		_lateralAngleThreshold = lateralAngleThreshold;
 		_maxStrikeAngle = maxStrikeAngle;
 		
-		GD.Print($"[CarromInputController] Strike parameters set: Power {_minStrikePower}-{_maxStrikePower}, Angle ±{_maxStrikeAngle}°");
 	}
 
 	/// <summary>
@@ -86,7 +84,6 @@ public partial class CarromInputController : Node2D
 		_powerBarWidth = powerBarWidth;
 		_powerBarHeight = powerBarHeight;
 		
-		GD.Print($"[CarromInputController] Visual parameters set: AimLine {_aimLineLength}, PowerBar {_powerBarWidth}x{_powerBarHeight}");
 	}
 
 	/// <summary>
@@ -98,7 +95,6 @@ public partial class CarromInputController : Node2D
 		
 		if (_board != null)
 		{
-			GD.Print("[CarromInputController] Initialized with CarromBoard successfully");
 			UpdateBaselinePositions();
 		}
 		else
@@ -113,7 +109,6 @@ public partial class CarromInputController : Node2D
 	public void SetPhaseManager(CarromPhaseManager phaseManager)
 	{
 		_phaseManager = phaseManager;
-		GD.Print("[CarromInputController] Phase manager set");
 	}
 
 	/// <summary>
@@ -122,7 +117,6 @@ public partial class CarromInputController : Node2D
 	public void SetCameraController(CarromCameraController cameraController)
 	{
 		_cameraController = cameraController;
-		GD.Print("[CarromInputController] Camera controller set");
 	}
 
 	/// <summary>
@@ -133,7 +127,6 @@ public partial class CarromInputController : Node2D
 		if (_board != null)
 		{
 			_baselinePositions = _board.GetBaselinePositions(_currentPlayerIndex);
-			GD.Print($"[CarromInputController] Baseline positions updated for player {_currentPlayerIndex}: {_baselinePositions?.Length} positions");
 		}
 	}
 
@@ -220,7 +213,6 @@ public partial class CarromInputController : Node2D
 		_currentInputMode = InputMode.None;
 
 		QueueRedraw(); // Show aiming indicators
-		GD.Print("[CarromInputController] Input started");
 	}
 
 	/// <summary>
@@ -269,12 +261,10 @@ public partial class CarromInputController : Node2D
 		if (isBackwardMovement)
 		{
 			_currentInputMode = InputMode.PowerAiming;
-			GD.Print("[CarromInputController] Power aiming mode (backward pull)");
 		}
 		else
 		{
 			_currentInputMode = InputMode.LateralMovement;
-			GD.Print("[CarromInputController] Lateral movement mode (forward/lateral movement)");
 		}
 	}
 
@@ -354,7 +344,6 @@ public partial class CarromInputController : Node2D
 		EmitSignal(SignalName.AimingStateChanged, false, Vector2.Zero, 0.0f);
 		QueueRedraw(); // Hide aiming indicators
 		
-		GD.Print("[CarromInputController] Input ended");
 	}
 
 	/// <summary>
@@ -395,7 +384,6 @@ public partial class CarromInputController : Node2D
 			Vector2 strikeForce = strikeDirection * strikePower;
 			
 			EmitSignal(SignalName.StrikeExecuted, strikeForce);
-			GD.Print($"[CarromInputController] Strike executed: power={strikePower:F0}, direction={strikeDirection}");
 		}
 	}
 
@@ -489,15 +477,12 @@ public partial class CarromInputController : Node2D
 		
 		if (!hasStriker)
 		{
-			GD.Print("[CarromInputController] Input blocked - no striker available");
 		}
 		else if (!strikerStopped)
 		{
-			GD.Print($"[CarromInputController] Input blocked - striker not stopped (frozen: {_striker.Freeze})");
 		}
 		else if (!canAccept)
 		{
-			GD.Print("[CarromInputController] Input blocked - phase not accepting input");
 		}
 		
 		return hasStriker && strikerStopped && canAccept;
@@ -514,7 +499,6 @@ public partial class CarromInputController : Node2D
 			bool canReceive = _phaseManager.CanReceiveInput();
 			if (!canReceive)
 			{
-				GD.Print($"[CarromInputController] Input blocked - phase manager reports: {_phaseManager.GetPhaseStatus()}");
 			}
 			return canReceive;
 		}
@@ -625,7 +609,6 @@ public partial class CarromInputController : Node2D
 	public void SetStriker(CarromPiece striker)
 	{
 		_striker = striker;
-		GD.Print($"[CarromInputController] Striker set: {striker?.Type}");
 	}
 
 	/// <summary>
@@ -635,7 +618,6 @@ public partial class CarromInputController : Node2D
 	{
 		_currentPlayerIndex = playerIndex;
 		UpdateBaselinePositions();
-		GD.Print($"[CarromInputController] Current player set to: {playerIndex}");
 	}
 
 	/// <summary>

@@ -26,7 +26,6 @@ public partial class CarromPiece : RigidBody2D
 	private Vector2 _lastVelocity = Vector2.Zero;
 	private bool _wasMoving = false;
 	private float _stoppedTimer = 0.0f;
-	private int _physicsFramesAfterStrike = 0;
 
 	// Physics limits - set by CarromGame.cs
 	private float _minVelocityThreshold = 1.0f;
@@ -53,7 +52,6 @@ public partial class CarromPiece : RigidBody2D
 		SetupPhysicsMaterial();
 		ConnectSignals();
 		
-		GD.Print($"[CarromPiece] {Type} piece initialized");
 	}
 
 	/// <summary>
@@ -67,8 +65,6 @@ public partial class CarromPiece : RigidBody2D
 		_maxVelocityLimit = maxVelocityLimit;
 		_maxAngularVelocity = maxAngularVelocity;
 		_velocityAlertThreshold = velocityAlertThreshold;
-		
-		GD.Print($"[CarromPiece] {Type} physics limits set: MaxVel {_maxVelocityLimit}, Alert {_velocityAlertThreshold}");
 	}
 
 	/// <summary>
@@ -79,8 +75,7 @@ public partial class CarromPiece : RigidBody2D
 		// Create default physics config if not provided
 		if (PhysicsConfig == null)
 		{
-			PhysicsConfig = new CarromPhysicsConfig();
-			GD.PrintErr("[CarromPiece] No PhysicsConfig provided - using fallback values without board scaling. This may result in incorrect piece proportions.");
+			GD.PrintErr($"[CarromPiece] ERROR: No PhysicsConfig provided on {Name}");
 		}
 	}
 
@@ -102,7 +97,6 @@ public partial class CarromPiece : RigidBody2D
 		// Set mass based on piece type
 		Mass = PhysicsConfig.GetMassForPieceType(Type);
 		
-		GD.Print($"[CarromPiece] {Type} piece physics setup with CCD enabled");
 	}
 
 	/// <summary>
@@ -131,7 +125,6 @@ public partial class CarromPiece : RigidBody2D
 			}
 			_collisionShape2D.Shape = _collisionShape;
 		}
-		
 	}
 
 	/// <summary>
@@ -170,7 +163,6 @@ public partial class CarromPiece : RigidBody2D
 		BodyEntered += OnBodyEntered;
 	}
 	
-
 	/// <summary>
 	/// Get color for piece type
 	/// </summary>
@@ -205,15 +197,10 @@ public partial class CarromPiece : RigidBody2D
 			Vector2 relativeVelocity = LinearVelocity - otherPiece.LinearVelocity;
 			float impactSpeed = relativeVelocity.Length();
 			Vector2 impactForce = relativeVelocity * Mass;
-			
-			
+
 			EmitSignal(SignalName.PieceCollided, this, otherPiece, impactForce);
-			
-			GD.Print($"[CarromPiece] {Type} collided with {otherPiece.Type}, impact: {impactSpeed:F1}");
 		}
 	}
-
-	
 
 	/// <summary>
 	/// Apply strike force to piece
@@ -223,39 +210,17 @@ public partial class CarromPiece : RigidBody2D
 		ApplyImpulse(force);
 		_wasMoving = true;
 		_stoppedTimer = 0.0f;
-		_physicsFramesAfterStrike = 3; // Prevent stopped detection for 3 physics frames
-		
-		GD.Print($"[CarromPiece] {Type} struck with force: {force}");
 	}
 
 	/// <summary>
-	/// Check if piece has stopped moving (with hysteresis to prevent fluttering)
+	/// Check if piece has stopped moving using timer-based confirmation with hysteresis
 	/// </summary>
 	public bool IsStopped()
 	{
-		// Don't report stopped immediately after strike to allow physics to propagate
-		if (_physicsFramesAfterStrike > 0)
-			return false;
-		
+		// Use physics config to determine if piece is stopped (includes hysteresis)
 		return PhysicsConfig.IsPieceStopped(LinearVelocity, AngularVelocity, _wasMoving);
 	}
 
-	/// <summary>
-	/// Process physics frame counting and enhanced collision detection
-	/// </summary>
-	public override void _PhysicsProcess(double delta)
-	{
-		// Decrement physics frame counter
-		if (_physicsFramesAfterStrike > 0)
-		{
-			_physicsFramesAfterStrike--;
-		}
-
-		// Update collision detection based on velocity
-		UpdateCollisionDetection();
-
-	}
-	
 	/// <summary>
 	/// Minimal physics integration with only essential velocity clamping
 	/// </summary>
@@ -273,48 +238,14 @@ public partial class CarromPiece : RigidBody2D
 			state.AngularVelocity = Mathf.Sign(state.AngularVelocity) * _maxAngularVelocity;
 		}
 	}
-	
-	/// <summary>
-	/// Update collision detection state tracking (CCD is always enabled now)
-	/// </summary>
-	private void UpdateCollisionDetection()
-	{
-		float currentSpeed = LinearVelocity.Length();
-		bool isHighSpeed = PhysicsConfig.IsHighSpeedVelocity(currentSpeed);
-		
-		// Track maximum speed achieved for tunneling protection validation
-		if (currentSpeed > _maxSpeedAchieved)
-		{
-			_maxSpeedAchieved = currentSpeed;
-			if (_maxSpeedAchieved > _velocityAlertThreshold) // Alert when approaching velocity limit
-			{
-				GD.Print($"[CarromPiece] {Type} approaching max velocity: {_maxSpeedAchieved:F1} (limit: {_maxVelocityLimit})");
-			}
-		}
-		
-		// Update state tracking for debug display (CCD is always enabled)
-		if (isHighSpeed != _useCcdCollision)
-		{
-			_useCcdCollision = isHighSpeed;
-			
-			if (_useCcdCollision)
-			{
-				GD.Print($"[CarromPiece] {Type} high-speed collision at speed: {currentSpeed:F1}");
-			}
-		}
-	}
-	
-	
+
 	/// <summary>
 	/// Process movement and stop detection
 	/// </summary>
 	public override void _Process(double delta)
 	{
-		float deltaF = (float)delta;
-		
 		// Track movement state changes
 		bool isMoving = !IsStopped();
-		
 		if (isMoving)
 		{
 			_wasMoving = true;
@@ -322,6 +253,7 @@ public partial class CarromPiece : RigidBody2D
 		}
 		else if (_wasMoving)
 		{
+			float deltaF = (float)delta;
 			_stoppedTimer += deltaF;
 			
 			// Confirm piece has stopped after a brief delay
@@ -329,10 +261,9 @@ public partial class CarromPiece : RigidBody2D
 			{
 				_wasMoving = false;
 				EmitSignal(SignalName.PieceStopped, this);
-				GD.Print($"[CarromPiece] {Type} stopped at position: {GlobalPosition}");
 			}
 		}
-		
+
 		_lastVelocity = LinearVelocity;
 	}
 
@@ -348,64 +279,59 @@ public partial class CarromPiece : RigidBody2D
 	}
 
 	/// <summary>
-	/// Reset piece to initial state
+	/// Internal method to restore piece to a clean physics and visual state
 	/// </summary>
-	public void ResetPiece()
+	private void RestorePieceState(bool restoreVisualProperties = true, bool conditionalUnfreeze = true)
 	{
-		GD.Print($"[CarromPiece] Resetting {Type} piece - Freeze state before: {Freeze}");
-		
-		// First unfreeze to allow physics operations
-		Freeze = false;
-		
-		// Reset collision detection
-		ContactMonitor = true;
-		
-		// Stop movement after unfreezing
+		// Stop all movement
 		ForceStop();
 		
-		// Make visible
+		// Handle freeze state
+		if (conditionalUnfreeze)
+		{
+			if (Freeze)
+			{
+				Freeze = false;
+			}
+		}
+		else
+		{
+			Freeze = false;
+		}
+		
+		// Restore physics state
+		ContactMonitor = true;
 		Visible = true;
 		
-		GD.Print($"[CarromPiece] Reset {Type} piece complete - Freeze state after: {Freeze}");
+		// Restore visual properties if requested
+		if (restoreVisualProperties)
+		{
+			Scale = Vector2.One;
+			Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f);
+		}
 	}
 
 	/// <summary>
-	/// Reset piece to a specific position using physics-safe methods
-	/// Since the board is at origin, targetPosition is already in the correct coordinate space
+	/// Reset piece to clean state (stop movement, restore physics, make visible)
 	/// </summary>
-	public void ResetToPosition(Vector2 targetPosition)
+	public void Reset()
 	{
-		GD.Print($"[CarromPiece] Resetting {Type} piece to position {targetPosition}");
-		
-		// Step 1: Freeze the body to prevent physics interference
-		Freeze = true;
-		GD.Print($"[CarromPiece] {Type} piece FROZEN for reset");
-		
-		// Step 2: Reset physics state while frozen
-		ForceStop();
-		ContactMonitor = true;
-		Visible = true;
-		
-		// Step 3: Use PhysicsServer2D to set position directly - this bypasses RigidBody2D conflicts
-		// Since board is at origin, targetPosition is already in correct global coordinates
-		var rid = GetRid();
-		var transform = Transform2D.Identity;
-		transform.Origin = targetPosition;
-		PhysicsServer2D.BodySetState(rid, PhysicsServer2D.BodyState.Transform, transform);
-		
-		// Step 4: Unfreeze after position is set (deferred to avoid same-frame conflicts)
-		CallDeferred(GodotObject.MethodName.SetDeferred, RigidBody2D.PropertyName.Freeze, false);
-		CallDeferred(MethodName.LogUnfreezeComplete);
-		
-		GD.Print($"[CarromPiece] {Type} piece position reset complete, unfreezing deferred");
+		RestorePieceState(restoreVisualProperties: true, conditionalUnfreeze: true);
 	}
-	
+
 	/// <summary>
-	/// Log when deferred unfreeze completes
+	/// Reset piece and position it at the specified global coordinates
 	/// </summary>
-	private void LogUnfreezeComplete()
+	public void Reset(Vector2 globalPosition)
 	{
-		GD.Print($"[CarromPiece] {Type} piece UNFROZEN - ready for strikes");
+		// Step 1: Restore state with visual properties
+		RestorePieceState(restoreVisualProperties: true, conditionalUnfreeze: true);
+		
+		// Step 2: Set position
+		GlobalPosition = globalPosition;
+		
+		// Step 3: Final force stop to ensure clean state after position change
+		ForceStop();
 	}
 
 	/// <summary>
@@ -417,8 +343,6 @@ public partial class CarromPiece : RigidBody2D
 		Visible = false;
 		Freeze = true;
 		ContactMonitor = false;
-		
-		GD.Print($"[CarromPiece] {Type} piece pocketed");
 	}
 
 	/// <summary>
@@ -474,8 +398,6 @@ public partial class CarromPiece : RigidBody2D
 		return LinearVelocity.Length();
 	}
 
-
-
 	/// <summary>
 	/// Update visual appearance
 	/// </summary>
@@ -494,17 +416,17 @@ public partial class CarromPiece : RigidBody2D
 	{
 		// Use visual radius (not collision radius) for drawing
 		float radius = PhysicsConfig.GetRadiusForPieceType(Type);
-		
+
 		// Draw piece as a circle with proper colors and highlights
 		DrawCircle(Vector2.Zero, radius, GetPieceColor(), true, -1f, true);
-		
+
 		// Add highlight for 3D effect
 		Vector2 highlightOffset = new Vector2(-3, -3);
 		DrawCircle(highlightOffset, radius * 0.3f, GetPieceColor().Lightened(0.3f), true, -1f, true);
-		
+
 		// Add border
 		DrawArc(Vector2.Zero, radius, 0, Mathf.Tau, 32, Colors.Black, 0.75f, true);
-		
+
 		// Debug: Show CCD collision detection state
 		if (_useCcdCollision && !Engine.IsEditorHint())
 		{
@@ -512,20 +434,13 @@ public partial class CarromPiece : RigidBody2D
 		}
 	}
 
-	/// <summary>
-	/// Cleanup on exit
-	/// </summary>
-	public override void _Notification(int what)
+	public override void _ExitTree()
 	{
-		if (what == NotificationExitTree)
+		base._ExitTree();
+
+		if (IsInstanceValid(this))
 		{
-			// Clean up signals
-			if (GodotObject.IsInstanceValid(this))
-			{
-				BodyEntered -= OnBodyEntered;
-			}
-			
+			BodyEntered -= OnBodyEntered;
 		}
 	}
-
 }

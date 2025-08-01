@@ -101,7 +101,6 @@ public partial class CarromBoard : Node2D
 		CalculatePocketPositions();
 		QueueRedraw(); // Trigger initial draw
 		
-		GD.Print("[CarromBoard] Board initialized successfully with proportional diagram-based layout");
 	}
 
 	/// <summary>
@@ -422,7 +421,6 @@ public partial class CarromBoard : Node2D
 	private void OnPiecePocketed(CarromPiece piece)
 	{
 		EmitSignal(SignalName.PiecePocketed, piece);
-		GD.Print($"[CarromBoard] Piece {piece.Type} pocketed");
 	}
 
 	/// <summary>
@@ -854,6 +852,34 @@ public partial class CarromBoard : Node2D
 			return (_cornerArrowStarts[index], _cornerArrowEnds[index]);
 		}
 		return (Vector2.Zero, Vector2.Zero);
+	}
+
+	/// <summary>
+	/// Set physics configuration for all pockets
+	/// </summary>
+	public void SetPocketPhysicsConfig(CarromPhysicsConfig physicsConfig)
+	{
+		foreach (var pocket in _pockets)
+		{
+			if (GodotObject.IsInstanceValid(pocket))
+			{
+				pocket.PhysicsConfig = physicsConfig;
+			}
+		}
+	}
+
+	/// <summary>
+	/// Set phase manager for all pockets
+	/// </summary>
+	public void SetPocketPhaseManager(CarromPhaseManager phaseManager)
+	{
+		foreach (var pocket in _pockets)
+		{
+			if (GodotObject.IsInstanceValid(pocket))
+			{
+				pocket.SetPhaseManager(phaseManager);
+			}
+		}
 	}
 
 	/// <summary>

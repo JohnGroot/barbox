@@ -26,6 +26,9 @@ public partial class CarromGame : GameController
 	[Export] public float TurnTimeLimit { get; set; } = 30.0f;
 	[Export] public CarromPhysicsConfig PhysicsConfig { get; set; }
 
+	// Settlement state tracking to prevent infinite loops
+	private bool _settlementDetected = false;
+
 	[ExportCategory("Strike Controls")]
 	[Export] public float MaxStrikePower { get; set; } = 2000.0f;
 	[Export] public float MinStrikePower { get; set; } = 200.0f;
@@ -33,7 +36,7 @@ public partial class CarromGame : GameController
 	[Export] public float MaxAimDistance { get; set; } = 200.0f;
 	[Export] public float LateralSensitivity { get; set; } = 1.5f;
 	[Export(PropertyHint.Range, "5.0,90.0,1.0")] public float LateralAngleThreshold { get; set; } = 45.0f;
-	[Export(PropertyHint.Range, "30.0,90.0,5.0")] public float MaxStrikeAngle { get; set; } = 60.0f;
+	[Export(PropertyHint.Range, "30.0,180.0,5.0")] public float MaxStrikeAngle { get; set; } = 60.0f;
 
 	[ExportCategory("Physics Limits")]
 	[Export] public float MaxVelocityLimit { get; set; } = 2000.0f;
@@ -89,6 +92,8 @@ public partial class CarromGame : GameController
 	{
 		GameId = "carrom_game";
 		SetGameMode(GameMode.Practice); // Start in practice mode
+		
+		// Production logging: using GD.PrintErr for critical errors only
 		
 		// Initialize physics config
 		if (PhysicsConfig == null)
@@ -146,7 +151,6 @@ public partial class CarromGame : GameController
 			// Connect board signals
 			_board.PiecePocketed += OnPiecePocketed;
 			
-			GD.Print("[CarromGame] CarromBoard found and configured successfully");
 		}
 		catch (System.Exception ex)
 		{
@@ -170,7 +174,6 @@ public partial class CarromGame : GameController
 		AddChild(_cameraController);
 		_cameraController.Initialize(_board);
 		
-		GD.Print($"[CarromGame] Camera controller setup with board at origin");
 	}
 
 	/// <summary>
@@ -194,7 +197,6 @@ public partial class CarromGame : GameController
 			_inputController.StrikeExecuted += OnStrikeExecuted;
 			_inputController.AimingStateChanged += OnAimingStateChanged;
 			
-			GD.Print("[CarromGame] CarromInputController found and configured successfully");
 		}
 		catch (System.Exception ex)
 		{
@@ -222,9 +224,16 @@ public partial class CarromGame : GameController
 					_board.PieceRadius,
 					_board.OfficialStrikerRadius
 				);
+				
+				// Pass physics config to board pockets for enhanced physics
+				_board.SetPocketPhysicsConfig(PhysicsConfig);
+				
+				// Pass phase manager to board pockets for phase-aware detection
+				if (_phaseManager != null)
+				{
+					_board.SetPocketPhaseManager(_phaseManager);
+				}
 			}
-			
-			GD.Print($"[CarromGame] Board initialized with size: {_board.BoardSize}, border: {_board.BorderWidth}");
 		}
 		
 		// Initialize input controller after board and camera are ready
@@ -240,7 +249,6 @@ public partial class CarromGame : GameController
 			_inputController.SetVisualParameters(AimLineLength, PowerBarWidth, PowerBarHeight);
 		}
 		
-		GD.Print("[CarromGame] Components initialized in order");
 	}
 
 	/// <summary>
@@ -254,7 +262,6 @@ public partial class CarromGame : GameController
 		// Connect phase manager signals
 		_phaseManager.PiecesSettled += OnPiecesSettled;
 		
-		GD.Print("[CarromGame] Phase manager initialized");
 	}
 
 	/// <summary>
@@ -278,6 +285,8 @@ public partial class CarromGame : GameController
 		_practiceModeManager.SetPhaseManager(_phaseManager);
 		_practiceModeManager.SetPieceFactory(_pieceFactory);
 		
+		// Note: Board signals are handled through CarromGame.OnPiecePocketed() to avoid duplicate calls
+		
 		// Initialize competitive mode manager
 		_competitiveModeManager = new CarromCompetitiveModeManager();
 		AddChild(_competitiveModeManager);
@@ -288,7 +297,6 @@ public partial class CarromGame : GameController
 		// Connect manager signals
 		ConnectManagerSignals();
 		
-		GD.Print("[CarromGame] Managers initialized");
 	}
 
 	/// <summary>
@@ -314,28 +322,6 @@ public partial class CarromGame : GameController
 	// ================================================================
 	// CORE GAME LOOP
 	// ================================================================
-
-	public override void _Process(double delta)
-	{
-		base._Process(delta);
-		
-		// Direct piece monitoring - no timer delays
-		if (_phaseManager != null && _phaseManager.IsProcessing())
-		{
-			if (AreAllPiecesStopped())
-			{
-				// Pieces have stopped - notify phase manager
-				_phaseManager.OnPiecesSettled();
-			}
-		}
-	}
-
-	protected override void UpdateGame(float delta)
-	{
-		base.UpdateGame(delta);
-		// Additional game-specific updates can go here
-	}
-
 
 	/// <summary>
 	/// Check if all pieces have stopped moving
@@ -365,15 +351,9 @@ public partial class CarromGame : GameController
 		_carromGameMode = CarromGameMode.Practice;
 		SetGameMode(GameMode.Practice);
 		ResetGame();
-		
-		GD.Print("[CarromGame] Phase manager in Setup, starting practice setup");
-		
+
 		// Delegate to practice mode manager - it will emit PracticeModeSetupComplete when done
 		_practiceModeManager?.SetupPracticeMode();
-		
-		// Phase transition to Active will happen in OnPracticeModeSetupComplete()
-		
-		GD.Print("[CarromGame] Practice mode started, waiting for setup completion");
 	}
 
 	/// <summary>
@@ -381,7 +361,8 @@ public partial class CarromGame : GameController
 	/// </summary>
 	public virtual async void StartCompetitiveMode()
 	{
-		if (_isGameActive) return;
+		if (_isGameActive) 
+			return;
 		
 		_carromGameMode = CarromGameMode.Competitive;
 		SetGameMode(GameMode.TimeTrial); // Use TimeTrial for competitive tracking
@@ -397,15 +378,7 @@ public partial class CarromGame : GameController
 		}
 		
 		_phaseManager?.StartGame();
-		GD.Print("[CarromGame] Competitive mode started");
 	}
-
-
-
-
-
-
-
 
 	/// <summary>
 	/// Clear all pieces from the board
@@ -434,8 +407,9 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnStrikeExecuted(Vector2 force)
 	{
-		if (!_phaseManager.CanReceiveInput()) return;
-		
+		if (!_phaseManager.CanReceiveInput()) 
+			return;
+
 		// Get striker from appropriate manager
 		CarromPiece striker = null;
 		if (_carromGameMode == CarromGameMode.Practice)
@@ -446,13 +420,14 @@ public partial class CarromGame : GameController
 		{
 			striker = _competitiveModeManager?.GetStriker();
 		}
-		
+
 		if (striker != null)
 		{
 			striker.ApplyStrike(force);
+
+			// Reset settlement state for new processing cycle
+			_settlementDetected = false;
 			_phaseManager?.BeginProcessing();
-			
-			GD.Print($"[CarromGame] Strike executed with force: {force}");
 		}
 	}
 
@@ -489,7 +464,6 @@ public partial class CarromGame : GameController
 						 _competitiveModeManager?.GetCurrentPlayer()?.PlayerId ?? "player1";
 		EmitSignal(SignalName.PiecePocketed, playerId, piece);
 		
-		GD.Print($"[CarromGame] Piece pocketed: {piece.Type}");
 	}
 
 	/// <summary>
@@ -502,6 +476,23 @@ public partial class CarromGame : GameController
 		
 		// Play collision sound based on impact force
 		// Add particle effects, etc.
+	}
+
+	/// <summary>
+	/// Handle individual piece stopped signal to coordinate settlement detection
+	/// </summary>
+	private void OnPieceStoppedSignal(CarromPiece stoppedPiece)
+	{
+		// Only check settlement during processing phase and if not already detected
+		if (_phaseManager != null && _phaseManager.IsProcessing() && !_settlementDetected)
+		{
+			// Check if all pieces have now stopped
+			if (AreAllPiecesStopped())
+			{
+				_settlementDetected = true; // Prevent duplicate settlement calls
+				_phaseManager.OnPiecesSettled();
+			}
+		}
 	}
 
 
@@ -520,9 +511,6 @@ public partial class CarromGame : GameController
 		};
 	}
 
-
-
-
 	/// <summary>
 	/// Reset a single piece to its starting position
 	/// </summary>
@@ -530,12 +518,8 @@ public partial class CarromGame : GameController
 	{
 		if (!GodotObject.IsInstanceValid(piece)) return;
 		
-		GD.Print($"[CarromGame] Resetting {piece.Type} to starting position {startPosition}");
-		
-		// Use the optimized physics-safe reset method
-		piece.ResetToPosition(startPosition);
-		
-		GD.Print($"[CarromGame] Reset {piece.Type} using optimized method");
+		// Use the immediate synchronous reset method with global coordinates
+		piece.Reset(ToGlobal(startPosition));
 	}
 
 
@@ -562,7 +546,6 @@ public partial class CarromGame : GameController
 
 	private void DetectAndAdaptToContext()
 	{
-		GD.Print("[CarromGame] DetectAndAdaptToContext() called");
 		var gameHost = GameHost.GetInstance();
 		
 		if (gameHost != null && GodotObject.IsInstanceValid(gameHost))
@@ -630,7 +613,7 @@ public partial class CarromGame : GameController
 			buttons.Add(new ContextButtonData("Reset", () => {
 				var userManager = UserManager.GetAutoload();
 				userManager?.ResetUserIdleTimer();
-				_practiceModeManager?.SchedulePracticeReset();
+				_practiceModeManager?.ResetPracticeMode();
 			}, "🔄", true, "Reset practice session"));
 		}
 
@@ -678,7 +661,6 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnPracticeResetRequested()
 	{
-		GD.Print("[CarromGame] OnPracticeResetRequested() called - practice mode handling its own reset");
 		// Phase transition is handled by practice mode manager's DeferredPhaseTransition()
 		// Additional game state reset if needed
 	}
@@ -731,6 +713,7 @@ public partial class CarromGame : GameController
 	{
 		// Connect piece signals if needed
 		piece.PieceCollided += OnPieceCollided;
+		piece.PieceStopped += OnPieceStoppedSignal;
 	}
 
 	/// <summary>
@@ -742,6 +725,7 @@ public partial class CarromGame : GameController
 		if (GodotObject.IsInstanceValid(piece))
 		{
 			piece.PieceCollided -= OnPieceCollided;
+			piece.PieceStopped -= OnPieceStoppedSignal;
 		}
 	}
 
