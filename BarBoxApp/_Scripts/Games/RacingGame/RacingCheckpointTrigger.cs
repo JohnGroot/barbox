@@ -5,7 +5,7 @@ using Godot;
 /// Provides checkpoint-specific signal, state management, and behavior coordination
 /// </summary>
 [GlobalClass]
-public partial class CheckpointTrigger : LineTrigger
+public partial class RacingCheckpointTrigger : RacingLineTrigger
 {
 
 	public enum CheckpointState
@@ -24,7 +24,7 @@ public partial class CheckpointTrigger : LineTrigger
 	private Color _nextRequiredColor = Colors.Cyan;
 	private CheckpointState _currentState = CheckpointState.Future;
 
-	public CheckpointTrigger()
+	public RacingCheckpointTrigger()
 	{
 		TriggerName = "Checkpoint";
 	}

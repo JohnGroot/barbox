@@ -234,7 +234,7 @@ namespace BarBox.Games.Racing
 			if (trackScene != null)
 			{
 				var tempInstance = trackScene.Instantiate();
-				if (tempInstance is TrackDefinition trackDef)
+				if (tempInstance is RacingTrackDefinition trackDef)
 				{
 					trackButton.Text = trackDef.TrackName;
 					tempInstance.QueueFree();

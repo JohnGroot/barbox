@@ -29,7 +29,7 @@ namespace BarBox.Games.Racing
 	// ================================================================
 
 	// Track references
-	private ITrackDefinition _trackDefinition;
+	private IRacingTrackDefinition _trackDefinition;
 	private Curve2D _trackCurve;
 
 	// Off-track penalty state
@@ -56,7 +56,7 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	/// <param name="trackDefinition">The track definition to validate against</param>
 	/// <param name="trackCurve">The track curve for distance calculations</param>
-	public void Initialize(ITrackDefinition trackDefinition, Curve2D trackCurve)
+	public void Initialize(IRacingTrackDefinition trackDefinition, Curve2D trackCurve)
 	{
 		_trackDefinition = trackDefinition;
 		_trackCurve = trackCurve;

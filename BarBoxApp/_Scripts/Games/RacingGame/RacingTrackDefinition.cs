@@ -6,7 +6,7 @@ using Godot;
 /// </summary>
 [Tool]
 [GlobalClass]
-public partial class TrackDefinition : Node2D, ITrackDefinition
+public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 {
 	[ExportCategory("Track Setup")]
 	[Export] public Line2D TrackLine { get; set; }
@@ -22,29 +22,29 @@ public partial class TrackDefinition : Node2D, ITrackDefinition
 	private Curve2D _cachedCurve;
 
 	// Cached references to avoid repeated GetNode calls
-	private LineTrigger _startLineCache;
-	private LineTrigger _finishLineCache;
-	private CheckpointTrigger[] _checkpointTriggersCache;
+	private RacingLineTrigger _startLineCache;
+	private RacingLineTrigger _finishLineCache;
+	private RacingCheckpointTrigger[] _checkpointTriggersCache;
 	private RayCast2D _trackDirectionCache;
 
 	// Properties that lazily load and cache the actual node references
-	public LineTrigger StartLine => _startLineCache ??= GetNodeOrNull<LineTrigger>(StartLinePath);
-	public LineTrigger FinishLine => _finishLineCache ??= GetNodeOrNull<LineTrigger>(FinishLinePath);
+	public RacingLineTrigger StartLine => _startLineCache ??= GetNodeOrNull<RacingLineTrigger>(StartLinePath);
+	public RacingLineTrigger FinishLine => _finishLineCache ??= GetNodeOrNull<RacingLineTrigger>(FinishLinePath);
 	public RayCast2D TrackDirection => _trackDirectionCache ??= GetNodeOrNull<RayCast2D>(TrackDirectionPath);
 
-	public CheckpointTrigger[] CheckpointTriggers
+	public RacingCheckpointTrigger[] CheckpointTriggers
 	{
 		get
 		{
 			if (_checkpointTriggersCache == null && CheckpointTriggerPaths != null)
 			{
-				_checkpointTriggersCache = new CheckpointTrigger[CheckpointTriggerPaths.Count];
+				_checkpointTriggersCache = new RacingCheckpointTrigger[CheckpointTriggerPaths.Count];
 				for (int i = 0; i < CheckpointTriggerPaths.Count; i++)
 				{
-					_checkpointTriggersCache[i] = GetNodeOrNull<CheckpointTrigger>(CheckpointTriggerPaths[i]);
+					_checkpointTriggersCache[i] = GetNodeOrNull<RacingCheckpointTrigger>(CheckpointTriggerPaths[i]);
 				}
 			}
-			return _checkpointTriggersCache ?? new CheckpointTrigger[0];
+			return _checkpointTriggersCache ?? new RacingCheckpointTrigger[0];
 		}
 	}
 
@@ -54,19 +54,19 @@ public partial class TrackDefinition : Node2D, ITrackDefinition
 
 		if (TrackLine == null)
 		{
-			GD.PrintErr($"TrackDefinition '{TrackName}': No TrackLine assigned");
+			GD.PrintErr($"RacingTrackDefinition '{TrackName}': No TrackLine assigned");
 			return;
 		}
 
 		if (TrackLine.GetPointCount() < 2)
 		{
-			GD.PrintErr($"TrackDefinition '{TrackName}': TrackLine must have at least 2 points");
+			GD.PrintErr($"RacingTrackDefinition '{TrackName}': TrackLine must have at least 2 points");
 			return;
 		}
 
 		if (TrackLine.Width <= 0)
 		{
-			GD.PrintErr($"TrackDefinition '{TrackName}': TrackLine Width must be greater than 0");
+			GD.PrintErr($"RacingTrackDefinition '{TrackName}': TrackLine Width must be greater than 0");
 			return;
 		}
 
@@ -74,7 +74,7 @@ public partial class TrackDefinition : Node2D, ITrackDefinition
 		
 		if (_cachedCurve == null)
 		{
-			GD.PrintErr($"TrackDefinition '{TrackName}': Failed to convert Line2D to Curve2D");
+			GD.PrintErr($"RacingTrackDefinition '{TrackName}': Failed to convert Line2D to Curve2D");
 			return;
 		}
 
@@ -105,7 +105,7 @@ public partial class TrackDefinition : Node2D, ITrackDefinition
 			TrackDirection.Enabled = true;
 		}
 
-		GD.Print($"TrackDefinition '{TrackName}': Track setup complete with {TrackLine.GetPointCount()} points, width {TrackLine.Width}");
+		GD.Print($"RacingTrackDefinition '{TrackName}': Track setup complete with {TrackLine.GetPointCount()} points, width {TrackLine.Width}");
 	}
 
 	public Curve2D GetTrackCurve()

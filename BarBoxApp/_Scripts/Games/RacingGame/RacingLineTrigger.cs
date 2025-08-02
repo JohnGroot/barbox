@@ -6,9 +6,9 @@ using Godot;
 /// Can be used directly for simple triggers or extended for complex behavior
 /// </summary>
 [GlobalClass]
-public partial class LineTrigger : Area2D
+public partial class RacingLineTrigger : Area2D
 {
-	[Signal] public delegate void TriggerHitEventHandler(Node2D body, LineTrigger trigger);
+	[Signal] public delegate void TriggerHitEventHandler(Node2D body, RacingLineTrigger trigger);
 	[Signal] public delegate void StartLineCrossedEventHandler(Node2D body);
 	[Signal] public delegate void CheckpointCrossedEventHandler(Node2D body, int checkpointIndex);
 
@@ -24,12 +24,12 @@ public partial class LineTrigger : Area2D
 		// Validate required components
 		if (CollisionShape == null)
 		{
-			GD.PrintErr($"LineTrigger '{TriggerName}': CollisionShape2D reference not assigned");
+			GD.PrintErr($"RacingLineTrigger '{TriggerName}': CollisionShape2D reference not assigned");
 		}
 
 		if (VisualLine == null)
 		{
-			GD.PrintErr($"LineTrigger '{TriggerName}': Line2D reference not assigned");
+			GD.PrintErr($"RacingLineTrigger '{TriggerName}': Line2D reference not assigned");
 		}
 
 		// Connect signal

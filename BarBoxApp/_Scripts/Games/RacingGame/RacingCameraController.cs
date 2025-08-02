@@ -33,7 +33,7 @@ namespace BarBox.Games.Racing
 	private List<StaticBody2D> _screenEdgeColliders = new List<StaticBody2D>();
 
 	// Track reference for positioning
-	private ITrackDefinition _trackDefinition;
+	private IRacingTrackDefinition _trackDefinition;
 
 	// ================================================================
 	// PUBLIC PROPERTIES
@@ -73,7 +73,7 @@ namespace BarBox.Games.Racing
 	/// Initialize camera controller with track definition
 	/// </summary>
 	/// <param name="trackDefinition">Track definition for positioning</param>
-	public void SetTrackDefinition(ITrackDefinition trackDefinition)
+	public void SetTrackDefinition(IRacingTrackDefinition trackDefinition)
 	{
 		_trackDefinition = trackDefinition;
 	}
@@ -149,7 +149,7 @@ namespace BarBox.Games.Racing
 	/// <returns>Track bounds rectangle</returns>
 	private Rect2 GetTrackBounds()
 	{
-		if (_trackDefinition is TrackDefinition trackDef)
+		if (_trackDefinition is RacingTrackDefinition trackDef)
 		{
 			return trackDef.GetTrackBounds();
 		}

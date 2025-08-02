@@ -75,9 +75,9 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	
 	// Track system
-	private TrackDefinition _trackDefinition;
+	private RacingTrackDefinition _trackDefinition;
 	private Curve2D _trackCurve;
-	private CheckpointTrigger[] _checkpointTriggers;
+	private RacingCheckpointTrigger[] _checkpointTriggers;
 	private bool[] _checkpointsCrossed;
 	private int _nextCheckpointIndex = 0;
 	private int _currentTrackIndex = 0;
@@ -798,7 +798,7 @@ namespace BarBox.Games.Racing
 			// Look for existing TrackDefinition child
 			foreach (Node child in GetChildren())
 			{
-				if (child is TrackDefinition trackDef)
+				if (child is RacingTrackDefinition trackDef)
 				{
 					_trackDefinition = trackDef;
 					_currentTrackIndex = 0;
@@ -806,7 +806,7 @@ namespace BarBox.Games.Racing
 					return;
 				}
 			}
-			GD.PrintErr("RacingGame: No track scenes configured and no TrackDefinition child node found.");
+			GD.PrintErr("RacingGame: No track scenes configured and no RacingTrackDefinition child node found.");
 		}
 	}
 
@@ -832,7 +832,7 @@ namespace BarBox.Games.Racing
 		var trackScene = TrackScenes[trackIndex];
 		var trackInstance = trackScene.Instantiate();
 		
-		if (trackInstance is TrackDefinition trackDef)
+		if (trackInstance is RacingTrackDefinition trackDef)
 		{
 			_trackDefinition = trackDef;
 			AddChild(_trackDefinition);
@@ -851,7 +851,7 @@ namespace BarBox.Games.Racing
 		}
 		else
 		{
-			GD.PrintErr("Track scene does not contain TrackDefinition");
+			GD.PrintErr("Track scene does not contain RacingTrackDefinition");
 			trackInstance.QueueFree();
 		}
 	}

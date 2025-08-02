@@ -1,6 +1,6 @@
 using Godot;
 
-public interface ITrackDefinition
+public interface IRacingTrackDefinition
 {
 	/// <summary>
 	/// Setups or resets the track for a race
