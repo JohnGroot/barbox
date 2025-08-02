@@ -1,7 +1,13 @@
 using Godot;
 
 /// <summary>
-/// Carrom pocket detection using Area2D
+/// Enhanced pocket physics system using zone-based detection:
+/// - Influence Zone: Gentle attraction forces guide pieces toward pocket
+/// - Capture Zone: Position-based capture detection with speed/angle validation  
+/// - Real physics simulation of piece falling through hole when center passes threshold
+/// 
+/// The system uses multiple detection zones to create realistic pocket behavior
+/// where pieces are gradually drawn into pockets rather than instantly captured.
 /// </summary>
 [GlobalClass]
 public partial class CarromPocket : Area2D

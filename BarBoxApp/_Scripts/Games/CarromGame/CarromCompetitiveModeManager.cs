@@ -5,24 +5,22 @@ using System.Threading.Tasks;
 
 /// <summary>
 /// Manages competitive mode functionality for Carrom game
+/// 
+/// ARCHITECTURE NOTES:
+/// - Striker positioning: Uses base class PositionStrikerAtBaseline() with player-specific indexing
+/// - Phase transitions: Relies on base class ExecuteSettlement() - DO NOT manually transition phases
+/// - Settlement flow: Focus on game logic (player switching) and let base class handle infrastructure
 /// </summary>
 [GlobalClass]
-public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
+public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 {
 	[Signal] public delegate void TurnChangedEventHandler(string playerId, int turnNumber);
 	[Signal] public delegate void PlayerWonEventHandler(string playerId);
 	[Signal] public delegate void FoulCommittedEventHandler(string playerId);
 	[Signal] public delegate void CompetitiveModeSetupCompleteEventHandler();
 
-	// Dependencies
-	private CarromBoard _board;
-	private CarromInputController _inputController;
-	private CarromPhysicsConfig _physicsConfig;
-	private CarromPieceFactory _pieceFactory;
-
 	// Competitive mode state
 	private List<CarromPiece> _competitivePieces = new List<CarromPiece>();
-	private CarromPiece _striker;
 	private int _currentPlayerIndex = 0;
 	private List<CarromPlayer> _players = new List<CarromPlayer>();
 
@@ -34,51 +32,7 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 
 	// Settings
 	private int _competitiveCreditCost = 1;
-	private CarromPhaseManager _phaseManager;
-	
-	/// <summary>
-	/// Check if the mode is currently active/initialized
-	/// </summary>
-	public bool IsActive { get; private set; } = false;
 
-	/// <summary>
-	/// Initialize the competitive mode manager
-	/// </summary>
-	public void Initialize(CarromBoard board, CarromInputController inputController, CarromPhysicsConfig physicsConfig)
-	{
-		_board = board;
-		_inputController = inputController;
-		_physicsConfig = physicsConfig;
-		IsActive = true;
-		
-		// Configure physics config with official board scaling for proportional piece sizes
-		if (_board != null && _physicsConfig != null)
-		{
-			_physicsConfig.SetBoardScaling(
-				_board.ScaleFactor,
-				_board.PieceRadius,
-				_board.OfficialStrikerRadius
-			);
-		}
-		
-	}
-	
-	/// <summary>
-	/// Set the phase manager for phase-aware operations
-	/// </summary>
-	public void SetPhaseManager(CarromPhaseManager phaseManager)
-	{
-		_phaseManager = phaseManager;
-	}
-
-	/// <summary>
-	/// Set the piece factory for centralized piece creation
-	/// </summary>
-	public void SetPieceFactory(CarromPieceFactory pieceFactory)
-	{
-		_pieceFactory = pieceFactory;
-	}
-	
 	/// <summary>
 	/// Initialize with piece templates (competitive-specific version)
 	/// </summary>
@@ -87,13 +41,136 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 						   PackedScene blackTemplate, PackedScene redTemplate, 
 						   PackedScene strikerTemplate, int creditCost)
 	{
-		Initialize(board, inputController, physicsConfig);
+		base.Initialize(board, inputController, physicsConfig);
 		_whitePieceTemplate = whiteTemplate;
 		_blackPieceTemplate = blackTemplate;
 		_redPieceTemplate = redTemplate;
 		_strikerTemplate = strikerTemplate;
 		_competitiveCreditCost = creditCost;
 	}
+
+	// ================================================================
+	// ABSTRACT METHOD IMPLEMENTATIONS
+	// ================================================================
+	
+	/// <summary>
+	/// Create and position pieces specific to competitive mode
+	/// </summary>
+	protected override void CreateModeSpecificPieces()
+	{
+		// Clear existing pieces
+		_competitivePieces.Clear();
+		
+		// Create full set of carrom pieces in center formation
+		CreateCompetitivePieces();
+		
+		// Setup players for competitive mode
+		SetupCompetitivePlayers();
+	}
+	
+	/// <summary>
+	/// Get all pieces managed by competitive mode (excluding striker)
+	/// </summary>
+	protected override List<CarromPiece> GetManagedPieces()
+	{
+		return new List<CarromPiece>(_competitivePieces);
+	}
+	
+	/// <summary>
+	/// Clear all competitive-specific pieces
+	/// </summary>
+	protected override void ClearModeSpecificPieces()
+	{
+		foreach (var piece in _competitivePieces)
+		{
+			if (GodotObject.IsInstanceValid(piece))
+			{
+				piece.QueueFree();
+			}
+		}
+		_competitivePieces.Clear();
+	}
+	
+	/// <summary>
+	/// Handle competitive mode settlement - switch players and position striker
+	/// </summary>
+	protected override void ExecuteModeSpecificSettlement()
+	{
+		// Switch to next player and position striker
+		// Base class handles phase transition to Active before calling this method
+		SwitchToNextPlayer();
+	}
+	
+	/// <summary>
+	/// Check if win condition is met for competitive mode
+	/// </summary>
+	public override bool CheckWinCondition(string playerId)
+	{
+		// Simple win condition: check if player has pocketed all their pieces
+		int remainingPieces = CountRemainingPiecesForPlayer(playerId);
+		return remainingPieces == 0;
+	}
+	
+	/// <summary>
+	/// Determine if current turn should continue in competitive mode
+	/// </summary>
+	public override bool ShouldContinueTurn(string playerId)
+	{
+		// In competitive mode, turns typically switch after each strike
+		// This could be enhanced with actual carrom rules for continuing turns
+		return false;
+	}
+	
+	/// <summary>
+	/// Position striker at baseline for current player
+	/// </summary>
+	protected override void PositionStrikerAtBaseline()
+	{
+		if (_striker == null || !GodotObject.IsInstanceValid(_striker))
+		{
+			return;
+		}
+		
+		if (_board == null)
+		{
+			return;
+		}
+		
+		// Use board's proportional baseline positioning for current player
+		Vector2 baselinePosition = _board.GetBaselinePosition(_currentPlayerIndex);
+		var globalPosition = _board.ToGlobal(baselinePosition);
+		
+		// Use synchronized Reset method instead of direct position assignment
+		// This ensures physics engine state is immediately synchronized
+		_striker.Reset(globalPosition);
+	}
+	
+	/// <summary>
+	/// Handle competitive-specific piece pocketing logic
+	/// </summary>
+	protected override void HandlePiecePocketed(CarromPiece piece)
+	{
+		// Get current player ID
+		string playerId = GetCurrentPlayer()?.PlayerId ?? "player1";
+		
+		if (piece.Type == PieceType.Striker)
+		{
+			// Striker foul
+			EmitSignal(SignalName.FoulCommitted, playerId);
+		}
+		else
+		{
+			// Check for continue turn or win condition
+			if (CheckWinCondition(playerId))
+			{
+				EmitSignal(SignalName.PlayerWon, playerId);
+			}
+		}
+	}
+
+	// ================================================================
+	// COMPETITIVE MODE SPECIFIC METHODS
+	// ================================================================
 
 	/// <summary>
 	/// Start competitive mode with credit checking
@@ -104,10 +181,10 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 		if (_competitiveCreditCost > 0)
 		{
 			var creditManager = CreditManager.GetInstance();
-			if (creditManager != null && GodotObject.IsInstanceValid(creditManager))
+			if (creditManager != null && IsInstanceValid(creditManager))
 			{
 				var userManager = UserManager.GetAutoload();
-				if (userManager != null && GodotObject.IsInstanceValid(userManager))
+				if (userManager != null && IsInstanceValid(userManager))
 				{
 					userManager.ResetUserIdleTimer();
 				}
@@ -115,7 +192,6 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 				bool creditsSpent = await creditManager.CheckAndSpendCredits(_competitiveCreditCost, "Competitive Carrom");
 				if (!creditsSpent)
 				{
-					GD.Print("Competitive carrom cancelled - credits not spent");
 					return false;
 				}
 			}
@@ -128,82 +204,30 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Setup competitive mode pieces (full carrom layout)
-	/// </summary>
-	public void SetupMode()
-	{
-		SetupCompetitiveMode();
-	}
-	
-	/// <summary>
-	/// Setup competitive mode pieces (full carrom layout) - internal implementation
+	/// Setup competitive mode pieces (full carrom layout) - public interface
 	/// </summary>
 	public void SetupCompetitiveMode()
 	{
-		if (_board == null) return;
-		
-		// Validate phase state before setup
-		if (_phaseManager != null && !_phaseManager.CanExecuteAdminOperation("Competitive mode setup"))
-		{
-			return;
-		}
-		
-		// Clear existing pieces
-		ClearCompetitivePieces();
-		
-		// Create striker
-		_striker = CreateCompetitivePiece(PieceType.Striker, Vector2.Zero);
-		_inputController?.SetStriker(_striker);
-		
-		// Create full set of carrom pieces in center formation
-		CreateCompetitivePieces();
-		
-		// Position striker at baseline
-		PositionStrikerAtBaseline();
-		
-		// Setup players for competitive mode
-		SetupCompetitivePlayers();
-		
+		// Use base class template method
+		SetupMode();
+	}
+
+	/// <summary>
+	/// Finalize competitive mode setup - emit the expected signal for CarromGame
+	/// </summary>
+	protected override void FinalizeSetup()
+	{
+		// Emit the competitive-specific signal that CarromGame expects
 		EmitSignal(SignalName.CompetitiveModeSetupComplete);
 	}
 
 	/// <summary>
-	/// Handle piece being pocketed in competitive mode
-	/// </summary>
-	public void OnPiecePocketed(CarromPiece piece)
-	{
-		// Get current player ID
-		string playerId = GetCurrentPlayer()?.PlayerId ?? "player1";
-		OnPiecePocketed(playerId, piece);
-	}
-	
-	/// <summary>
-	/// Handle piece being pocketed in competitive mode (with player ID)
+	/// Handle piece being pocketed in competitive mode (with player ID) - additional method
 	/// </summary>
 	public void OnPiecePocketed(string playerId, CarromPiece piece)
 	{
-		if (piece.Type == PieceType.Striker)
-		{
-			// Striker foul
-			EmitSignal(SignalName.FoulCommitted, playerId);
-		}
-		else
-		{
-			// Check for continue turn or win condition
-			CheckWinCondition(playerId);
-		}
-	}
-	
-	/// <summary>
-	/// Handle pieces settled (called when all pieces have stopped)
-	/// </summary>
-	public void OnPiecesSettled()
-	{
-		// In competitive mode, switch to next player when pieces settle
-		SwitchToNextPlayer();
-		
-		// Transition back to Active phase for next turn
-		_phaseManager?.TransitionTo(GamePhase.Active);
+		// This is for external callers who already have player ID
+		HandlePiecePocketed(piece);
 	}
 
 	/// <summary>
@@ -211,38 +235,79 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	/// </summary>
 	private void CreateCompetitivePieces()
 	{
-		// Traditional carrom setup: 9 white, 9 black, 1 red queen
-		// Arranged in center circle formation
+		// Official carrom setup: 9 white, 9 black, 1 red queen
+		// Following traditional carrom arrangement rules from the reference image
 		
 		Vector2 center = Vector2.Zero;
-		float radius = 60.0f;
+		float pieceSpacing = _board?.PieceRadius * 2.1f ?? 24.0f; // Pieces touching with slight gap
 		
-		// Create pieces in a hexagonal pattern
-		var pieces = new List<PieceType>();
+		// 1. Queen (red) in center
+		CreateCompetitivePiece(PieceType.Red, center);
 		
-		// Add pieces to pattern (9 white, 9 black, 1 red)
-		for (int i = 0; i < 9; i++) pieces.Add(PieceType.White);
-		for (int i = 0; i < 9; i++) pieces.Add(PieceType.Black);
-		pieces.Add(PieceType.Red); // Queen in center
+		// 2. First row: 6 pieces around Queen, alternating black and white starting with black
+		Vector2[] firstRowPositions =
+		[
+			new Vector2(0, -pieceSpacing),                            // Top (0°)
+			new Vector2(pieceSpacing * 0.866f, -pieceSpacing * 0.5f), // Top right (60°)
+			new Vector2(pieceSpacing * 0.866f, pieceSpacing * 0.5f),  // Bottom right (120°)
+			new Vector2(0, pieceSpacing),                             // Bottom (180°)
+			new Vector2(-pieceSpacing * 0.866f, pieceSpacing * 0.5f), // Bottom left (240°)
+			new Vector2(-pieceSpacing * 0.866f, -pieceSpacing * 0.5f) // Top left (300°)
+		];
 		
-		// Arrange in hexagonal pattern
-		CreateCompetitivePiece(PieceType.Red, center); // Queen in center
-		
-		// Inner ring
-		for (int i = 0; i < 6 && i < pieces.Count - 1; i++)
+		// Alternate black and white in first row starting with black at top
+		for (int i = 0; i < firstRowPositions.Length; i++)
 		{
-			float angle = i * Mathf.Pi / 3;
-			Vector2 pos = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * (radius * 0.5f);
-			CreateCompetitivePiece(pieces[i], pos);
+			PieceType pieceType = i % 2 == 0 ? PieceType.Black : PieceType.White;
+			CreateCompetitivePiece(pieceType, firstRowPositions[i]);
 		}
 		
-		// Outer ring
-		for (int i = 6; i < 18 && i < pieces.Count - 1; i++)
+		// 3. Second row: 12 pieces with white Y-shape formation
+		var secondRowRadius = pieceSpacing * 2.0f;
+		
+		// Create the Y-shape by placing 3 white pieces that form Y with the first row whites
+		// From the reference image, the Y is formed by white pieces at specific angles
+		// that align with the white pieces from first row (positions 1, 3, 5)
+		int[] yShapeIndices = [2, 6, 10]; // These create the Y-shape extending from first row whites
+		
+		// Second row piece arrangement - fill all 12 positions
+		for (int i = 0; i < 12; i++)
 		{
-			float angle = (i - 6) * Mathf.Pi / 6;
-			Vector2 pos = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
-			CreateCompetitivePiece(pieces[i], pos);
+			float angle = i * Mathf.Pi / 6; // 12 pieces = 30° each (π/6 radians)
+			Vector2 pos = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * secondRowRadius;
+			
+			PieceType pieceType;
+			if (yShapeIndices.Contains(i))
+			{
+				// White pieces forming the Y-shape
+				pieceType = PieceType.White;
+			}
+			else
+			{
+				// Fill alternating pattern for remaining positions to balance colors
+				// Ensure we get exactly 9 white and 9 black total
+				// We have 3 whites from first row + 3 whites from Y-shape = 6 whites so far
+				// We need 3 more whites in the remaining 9 positions
+				if (i is 4 or 8 or 0 && CountWhitePiecesCreated() < 9)
+				{
+					pieceType = PieceType.White;
+				}
+				else
+				{
+					pieceType = PieceType.Black;
+				}
+			}
+			
+			CreateCompetitivePiece(pieceType, pos);
 		}
+	}
+	
+	/// <summary>
+	/// Count white pieces created so far (for balancing during creation)
+	/// </summary>
+	private int CountWhitePiecesCreated()
+	{
+		return _competitivePieces.Count(p => p.Type == PieceType.White);
 	}
 
 	/// <summary>
@@ -250,14 +315,7 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	/// </summary>
 	private CarromPiece CreateCompetitivePiece(PieceType type, Vector2 position)
 	{
-		if (_pieceFactory == null)
-		{
-			GD.PrintErr("[CarromCompetitiveModeManager] Piece factory not set - cannot create pieces");
-			return null;
-		}
-		
-		// Use centralized piece factory which applies physics parameters
-		var piece = _pieceFactory.CreatePiece(type, position);
+		var piece = CreatePiece(type, position);
 		
 		// Track competitive pieces (factory handles board addition and physics setup)
 		if (piece != null && type != PieceType.Striker)
@@ -301,51 +359,52 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Position striker at baseline
-	/// </summary>
-	private void PositionStrikerAtBaseline()
-	{
-		if (_striker == null || _board == null) return;
-		
-		// Use board's proportional baseline positioning for current player
-		Vector2 baselinePosition = _board.GetBaselinePosition(_currentPlayerIndex);
-		_striker.Position = baselinePosition;
-		_striker.LinearVelocity = Vector2.Zero;
-		_striker.AngularVelocity = 0.0f;
-		
-	}
-
-	/// <summary>
 	/// Switch to next player
 	/// </summary>
 	public void SwitchToNextPlayer()
 	{
-		// Validate phase state before switching players
-		if (_phaseManager != null && !_phaseManager.CanExecuteAdminOperation("Player switch"))
+		// Validate phase state before operations
+		if (_phaseManager != null && _phaseManager.CurrentPhase != GamePhase.Active)
 		{
+			// Wait one frame for phase to settle, then retry
+			CallDeferred(MethodName.RetryPlayerSwitch);
 			return;
 		}
 		
+		// Direct, synchronous operations - matches practice mode pattern
 		_currentPlayerIndex = (_currentPlayerIndex + 1) % _players.Count;
+		
+		// CRITICAL FIX: Disable input before positioning striker to prevent override
+		bool inputWasEnabled = false;
+		if (_inputController != null && GodotObject.IsInstanceValid(_inputController))
+		{
+			inputWasEnabled = _inputController.IsInputEnabled();
+			if (inputWasEnabled)
+			{
+				_inputController.SetPhaseManager(null); // Temporarily disable input
+			}
+		}
+		
 		PositionStrikerAtBaseline();
+		
+		// Re-enable input after positioning if it was previously enabled
+		if (inputWasEnabled && _inputController != null && GodotObject.IsInstanceValid(_inputController))
+		{
+			_inputController.SetPhaseManager(_phaseManager); // Restore input
+		}
 		
 		var currentPlayer = GetCurrentPlayer();
 		EmitSignal(SignalName.TurnChanged, currentPlayer?.PlayerId ?? "unknown", _currentPlayerIndex + 1);
-		
 	}
 
 	/// <summary>
-	/// Check win condition
+	/// Retry player switch after phase validation (deferred method)
 	/// </summary>
-	private void CheckWinCondition(string playerId)
+	private void RetryPlayerSwitch()
 	{
-		// Simple win condition: check if player has pocketed all their pieces
-		// This would be expanded with proper carrom rules
-		
-		int remainingPieces = CountRemainingPiecesForPlayer(playerId);
-		if (remainingPieces == 0)
+		if (_phaseManager != null && _phaseManager.CurrentPhase == GamePhase.Active)
 		{
-			EmitSignal(SignalName.PlayerWon, playerId);
+			SwitchToNextPlayer();
 		}
 	}
 
@@ -355,29 +414,10 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	private int CountRemainingPiecesForPlayer(string playerId)
 	{
 		// Simplified logic - would need proper player piece assignment
+		// TODO: Use playerId to filter pieces assigned to specific player
 		return _competitivePieces.Count(p => p.Visible);
 	}
 
-	/// <summary>
-	/// Clear all competitive pieces
-	/// </summary>
-	private void ClearCompetitivePieces()
-	{
-		foreach (var piece in _competitivePieces)
-		{
-			if (GodotObject.IsInstanceValid(piece))
-			{
-				piece.QueueFree();
-			}
-		}
-		_competitivePieces.Clear();
-		
-		if (_striker != null && GodotObject.IsInstanceValid(_striker))
-		{
-			_striker.QueueFree();
-			_striker = null;
-		}
-	}
 
 	/// <summary>
 	/// Get current player
@@ -392,60 +432,20 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Get current striker
-	/// </summary>
-	public CarromPiece GetStriker()
-	{
-		return _striker;
-	}
-
-	/// <summary>
 	/// Get all competitive pieces
 	/// </summary>
 	public List<CarromPiece> GetCompetitivePieces()
 	{
 		return new List<CarromPiece>(_competitivePieces);
 	}
-	
-	/// <summary>
-	/// Get all active pieces in this mode
-	/// </summary>
-	public List<CarromPiece> GetActivePieces()
-	{
-		var allPieces = new List<CarromPiece>(_competitivePieces);
-		if (_striker != null && GodotObject.IsInstanceValid(_striker))
-		{
-			allPieces.Add(_striker);
-		}
-		return allPieces;
-	}
-	
-	
-	/// <summary>
-	/// Clean up mode resources (pieces, references, etc.)
-	/// </summary>
-	public void CleanupMode()
-	{
-		ClearCompetitivePieces();
-		_players.Clear();
-		_currentPlayerIndex = 0;
-		_phaseManager = null;
-		IsActive = false;
-	}
 
 	/// <summary>
-	/// Check if all pieces are stopped
+	/// Clear competitive-specific state during cleanup
 	/// </summary>
-	public bool AreAllPiecesStopped()
+	protected override void ClearModeSpecificState()
 	{
-		foreach (CarromPiece piece in _competitivePieces)
-		{
-			if (piece.Visible && !piece.IsStopped())
-			{
-				return false;
-			}
-		}
-		return _striker == null || _striker.IsStopped();
+		_players.Clear();
+		_currentPlayerIndex = 0;
 	}
 
 	/// <summary>
@@ -453,6 +453,6 @@ public partial class CarromCompetitiveModeManager : Node2D, ICarromModeManager
 	/// </summary>
 	public List<CarromPlayer> GetPlayers()
 	{
-		return new List<CarromPlayer>(_players);
+		return [.._players];
 	}
 }

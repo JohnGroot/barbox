@@ -22,13 +22,19 @@ public partial class CarromPhaseManager : Node
 	/// </summary>
 	public bool TransitionTo(GamePhase newPhase)
 	{
+		GD.Print($"[CarromPhaseManager] TransitionTo called: {_currentPhase} -> {newPhase}");
+		
 		// Skip validation for no-op transitions
 		if (_currentPhase == newPhase)
 		{
+			GD.Print($"[CarromPhaseManager] No-op transition, returning true");
 			return true;
 		}
 		
-		if (!IsValidTransition(_currentPhase, newPhase))
+		bool isValid = IsValidTransition(_currentPhase, newPhase);
+		GD.Print($"[CarromPhaseManager] Transition validation result: {isValid}");
+		
+		if (!isValid)
 		{
 			GD.PrintErr($"[CarromPhaseManager] Invalid phase transition: {_currentPhase} -> {newPhase}");
 			LogValidTransitions(_currentPhase);

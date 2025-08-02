@@ -250,8 +250,14 @@ public partial class CarromInputController : Node2D
 	}
 
 	/// <summary>
-	/// Determine input mode based on initial movement direction
+	/// Determine input mode based on initial movement direction relative to baseline.
+	/// Uses lateral angle threshold to distinguish between striker positioning (lateral movement)
+	/// and strike power aiming (forward/backward movement along the baseline direction).
+	/// 
+	/// Input vectors within the threshold angle are treated as power aiming,
+	/// while vectors beyond the threshold are treated as lateral positioning.
 	/// </summary>
+	/// <param name="inputVector">Raw input movement vector from touch/mouse</param>
 	private void DetermineInputMode(Vector2 inputVector)
 	{
 		Vector2 baselineDirection = -GetForwardDirection();
@@ -475,14 +481,21 @@ public partial class CarromInputController : Node2D
 		bool strikerStopped = hasStriker && _striker.IsStopped();
 		bool canAccept = CanAcceptInput();
 		
+		// Input validation - early exit conditions
 		if (!hasStriker)
 		{
+			// No striker available - wait for striker to be set
+			return false;
 		}
 		else if (!strikerStopped)
 		{
+			// Striker still moving - wait for it to stop
+			return false;
 		}
 		else if (!canAccept)
 		{
+			// Phase manager blocking input - wait for active phase
+			return false;
 		}
 		
 		return hasStriker && strikerStopped && canAccept;

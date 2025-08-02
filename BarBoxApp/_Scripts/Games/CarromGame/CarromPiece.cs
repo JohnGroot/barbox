@@ -16,7 +16,6 @@ public partial class CarromPiece : RigidBody2D
 	[ExportCategory("Visual Settings")]
 	[Export] public Color PieceColor { get; set; } = Colors.White;
 
-
 	// Physics components
 	private CircleShape2D _collisionShape;
 	private CollisionShape2D _collisionShape2D;
@@ -51,7 +50,6 @@ public partial class CarromPiece : RigidBody2D
 		SetupVisual();
 		SetupPhysicsMaterial();
 		ConnectSignals();
-		
 	}
 
 	/// <summary>
@@ -96,7 +94,6 @@ public partial class CarromPiece : RigidBody2D
 		
 		// Set mass based on piece type
 		Mass = PhysicsConfig.GetMassForPieceType(Type);
-		
 	}
 
 	/// <summary>
@@ -259,7 +256,7 @@ public partial class CarromPiece : RigidBody2D
 			// Confirm piece has stopped after a brief delay
 			if (_stoppedTimer >= PhysicsConfig.StopConfirmationTime)
 			{
-				_wasMoving = false;
+				ForceStop();
 				EmitSignal(SignalName.PieceStopped, this);
 			}
 		}
@@ -327,10 +324,15 @@ public partial class CarromPiece : RigidBody2D
 		// Step 1: Restore state with visual properties
 		RestorePieceState(restoreVisualProperties: true, conditionalUnfreeze: true);
 		
-		// Step 2: Set position
+		// Step 2: Force physics engine to sync position immediately
+		// This ensures the physics body's internal state is updated synchronously
+		PhysicsServer2D.BodySetState(GetRid(), PhysicsServer2D.BodyState.Transform, 
+			new Transform2D(0, globalPosition));
+		
+		// Step 3: Set GlobalPosition as backup
 		GlobalPosition = globalPosition;
 		
-		// Step 3: Final force stop to ensure clean state after position change
+		// Step 4: Final force stop after physics sync
 		ForceStop();
 	}
 

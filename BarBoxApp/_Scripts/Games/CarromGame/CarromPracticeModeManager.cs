@@ -3,76 +3,26 @@ using System.Collections.Generic;
 
 /// <summary>
 /// Manages practice mode functionality for Carrom game
+/// 
+/// ARCHITECTURE NOTES:
+/// - Striker positioning: Uses base class PositionStrikerAtBaseline() for consistency
+/// - Phase transitions: Relies on base class ExecuteSettlement() for proper phase management
+/// - Reset behavior: Combines stored initial positions with standardized positioning methods
 /// </summary>
 [GlobalClass]
-public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
+public partial class CarromPracticeModeManager : CarromModeManagerBase
 {
 	[Signal] public delegate void PracticeResetRequestedEventHandler();
 	[Signal] public delegate void PracticeModeSetupCompleteEventHandler();
 
-	// Dependencies
-	private CarromBoard _board;
-	private CarromInputController _inputController;
-	private CarromPhysicsConfig _physicsConfig;
-	private CarromPieceFactory _pieceFactory;
-
 	// Practice mode state
 	private Dictionary<CarromPiece, Vector2> _practiceInitialPositions = new Dictionary<CarromPiece, Vector2>();
 	private List<CarromPiece> _practicePieces = new List<CarromPiece>();
-	private CarromPiece _striker;
-	
-	// Settlement confirmation timer
-	private float _settlementConfirmationTimer = 0.0f;
-	private const float SETTLEMENT_CONFIRMATION_TIME = 0.1f; // Wait 0.1 seconds to confirm settlement
 
 	// Piece templates
 	private PackedScene _blackPieceTemplate;
 	private PackedScene _strikerTemplate;
-	private CarromPhaseManager _phaseManager;
-	
-	/// <summary>
-	/// Check if the mode is currently active/initialized
-	/// </summary>
-	public bool IsActive { get; private set; } = false;
 
-	/// <summary>
-	/// Initialize the practice mode manager
-	/// </summary>
-	public void Initialize(CarromBoard board, CarromInputController inputController, CarromPhysicsConfig physicsConfig)
-	{
-		_board = board;
-		_inputController = inputController;
-		_physicsConfig = physicsConfig;
-		IsActive = true;
-		
-		// Configure physics config with official board scaling for proportional piece sizes
-		if (_board != null && _physicsConfig != null)
-		{
-			_physicsConfig.SetBoardScaling(
-				_board.ScaleFactor,
-				_board.PieceRadius,
-				_board.OfficialStrikerRadius
-			);
-		}
-		
-	}
-	
-	/// <summary>
-	/// Set the phase manager for phase-aware operations
-	/// </summary>
-	public void SetPhaseManager(CarromPhaseManager phaseManager)
-	{
-		_phaseManager = phaseManager;
-	}
-
-	/// <summary>
-	/// Set the piece factory for centralized piece creation
-	/// </summary>
-	public void SetPieceFactory(CarromPieceFactory pieceFactory)
-	{
-		_pieceFactory = pieceFactory;
-	}
-	
 	/// <summary>
 	/// Initialize with piece templates (practice-specific version)
 	/// </summary>
@@ -80,93 +30,129 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 						   CarromPhysicsConfig physicsConfig, PackedScene blackTemplate, 
 						   PackedScene strikerTemplate)
 	{
-		Initialize(board, inputController, physicsConfig);
+		base.Initialize(board, inputController, physicsConfig);
 		_blackPieceTemplate = blackTemplate;
 		_strikerTemplate = strikerTemplate;
 	}
 
-	/// <summary>
-	/// Setup practice mode pieces (striker + single piece)
-	/// </summary>
-	public void SetupMode()
-	{
-		SetupPracticeMode();
-	}
+	// ================================================================
+	// ABSTRACT METHOD IMPLEMENTATIONS
+	// ================================================================
 	
 	/// <summary>
-	/// Setup practice mode pieces (striker + single piece) - internal implementation
+	/// Create and position pieces specific to practice mode
 	/// </summary>
-	public void SetupPracticeMode()
+	protected override void CreateModeSpecificPieces()
 	{
-		if (_board == null) return;
-		
-		// Validate phase state before setup
-		if (_phaseManager != null && !_phaseManager.CanExecuteAdminOperation("Practice mode setup"))
-		{
-			return;
-		}
-		
 		// Clear existing pieces and position tracking
-		ClearPracticePieces();
+		_practicePieces.Clear();
 		_practiceInitialPositions.Clear();
 		
 		// Get initial positions using global coordinates for consistency
 		var strikerInitialPosition = _board.ToGlobal(_board.GetBaselinePosition(0));
 		var centerPieceInitialPosition = _board.ToGlobal(Vector2.Zero); // Center of board in global coords
 		
-		// Create striker at baseline position
-		_striker = CreatePracticePiece(PieceType.Striker, Vector2.Zero);
-		_inputController?.SetStriker(_striker);
-		
 		// Create single practice piece in center
-		var centerPiece = CreatePracticePiece(PieceType.Black, Vector2.Zero);
+		var centerPiece = CreatePiece(PieceType.Black, Vector2.Zero);
+		if (centerPiece != null)
+		{
+			_practicePieces.Add(centerPiece);
+			_practiceInitialPositions[centerPiece] = centerPieceInitialPosition;
+		}
 		
-		// Store initial positions for both pieces using global coordinates
+		// Store striker initial position (striker is created by base class)
 		if (_striker != null)
 		{
 			_practiceInitialPositions[_striker] = strikerInitialPosition;
 		}
 		
-		if (centerPiece != null)
-		{
-			_practiceInitialPositions[centerPiece] = centerPieceInitialPosition;
-		}
-		
 		// Position pieces at their initial positions
 		PositionPiecesAtInitialPositions();
+	}
+	
+	/// <summary>
+	/// Get all pieces managed by practice mode (excluding striker)
+	/// </summary>
+	protected override List<CarromPiece> GetManagedPieces()
+	{
+		return new List<CarromPiece>(_practicePieces);
+	}
+	
+	/// <summary>
+	/// Clear all practice-specific pieces
+	/// </summary>
+	protected override void ClearModeSpecificPieces()
+	{
+		foreach (var piece in _practicePieces)
+		{
+			if (GodotObject.IsInstanceValid(piece))
+			{
+				piece.QueueFree();
+			}
+		}
+		_practicePieces.Clear();
+	}
+	
+	/// <summary>
+	/// Handle practice mode settlement - reset pieces to initial positions
+	/// </summary>
+	protected override void ExecuteModeSpecificSettlement()
+	{
+		ResetPracticeMode();
 		
+		// Ensure striker is positioned correctly for next shot
+		PositionStrikerAtBaseline();
+	}
+	
+	/// <summary>
+	/// Check if win condition is met (practice mode never "wins")
+	/// </summary>
+	public override bool CheckWinCondition(string playerId)
+	{
+		// Practice mode doesn't have win conditions
+		return false;
+	}
+	
+	/// <summary>
+	/// Determine if current turn should continue (practice mode always continues)
+	/// </summary>
+	public override bool ShouldContinueTurn(string playerId)
+	{
+		// Practice mode continues indefinitely
+		return true;
+	}
+	
+	// ================================================================
+	// PRACTICE MODE SPECIFIC METHODS
+	// ================================================================
+	
+	/// <summary>
+	/// Setup practice mode pieces (striker + single piece) - public interface
+	/// </summary>
+	public void SetupPracticeMode()
+	{
+		// Use base class template method
+		SetupMode();
+	}
+
+	/// <summary>
+	/// Finalize practice mode setup - emit the expected signal for CarromGame
+	/// </summary>
+	protected override void FinalizeSetup()
+	{
+		// Emit the practice-specific signal that CarromGame expects
 		EmitSignal(SignalName.PracticeModeSetupComplete);
 	}
 
 	/// <summary>
-	/// Handle piece being pocketed in practice mode
+	/// Handle practice-specific piece pocketing logic
 	/// </summary>
-	public void OnPiecePocketed(CarromPiece piece)
+	protected override void HandlePiecePocketed(CarromPiece piece)
 	{
-		if (piece == null || !GodotObject.IsInstanceValid(piece))
-		{
-			GD.PrintErr("[CarromPracticeModeManager] ERROR: OnPiecePocketed called with invalid piece");
-			return;
-		}
-		
-		// Check if phase manager allows reset operations
-		if (_phaseManager != null && !_phaseManager.CanExecuteAdminOperation("Practice mode reset after pocketing"))
-		{
-			return;
-		}
-		
-		// Reset practice mode after piece is pocketed
+		// In practice mode, any piece being pocketed triggers reset
 		ResetPracticeMode();
 	}
 	
-	/// <summary>
-	/// Handle pieces settled (called when all pieces have stopped)
-	/// </summary>
-	public void OnPiecesSettled()
-	{
-		// Start settlement confirmation timer to ensure pieces are truly settled
-		_settlementConfirmationTimer = SETTLEMENT_CONFIRMATION_TIME;
-	}
 	/// <summary>
 	/// Reset practice mode to initial state
 	/// </summary>
@@ -178,58 +164,21 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 			return;
 		}
 
-		// Log current piece states for debugging
-		foreach (var kvp in _practiceInitialPositions)
-		{
-			var piece = kvp.Key;
-			if (IsInstanceValid(piece))
-			{
-				var currentPos = piece.GlobalPosition;
-				var velocity = piece.LinearVelocity;
-				var isStopped = piece.IsStopped();
-			}
-		}
-
 		// Reset all pieces to their stored initial positions using immediate method
 		foreach (var kvp in _practiceInitialPositions)
 		{
 			var piece = kvp.Key;
 			var initialGlobalPosition = kvp.Value;
 			
-			if (IsInstanceValid(piece))
+			if (GodotObject.IsInstanceValid(piece))
 			{
 				ResetPieceToStartImmediate(piece, initialGlobalPosition);
 			}
 		}
 
 		EmitSignal(SignalName.PracticeResetRequested);
-
-		// Immediate phase transition after reset
-		_phaseManager?.TransitionTo(GamePhase.Active);
 	}
 
-	/// <summary>
-	/// Create a practice piece using the centralized piece factory
-	/// </summary>
-	private CarromPiece CreatePracticePiece(PieceType type, Vector2 position)
-	{
-		if (_pieceFactory == null)
-		{
-			GD.PrintErr("[CarromPracticeModeManager] ERROR: Piece factory not set - cannot create pieces");
-			return null;
-		}
-		
-		// Use centralized piece factory which applies physics parameters
-		var piece = _pieceFactory.CreatePiece(type, position);
-		
-		// Track practice pieces (factory handles board addition and physics setup)
-		if (piece != null && type != PieceType.Striker)
-		{
-			_practicePieces.Add(piece);
-		}
-		
-		return piece;
-	}
 
 	/// <summary>
 	/// Position all pieces at their initial positions using global coordinates
@@ -247,51 +196,6 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 				piece.LinearVelocity = Vector2.Zero;
 				piece.AngularVelocity = 0.0f;
 			}
-		}
-	}
-	
-	/// <summary>
-	/// Position striker at baseline (legacy method - now uses stored positions)
-	/// </summary>
-	private void PositionStrikerAtBaseline()
-	{
-		if (_striker == null || _board == null)
-			return;
-
-		// Use stored initial position instead of recalculating
-		if (_practiceInitialPositions.TryGetValue(_striker, out var storedPosition))
-		{
-			_striker.GlobalPosition = storedPosition;
-		}
-		else
-		{
-			// Fallback: calculate baseline position
-			Vector2 baselinePosition = _board.GetBaselinePosition(0);
-			_striker.Position = baselinePosition;
-		}
-
-		_striker.LinearVelocity = Vector2.Zero;
-		_striker.AngularVelocity = 0.0f;
-	}
-
-	/// <summary>
-	/// Clear all practice pieces
-	/// </summary>
-	private void ClearPracticePieces()
-	{
-		foreach (var piece in _practicePieces)
-		{
-			if (IsInstanceValid(piece))
-			{
-				piece.QueueFree();
-			}
-		}
-		_practicePieces.Clear();
-		
-		if (_striker != null && IsInstanceValid(_striker))
-		{
-			_striker.QueueFree();
-			_striker = null;
 		}
 	}
 
@@ -314,98 +218,49 @@ public partial class CarromPracticeModeManager : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Get current striker
+	/// Cancel practice-specific pending operations
 	/// </summary>
-	public CarromPiece GetStriker()
+	protected override void CancelModeSpecificOperations()
 	{
-		return _striker;
+		// No additional operations to cancel in practice mode
 	}
 
 	/// <summary>
-	/// Process settlement confirmation timer
+	/// Position striker at baseline using stored practice position (override base class)
 	/// </summary>
-	public override void _Process(double delta)
+	protected override void PositionStrikerAtBaseline()
 	{
-		// Handle settlement confirmation timer
-		if (_settlementConfirmationTimer > 0)
+		if (!IsStrikerValid()) return;
+		
+		// Use stored initial position instead of calculated baseline
+		if (_practiceInitialPositions.ContainsKey(_striker))
 		{
-			float deltaF = (float)delta;
-			_settlementConfirmationTimer -= deltaF;
+			var storedPosition = _practiceInitialPositions[_striker];
 			
-			// Check if timer expired and pieces are still settled
-			if (_settlementConfirmationTimer <= 0)
-			{
-				if (AreAllPiecesStopped())
-				{
-					ResetPracticeMode();
-				}
-				else
-				{
-				}
-				_settlementConfirmationTimer = 0.0f;
-			}
+			_striker.GlobalPosition = storedPosition;
+			_striker.LinearVelocity = Vector2.Zero;
+			_striker.AngularVelocity = 0.0f;
 		}
+		else
+		{
+			// Fallback to base class behavior if no stored position
+			base.PositionStrikerAtBaseline();
+		}
+	}
+	
+	/// <summary>
+	/// Check if striker is valid (helper method)
+	/// </summary>
+	private bool IsStrikerValid()
+	{
+		return _striker != null && GodotObject.IsInstanceValid(_striker);
 	}
 
 	/// <summary>
-	/// Cancel pending reset operations (called when new strike is initiated)
+	/// Clear practice-specific state during cleanup
 	/// </summary>
-	public void CancelPendingReset()
+	protected override void ClearModeSpecificState()
 	{
-		if (_settlementConfirmationTimer > 0)
-		{
-			_settlementConfirmationTimer = 0.0f;
-		}
-	}
-	
-	/// <summary>
-	/// Get all active pieces in this mode
-	/// </summary>
-	public List<CarromPiece> GetActivePieces()
-	{
-		var allPieces = new List<CarromPiece>(_practicePieces);
-		if (_striker != null && IsInstanceValid(_striker))
-		{
-			allPieces.Add(_striker);
-		}
-		return allPieces;
-	}
-	
-	
-	/// <summary>
-	/// Clean up mode resources (pieces, references, etc.)
-	/// </summary>
-	public void CleanupMode()
-	{
-		ClearPracticePieces();
 		_practiceInitialPositions.Clear();
-		_phaseManager = null;
-		IsActive = false;
-	}
-
-	/// <summary>
-	/// Check if all pieces are stopped
-	/// </summary>
-	public bool AreAllPiecesStopped()
-	{
-		// Check all practice pieces
-		foreach (CarromPiece piece in _practicePieces)
-		{
-			if (!IsInstanceValid(piece)) 
-				continue;
-			
-			if (piece.Visible && !piece.IsStopped())
-			{
-				return false;
-			}
-		}
-		
-		// Check striker
-		if (_striker != null && IsInstanceValid(_striker))
-		{
-			return _striker.IsStopped();
-		}
-		
-		return true;
 	}
 }

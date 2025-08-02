@@ -2,6 +2,14 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 
+// CARROMS TODO:
+// - Setup rounded corner board edge & collider
+// - Setup actual Team-Based Rounds (1v1 or 2v2) 
+//		- Login for "ranked" play?
+// - Setup example of "pooled" credit usage
+// - Add particle effect on enter pocket
+// - 
+
 /// <summary>
 /// Traditional board game featuring physics-based striking and strategic pocket play
 /// </summary>
@@ -56,11 +64,6 @@ public partial class CarromGame : GameController
 	[Export(PropertyHint.ResourceType, "PackedScene")] public PackedScene StrikerTemplate { get; set; }
 
 	// ================================================================
-	// CONSTANTS
-	// ================================================================
-
-
-	// ================================================================
 	// PRIVATE FIELDS - GAME LOGIC
 	// ================================================================
 
@@ -71,13 +74,13 @@ public partial class CarromGame : GameController
 	// Managers
 	private CarromPracticeModeManager _practiceModeManager;
 	private CarromCompetitiveModeManager _competitiveModeManager;
+	private CarromModeManagerBase _currentModeManager;
 	private CarromPieceFactory _pieceFactory;
 	private CarromCameraController _cameraController;
 	private CarromPhaseManager _phaseManager;
 	
 	// Game state
 	private bool _waitingForPiecesToStop = false;
-
 
 	public GamePhase CurrentPhase => _phaseManager?.CurrentPhase ?? GamePhase.Setup;
 
@@ -89,9 +92,7 @@ public partial class CarromGame : GameController
 	{
 		GameId = "carrom_game";
 		SetGameMode(GameMode.Practice); // Start in practice mode
-		
-		// Production logging: using GD.PrintErr for critical errors only
-		
+
 		// Initialize physics config
 		if (PhysicsConfig == null)
 		{
@@ -117,7 +118,6 @@ public partial class CarromGame : GameController
 		
 		// Context detection
 		DetectAndAdaptToContext();
-		
 	}
 
 	protected override void InitializeGame()
@@ -147,7 +147,6 @@ public partial class CarromGame : GameController
 			
 			// Connect board signals
 			_board.PiecePocketed += OnPiecePocketed;
-			
 		}
 		catch (System.Exception ex)
 		{
@@ -170,7 +169,6 @@ public partial class CarromGame : GameController
 		_cameraController = new CarromCameraController();
 		AddChild(_cameraController);
 		_cameraController.Initialize(_board);
-		
 	}
 
 	/// <summary>
@@ -183,7 +181,7 @@ public partial class CarromGame : GameController
 			// Get input controller from scene tree instead of creating it
 			_inputController = GetNode<CarromInputController>("CarromInputController");
 			
-			if (!GodotObject.IsInstanceValid(_inputController))
+			if (!IsInstanceValid(_inputController))
 			{
 				GD.PrintErr("[CarromGame] Failed to find CarromInputController in scene tree");
 				_inputController = null;
@@ -242,11 +240,10 @@ public partial class CarromGame : GameController
 			_inputController.SetPhysicsConfig(PhysicsConfig);
 			
 			// Pass centralized parameters to input controller (strike power now from physics config)
-			_inputController.SetStrikeParameters(PhysicsConfig.MaxStrikePower, PhysicsConfig.MinStrikePower, StrikeDeadZone, 
+			_inputController.SetStrikeParameters( StrikeDeadZone, 
 				MaxAimDistance, LateralSensitivity, LateralAngleThreshold, PhysicsConfig.MaxStrikeAngle);
 			_inputController.SetVisualParameters(AimLineLength, PowerBarWidth, PowerBarHeight);
 		}
-		
 	}
 
 	/// <summary>
@@ -259,7 +256,6 @@ public partial class CarromGame : GameController
 		
 		// Connect phase manager signals
 		_phaseManager.PiecesSettled += OnPiecesSettled;
-		
 	}
 
 	/// <summary>
@@ -294,7 +290,6 @@ public partial class CarromGame : GameController
 		
 		// Connect manager signals
 		ConnectManagerSignals();
-		
 	}
 
 	/// <summary>
@@ -322,19 +317,29 @@ public partial class CarromGame : GameController
 	// ================================================================
 
 	/// <summary>
-	/// Check if all pieces have stopped moving
+	/// Check if all pieces have stopped moving (delegated to current mode manager)
 	/// </summary>
 	private bool AreAllPiecesStopped()
 	{
-		// Delegate to appropriate manager based on game mode
-		if (_carromGameMode == CarromGameMode.Practice)
-		{
-			return _practiceModeManager?.AreAllPiecesStopped() ?? true;
-		}
-		else
-		{
-			return _competitiveModeManager?.AreAllPiecesStopped() ?? true;
-		}
+		// Delegate to current mode manager using polymorphism
+		return _currentModeManager?.AreAllPiecesStopped() ?? true;
+	}
+	
+	/// <summary>
+	/// Get the current striker (delegated to current mode manager)
+	/// </summary>
+	private CarromPiece GetStriker()
+	{
+		return _currentModeManager?.GetStriker();
+	}
+	
+	/// <summary>
+	/// Update input controller with current striker from mode manager
+	/// </summary>
+	private void UpdateInputControllerStriker()
+	{
+		var striker = _currentModeManager?.GetStriker();
+		_inputController?.SetStriker(striker);
 	}
 
 	// ================================================================
@@ -346,6 +351,15 @@ public partial class CarromGame : GameController
 	/// </summary>
 	public virtual void StartPracticeMode()
 	{
+		// Clean up competitive mode before switching
+		_competitiveModeManager?.CleanupMode();
+		
+		// Set current mode manager to practice
+		_currentModeManager = _practiceModeManager;
+		
+		// Restore phase manager reference that was lost during cleanup
+		_practiceModeManager?.SetPhaseManager(_phaseManager);
+		
 		_carromGameMode = CarromGameMode.Practice;
 		SetGameMode(GameMode.Practice);
 		ResetGame();
@@ -361,6 +375,15 @@ public partial class CarromGame : GameController
 	{
 		if (_isGameActive) 
 			return;
+		
+		// Clean up practice mode before switching
+		_practiceModeManager?.CleanupMode();
+		
+		// Set current mode manager to competitive
+		_currentModeManager = _competitiveModeManager;
+		
+		// Restore phase manager reference that was lost during cleanup
+		_competitiveModeManager?.SetPhaseManager(_phaseManager);
 		
 		_carromGameMode = CarromGameMode.Competitive;
 		SetGameMode(GameMode.TimeTrial); // Use TimeTrial for competitive tracking
@@ -379,15 +402,6 @@ public partial class CarromGame : GameController
 	}
 
 	/// <summary>
-	/// Clear all pieces from the board
-	/// </summary>
-	private void ClearAllPieces()
-	{
-		// Delegate to piece factory
-		_pieceFactory?.ClearAllPieces();
-	}
-
-	/// <summary>
 	/// Reset game state
 	/// </summary>
 	private void ResetGame()
@@ -401,24 +415,15 @@ public partial class CarromGame : GameController
 	// ================================================================
 
 	/// <summary>
-	/// Handle strike execution from input controller
+	/// Handle strike execution from input controller (delegated to mode manager)
 	/// </summary>
 	private void OnStrikeExecuted(Vector2 force)
 	{
 		if (!_phaseManager.CanReceiveInput()) 
 			return;
 
-		// Get striker from appropriate manager
-		CarromPiece striker = null;
-		if (_carromGameMode == CarromGameMode.Practice)
-		{
-			striker = _practiceModeManager?.GetStriker();
-		}
-		else
-		{
-			striker = _competitiveModeManager?.GetStriker();
-		}
-
+		// Get striker from current mode manager
+		var striker = _currentModeManager?.GetStriker();
 		if (striker != null)
 		{
 			striker.ApplyStrike(force);
@@ -447,21 +452,12 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnPiecePocketed(CarromPiece piece)
 	{
-		// Delegate to appropriate manager
-		if (_carromGameMode == CarromGameMode.Practice)
-		{
-			_practiceModeManager?.OnPiecePocketed(piece);
-		}
-		else
-		{
-			_competitiveModeManager?.OnPiecePocketed(piece);
-		}
+		// Delegate to current mode manager using polymorphism
+		_currentModeManager?.OnPiecePocketed(piece);
 		
 		// Emit main game signal
-		string playerId = _carromGameMode == CarromGameMode.Practice ? "practice" : 
-						 _competitiveModeManager?.GetCurrentPlayer()?.PlayerId ?? "player1";
+		string playerId = GetCurrentPlayerId();
 		EmitSignal(SignalName.PiecePocketed, playerId, piece);
-		
 	}
 
 	/// <summary>
@@ -493,8 +489,6 @@ public partial class CarromGame : GameController
 		}
 	}
 
-
-
 	/// <summary>
 	/// Get point value for a piece type
 	/// </summary>
@@ -519,9 +513,6 @@ public partial class CarromGame : GameController
 		// Use the immediate synchronous reset method with global coordinates
 		piece.Reset(ToGlobal(startPosition));
 	}
-
-
-
 
 	/// <summary>
 	/// Get current player ID
@@ -613,6 +604,12 @@ public partial class CarromGame : GameController
 				userManager?.ResetUserIdleTimer();
 				_practiceModeManager?.ResetPracticeMode();
 			}, "🔄", true, "Reset practice session"));
+			
+			buttons.Add(new ContextButtonData("Play Competitive", () => {
+				var userManager = UserManager.GetAutoload();
+				userManager?.ResetUserIdleTimer();
+				StartCompetitiveMode();
+			}, "🏆", true, "Start competitive match"));
 		}
 
 		return buttons.ToArray();
@@ -631,27 +628,26 @@ public partial class CarromGame : GameController
 		};
 	}
 
-	/// <summary>
-	/// Cleanup on exit
-	/// </summary>
 	// ================================================================
 	// SIGNAL HANDLERS FOR MANAGERS
 	// ================================================================
 
 	/// <summary>
-	/// Handle pieces settled from phase manager
+	/// Handle pieces settled from phase manager (centralized)
 	/// </summary>
 	private void OnPiecesSettled()
 	{
-		// Delegate to appropriate mode manager based on game mode
-		if (_carromGameMode == CarromGameMode.Practice)
-		{
-			_practiceModeManager?.OnPiecesSettled();
-		}
-		else
-		{
-			_competitiveModeManager?.OnPiecesSettled();
-		}
+		// Process settlement based on game mode
+		ProcessPiecesSettlement();
+	}
+	
+	/// <summary>
+	/// Process pieces settlement using current mode manager (polymorphic)
+	/// </summary>
+	private void ProcessPiecesSettlement()
+	{
+		// Delegate to current mode manager using polymorphism
+		_currentModeManager?.OnPiecesSettled();
 	}
 
 	/// <summary>
@@ -705,17 +701,23 @@ public partial class CarromGame : GameController
 	}
 
 	/// <summary>
-	/// Handle piece creation from factory
+	/// Handle piece creation from factory (mode managers handle tracking)
 	/// </summary>
 	private void OnPieceCreated(CarromPiece piece)
 	{
-		// Connect piece signals if needed
+		// Connect piece signals for main game events
 		piece.PieceCollided += OnPieceCollided;
 		piece.PieceStopped += OnPieceStoppedSignal;
+		
+		// Update input controller if this is a striker
+		if (piece.Type == PieceType.Striker)
+		{
+			UpdateInputControllerStriker();
+		}
 	}
 
 	/// <summary>
-	/// Handle piece destruction from factory
+	/// Handle piece destruction from factory (mode managers handle tracking)
 	/// </summary>
 	private void OnPieceDestroyed(CarromPiece piece)
 	{
@@ -724,6 +726,12 @@ public partial class CarromGame : GameController
 		{
 			piece.PieceCollided -= OnPieceCollided;
 			piece.PieceStopped -= OnPieceStoppedSignal;
+		}
+		
+		// Update input controller if striker was destroyed
+		if (piece?.Type == PieceType.Striker)
+		{
+			_inputController?.SetStriker(null);
 		}
 	}
 
@@ -756,33 +764,28 @@ public partial class CarromGame : GameController
 		}
 	}
 
-	public override void _Notification(int what)
+	public override void _ExitTree()
 	{
-		base._Notification(what);
-		
-		if (what == NotificationExitTree)
+		base._ExitTree();
+
+		// Clean up signals and references
+		if (_board != null && GodotObject.IsInstanceValid(_board))
 		{
-			// Clean up signals and references
-			if (_board != null && GodotObject.IsInstanceValid(_board))
-			{
-				_board.PiecePocketed -= OnPiecePocketed;
-			}
-			
-			if (_inputController != null && GodotObject.IsInstanceValid(_inputController))
-			{
-				_inputController.StrikeExecuted -= OnStrikeExecuted;
-				_inputController.AimingStateChanged -= OnAimingStateChanged;
-			}
-			
-			if (_phaseManager != null && GodotObject.IsInstanceValid(_phaseManager))
-			{
-				_phaseManager.PiecesSettled -= OnPiecesSettled;
-			}
-			
-			// Clean up manager signals
-			DisconnectManagerSignals();
-			
-			// Managers will clean up their own resources automatically
+			_board.PiecePocketed -= OnPiecePocketed;
 		}
+			
+		if (_inputController != null && GodotObject.IsInstanceValid(_inputController))
+		{
+			_inputController.StrikeExecuted -= OnStrikeExecuted;
+			_inputController.AimingStateChanged -= OnAimingStateChanged;
+		}
+			
+		if (_phaseManager != null && GodotObject.IsInstanceValid(_phaseManager))
+		{
+			_phaseManager.PiecesSettled -= OnPiecesSettled;
+		}
+			
+		// Clean up manager signals
+		DisconnectManagerSignals();
 	}
 }
