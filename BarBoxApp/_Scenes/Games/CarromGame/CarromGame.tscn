@@ -12,11 +12,13 @@
 [node name="CarromGame" type="Node2D"]
 script = ExtResource("1_0jy4h")
 PhysicsConfig = ExtResource("2_pw2n5")
+StrikeDeadZone = 20.0
 LateralAngleThreshold = 55.0
 MaxVelocityLimit = 4500.0
 MaxAngularVelocity = 100.0
 VelocityAlertThreshold = 4500.0
 AimLineLength = 150.0
+PowerBarWidth = 80.0
 WhitePieceTemplate = ExtResource("2_1b4uc")
 BlackPieceTemplate = ExtResource("3_pw2n5")
 RedPieceTemplate = ExtResource("4_oio5e")

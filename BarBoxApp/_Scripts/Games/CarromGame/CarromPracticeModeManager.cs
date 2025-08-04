@@ -98,6 +98,7 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 	/// </summary>
 	protected override void ExecuteModeSpecificSettlement()
 	{
+		// Reset all pieces to their initial positions
 		ResetPracticeMode();
 		
 		// Ensure striker is positioned correctly for next shot
@@ -149,8 +150,8 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 	/// </summary>
 	protected override void HandlePiecePocketed(CarromPiece piece)
 	{
-		// In practice mode, any piece being pocketed triggers reset
-		ResetPracticeMode();
+		// In practice mode, let the settlement system handle the reset
+		// The actual reset will happen in ExecuteModeSpecificSettlement()
 	}
 	
 	/// <summary>

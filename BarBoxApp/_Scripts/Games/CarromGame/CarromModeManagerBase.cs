@@ -373,7 +373,14 @@ public abstract partial class CarromModeManagerBase : Node2D
 	
 	private bool IsStrikerStopped()
 	{
-		return !IsStrikerValid() || _striker.IsStopped();
+		if (!IsStrikerValid()) 
+			return true;
+		
+		// Pocketed strikers (invisible) are considered stopped
+		if (!_striker.Visible)
+			return true;
+			
+		return _striker.IsStopped();
 	}
 	
 	/// <summary>
