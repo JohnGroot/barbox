@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://dvhpvabp3qn3w"]
 
-[ext_resource type="Script" uid="uid://cjn2miexkev46" path="res://_Scripts/Games/RacingGame/CheckpointTrigger.cs" id="1_rwtuj"]
+[ext_resource type="Script" uid="uid://bc4jiayxdp0cj" path="res://_Scripts/Games/RacingGame/RacingCheckpointTrigger.cs" id="1_rwtuj"]
 
 [sub_resource type="SegmentShape2D" id="SegmentShape2D_rwtuj"]
 a = Vector2(0, 32)
@@ -10,7 +10,7 @@ b = Vector2(0, -32)
 script = ExtResource("1_rwtuj")
 CollisionShape = NodePath("CollisionShape")
 VisualLine = NodePath("CheckpointLine")
-metadata/_custom_type_script = "uid://cjn2miexkev46"
+metadata/_custom_type_script = "uid://bc4jiayxdp0cj"
 
 [node name="CollisionShape" type="CollisionShape2D" parent="."]
 shape = SubResource("SegmentShape2D_rwtuj")

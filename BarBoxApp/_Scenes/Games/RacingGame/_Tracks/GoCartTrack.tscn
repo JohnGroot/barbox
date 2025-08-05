@@ -1,6 +1,6 @@
 [gd_scene load_steps=16 format=3 uid="uid://3nr7t27bpq56"]
 
-[ext_resource type="Script" uid="uid://b3irt6d1umwfs" path="res://_Scripts/Games/RacingGame/TrackDefinition.cs" id="1_vmd1l"]
+[ext_resource type="Script" uid="uid://c8exhf7g71gjb" path="res://_Scripts/Games/RacingGame/RacingTrackDefinition.cs" id="1_vmd1l"]
 [ext_resource type="PackedScene" uid="uid://cox26ci3xoa0j" path="res://_Scenes/Games/RacingGame/_Prefabs/StartTrigger.tscn" id="2_6ul0s"]
 [ext_resource type="PackedScene" uid="uid://dvhpvabp3qn3w" path="res://_Scenes/Games/RacingGame/_Prefabs/CheckpointTrigger.tscn" id="3_spbyn"]
 
