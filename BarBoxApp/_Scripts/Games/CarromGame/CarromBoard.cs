@@ -1,5 +1,6 @@
 using Godot;
 using System.Collections.Generic;
+using System.Linq;
 
 /// <summary>
 /// Carrom board with custom drawing and physics boundaries
@@ -16,6 +17,7 @@ public partial class CarromBoard : Node2D
 	[Export] public Color LineColor { get; set; } = Colors.Black;
 	[Export(PropertyHint.Range, "1.0,10.0,0.5")] public float LineWidth { get; set; } = 3.0f;
 	[Export] public Color PocketColor { get; set; } = Colors.Black;
+	[Export] public bool UseCurvedBorders { get; set; } = false;
 
 	/// <summary>
 	/// Get baseline distance from board edge to baseline center (same for all sides since board is square)
@@ -29,6 +31,9 @@ public partial class CarromBoard : Node2D
 	private Vector2[] _cornerArrowStarts = new Vector2[4];
 	private Vector2[] _cornerArrowEnds = new Vector2[4];
 	private bool _needsRedraw = true;
+	
+	// Curved border geometry
+	private const int CORNER_ARC_SEGMENTS = 48;
 
 	// Board layout constants based on official Carrom Laws (indiancarrom.co.in)
 	// A=73.5-74cm board size, B=6.35-7.60cm frame width, C=4.45cm pocket diameter
@@ -122,9 +127,24 @@ public partial class CarromBoard : Node2D
 	}
 
 	/// <summary>
-	/// Create collision shapes for board borders
+	/// Create collision shapes for board borders with optional curved corners
 	/// </summary>
 	private void CreateBorderCollisions()
+	{
+		if (UseCurvedBorders && ValidateCurvedGeometry())
+		{
+			CreateCurvedBorderCollisions();
+		}
+		else
+		{
+			CreateRectangularBorderCollisions();
+		}
+	}
+	
+	/// <summary>
+	/// Create traditional rectangular border collision shapes
+	/// </summary>
+	private void CreateRectangularBorderCollisions()
 	{
 		float totalBorder = BorderWidth + LineWidth;
 
@@ -165,6 +185,131 @@ public partial class CarromBoard : Node2D
 		collisionShape.Position = position;
 		_boardPhysics.AddChild(collisionShape);
 	}
+	
+	/// <summary>
+	/// Validate curved border geometry and provide fallbacks
+	/// </summary>
+	private bool ValidateCurvedGeometry()
+	{
+		// Ensure pocket radius is reasonable for curved corners
+		if (PocketRadius > BorderWidth * 0.8f)
+		{
+			GD.PrintErr("[CarromBoard] PocketRadius too large for curved borders, falling back to rectangular borders");
+			return false;
+		}
+		
+		if (PocketRadius <= 0)
+		{
+			GD.PrintErr("[CarromBoard] Invalid PocketRadius for curved borders, falling back to rectangular borders");
+			return false;
+		}
+		
+		return true;
+	}
+	
+	/// <summary>
+	/// Create curved border collision using simple segments for reliable physics
+	/// </summary>
+	private void CreateCurvedBorderCollisions()
+	{
+		// Use simple rectangular outer border (reliable collision)
+		float totalBorder = BorderWidth + LineWidth;
+		
+		// Create outer border collision (same as rectangular approach)
+		CreateBorderSegment(
+			new Vector2(0, -BoardHalfSize - totalBorder / 2),
+			new Vector2(BoardSize + totalBorder * 2, totalBorder)
+		);
+		CreateBorderSegment(
+			new Vector2(0, BoardHalfSize + totalBorder / 2),
+			new Vector2(BoardSize + totalBorder * 2, totalBorder)
+		);
+		CreateBorderSegment(
+			new Vector2(-BoardHalfSize - totalBorder / 2, 0),
+			new Vector2(totalBorder, BoardSize)
+		);
+		CreateBorderSegment(
+			new Vector2(BoardHalfSize + totalBorder / 2, 0),
+			new Vector2(totalBorder, BoardSize)
+		);
+		
+		// Add inner curved boundary collision using segments
+		CreateInnerCurvedBoundary();
+	}
+	
+	/// <summary>
+	/// Create inner curved boundary collision using simple line segments
+	/// </summary>
+	private void CreateInnerCurvedBoundary()
+	{
+		float innerRadius = PocketRadius;
+		float cornerOffset = BoardHalfSize - innerRadius;
+		
+		// Calculate corner centers for interior curves
+		Vector2[] cornerCenters = new Vector2[]
+		{
+			new Vector2(-cornerOffset, -cornerOffset), // Top-left
+			new Vector2(cornerOffset, -cornerOffset),  // Top-right
+			new Vector2(cornerOffset, cornerOffset),   // Bottom-right
+			new Vector2(-cornerOffset, cornerOffset)   // Bottom-left
+		};
+		
+		// Create straight edge segments
+		CreateLineSegment(new Vector2(-cornerOffset, -BoardHalfSize), new Vector2(cornerOffset, -BoardHalfSize)); // Top
+		CreateLineSegment(new Vector2(BoardHalfSize, -cornerOffset), new Vector2(BoardHalfSize, cornerOffset)); // Right
+		CreateLineSegment(new Vector2(cornerOffset, BoardHalfSize), new Vector2(-cornerOffset, BoardHalfSize)); // Bottom
+		CreateLineSegment(new Vector2(-BoardHalfSize, cornerOffset), new Vector2(-BoardHalfSize, -cornerOffset)); // Left
+		
+		// Create curved corner segments using line segments
+		CreateCurvedCornerSegments(cornerCenters[0], innerRadius, Mathf.Pi, 3 * Mathf.Pi / 2); // Top-left
+		CreateCurvedCornerSegments(cornerCenters[1], innerRadius, 3 * Mathf.Pi / 2, 2 * Mathf.Pi); // Top-right
+		CreateCurvedCornerSegments(cornerCenters[2], innerRadius, 0, Mathf.Pi / 2); // Bottom-right
+		CreateCurvedCornerSegments(cornerCenters[3], innerRadius, Mathf.Pi / 2, Mathf.Pi); // Bottom-left
+	}
+	
+	/// <summary>
+	/// Create a simple line segment collision shape
+	/// </summary>
+	private void CreateLineSegment(Vector2 start, Vector2 end)
+	{
+		var collisionShape = new CollisionShape2D();
+		var segmentShape = new SegmentShape2D();
+		segmentShape.A = start;
+		segmentShape.B = end;
+		collisionShape.Shape = segmentShape;
+		_boardPhysics.AddChild(collisionShape);
+	}
+	
+	/// <summary>
+	/// Create curved corner collision using multiple line segments
+	/// </summary>
+	private void CreateCurvedCornerSegments(Vector2 center, float radius, float startAngle, float endAngle)
+	{
+		// Generate arc points using existing method
+		var arcPoints = GenerateCornerArc(center, radius, startAngle, endAngle, CORNER_ARC_SEGMENTS);
+		
+		// Create line segments between consecutive arc points
+		for (int i = 0; i < arcPoints.Length - 1; i++)
+		{
+			CreateLineSegment(arcPoints[i], arcPoints[i + 1]);
+		}
+	}
+	
+	/// <summary>
+	/// Generate tessellated quarter-circle arc points
+	/// </summary>
+	private Vector2[] GenerateCornerArc(Vector2 center, float radius, float startAngle, float endAngle, int segments)
+	{
+		var points = new Vector2[segments + 1];
+		for (int i = 0; i <= segments; i++)
+		{
+			float t = (float)i / segments;
+			float angle = Mathf.Lerp(startAngle, endAngle, t);
+			points[i] = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+		}
+		return points;
+	}
+	
 
 	/// <summary>
 	/// Setup pocket detection areas
@@ -235,9 +380,24 @@ public partial class CarromBoard : Node2D
 	}
 
 	/// <summary>
-	/// Draw board borders
+	/// Draw board borders with optional curved corners
 	/// </summary>
 	private void DrawBorders()
+	{
+		if (UseCurvedBorders && ValidateCurvedGeometry())
+		{
+			DrawCurvedBorders();
+		}
+		else
+		{
+			DrawRectangularBorders();
+		}
+	}
+	
+	/// <summary>
+	/// Draw traditional rectangular board borders
+	/// </summary>
+	private void DrawRectangularBorders()
 	{
 		Vector2 fullSize = Vector2.One * BoardSize;
 		Vector2 halfSizeVector = Vector2.One * BoardHalfSize;
@@ -262,6 +422,73 @@ public partial class CarromBoard : Node2D
 		for (int i = 0; i < points.Length - 1; i++)
 		{
 			DrawLine(points[i], points[i + 1], EdgeColor, LineWidth);
+		}
+	}
+	
+	/// <summary>
+	/// Draw curved board borders using single polygon approach
+	/// </summary>
+	private void DrawCurvedBorders()
+	{
+		float totalBorder = BorderWidth + LineWidth;
+		float innerRadius = PocketRadius;
+		
+		// Calculate corner centers for interior curves
+		float cornerOffset = BoardHalfSize - innerRadius;
+		Vector2[] cornerCenters = new Vector2[]
+		{
+			new Vector2(-cornerOffset, -cornerOffset), // Top-left
+			new Vector2(cornerOffset, -cornerOffset),  // Top-right
+			new Vector2(cornerOffset, cornerOffset),   // Bottom-right
+			new Vector2(-cornerOffset, cornerOffset)   // Bottom-left
+		};
+		
+		// Draw outer border (simple rectangle)
+		float outerSize = BoardHalfSize + totalBorder;
+		Rect2 outerBorder = new Rect2(new Vector2(-outerSize, -outerSize), new Vector2(outerSize * 2, outerSize * 2));
+		DrawRect(outerBorder, EdgeColor);
+		
+		// Generate and draw inner boundary with curved corners (to create border effect)
+		var innerBoundaryPoints = new List<Vector2>();
+		
+		// Top edge (left to right)
+		innerBoundaryPoints.Add(new Vector2(-cornerOffset, -BoardHalfSize));
+		innerBoundaryPoints.Add(new Vector2(cornerOffset, -BoardHalfSize));
+		
+		// Top-right corner arc (270° to 0°)
+		var topRightArc = GenerateCornerArc(cornerCenters[1], innerRadius, 3 * Mathf.Pi / 2, 0, CORNER_ARC_SEGMENTS);
+		innerBoundaryPoints.AddRange(topRightArc.Skip(1));
+		
+		// Right edge (top to bottom)
+		innerBoundaryPoints.Add(new Vector2(BoardHalfSize, cornerOffset));
+		
+		// Bottom-right corner arc (0° to 90°)
+		var bottomRightArc = GenerateCornerArc(cornerCenters[2], innerRadius, 0, Mathf.Pi / 2, CORNER_ARC_SEGMENTS);
+		innerBoundaryPoints.AddRange(bottomRightArc.Skip(1));
+		
+		// Bottom edge (right to left)
+		innerBoundaryPoints.Add(new Vector2(-cornerOffset, BoardHalfSize));
+		
+		// Bottom-left corner arc (90° to 180°)
+		var bottomLeftArc = GenerateCornerArc(cornerCenters[3], innerRadius, Mathf.Pi / 2, Mathf.Pi, CORNER_ARC_SEGMENTS);
+		innerBoundaryPoints.AddRange(bottomLeftArc.Skip(1));
+		
+		// Left edge (bottom to top)
+		innerBoundaryPoints.Add(new Vector2(-BoardHalfSize, -cornerOffset));
+		
+		// Top-left corner arc (180° to 270°)
+		var topLeftArc = GenerateCornerArc(cornerCenters[0], innerRadius, Mathf.Pi, 3 * Mathf.Pi / 2, CORNER_ARC_SEGMENTS);
+		innerBoundaryPoints.AddRange(topLeftArc.Skip(1));
+		
+		// Draw board surface inside curved border
+		DrawColoredPolygon(innerBoundaryPoints.ToArray(), BoardColor);
+		
+		// Draw inner border line to match visual style
+		for (int i = 0; i < innerBoundaryPoints.Count; i++)
+		{
+			Vector2 current = innerBoundaryPoints[i];
+			Vector2 next = innerBoundaryPoints[(i + 1) % innerBoundaryPoints.Count];
+			DrawLine(current, next, EdgeColor, LineWidth);
 		}
 	}
 
