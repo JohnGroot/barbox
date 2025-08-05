@@ -1093,33 +1093,6 @@ public partial class CarromBoard : Node2D
 		return null;
 	}
 
-	/// <summary>
-	/// Get corner arrow start positions for external use
-	/// </summary>
-	public Vector2[] GetCornerArrowStarts()
-	{
-		return (Vector2[])_cornerArrowStarts.Clone();
-	}
-
-	/// <summary>
-	/// Get corner arrow end positions for external use
-	/// </summary>
-	public Vector2[] GetCornerArrowEnds()
-	{
-		return (Vector2[])_cornerArrowEnds.Clone();
-	}
-
-	/// <summary>
-	/// Get corner arrow start and end position for a specific arrow index (0-3)
-	/// </summary>
-	public (Vector2 start, Vector2 end) GetCornerArrow(int index)
-	{
-		if (index >= 0 && index < 4)
-		{
-			return (_cornerArrowStarts[index], _cornerArrowEnds[index]);
-		}
-		return (Vector2.Zero, Vector2.Zero);
-	}
 
 	/// <summary>
 	/// Set physics configuration for all pockets
@@ -1135,19 +1108,6 @@ public partial class CarromBoard : Node2D
 		}
 	}
 
-	/// <summary>
-	/// Set phase manager for all pockets
-	/// </summary>
-	public void SetPocketPhaseManager(CarromPhaseManager phaseManager)
-	{
-		foreach (var pocket in _pockets)
-		{
-			if (GodotObject.IsInstanceValid(pocket))
-			{
-				pocket.SetPhaseManager(phaseManager);
-			}
-		}
-	}
 
 	/// <summary>
 	/// Cleanup on exit

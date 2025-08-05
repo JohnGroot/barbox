@@ -6,7 +6,7 @@ using System.Collections.Generic;
 /// and template method patterns for mode-specific behavior
 /// </summary>
 [GlobalClass]
-public abstract partial class CarromModeManagerBase : Node2D
+public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 {
 	// ================================================================
 	// SHARED SIGNALS (mode managers can add their own)
@@ -23,7 +23,6 @@ public abstract partial class CarromModeManagerBase : Node2D
 	protected CarromInputController _inputController;
 	protected CarromPhysicsConfig _physicsConfig;
 	protected CarromPieceFactory _pieceFactory;
-	protected CarromPhaseManager _phaseManager;
 
 	// ================================================================
 	// SHARED STATE
@@ -34,6 +33,15 @@ public abstract partial class CarromModeManagerBase : Node2D
 	
 	// Settlement state (now synchronous)
 	private bool _isSettling = false; // Flag to prevent concurrent settlements
+	// Retry mechanisms removed - no longer needed with brute force state machine
+	
+	// Settlement loop detection and debugging
+	private int _settlementLoopCount = 0; // Track consecutive settlement attempts
+	private double _lastSettlementTime = 0.0; // Track timing between settlements
+	private const int MAX_SETTLEMENT_LOOPS = 5; // Maximum consecutive settlements before intervention
+	private const double MIN_SETTLEMENT_INTERVAL = 0.5; // Minimum time between settlements (500ms)
+	
+	// Settlement context system removed - no longer needed with brute force state machine approach
 	
 	// ================================================================
 	// ABSTRACT METHODS (must be implemented by subclasses)
@@ -98,20 +106,111 @@ public abstract partial class CarromModeManagerBase : Node2D
 	}
 	
 	/// <summary>
+	/// Ensure striker is restored from pocketed state with comprehensive validation and retry logic
+	/// </summary>
+	protected void EnsureStrikerRestored()
+	{
+		if (!IsStrikerValid())
+		{
+			return;
+		}
+		
+		// Check if striker needs restoration
+		bool needsRestoration = !_striker.Visible || _striker.Freeze;
+		if (!needsRestoration)
+		{
+			return;
+		}
+		
+		// Calculate target baseline position before restoration
+		Vector2 targetPosition = CalculateStrikerBaselinePosition();
+		
+		// Attempt restoration with the target position
+		_striker.Reset(targetPosition);
+		
+		// Validate restoration succeeded
+		if (!ValidateStrikerRestoration(targetPosition))
+		{
+			AttemptFallbackRestoration(targetPosition);
+		}
+	}
+	
+	/// <summary>
+	/// Calculate the target baseline position for striker restoration
+	/// </summary>
+	private Vector2 CalculateStrikerBaselinePosition()
+	{
+		if (_board == null)
+		{
+			return Vector2.Zero;
+		}
+		
+		// Default to player 0 baseline - subclasses can override PositionStrikerAtBaseline for different behavior
+		var baselinePosition = _board.GetBaselinePosition(0);
+		var globalPosition = _board.ToGlobal(baselinePosition);
+		return globalPosition;
+	}
+	
+	/// <summary>
+	/// Validate that striker restoration was successful
+	/// </summary>
+	private bool ValidateStrikerRestoration(Vector2 expectedPosition)
+	{
+		if (!IsStrikerValid())
+		{
+			return false;
+		}
+		
+		// Check visibility was restored
+		if (!_striker.Visible)
+		{
+			return false;
+		}
+		
+		// Check freeze state was cleared
+		if (_striker.Freeze)
+		{
+			return false;
+		}
+		
+		// Check position is reasonable (within tolerance)
+		float positionTolerance = 50.0f; // Allow 50 pixel tolerance
+		float actualDistance = _striker.GlobalPosition.DistanceTo(expectedPosition);
+		if (actualDistance > positionTolerance)
+		{
+			return false;
+		}
+		
+		return true;
+	}
+	
+	/// <summary>
+	/// Attempt fallback restoration if initial restoration failed
+	/// </summary>
+	private void AttemptFallbackRestoration(Vector2 targetPosition)
+	{
+		// Attempt 1: Try basic Reset() without position
+		_striker.Reset();
+		
+		// Attempt 2: Manually set properties
+		_striker.Visible = true;
+		_striker.Freeze = false;
+		_striker.GlobalPosition = targetPosition;
+		_striker.LinearVelocity = Vector2.Zero;
+		_striker.AngularVelocity = 0.0f;
+	}
+	
+	/// <summary>
 	/// Validate piece operations (can be overridden for mode-specific validation)
 	/// </summary>
 	protected virtual bool ValidatePieceAndPhase(CarromPiece piece, string operation)
 	{
 		if (piece == null || !GodotObject.IsInstanceValid(piece))
 		{
-			GD.PrintErr($"[{GetType().Name}] ERROR: {operation} called with invalid piece");
 			return false;
 		}
 		
-		if (_phaseManager != null && !_phaseManager.CanExecuteAdminOperation(operation))
-		{
-			return false;
-		}
+		// Admin operations are always allowed in the new architecture
 		
 		return true;
 	}
@@ -141,13 +240,6 @@ public abstract partial class CarromModeManagerBase : Node2D
 		ConfigurePhysicsScaling();
 	}
 	
-	/// <summary>
-	/// Set the phase manager for phase-aware operations
-	/// </summary>
-	public void SetPhaseManager(CarromPhaseManager phaseManager)
-	{
-		_phaseManager = phaseManager;
-	}
 
 	/// <summary>
 	/// Set the piece factory for centralized piece creation
@@ -181,18 +273,9 @@ public abstract partial class CarromModeManagerBase : Node2D
 		// Prevent concurrent settlements
 		if (_isSettling)
 		{
-			GD.Print($"[{GetType().Name}] Settlement already in progress, ignoring duplicate call");
 			return;
 		}
 		
-		GD.Print($"[{GetType().Name}] OnPiecesSettled - executing immediate settlement");
-		
-		// Validate phase manager
-		if (_phaseManager == null)
-		{
-			GD.PrintErr($"[{GetType().Name}] Phase manager is null - cannot execute settlement");
-			return;
-		}
 		
 		// Execute settlement immediately - no timer delays
 		_isSettling = true;
@@ -207,6 +290,23 @@ public abstract partial class CarromModeManagerBase : Node2D
 	}
 	
 	/// <summary>
+	/// Process settlement immediately and synchronously (implements ICarromModeManager)
+	/// Replaces complex async settlement with simple immediate processing
+	/// </summary>
+	public virtual void ProcessSettlement()
+	{
+		try
+		{
+			// Execute mode-specific settlement immediately
+			ExecuteModeSpecificSettlement();
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[{GetType().Name}] ProcessSettlement failed: {ex.Message}");
+		}
+	}
+	
+	/// <summary>
 	/// Get the current striker piece
 	/// </summary>
 	public CarromPiece GetStriker()
@@ -215,23 +315,71 @@ public abstract partial class CarromModeManagerBase : Node2D
 	}
 	
 	/// <summary>
-	/// Check if all pieces have stopped moving
+	/// Check if all pieces have stopped moving - simplified without settlement context
 	/// </summary>
 	public bool AreAllPiecesStopped()
 	{
-		// Check managed pieces
-		foreach (var piece in GetManagedPieces())
+		// Simplified settlement detection without complex context tracking
+		
+		var allPieces = GetManagedPieces();
+		var movingPieces = new List<string>();
+		var ignoredPieces = new List<string>();
+		int totalVisible = 0;
+		int totalStopped = 0;
+		
+		// Check managed pieces with detailed tracking
+		foreach (var piece in allPieces)
 		{
 			if (!GodotObject.IsInstanceValid(piece)) continue;
 			
-			if (piece.Visible && !piece.IsStopped())
+			// Skip invisible pieces (pocketed)
+			if (!piece.Visible) continue;
+			
+			totalVisible++;
+			
+			// Simplified: no complex context checking needed with brute force approach
+			
+			if (!piece.IsStopped())
 			{
-				return false;
+				var velocity = piece.LinearVelocity.Length();
+				var angularVel = Mathf.Abs(piece.AngularVelocity);
+				movingPieces.Add($"{piece.Type}[v:{velocity:F2},a:{angularVel:F2}]");
+			}
+			else
+			{
+				totalStopped++;
 			}
 		}
 		
-		// Check striker
-		return IsStrikerStopped();
+		// Check striker with context awareness
+		bool strikerStopped = IsStrikerStoppedWithContext();
+		if (!strikerStopped && IsStrikerValid())
+		{
+			var velocity = _striker.LinearVelocity.Length();
+			var angularVel = Mathf.Abs(_striker.AngularVelocity);
+			movingPieces.Add($"Striker[v:{velocity:F2},a:{angularVel:F2}]");
+		}
+		
+		bool allStopped = movingPieces.Count == 0 && strikerStopped;
+		
+		return allStopped;
+	}
+	
+	/// <summary>
+	/// Check if striker has stopped with settlement context awareness
+	/// </summary>
+	private bool IsStrikerStoppedWithContext()
+	{
+		if (!IsStrikerValid()) 
+			return true;
+		
+		// Pocketed strikers (invisible) are considered stopped
+		if (!_striker.Visible)
+			return true;
+		
+		// Simplified: no complex context checking needed
+			
+		return _striker.IsStopped();
 	}
 	
 	/// <summary>
@@ -255,7 +403,6 @@ public abstract partial class CarromModeManagerBase : Node2D
 		CancelPendingOperations();
 		ClearAllPieces();
 		ClearModeSpecificState();
-		_phaseManager = null;
 		_isActive = false;
 	}
 	
@@ -263,6 +410,14 @@ public abstract partial class CarromModeManagerBase : Node2D
 	/// Check if the mode is currently active/initialized
 	/// </summary>
 	public bool IsActive => _isActive;
+	
+	/// <summary>
+	/// Mark a piece as recently restored - no longer needed with brute force settlement
+	/// </summary>
+	public void MarkRecentRestoration(CarromPiece piece)
+	{
+		// No longer needed with simplified settlement detection
+	}
 
 	// ================================================================
 	// TEMPLATE METHOD PATTERN - SETTLEMENT PROCESSING
@@ -275,39 +430,72 @@ public abstract partial class CarromModeManagerBase : Node2D
 	}
 	
 	/// <summary>
-	/// Execute settlement operations with immediate synchronous phase management
+	/// Execute settlement operations with proper timing - striker restoration BEFORE phase transition
 	/// </summary>
-	private void ExecuteSettlement()
+	private async void ExecuteSettlement()
 	{
-		GD.Print($"[{GetType().Name}] ExecuteSettlement starting - current phase: {_phaseManager.CurrentPhase}");
+		// Settlement loop detection and prevention
+		double currentTime = Time.GetUnixTimeFromSystem();
+		double timeSinceLastSettlement = currentTime - _lastSettlementTime;
+		
+		if (timeSinceLastSettlement < MIN_SETTLEMENT_INTERVAL)
+		{
+			_settlementLoopCount++;
+			
+			if (_settlementLoopCount >= MAX_SETTLEMENT_LOOPS)
+			{
+				ForcePhaseTransitionToBreakLoop();
+				return;
+			}
+		}
+		else
+		{
+			// Reset loop counter if enough time has passed
+			_settlementLoopCount = 0;
+		}
+		
+		_lastSettlementTime = currentTime;
+		
+		// Settlement context no longer needed
 		
 		// Disable input during settlement to prevent position overrides
 		DisableInputDuringSettlement();
 		
 		try
 		{
-			// Transition back to Active phase first for proper operation context
-			bool transitionResult = _phaseManager.TransitionTo(GamePhase.Active);
+			// Execute mode-specific settlement (including striker restoration) FIRST
+			ExecuteModeSpecificSettlement();
 			
-			GD.Print($"[{GetType().Name}] Phase transition to Active result: {transitionResult}, new phase: {_phaseManager.CurrentPhase}");
+			// Wait for physics sync before validation
+			await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
 			
-			if (transitionResult)
+			// Validate settlement succeeded before transitioning phase
+			bool settlementValid = ValidateSettlementSuccess();
+			
+			if (settlementValid)
 			{
-				// Execute mode-specific settlement behavior immediately
-				GD.Print($"[{GetType().Name}] Executing mode-specific settlement");
-				ExecuteModeSpecificSettlement();
-				GD.Print($"[{GetType().Name}] Mode-specific settlement completed");
+				// Post-restoration validation: Check if restoration caused pieces to move again
+				bool needsAdditionalSettlement = CheckPostRestorationSettlement();
+				
+				if (needsAdditionalSettlement)
+				{
+					SchedulePostRestorationSettlement();
+				}
+				else
+				{
+					// Settlement completed successfully - state machine handles transition
+				}
 			}
 			else
 			{
-				GD.PrintErr($"[{GetType().Name}] Failed to transition to Active phase - settlement aborted");
+				// Consider retry mechanism here
+				AttemptSettlementRetry();
 			}
 		}
 		finally
 		{
 			// Re-enable input after settlement
 			EnableInputAfterSettlement();
-			GD.Print($"[{GetType().Name}] ExecuteSettlement completed");
 		}
 	}
 
@@ -329,21 +517,13 @@ public abstract partial class CarromModeManagerBase : Node2D
 	
 	private bool ValidateSetupPreconditions()
 	{
-		if (_board == null) return false;
-		
-		if (_phaseManager != null && !_phaseManager.CanExecuteAdminOperation("Mode setup"))
-		{
-			return false;
-		}
-		
-		return true;
+		return _board != null;
 	}
 	
 	private void CreateStriker()
 	{
 		if (_pieceFactory == null)
 		{
-			GD.PrintErr($"[{GetType().Name}] Piece factory not set - cannot create striker");
 			return;
 		}
 		
@@ -384,27 +564,21 @@ public abstract partial class CarromModeManagerBase : Node2D
 	}
 	
 	/// <summary>
-	/// Disable input controller during settlement to prevent position overrides
+	/// Input state is now automatically managed by CarromGameStateMachine
+	/// No manual input control needed - state machine handles input availability
 	/// </summary>
 	private void DisableInputDuringSettlement()
 	{
-		if (_inputController != null && GodotObject.IsInstanceValid(_inputController))
-		{
-			GD.Print($"[{GetType().Name}] Disabling input during settlement");
-			_inputController.SetPhaseManager(null); // Temporarily disconnect phase manager to disable input
-		}
+		// Input is automatically disabled during settlement by state machine
 	}
 	
 	/// <summary>
-	/// Re-enable input controller after settlement
+	/// Input state is now automatically managed by CarromGameStateMachine
+	/// No manual input control needed - state machine handles input availability
 	/// </summary>
 	private void EnableInputAfterSettlement()
 	{
-		if (_inputController != null && GodotObject.IsInstanceValid(_inputController))
-		{
-			GD.Print($"[{GetType().Name}] Re-enabling input after settlement");
-			_inputController.SetPhaseManager(_phaseManager); // Restore phase manager to enable input
-		}
+		// Input is automatically enabled when ready by state machine
 	}
 	
 	private void CancelPendingOperations()
@@ -428,6 +602,149 @@ public abstract partial class CarromModeManagerBase : Node2D
 	/// </summary>
 	protected virtual void CancelModeSpecificOperations() { }
 	
+	// ================================================================
+	// SETTLEMENT VALIDATION AND DEBUGGING
+	// ================================================================
+	
+	
+	
+	/// <summary>
+	/// Validate that settlement operations completed successfully - with settlement context for all pieces
+	/// </summary>
+	private bool ValidateSettlementSuccess()
+	{
+		// Check 1: Striker should be valid and visible after restoration
+		if (!IsStrikerValid())
+		{
+			return false;
+		}
+		
+		if (!_striker.Visible)
+		{
+			return false;
+		}
+		
+		if (_striker.Freeze)
+		{
+			return false;
+		}
+		
+		// Check 2: Validate that game pieces are stopped WITH settlement context awareness
+		// CRITICAL FIX: Apply settlement context to ALL pieces, not just striker
+		var gamePieces = GetManagedPieces();
+		foreach (var piece in gamePieces)
+		{
+			if (piece != null && GodotObject.IsInstanceValid(piece) && piece.Visible)
+			{
+				// Simplified validation without context checking
+				
+				if (!piece.IsStopped())
+				{
+					return false;
+				}
+			}
+		}
+		
+		
+		return true;
+	}
+	
+	/// <summary>
+	/// Settlement retry no longer needed with brute force state machine approach
+	/// </summary>
+	private void AttemptSettlementRetry()
+	{
+		// No longer needed - state machine handles settlement automatically
+	}
+	
+	
+	
+	/// <summary>
+	/// Check if striker restoration caused pieces to start moving again
+	/// CRITICAL FIX: Don't check settlement context pieces - only check for actual movement
+	/// </summary>
+	private bool CheckPostRestorationSettlement()
+	{
+		// Get pieces that are actually moving (not in settlement context)
+		var allPieces = GetManagedPieces();
+		var actuallyMovingPieces = new List<CarromPiece>();
+		
+		// Check each piece for actual movement (ignore settlement context)
+		foreach (var piece in allPieces)
+		{
+			if (!GodotObject.IsInstanceValid(piece) || !piece.Visible) continue;
+			
+			// Check raw physics movement, not IsStopped() which considers settlement context
+			float velocity = piece.LinearVelocity.Length();
+			float angularVel = Mathf.Abs(piece.AngularVelocity);
+			
+			if (velocity > 1.0f || angularVel > 0.1f) // Raw movement thresholds
+			{
+				actuallyMovingPieces.Add(piece);
+			}
+		}
+		
+		// Check striker for actual movement (ignore settlement context)
+		bool strikerActuallyMoving = false;
+		if (IsStrikerValid() && _striker.Visible)
+		{
+			float strikerVel = _striker.LinearVelocity.Length();
+			float strikerAngVel = Mathf.Abs(_striker.AngularVelocity);
+			strikerActuallyMoving = strikerVel > 1.0f || strikerAngVel > 0.1f;
+		}
+		
+		bool needsAdditionalSettlement = actuallyMovingPieces.Count > 0 || strikerActuallyMoving;
+		
+		
+		return needsAdditionalSettlement;
+	}
+	
+	/// <summary>
+	/// Schedule additional settlement after restoration caused movement
+	/// </summary>
+	private void SchedulePostRestorationSettlement()
+	{
+		// Brief delay to allow pieces to settle after restoration
+		CreateAutoCleanupTimer(0.2f, () => {
+			// Settlement completed - state machine handles the transition automatically
+		});
+	}
+	
+	/// <summary>
+	/// Force phase transition to break out of settlement loops
+	/// </summary>
+	private void ForcePhaseTransitionToBreakLoop()
+	{
+		// Clear all settlement state
+		_settlementLoopCount = 0;
+		
+		// Force striker restoration if needed
+		if (IsStrikerValid() && (!_striker.Visible || _striker.Freeze))
+		{
+			EnsureStrikerRestored();
+		}
+		
+		// State machine will handle transition automatically when pieces settle
+	}
+	
+	
+	/// <summary>
+	/// Create a timer that automatically cleans itself up after execution
+	/// </summary>
+	private Timer CreateAutoCleanupTimer(float waitTime, System.Action onTimeout)
+	{
+		var timer = new Timer();
+		timer.WaitTime = waitTime;
+		timer.OneShot = true;
+		timer.Timeout += () => {
+			onTimeout?.Invoke();
+			timer.QueueFree(); // Ensure timer is cleaned up
+		};
+		AddChild(timer);
+		timer.Start();
+		return timer;
+	}
+	
 	/// <summary>
 	/// Create a piece using the centralized piece factory
 	/// </summary>
@@ -435,7 +752,6 @@ public abstract partial class CarromModeManagerBase : Node2D
 	{
 		if (_pieceFactory == null)
 		{
-			GD.PrintErr($"[{GetType().Name}] Piece factory not set - cannot create pieces");
 			return null;
 		}
 		

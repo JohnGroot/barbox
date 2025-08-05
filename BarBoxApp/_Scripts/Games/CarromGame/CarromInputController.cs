@@ -38,6 +38,22 @@ public partial class CarromInputController : Node2D
 	private Vector2 _currentAimPosition;
 	private Vector2 _strikerStartPosition;
 	private InputMode _currentInputMode = InputMode.None;
+	
+	// Kinematic movement state
+	private Vector2 _targetStrikerPosition;
+	private bool _isMovingStriker = false;
+	private const float STRIKER_MOVE_SPEED = 2500.0f; // Pixels per second
+	
+	// Simplified state management - single source of truth
+	private ICarromGameState _gameState;
+	
+	// Visual update batching
+	private bool _needsVisualUpdate = false;
+	
+	// Coordinate conversion caching
+	private Vector2 _lastScreenPosition;
+	private Vector2 _lastBoardPosition;
+	private bool _hasValidConversionCache = false;
 
 	// Input modes
 	private enum InputMode
@@ -52,11 +68,94 @@ public partial class CarromInputController : Node2D
 	private int _currentPlayerIndex = 0;
 	private CarromBoard _board;
 	private CarromCameraController _cameraController;
-	private CarromPhaseManager _phaseManager;
+	
+	// Cached baseline geometry for performance optimization
+	private Vector2 _cachedBaselineStart;
+	private Vector2 _cachedBaselineEnd;
+	private Vector2 _cachedBaselineVector;
+	private float _cachedBaselineLength;
+	private bool _baselineGeometryCached = false;
 
 	public override void _Ready()
 	{
 		SetProcessInput(true);
+		SetPhysicsProcess(true); // Enable physics processing for smooth movement
+		SetProcess(true); // Enable process for batched visual updates
+	}
+	
+	/// <summary>
+	/// Handle batched visual updates
+	/// </summary>
+	public override void _Process(double delta)
+	{
+		// Batch visual updates to once per frame instead of multiple times per input event
+		if (_needsVisualUpdate)
+		{
+			QueueRedraw();
+			_needsVisualUpdate = false;
+		}
+	}
+	
+	/// <summary>
+	/// Request a visual update - will be batched until next frame
+	/// </summary>
+	private void RequestVisualUpdate()
+	{
+		_needsVisualUpdate = true;
+	}
+	
+	/// <summary>
+	/// Convert screen position to board position with caching
+	/// </summary>
+	private Vector2 ScreenToBoardPositionCached(Vector2 screenPosition)
+	{
+		// Use cache if position hasn't changed significantly (within 2 pixels)
+		if (_hasValidConversionCache && _lastScreenPosition.DistanceTo(screenPosition) < 2.0f)
+		{
+			return _lastBoardPosition;
+		}
+		
+		// Calculate new conversion and cache result
+		Vector2 boardPosition = _cameraController?.ScreenToBoardPosition(screenPosition) ?? screenPosition;
+		
+		_lastScreenPosition = screenPosition;
+		_lastBoardPosition = boardPosition;
+		_hasValidConversionCache = true;
+		
+		return boardPosition;
+	}
+	
+	/// <summary>
+	/// Handle smooth kinematic striker movement during physics updates
+	/// </summary>
+	public override void _PhysicsProcess(double delta)
+	{
+		// Only move striker when input is accepted
+		if (_gameState == null || !_gameState.CanAcceptInput)
+		{
+			return;
+		}
+		
+		if (_isMovingStriker && _striker != null && IsInstanceValid(_striker))
+		{
+			Vector2 currentPosition = _striker.GlobalPosition;
+			Vector2 newPosition = new Vector2(
+				Mathf.MoveToward(currentPosition.X, _targetStrikerPosition.X, STRIKER_MOVE_SPEED * (float)delta), 
+				Mathf.MoveToward(currentPosition.Y, _targetStrikerPosition.Y, STRIKER_MOVE_SPEED * (float)delta));
+			
+			_striker.GlobalPosition = newPosition;
+
+			// Ensure physics velocities are zeroed during kinematic movement
+			_striker.LinearVelocity = Vector2.Zero;
+			_striker.AngularVelocity = 0.0f;
+
+			// FIXED: Use new position for distance calculation and proper completion detection
+			float distanceSquaredToTarget = newPosition.DistanceSquaredTo(_targetStrikerPosition);
+			if (distanceSquaredToTarget < 1.0f)
+			{
+				_isMovingStriker = false;
+			}
+		}
 	}
 
 	/// <summary>
@@ -100,18 +199,6 @@ public partial class CarromInputController : Node2D
 		{
 			UpdateBaselinePositions();
 		}
-		else
-		{
-			GD.PrintErr("[CarromInputController] Initialized with null CarromBoard");
-		}
-	}
-	
-	/// <summary>
-	/// Set the phase manager for input validation
-	/// </summary>
-	public void SetPhaseManager(CarromPhaseManager phaseManager)
-	{
-		_phaseManager = phaseManager;
 	}
 
 	/// <summary>
@@ -123,21 +210,81 @@ public partial class CarromInputController : Node2D
 	}
 
 	/// <summary>
-	/// Update baseline positions for current player
+	/// Set the game state interface - replaces phase manager dependency
+	/// </summary>
+	public void SetGameState(ICarromGameState gameState)
+	{
+		_gameState = gameState;
+	}
+
+	/// <summary>
+	/// Update baseline positions for current player and cache geometry
 	/// </summary>
 	private void UpdateBaselinePositions()
 	{
 		if (_board != null)
 		{
 			_baselinePositions = _board.GetBaselinePositions(_currentPlayerIndex);
+			CacheBaselineGeometry();
 		}
+	}
+	
+	/// <summary>
+	/// Cache baseline geometry for fast position calculations
+	/// </summary>
+	private void CacheBaselineGeometry()
+	{
+		if (_board == null)
+		{
+			_baselineGeometryCached = false;
+			return;
+		}
+		
+		// Get baseline center and geometry from board
+		Vector2 baselineCenter = _board.GetBaselinePosition(_currentPlayerIndex);
+		float baselineLength = _board.BaselineLength - (_board.BaselineCapRadius * 2);
+		Vector2 baselineDirection = GetBaselineDirection();
+		
+		// Calculate baseline endpoints using actual board geometry
+		float halfLength = baselineLength / 2;
+		_cachedBaselineStart = baselineCenter - baselineDirection * halfLength;
+		_cachedBaselineEnd = baselineCenter + baselineDirection * halfLength;
+		_cachedBaselineVector = _cachedBaselineEnd - _cachedBaselineStart;
+		_cachedBaselineLength = _cachedBaselineVector.LengthSquared(); // Store squared length for dot product optimization
+		
+		_baselineGeometryCached = true;
+	}
+	
+	/// <summary>
+	/// Fast baseline position calculation using cached geometry
+	/// </summary>
+	private Vector2 GetClosestPositionOnBaselineCached(Vector2 position)
+	{
+		if (!_baselineGeometryCached)
+		{
+			// Fallback to board method if cache not available
+			return _board?.GetClosestPositionOnBaseline(position, _currentPlayerIndex) ?? position;
+		}
+		
+		// Project position onto baseline line segment using cached values
+		Vector2 positionVector = position - _cachedBaselineStart;
+		
+		// Calculate projection parameter (0.0 = start, 1.0 = end)
+		float projectionParam = positionVector.Dot(_cachedBaselineVector) / _cachedBaselineLength;
+		
+		// Clamp to baseline segment bounds
+		projectionParam = Mathf.Clamp(projectionParam, 0.0f, 1.0f);
+		
+		// Calculate final projected position
+		return _cachedBaselineStart + _cachedBaselineVector * projectionParam;
 	}
 
 	/// <summary>
-	/// Handle input events
+	/// Handle input events with comprehensive debugging
 	/// </summary>
 	public override void _Input(InputEvent @event)
 	{
+
 		if (!CanAcceptInput() || _striker == null) return;
 
 		HandleMouseInput(@event);
@@ -196,10 +343,13 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private void StartInput(Vector2 screenPosition)
 	{
-		if (!CanStartInput()) return;
+		if (!CanStartInput()) 
+		{
+			return;
+		}
 
-		// Convert screen position to board coordinates using camera
-		Vector2 boardPosition = _cameraController?.ScreenToBoardPosition(screenPosition) ?? screenPosition;
+		// Convert screen position to board coordinates using cached conversion
+		Vector2 boardPosition = ScreenToBoardPositionCached(screenPosition);
 		Vector2 strikerPosition = _striker.GlobalPosition; // Striker is already in board coordinates
 		
 		// Check if input is near striker
@@ -215,7 +365,7 @@ public partial class CarromInputController : Node2D
 		_currentAimPosition = boardPosition;
 		_currentInputMode = InputMode.None;
 
-		QueueRedraw(); // Show aiming indicators
+		RequestVisualUpdate(); // Show aiming indicators
 	}
 
 	/// <summary>
@@ -223,8 +373,8 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private void UpdateInput(Vector2 screenPosition)
 	{
-		// Convert screen position to board coordinates using camera
-		_currentAimPosition = _cameraController?.ScreenToBoardPosition(screenPosition) ?? screenPosition;
+		// Convert screen position to board coordinates using cached conversion
+		_currentAimPosition = ScreenToBoardPositionCached(screenPosition);
 		
 		Vector2 inputVector = _currentAimPosition - _aimStartPosition;
 		float inputDistance = inputVector.Length();
@@ -246,7 +396,7 @@ public partial class CarromInputController : Node2D
 				break;
 		}
 
-		QueueRedraw(); // Update visual feedback
+		RequestVisualUpdate(); // Update visual feedback
 	}
 
 	/// <summary>
@@ -275,6 +425,17 @@ public partial class CarromInputController : Node2D
 		}
 		else
 		{
+			// Stop kinematic movement when switching to power aiming
+			if (_isMovingStriker)
+			{
+				_isMovingStriker = false;
+				// Ensure striker physics are ready for force application
+				if (_striker != null && IsInstanceValid(_striker))
+				{
+					_striker.LinearVelocity = Vector2.Zero;
+					_striker.AngularVelocity = 0.0f;
+				}
+			}
 			_currentInputMode = InputMode.PowerAiming;
 		}
 	}
@@ -286,11 +447,11 @@ public partial class CarromInputController : Node2D
 	{
 		if (_board == null) return;
 		
-		// Get the closest position on the baseline to the current aim position
-		Vector2 closestPosition = _board.GetClosestPositionOnBaseline(_currentAimPosition, _currentPlayerIndex);
+		// Use cached geometry for fast position calculation
+		Vector2 closestPosition = GetClosestPositionOnBaselineCached(_currentAimPosition);
 		
-		// Move striker directly to the closest baseline position
-		_striker.GlobalPosition = closestPosition;
+		// Use kinematic movement instead of direct position assignment
+		StartKinematicMovement(closestPosition);
 		EmitSignal(SignalName.StrikerPositionChanged, closestPosition);
 		
 		// Update aiming feedback - no aiming direction for lateral movement
@@ -298,12 +459,27 @@ public partial class CarromInputController : Node2D
 		float power = 0.0f;
 		EmitSignal(SignalName.AimingStateChanged, false, aimDirection, power);
 	}
+	
+	/// <summary>
+	/// Start smooth kinematic movement to target position
+	/// </summary>
+	private void StartKinematicMovement(Vector2 targetPosition)
+	{
+		_targetStrikerPosition = targetPosition;
+		_isMovingStriker = true;
+	}
 
 	/// <summary>
 	/// Handle power aiming for strike
 	/// </summary>
 	private void HandlePowerAiming(Vector2 inputVector)
 	{
+		// Ensure kinematic movement is disabled during power aiming
+		if (_isMovingStriker)
+		{
+			_isMovingStriker = false;
+		}
+		
 		// Calculate power based on total input distance
 		float inputDistance = inputVector.Length();
 		float clampedDistance = Mathf.Clamp(inputDistance, 0, _maxAimDistance);
@@ -345,11 +521,16 @@ public partial class CarromInputController : Node2D
 			ExecuteStrike();
 		}
 
+		// Clear all input and movement states
 		_isAiming = false;
 		_currentInputMode = InputMode.None;
-		EmitSignal(SignalName.AimingStateChanged, false, Vector2.Zero, 0.0f);
-		QueueRedraw(); // Hide aiming indicators
 		
+		// Stop any ongoing kinematic movement
+		_isMovingStriker = false;
+		
+		// Clear visual feedback and emit state change signals
+		EmitSignal(SignalName.AimingStateChanged, false, Vector2.Zero, 0.0f);
+		RequestVisualUpdate(); // Hide aiming indicators
 	}
 
 	/// <summary>
@@ -389,8 +570,20 @@ public partial class CarromInputController : Node2D
 			
 			Vector2 strikeForce = strikeDirection * strikePower;
 			
+			// Emit signal first to apply force before state transition
 			EmitSignal(SignalName.StrikeExecuted, strikeForce);
+			
+			// Defer state machine notification to ensure force is applied
+			CallDeferred(MethodName.NotifyStrikeExecuted);
 		}
+	}
+
+	/// <summary>
+	/// Deferred method to notify state machine after force application
+	/// </summary>
+	private void NotifyStrikeExecuted()
+	{
+		_gameState?.OnStrikeExecuted();
 	}
 
 	/// <summary>
@@ -420,57 +613,7 @@ public partial class CarromInputController : Node2D
 		};
 	}
 
-	/// <summary>
-	/// Get backward direction for power aiming
-	/// </summary>
-	private Vector2 GetBackwardDirection()
-	{
-		// Direction away from the board center
-		return _currentPlayerIndex switch
-		{
-			0 => Vector2.Down,  // Player 1: pull down
-			1 => Vector2.Up,    // Player 2: pull up
-			2 => Vector2.Left,  // Player 3: pull left
-			3 => Vector2.Right, // Player 4: pull right
-			_ => Vector2.Down
-		};
-	}
 
-	/// <summary>
-	/// Clamp position to baseline using smooth projection based on board geometry
-	/// </summary>
-	private Vector2 ClampToBaseline(Vector2 position)
-	{
-		if (_board == null)
-		{
-			return position;
-		}
-
-		// Get baseline center and geometry from board
-		Vector2 baselineCenter = _board.GetBaselinePosition(_currentPlayerIndex);
-		float baselineLength = _board.BaselineLength - (_board.BaselineCapRadius * 2);
-		Vector2 baselineDirection = GetBaselineDirection();
-		
-		// Calculate baseline endpoints using actual board geometry
-		float halfLength = baselineLength / 2;
-		Vector2 baselineStart = baselineCenter - baselineDirection * halfLength;
-		Vector2 baselineEnd = baselineCenter + baselineDirection * halfLength;
-		
-		// Project position onto baseline line segment
-		Vector2 baselineVector = baselineEnd - baselineStart;
-		Vector2 positionVector = position - baselineStart;
-		
-		// Calculate projection parameter (0.0 = start, 1.0 = end)
-		float projectionParam = positionVector.Dot(baselineVector) / baselineVector.LengthSquared();
-		
-		// Clamp to baseline segment bounds
-		projectionParam = Mathf.Clamp(projectionParam, 0.0f, 1.0f);
-		
-		// Calculate final projected position
-		Vector2 projectedPosition = baselineStart + baselineVector * projectionParam;
-		
-		return projectedPosition;
-	}
 
 	/// <summary>
 	/// Check if input can be started
@@ -502,22 +645,11 @@ public partial class CarromInputController : Node2D
 	}
 	
 	/// <summary>
-	/// Check if input can be accepted based on phase state
+	/// Check if input can be accepted - simplified to single source of truth
 	/// </summary>
 	private bool CanAcceptInput()
 	{
-		// Use phase manager if available, fallback to default enabled state
-		if (_phaseManager != null)
-		{
-			bool canReceive = _phaseManager.CanReceiveInput();
-			if (!canReceive)
-			{
-			}
-			return canReceive;
-		}
-		
-		// Fallback for cases where phase manager isn't set (development/testing)
-		return true;
+		return _gameState?.CanAcceptInput ?? false;
 	}
 
 	/// <summary>
@@ -629,23 +761,13 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	public void SetCurrentPlayer(int playerIndex)
 	{
-		_currentPlayerIndex = playerIndex;
-		UpdateBaselinePositions();
-	}
-
-	/// <summary>
-	/// Enable or disable input (deprecated - use phase manager instead)
-	/// </summary>
-	[System.Obsolete("Use CarromPhaseManager for input state control")]
-	public void SetEnabled(bool enabled)
-	{
-		GD.PrintErr("[CarromInputController] SetEnabled is deprecated - use CarromPhaseManager instead");
-		
-		if (!enabled && _isAiming)
+		if (_currentPlayerIndex != playerIndex)
 		{
-			EndInput();
+			_currentPlayerIndex = playerIndex;
+			UpdateBaselinePositions(); // This will also update the cached geometry
 		}
 	}
+
 
 	/// <summary>
 	/// Check if currently aiming
@@ -668,11 +790,12 @@ public partial class CarromInputController : Node2D
 	private float GetMinStrikePower() => _physicsConfig?.MinStrikePower ?? 200.0f;
 	private float GetMaxStrikeAngle() => _physicsConfig?.MaxStrikeAngle ?? 60.0f;
 	
+
 	// Public accessors
 	public bool IsInputEnabled() => CanAcceptInput();
 	public CarromPiece GetStriker() => _striker;
 	public float GetMaxStrikePowerValue() => GetMaxStrikePower();
 	public float GetDeadZone() => _deadZone;
-	public string GetPhaseStatus() => _phaseManager?.GetPhaseStatus() ?? "No phase manager";
-	public bool HasPhaseManager() => _phaseManager != null;
+	public string GetGameStateStatus() => _gameState?.GetCurrentStateName() ?? "No game state";
+	public bool HasGameState() => _gameState != null;
 }

@@ -98,11 +98,21 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 	/// </summary>
 	protected override void ExecuteModeSpecificSettlement()
 	{
-		// Reset all pieces to their initial positions
+		// Reset all non-striker pieces to their initial positions
 		ResetPracticeMode();
 		
-		// Ensure striker is positioned correctly for next shot
-		PositionStrikerAtBaseline();
+		// Use centralized striker restoration through parent CarromGame
+		var carromGame = GetParent<CarromGame>();
+		if (carromGame != null)
+		{
+			carromGame.RestoreStrikerToBaseline();
+		}
+		else
+		{
+			// Fallback to local striker restoration
+			EnsureStrikerRestored();
+			PositionStrikerAtBaseline();
+		}
 	}
 	
 	/// <summary>
@@ -159,11 +169,7 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 	/// </summary>
 	public void ResetPracticeMode()
 	{
-		// Validate phase state before reset
-		if (_phaseManager != null && !_phaseManager.CanExecuteAdminOperation("Practice mode reset"))
-		{
-			return;
-		}
+		// Reset is always allowed in the new architecture
 
 		// Reset all pieces to their stored initial positions using immediate method
 		foreach (var kvp in _practiceInitialPositions)
@@ -216,6 +222,9 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 
 		// Then use the immediate synchronous reset method for positioning
 		piece.Reset(globalPosition);
+		
+		// CRITICAL FIX: Mark this piece in settlement context to prevent false "still moving" detection
+		MarkRecentRestoration(piece);
 	}
 
 	/// <summary>

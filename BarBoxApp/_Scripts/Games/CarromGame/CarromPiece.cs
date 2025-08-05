@@ -25,6 +25,16 @@ public partial class CarromPiece : RigidBody2D
 	private Vector2 _lastVelocity = Vector2.Zero;
 	private bool _wasMoving = false;
 	private float _stoppedTimer = 0.0f;
+	
+	// Deferred physics reset to prevent false settlement detection
+	private bool _skipNextStoppedCheck = false;
+	private bool _deferredResetPending = false;
+	
+	// Movement history tracking for meaningful velocity validation
+	private bool _hasEverMoved = false;
+	private float _maxVelocityAchieved = 0.0f;
+	private float _minimumMovementValidation = 50.0f; // Minimum velocity to count as "real movement"
+	private double _creationTime = 0.0; // Track when piece was created for never-moved timeout
 
 	// Physics limits - set by CarromGame.cs
 	private float _minVelocityThreshold = 1.0f;
@@ -50,6 +60,9 @@ public partial class CarromPiece : RigidBody2D
 		SetupVisual();
 		SetupPhysicsMaterial();
 		ConnectSignals();
+		
+		// Record creation time for never-moved timeout
+		_creationTime = Time.GetUnixTimeFromSystem();
 	}
 
 	/// <summary>
@@ -73,7 +86,7 @@ public partial class CarromPiece : RigidBody2D
 		// Create default physics config if not provided
 		if (PhysicsConfig == null)
 		{
-			GD.PrintErr($"[CarromPiece] ERROR: No PhysicsConfig provided on {Name}");
+			return;
 		}
 	}
 
@@ -210,13 +223,67 @@ public partial class CarromPiece : RigidBody2D
 	}
 
 	/// <summary>
-	/// Check if piece has stopped moving using timer-based confirmation with hysteresis
+	/// Check if piece has stopped moving using timer-based confirmation with hysteresis and movement validation
 	/// </summary>
 	public bool IsStopped()
 	{
+		// Prevent false positive during restoration - piece should not be considered stopped immediately after reset
+		if (_skipNextStoppedCheck)
+		{
+			return false;
+		}
+		
+		// Special case: Strikers can be considered stopped immediately after setup to allow input
+		if (Type == PieceType.Striker && !_hasEverMoved && LinearVelocity.Length() < _minVelocityThreshold)
+		{
+			return true;
+		}
+		
+		// CRITICAL FIX: Handle pieces that never moved significantly but are clearly settled
+		// In competitive mode, some pieces may never reach the movement threshold but are visually stopped
+		if (!_hasEverMoved)
+		{
+			// Check if piece is truly stationary (zero velocity and not in a transient state)
+			float currentVelocity = LinearVelocity.Length();
+			float currentAngularVel = Mathf.Abs(AngularVelocity);
+			
+			// Enhanced never-moved logic with multiple fallback conditions
+			bool isPhysicallyStationary = currentVelocity < _minVelocityThreshold && currentAngularVel < _angularMinThreshold;
+			bool isCompletelyStill = currentVelocity < 0.01f && currentAngularVel < 0.001f;
+			
+			// Calculate time alive once for all checks
+			double timeAlive = Time.GetUnixTimeFromSystem() - _creationTime;
+			
+			if (isPhysicallyStationary)
+			{
+				// Progressive timeout: stricter conditions for shorter times, more lenient for longer times
+				if (isCompletelyStill && timeAlive > 2.0) // Completely still after 2 seconds
+				{
+					return true;
+				}
+				else if (timeAlive > 5.0) // Any stationary piece after 5 seconds
+				{
+					return true;
+				}
+				else if (timeAlive > 10.0) // Absolute timeout - any piece after 10 seconds
+				{
+					return true;
+				}
+			}
+			
+			// Check if piece has been in this state too long (stuck detection)
+			if (timeAlive > 15.0) // Ultimate fallback - no piece should block settlement for 15+ seconds
+			{
+				return true;
+			}
+			
+			return false; // Cannot be considered "stopped" if it never moved
+		}
+		
 		// Use physics config to determine if piece is stopped (includes hysteresis)
 		return PhysicsConfig.IsPieceStopped(LinearVelocity, AngularVelocity, _wasMoving);
 	}
+	
 
 	/// <summary>
 	/// Minimal physics integration with only essential velocity clamping
@@ -237,18 +304,31 @@ public partial class CarromPiece : RigidBody2D
 	}
 
 	/// <summary>
-	/// Process movement and stop detection
+	/// Process movement and stop detection with movement history tracking
 	/// </summary>
 	public override void _Process(double delta)
 	{
-		// Track movement state changes
-		bool isMoving = !IsStopped();
+		// Track movement history for meaningful velocity validation
+		float currentSpeed = LinearVelocity.Length();
+		if (currentSpeed > _maxVelocityAchieved)
+		{
+			_maxVelocityAchieved = currentSpeed;
+		}
+		
+		// Mark as having moved if velocity exceeds minimum threshold
+		if (currentSpeed > _minimumMovementValidation && !_hasEverMoved)
+		{
+			_hasEverMoved = true;
+		}
+		
+		// Track movement state changes (only after movement validation to prevent false settlement)
+		bool isMoving = currentSpeed > _minVelocityThreshold || Mathf.Abs(AngularVelocity) > _angularMinThreshold;
 		if (isMoving)
 		{
 			_wasMoving = true;
 			_stoppedTimer = 0.0f;
 		}
-		else if (_wasMoving)
+		else if (_wasMoving && _hasEverMoved) // Only allow stopping if piece has actually moved
 		{
 			float deltaF = (float)delta;
 			_stoppedTimer += deltaF;
@@ -282,6 +362,10 @@ public partial class CarromPiece : RigidBody2D
 	{
 		// Stop all movement
 		ForceStop();
+		
+		// Reset movement history for fresh settlement detection
+		_hasEverMoved = false;
+		_maxVelocityAchieved = 0.0f;
 		
 		// Handle freeze state
 		if (conditionalUnfreeze)
@@ -334,6 +418,102 @@ public partial class CarromPiece : RigidBody2D
 		
 		// Step 4: Final force stop after physics sync
 		ForceStop();
+	}
+	
+	/// <summary>
+	/// Reset piece with immediate, synchronous physics - guarantees stopped state without physics interactions
+	/// </summary>
+	public void ResetWithImmediatePhysics(Vector2 globalPosition)
+	{
+		// Step 1: Temporarily disable collision monitoring to prevent physics interactions during reset
+		bool originalContactMonitor = ContactMonitor;
+		ContactMonitor = false;
+		
+		// Step 2: Stop all movement immediately and clear tracking flags
+		LinearVelocity = Vector2.Zero;
+		AngularVelocity = 0.0f;
+		_wasMoving = false;
+		_stoppedTimer = 0.0f;
+		
+		// Step 3: Reset movement history for fresh settlement detection
+		_hasEverMoved = false;
+		_maxVelocityAchieved = 0.0f;
+		
+		// Step 4: Use synchronous positioning
+		SetPhysicsSafePositionImmediate(globalPosition, originalContactMonitor);
+		
+		// Step 5: Clear any deferred operation flags
+		_skipNextStoppedCheck = false;
+		_deferredResetPending = false;
+	}
+	
+	/// <summary>
+	/// Set position in a physics-safe manner that avoids triggering movement
+	/// </summary>
+	private void SetPhysicsSafePosition(Vector2 globalPosition, bool originalContactMonitor)
+	{
+		// Position the piece using physics server for immediate sync
+		PhysicsServer2D.BodySetState(GetRid(), PhysicsServer2D.BodyState.Transform, 
+			new Transform2D(0, globalPosition));
+		GlobalPosition = globalPosition;
+		
+		// Final velocity clearing after positioning
+		LinearVelocity = Vector2.Zero;
+		AngularVelocity = 0.0f;
+		
+		// Restore visual state
+		Visible = true;
+		Freeze = false;
+		Scale = Vector2.One;
+		Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f);
+		
+		// Re-enable collision monitoring after positioning is complete
+		ContactMonitor = originalContactMonitor;
+	}
+	
+	/// <summary>
+	/// Set position immediately and synchronously - no deferred operations
+	/// </summary>
+	private void SetPhysicsSafePositionImmediate(Vector2 globalPosition, bool originalContactMonitor)
+	{
+		// Position the piece using physics server for immediate sync
+		PhysicsServer2D.BodySetState(GetRid(), PhysicsServer2D.BodyState.Transform, 
+			new Transform2D(0, globalPosition));
+		GlobalPosition = globalPosition;
+		
+		// Final velocity clearing after positioning
+		LinearVelocity = Vector2.Zero;
+		AngularVelocity = 0.0f;
+		
+		// Restore visual state
+		Visible = true;
+		Freeze = false;
+		Scale = Vector2.One;
+		Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f);
+		
+		// Re-enable collision monitoring after positioning is complete
+		ContactMonitor = originalContactMonitor;
+	}
+	
+	/// <summary>
+	/// Apply deferred velocity reset after settlement processing
+	/// </summary>
+	private void ApplyDeferredVelocityReset()
+	{
+		if (!_deferredResetPending)
+		{
+			return; // Reset was cancelled or already applied
+		}
+		
+		// Now safe to reset velocities without triggering false settlement
+		LinearVelocity = Vector2.Zero;
+		AngularVelocity = 0.0f;
+		_wasMoving = false;
+		_stoppedTimer = 0.0f;
+		
+		// Clear deferred reset state
+		_skipNextStoppedCheck = false;
+		_deferredResetPending = false;
 	}
 
 	/// <summary>

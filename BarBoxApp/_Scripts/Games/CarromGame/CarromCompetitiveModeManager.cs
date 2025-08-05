@@ -92,13 +92,26 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	}
 	
 	/// <summary>
-	/// Handle competitive mode settlement - switch players and position striker
+	/// Handle competitive mode settlement - switch players then restore striker to new player's baseline
 	/// </summary>
 	protected override void ExecuteModeSpecificSettlement()
 	{
-		// Switch to next player and position striker
-		// Base class handles phase transition to Active before calling this method
+		// First, switch to next player (this updates the current player index)
 		SwitchToNextPlayer();
+		
+		// Then restore striker to the NEW player's baseline
+		// Use centralized striker restoration through parent CarromGame
+		var carromGame = GetParent<CarromGame>();
+		if (carromGame != null)
+		{
+			carromGame.RestoreStrikerToBaseline();
+		}
+		else
+		{
+			// Fallback to local striker restoration
+			EnsureStrikerRestored();
+			PositionStrikerAtBaseline();
+		}
 	}
 	
 	/// <summary>
@@ -359,54 +372,21 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	}
 
 	/// <summary>
-	/// Switch to next player
+	/// Switch to next player - synchronous, linear operation
 	/// </summary>
 	public void SwitchToNextPlayer()
-	{
-		// Validate phase state before operations
-		if (_phaseManager != null && _phaseManager.CurrentPhase != GamePhase.Active)
-		{
-			// Wait one frame for phase to settle, then retry
-			CallDeferred(MethodName.RetryPlayerSwitch);
-			return;
-		}
-		
-		// Direct, synchronous operations - matches practice mode pattern
+	{ 
+		// Step 1: Switch to next player index
 		_currentPlayerIndex = (_currentPlayerIndex + 1) % _players.Count;
-		
-		// CRITICAL FIX: Disable input before positioning striker to prevent override
-		bool inputWasEnabled = false;
-		if (_inputController != null && GodotObject.IsInstanceValid(_inputController))
-		{
-			inputWasEnabled = _inputController.IsInputEnabled();
-			if (inputWasEnabled)
-			{
-				_inputController.SetPhaseManager(null); // Temporarily disable input
-			}
-		}
-		
+
+		// Step 2: Position striker at new player's baseline (no input control needed here)
 		PositionStrikerAtBaseline();
-		
-		// Re-enable input after positioning if it was previously enabled
-		if (inputWasEnabled && _inputController != null && GodotObject.IsInstanceValid(_inputController))
-		{
-			_inputController.SetPhaseManager(_phaseManager); // Restore input
-		}
-		
+
+		// Step 3: Emit turn changed signal
 		var currentPlayer = GetCurrentPlayer();
 		EmitSignal(SignalName.TurnChanged, currentPlayer?.PlayerId ?? "unknown", _currentPlayerIndex + 1);
 	}
 
-	/// <summary>
-	/// Retry player switch after phase validation (deferred method)
-	/// </summary>
-	private void RetryPlayerSwitch()
-	{
-		if (_phaseManager != null && _phaseManager.CurrentPhase == GamePhase.Active)
-		{
-			SwitchToNextPlayer();
-		}
-	}
 
 	/// <summary>
 	/// Count remaining pieces for player
@@ -436,7 +416,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	/// </summary>
 	public List<CarromPiece> GetCompetitivePieces()
 	{
-		return new List<CarromPiece>(_competitivePieces);
+		return [.._competitivePieces];
 	}
 
 	/// <summary>

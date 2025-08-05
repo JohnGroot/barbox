@@ -42,6 +42,12 @@ public partial class CarromPhysicsConfig : Resource
 	private float _officialPieceRadius = 0.0f;
 	private float _officialStrikerRadius = 0.0f;
 	private bool _useOfficialScaling = false;
+	
+	// Cached physics materials for performance optimization
+	private PhysicsMaterial _cachedPieceMaterial;
+	private PhysicsMaterial _cachedHighSpeedPieceMaterial;
+	private PhysicsMaterial _cachedBoardMaterial;
+	private bool _materialsInitialized = false;
 
 	[ExportCategory("Collision Detection")]
 	[Export(PropertyHint.Range, "5,20,1")] public int MaxContactsReported { get; set; } = 10;
@@ -68,37 +74,55 @@ public partial class CarromPhysicsConfig : Resource
 	[Export(PropertyHint.Range, "15.0,120.0,5.0")] public float PocketMaxApproachAngle { get; set; } = 45.0f; // Max approach angle (degrees) for successful entry
 
 	/// <summary>
-	/// Create physics material for pieces
+	/// Initialize cached physics materials for optimal performance
+	/// </summary>
+	private void InitializeMaterials()
+	{
+		if (_materialsInitialized) return;
+		
+		// Create and cache piece material
+		_cachedPieceMaterial = new PhysicsMaterial();
+		_cachedPieceMaterial.Friction = PieceFriction;
+		_cachedPieceMaterial.Bounce = PieceBounce;
+		
+		// Create and cache high-speed piece material
+		_cachedHighSpeedPieceMaterial = new PhysicsMaterial();
+		_cachedHighSpeedPieceMaterial.Friction = HighSpeedFriction;
+		_cachedHighSpeedPieceMaterial.Bounce = HighSpeedBounce;
+		
+		// Create and cache board material
+		_cachedBoardMaterial = new PhysicsMaterial();
+		_cachedBoardMaterial.Friction = BoardFriction;
+		_cachedBoardMaterial.Bounce = BoardBounce;
+		
+		_materialsInitialized = true;
+	}
+	
+	/// <summary>
+	/// Get cached physics material for pieces
 	/// </summary>
 	public PhysicsMaterial CreatePieceMaterial()
 	{
-		var material = new PhysicsMaterial();
-		material.Friction = PieceFriction;
-		material.Bounce = PieceBounce;
-		return material;
+		InitializeMaterials();
+		return _cachedPieceMaterial;
 	}
 	
 	/// <summary>
-	/// Create enhanced physics material for high-speed collisions
+	/// Get cached enhanced physics material for high-speed collisions
 	/// </summary>
 	public PhysicsMaterial CreateHighSpeedPieceMaterial()
 	{
-		var material = new PhysicsMaterial();
-		material.Friction = HighSpeedFriction;
-		material.Bounce = HighSpeedBounce;
-		return material;
+		InitializeMaterials();
+		return _cachedHighSpeedPieceMaterial;
 	}
 	
-
 	/// <summary>
-	/// Create physics material for board
+	/// Get cached physics material for board
 	/// </summary>
 	public PhysicsMaterial CreateBoardMaterial()
 	{
-		var material = new PhysicsMaterial();
-		material.Friction = BoardFriction;
-		material.Bounce = BoardBounce;
-		return material;
+		InitializeMaterials();
+		return _cachedBoardMaterial;
 	}
 
 	/// <summary>

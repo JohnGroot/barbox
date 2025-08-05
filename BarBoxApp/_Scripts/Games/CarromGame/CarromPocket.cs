@@ -31,9 +31,6 @@ public partial class CarromPocket : Area2D
 	private CircleShape2D _detectionShape;
 	private CollisionShape2D _collisionShape2D;
 	
-	// Phase management
-	private CarromPhaseManager _phaseManager;
-	
 	// Consolidated piece state tracking
 	private System.Collections.Generic.Dictionary<CarromPiece, PieceState> _pieceStates = new();
 	
@@ -208,11 +205,7 @@ public partial class CarromPocket : Area2D
 	/// </summary>
 	private void PocketPiece(CarromPiece piece)
 	{
-		// Check if pocketing is allowed by phase manager
-		if (_phaseManager != null && !_phaseManager.CanExecuteGameOperation("Pocketing"))
-		{
-			return;
-		}
+		// Pocketing is always allowed when pieces are in capture zone
 		
 		// Stop piece physics
 		piece.ForceStop();
@@ -279,16 +272,6 @@ public partial class CarromPocket : Area2D
 		return count;
 	}
 
-	/// <summary>
-	/// Force pocket a piece immediately (for testing/special cases)
-	/// </summary>
-	public void ForcePocketPiece(CarromPiece piece)
-	{
-		if (piece != null && GodotObject.IsInstanceValid(piece))
-		{
-			PocketPiece(piece);
-		}
-	}
 
 	/// <summary>
 	/// Clear all pieces from pocket (for game reset)
@@ -327,29 +310,7 @@ public partial class CarromPocket : Area2D
 		}
 	}
 
-	/// <summary>
-	/// Set phase manager for phase-aware pocket detection
-	/// </summary>
-	public void SetPhaseManager(CarromPhaseManager phaseManager)
-	{
-		_phaseManager = phaseManager;
-	}
 
-	/// <summary>
-	/// Get pocket statistics for debugging
-	/// </summary>
-	public System.Collections.Generic.Dictionary<string, object> GetPocketStats()
-	{
-		return new System.Collections.Generic.Dictionary<string, object>
-		{
-			["PocketIndex"] = PocketIndex,
-			["PiecesInArea"] = GetPieceCount(),
-			["IsActive"] = IsActive(),
-			["Position"] = GlobalPosition,
-			["Radius"] = PocketRadius,
-			["PiecesInZones"] = _pieceStates.Count
-		};
-	}
 
 	// ================================================================
 	// ENHANCED PHYSICS METHODS

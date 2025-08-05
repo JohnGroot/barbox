@@ -16,19 +16,6 @@ public enum PieceType
 }
 
 /// <summary>
-/// Game phase states for controlling input and game flow
-/// </summary>
-public enum GamePhase
-{
-	/// <summary>Initial setup - pieces being positioned</summary>
-	Setup,
-	/// <summary>Active play - accepting player input</summary>
-	Active,
-	/// <summary>Processing movement - pieces in motion</summary>
-	Processing
-}
-
-/// <summary>
 /// Available game modes for Carrom
 /// </summary>
 public enum CarromGameMode

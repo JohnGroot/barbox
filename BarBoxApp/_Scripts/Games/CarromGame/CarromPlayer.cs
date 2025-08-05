@@ -16,7 +16,6 @@ public partial class CarromPlayer : BasePlayer
 	[Export] public bool HasQueen { get; set; } = false; // Whether player has pocketed the queen
 	[Export] public bool QueenCovered { get; set; } = false; // Whether queen is properly covered
 
-
 	// Player statistics
 	private int _totalShots = 0;
 	private int _validPockets = 0;
@@ -50,13 +49,11 @@ public partial class CarromPlayer : BasePlayer
 	{
 		if (pieceType == PieceType.Striker || pieceType == PieceType.Red)
 		{
-			GD.PrintErr($"[CarromPlayer] Cannot assign {pieceType} as player piece type");
 			return;
 		}
 
 		AssignedPieceType = pieceType;
 		EmitSignal(SignalName.PieceAssignmentChanged);
-		GD.Print($"[CarromPlayer] Player {PlayerId} assigned {pieceType} pieces");
 	}
 
 	/// <summary>
@@ -77,7 +74,6 @@ public partial class CarromPlayer : BasePlayer
 		if (pieceType == PieceType.Red)
 		{
 			HasQueen = true;
-			GD.Print($"[CarromPlayer] Player {PlayerId} pocketed the Queen");
 		}
 		else if (pieceType == AssignedPieceType)
 		{
@@ -88,15 +84,9 @@ public partial class CarromPlayer : BasePlayer
 			if (HasQueen && !QueenCovered)
 			{
 				QueenCovered = true;
-				GD.Print($"[CarromPlayer] Player {PlayerId} covered the Queen");
 			}
 			
 			EmitSignal(SignalName.ScoreUpdated, PiecesPocketed);
-		}
-		else if (pieceType != PieceType.Striker)
-		{
-			// Pocketed opponent's piece (might be a penalty)
-			GD.Print($"[CarromPlayer] Player {PlayerId} pocketed opponent's piece: {pieceType}");
 		}
 	}
 
@@ -113,8 +103,6 @@ public partial class CarromPlayer : BasePlayer
 			PiecesPocketed--;
 			EmitSignal(SignalName.ScoreUpdated, PiecesPocketed);
 		}
-		
-		GD.Print($"[CarromPlayer] Player {PlayerId} committed foul #{_fouls}");
 	}
 
 	/// <summary>
@@ -178,52 +166,6 @@ public partial class CarromPlayer : BasePlayer
 		return new List<PieceType>(_pocketedPieces);
 	}
 
-	/// <summary>
-	/// Get count of specific piece type pocketed
-	/// </summary>
-	public virtual int GetPocketedCount(PieceType pieceType)
-	{
-		int count = 0;
-		foreach (var piece in _pocketedPieces)
-		{
-			if (piece == pieceType) count++;
-		}
-		return count;
-	}
-
-	/// <summary>
-	/// Get player status summary for UI display
-	/// </summary>
-	public virtual string GetStatusSummary()
-	{
-		string status = $"{PlayerName}: {PiecesPocketed}/{GetRequiredPieces()} pieces";
-		
-		if (HasQueen)
-		{
-			status += QueenCovered ? " (Queen✓)" : " (Queen!)";
-		}
-		
-		return status;
-	}
-
-	/// <summary>
-	/// Get detailed statistics for end-game display
-	/// </summary>
-	public virtual Dictionary<string, object> GetGameStatistics()
-	{
-		return new Dictionary<string, object>
-		{
-			["TotalShots"] = _totalShots,
-			["ValidPockets"] = _validPockets,
-			["Fouls"] = _fouls,
-			["Accuracy"] = GetAccuracy(),
-			["FoulRate"] = GetFoulRate(),
-			["HasQueen"] = HasQueen,
-			["QueenCovered"] = QueenCovered,
-			["PiecesPocketed"] = PiecesPocketed,
-			["RemainingPieces"] = GetRemainingPieces()
-		};
-	}
 
 	// Public accessors for game statistics
 	public int GetTotalShots() => _totalShots;

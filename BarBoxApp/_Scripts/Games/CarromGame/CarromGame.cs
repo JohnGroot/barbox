@@ -1,14 +1,5 @@
 using Godot;
 using System.Collections.Generic;
-using System.Linq;
-
-// CARROMS TODO:
-// - Setup rounded corner board edge & collider
-// - Setup actual Team-Based Rounds (1v1 or 2v2) 
-//		- Login for "ranked" play?
-// - Setup example of "pooled" credit usage
-// - Add particle effect on enter pocket
-// - 
 
 /// <summary>
 /// Traditional board game featuring physics-based striking and strategic pocket play
@@ -33,10 +24,7 @@ public partial class CarromGame : GameController
 	[Export] public int CompetitiveCreditCost { get; set; } = 1;
 	[Export] public float TurnTimeLimit { get; set; } = 30.0f;
 	[Export] public CarromPhysicsConfig PhysicsConfig { get; set; }
-
-	// Settlement state tracking to prevent infinite loops
-	private bool _settlementDetected = false;
-
+	
 	[ExportCategory("Strike Controls")]
 	[Export] public float StrikeDeadZone { get; set; } = 30.0f;
 	[Export] public float MaxAimDistance { get; set; } = 200.0f;
@@ -59,9 +47,9 @@ public partial class CarromGame : GameController
 
 	[ExportCategory("Piece Templates")]
 	[Export(PropertyHint.ResourceType, "PackedScene")] public PackedScene WhitePieceTemplate { get; set; }
-	[Export(PropertyHint.ResourceType, "PackedScene")] public PackedScene BlackPieceTemplate { get; set; }
-	[Export(PropertyHint.ResourceType, "PackedScene")] public PackedScene RedPieceTemplate { get; set; }
-	[Export(PropertyHint.ResourceType, "PackedScene")] public PackedScene StrikerTemplate { get; set; }
+	[Export(PropertyHint.ResourceType, nameof(PackedScene))] public PackedScene BlackPieceTemplate { get; set; }
+	[Export(PropertyHint.ResourceType, nameof(PackedScene))] public PackedScene RedPieceTemplate { get; set; }
+	[Export(PropertyHint.ResourceType, nameof(PackedScene))] public PackedScene StrikerTemplate { get; set; }
 
 	// ================================================================
 	// PRIVATE FIELDS - GAME LOGIC
@@ -77,12 +65,10 @@ public partial class CarromGame : GameController
 	private CarromModeManagerBase _currentModeManager;
 	private CarromPieceFactory _pieceFactory;
 	private CarromCameraController _cameraController;
-	private CarromPhaseManager _phaseManager;
+	private CarromGameStateMachine _gameStateMachine;
 	
 	// Game state
 	private bool _waitingForPiecesToStop = false;
-
-	public GamePhase CurrentPhase => _phaseManager?.CurrentPhase ?? GamePhase.Setup;
 
 	// ================================================================
 	// INITIALIZATION
@@ -104,11 +90,11 @@ public partial class CarromGame : GameController
 		SetupCameraController();
 		SetupInputController();
 		
-		// Initialize components explicitly after all nodes are found
-		InitializeComponents();
+		// Initialize game state machine for simplified state management
+		InitializeGameStateMachine();
 		
-		// Initialize phase manager first
-		InitializePhaseManager();
+		// Initialize components explicitly after all nodes are found AND phase manager created
+		InitializeComponents();
 		
 		// Initialize managers
 		InitializeManagers();
@@ -118,12 +104,15 @@ public partial class CarromGame : GameController
 		
 		// Context detection
 		DetectAndAdaptToContext();
+		
+		// Start practice mode AFTER all managers are initialized
+		// This prevents SetPhaseManager(null) errors during initialization
+		StartPracticeMode();
 	}
 
 	protected override void InitializeGame()
 	{
 		base.InitializeGame();
-		StartPracticeMode(); // Default to practice mode
 	}
 
 	/// <summary>
@@ -222,12 +211,6 @@ public partial class CarromGame : GameController
 				
 				// Pass physics config to board pockets for enhanced physics
 				_board.SetPocketPhysicsConfig(PhysicsConfig);
-				
-				// Pass phase manager to board pockets for phase-aware detection
-				if (_phaseManager != null)
-				{
-					_board.SetPocketPhaseManager(_phaseManager);
-				}
 			}
 		}
 		
@@ -236,7 +219,7 @@ public partial class CarromGame : GameController
 		{
 			_inputController.InitializeWithBoard(_board);
 			_inputController.SetCameraController(_cameraController);
-			_inputController.SetPhaseManager(_phaseManager);
+			_inputController.SetGameState(_gameStateMachine);
 			_inputController.SetPhysicsConfig(PhysicsConfig);
 			
 			// Pass centralized parameters to input controller (strike power now from physics config)
@@ -246,16 +229,40 @@ public partial class CarromGame : GameController
 		}
 	}
 
+	
 	/// <summary>
-	/// Initialize phase manager
+	/// Initialize game state machine - replaces complex distributed state management
 	/// </summary>
-	private void InitializePhaseManager()
+	private void InitializeGameStateMachine()
 	{
-		_phaseManager = new CarromPhaseManager();
-		AddChild(_phaseManager);
+		_gameStateMachine = new CarromGameStateMachine();
+		AddChild(_gameStateMachine);
 		
-		// Connect phase manager signals
-		_phaseManager.PiecesSettled += OnPiecesSettled;
+		// Connect state machine signals
+		_gameStateMachine.StateChanged += OnGameStateChanged;
+		_gameStateMachine.SettlementCompleted += OnSettlementCompleted;
+		
+		GD.Print("[CarromGame] Game state machine initialized");
+	}
+	
+	/// <summary>
+	/// Setup state machine with current mode manager and pieces after mode initialization
+	/// </summary>
+	private void SetupStateMachineForCurrentMode()
+	{
+		if (_gameStateMachine == null || _currentModeManager == null)
+		{
+			GD.PrintErr("[CarromGame] Cannot setup state machine - missing components");
+			return;
+		}
+		
+		// Get all active pieces from current mode manager (includes striker)
+		var pieces = _currentModeManager.GetActivePieces() ?? new System.Collections.Generic.List<CarromPiece>();
+		
+		// Initialize state machine with pieces and mode manager
+		_gameStateMachine.Initialize(pieces, _currentModeManager);
+		
+		GD.Print($"[CarromGame] State machine setup complete for {_carromGameMode} mode with {pieces.Count} pieces");
 	}
 
 	/// <summary>
@@ -276,7 +283,7 @@ public partial class CarromGame : GameController
 		_practiceModeManager = new CarromPracticeModeManager();
 		AddChild(_practiceModeManager);
 		_practiceModeManager.Initialize(_board, _inputController, PhysicsConfig, BlackPieceTemplate, StrikerTemplate);
-		_practiceModeManager.SetPhaseManager(_phaseManager);
+		// State machine manages phases now
 		_practiceModeManager.SetPieceFactory(_pieceFactory);
 		
 		// Note: Board signals are handled through CarromGame.OnPiecePocketed() to avoid duplicate calls
@@ -285,7 +292,7 @@ public partial class CarromGame : GameController
 		_competitiveModeManager = new CarromCompetitiveModeManager();
 		AddChild(_competitiveModeManager);
 		_competitiveModeManager.Initialize(_board, _inputController, PhysicsConfig, WhitePieceTemplate, BlackPieceTemplate, RedPieceTemplate, StrikerTemplate, CompetitiveCreditCost);
-		_competitiveModeManager.SetPhaseManager(_phaseManager);
+
 		_competitiveModeManager.SetPieceFactory(_pieceFactory);
 		
 		// Connect manager signals
@@ -356,16 +363,15 @@ public partial class CarromGame : GameController
 		
 		// Set current mode manager to practice
 		_currentModeManager = _practiceModeManager;
-		
-		// Restore phase manager reference that was lost during cleanup
-		_practiceModeManager?.SetPhaseManager(_phaseManager);
-		
 		_carromGameMode = CarromGameMode.Practice;
 		SetGameMode(GameMode.Practice);
 		ResetGame();
 
 		// Delegate to practice mode manager - it will emit PracticeModeSetupComplete when done
 		_practiceModeManager?.SetupPracticeMode();
+		
+		// Setup state machine for practice mode
+		SetupStateMachineForCurrentMode();
 	}
 
 	/// <summary>
@@ -381,10 +387,6 @@ public partial class CarromGame : GameController
 		
 		// Set current mode manager to competitive
 		_currentModeManager = _competitiveModeManager;
-		
-		// Restore phase manager reference that was lost during cleanup
-		_competitiveModeManager?.SetPhaseManager(_phaseManager);
-		
 		_carromGameMode = CarromGameMode.Competitive;
 		SetGameMode(GameMode.TimeTrial); // Use TimeTrial for competitive tracking
 		ResetGame();
@@ -397,17 +399,54 @@ public partial class CarromGame : GameController
 			// Credits not spent or other failure
 			return;
 		}
-		
-		_phaseManager?.StartGame();
+
+		// Setup state machine for competitive mode
+		SetupStateMachineForCurrentMode();
 	}
 
 	/// <summary>
-	/// Reset game state
+	/// Reset game state - simplified without PhaseManager
 	/// </summary>
 	private void ResetGame()
 	{
-		_phaseManager?.ResetGame();
 		_waitingForPiecesToStop = false;
+		// Game state machine will handle state resets automatically
+	}
+	
+	/// <summary>
+	/// Request practice mode reset - relies on state machine guarantees for safe timing
+	/// </summary>
+	private void RequestPracticeReset()
+	{
+		if (_practiceModeManager == null)
+		{
+			GD.PrintErr("[CarromGame] Cannot request practice reset - practice manager not initialized");
+			return;
+		}
+		
+		// State machine guarantees safe timing for resets
+		ExecutePracticeReset();
+	}
+	
+	/// <summary>
+	/// Execute the actual practice reset
+	/// </summary>
+	private void ExecutePracticeReset()
+	{
+		GD.Print("[CarromGame] Executing practice reset");
+		
+		try
+		{
+			_practiceModeManager?.ResetPracticeMode();
+			
+			// State machine will handle transitions automatically
+			
+			GD.Print("[CarromGame] Practice reset completed successfully");
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[CarromGame] Practice reset failed with exception: {ex.Message}");
+		}
 	}
 
 	// ================================================================
@@ -415,22 +454,15 @@ public partial class CarromGame : GameController
 	// ================================================================
 
 	/// <summary>
-	/// Handle strike execution from input controller (delegated to mode manager)
+	/// Handle strike execution from input controller - simplified without PhaseManager
 	/// </summary>
 	private void OnStrikeExecuted(Vector2 force)
 	{
-		if (!_phaseManager.CanReceiveInput()) 
-			return;
-
 		// Get striker from current mode manager
 		var striker = _currentModeManager?.GetStriker();
 		if (striker != null)
 		{
 			striker.ApplyStrike(force);
-
-			// Reset settlement state for new processing cycle
-			_settlementDetected = false;
-			_phaseManager?.BeginProcessing();
 		}
 	}
 
@@ -448,15 +480,24 @@ public partial class CarromGame : GameController
 	// ================================================================
 
 	/// <summary>
-	/// Handle piece being pocketed
+	/// Handle piece being pocketed with comprehensive logging
 	/// </summary>
 	private void OnPiecePocketed(CarromPiece piece)
 	{
+		if (piece == null || !GodotObject.IsInstanceValid(piece))
+		{
+			GD.PrintErr("[CarromGame] OnPiecePocketed called with invalid piece");
+			return;
+		}
+		
+		string pieceType = piece.Type.ToString();
+		bool isStriker = piece.Type == PieceType.Striker;
+		string playerId = GetCurrentPlayerId();
+
 		// Delegate to current mode manager using polymorphism
 		_currentModeManager?.OnPiecePocketed(piece);
 		
 		// Emit main game signal
-		string playerId = GetCurrentPlayerId();
 		EmitSignal(SignalName.PiecePocketed, playerId, piece);
 	}
 
@@ -473,21 +514,9 @@ public partial class CarromGame : GameController
 	}
 
 	/// <summary>
-	/// Handle individual piece stopped signal to coordinate settlement detection
+	/// Handle piece stopped signal - simplified since CarromGameStateMachine handles settlement
 	/// </summary>
-	private void OnPieceStoppedSignal(CarromPiece stoppedPiece)
-	{
-		// Only check settlement during processing phase and if not already detected
-		if (_phaseManager != null && _phaseManager.IsProcessing() && !_settlementDetected)
-		{
-			// Check if all pieces have now stopped
-			if (AreAllPiecesStopped())
-			{
-				_settlementDetected = true; // Prevent duplicate settlement calls
-				_phaseManager.OnPiecesSettled();
-			}
-		}
-	}
+	private void OnPieceStoppedSignal(CarromPiece stoppedPiece) { }
 
 	/// <summary>
 	/// Get point value for a piece type
@@ -527,6 +556,157 @@ public partial class CarromGame : GameController
 		{
 			return _competitiveModeManager?.GetCurrentPlayer()?.PlayerId ?? "player1";
 		}
+	}
+	
+	/// <summary>
+	/// Log comprehensive game state for debugging
+	/// </summary>
+	private void LogGameState(string context)
+	{
+		GD.Print($"[CarromGame] === GAME STATE: {context} ===");
+		GD.Print($"Game State: {_gameStateMachine?.GetCurrentStateName() ?? "Unknown"}");
+		GD.Print($"Game Mode: {_carromGameMode}");
+		GD.Print($"State Machine: {_gameStateMachine?.GetStateDebugInfo() ?? "Not initialized"}");
+		
+		var striker = _currentModeManager?.GetStriker();
+		if (striker != null && GodotObject.IsInstanceValid(striker))
+		{
+			GD.Print($"Striker - Visible: {striker.Visible}, Freeze: {striker.Freeze}, Position: {striker.GlobalPosition}, Stopped: {striker.IsStopped()}");
+		}
+		else
+		{
+			GD.Print("Striker: Invalid or null");
+		}
+		
+		GD.Print($"All Pieces Stopped: {AreAllPiecesStopped()}");
+		
+		if (_inputController != null)
+		{
+			GD.Print($"Input - Enabled: {_inputController.IsInputEnabled()}, GameState: {_inputController.GetGameStateStatus()}, HasGameState: {_inputController.HasGameState()}");
+		}
+		else
+		{
+			GD.Print("Input Controller: null");
+		}
+		
+		GD.Print($"=== END GAME STATE ===");
+	}
+	
+	/// <summary>
+	/// Centralized striker restoration method - replaces distributed logic across mode managers
+	/// </summary>
+	public bool RestoreStrikerToBaseline(int? playerIndexOverride = null)
+	{
+		var striker = _currentModeManager?.GetStriker();
+		if (striker == null || !GodotObject.IsInstanceValid(striker))
+		{
+			GD.PrintErr("[CarromGame] RestoreStrikerToBaseline: No valid striker found");
+			return false;
+		}
+
+		// Determine appropriate baseline position based on game mode
+		Vector2 baselinePosition;
+		int playerIndex;
+		
+		if (_carromGameMode == CarromGameMode.Practice)
+		{
+			// Practice mode: Always use player 0 baseline (bottom)
+			playerIndex = 0;
+			baselinePosition = _board?.GetBaselinePosition(playerIndex) ?? Vector2.Zero;
+		}
+		else
+		{
+			// Competitive mode: Use specified player index or current player's baseline
+			if (playerIndexOverride.HasValue)
+			{
+				playerIndex = playerIndexOverride.Value;
+			}
+			else
+			{
+				// Default to current player
+				playerIndex = _competitiveModeManager?.GetCurrentPlayer()?.PlayerId == "player1" ? 0 : 1;
+			}
+			
+			baselinePosition = _board?.GetBaselinePosition(playerIndex) ?? Vector2.Zero;
+		}
+		
+		// Convert to global coordinates
+		Vector2 globalBaselinePosition = _board?.ToGlobal(baselinePosition) ?? Vector2.Zero;
+
+		// Perform the restoration using CarromPiece's immediate reset method for predictable state
+		try
+		{
+			// Use immediate physics reset to guarantee stopped state
+			striker.ResetWithImmediatePhysics(globalBaselinePosition);
+			
+			// Mark this restoration in the mode manager's settlement context
+			MarkRecentRestoration(striker);
+			
+			// Validate restoration succeeded (position and visibility)
+			bool restorationSucceeded = ValidateStrikerRestoration(striker, globalBaselinePosition);
+			return restorationSucceeded;
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[CarromGame] RestoreStrikerToBaseline: Exception during restoration: {ex.Message}");
+			return false;
+		}
+	}
+	
+	/// <summary>
+	/// Mark recent restoration in current mode manager's settlement context
+	/// </summary>
+	private void MarkRecentRestoration(CarromPiece piece)
+	{
+		// Cast current mode manager to base class to access settlement context
+		if (_currentModeManager is CarromModeManagerBase modeManager)
+		{
+			modeManager.MarkRecentRestoration(piece);
+			GD.Print($"[CarromGame] MarkRecentRestoration: Marked {piece.Type} as recently restored in settlement context");
+		}
+		else
+		{
+			GD.PrintErr($"[CarromGame] MarkRecentRestoration: Could not cast mode manager to base class");
+		}
+	}
+	
+	/// <summary>
+	/// Validate that striker restoration was successful - focuses on position and visibility, not physics state
+	/// </summary>
+	private bool ValidateStrikerRestoration(CarromPiece striker, Vector2 expectedPosition)
+	{
+		if (striker == null || !IsInstanceValid(striker))
+		{
+			return false;
+		}
+		
+		// Check visibility was restored
+		if (!striker.Visible)
+		{
+			GD.PrintErr("[CarromGame] Striker restoration validation failed: Still invisible");
+			return false;
+		}
+		
+		// Check freeze state was cleared
+		if (striker.Freeze)
+		{
+			GD.PrintErr("[CarromGame] Striker restoration validation failed: Still frozen");
+			return false;
+		}
+		
+		// Check position is reasonable (within tolerance)
+		float positionTolerance = 100.0f; // Allow 100 pixel tolerance for validation
+		float actualDistance = striker.GlobalPosition.DistanceTo(expectedPosition);
+		if (actualDistance > positionTolerance)
+		{
+			GD.PrintErr($"[CarromGame] Striker restoration validation failed: Position too far from expected - Distance: {actualDistance:F2}, Expected: {expectedPosition}, Actual: {striker.GlobalPosition}");
+			return false;
+		}
+		
+		// NOTE: We don't check IsStopped() here because with deferred physics reset,
+		// the striker may still have velocity that will be cleared later
+		
+		return true;
 	}
 
 	// ================================================================
@@ -602,7 +782,7 @@ public partial class CarromGame : GameController
 			buttons.Add(new ContextButtonData("Reset", () => {
 				var userManager = UserManager.GetAutoload();
 				userManager?.ResetUserIdleTimer();
-				_practiceModeManager?.ResetPracticeMode();
+				RequestPracticeReset();
 			}, "🔄", true, "Reset practice session"));
 			
 			buttons.Add(new ContextButtonData("Play Competitive", () => {
@@ -632,23 +812,23 @@ public partial class CarromGame : GameController
 	// SIGNAL HANDLERS FOR MANAGERS
 	// ================================================================
 
+	
 	/// <summary>
-	/// Handle pieces settled from phase manager (centralized)
+	/// Handle game state changes from state machine
 	/// </summary>
-	private void OnPiecesSettled()
+	private void OnGameStateChanged(CarromGameStateMachine.GameState oldState, CarromGameStateMachine.GameState newState)
 	{
-		// Process settlement based on game mode
-		ProcessPiecesSettlement();
+		GD.Print($"[CarromGame] Game state changed: {oldState} → {newState}");
 	}
 	
 	/// <summary>
-	/// Process pieces settlement using current mode manager (polymorphic)
+	/// Handle settlement completion from state machine
 	/// </summary>
-	private void ProcessPiecesSettlement()
+	private void OnSettlementCompleted()
 	{
-		// Delegate to current mode manager using polymorphism
-		_currentModeManager?.OnPiecesSettled();
+		GD.Print("[CarromGame] Settlement completed - game ready for next turn");
 	}
+	
 
 	/// <summary>
 	/// Handle practice reset request from practice mode manager
@@ -660,11 +840,137 @@ public partial class CarromGame : GameController
 	}
 
 	/// <summary>
-	/// Handle practice mode setup completion
+	/// Handle practice mode setup completion with comprehensive validation
 	/// </summary>
 	private void OnPracticeModeSetupComplete()
 	{
-		_phaseManager?.StartGame();
+		// Validate all critical components before enabling input
+		bool validationPassed = ValidateInputControllerSynchronization();
+		if (validationPassed)
+		{
+			GD.Print("[CarromGame] OnPracticeModeSetupComplete: Validation passed - starting game");
+		}
+		else
+		{
+			GD.PrintErr("[CarromGame] OnPracticeModeSetupComplete: Validation failed - attempting recovery");
+			RecoverInputControllerSynchronization();
+		}
+	}
+	
+	/// <summary>
+	/// Validate that input controller is properly synchronized with all dependencies
+	/// </summary>
+	private bool ValidateInputControllerSynchronization()
+	{
+		GD.Print("[CarromGame] ValidateInputControllerSynchronization: Starting validation");
+		
+		// Check input controller exists and is valid
+		if (_inputController == null || !GodotObject.IsInstanceValid(_inputController))
+		{
+			GD.PrintErr("[CarromGame] Validation failed: Input controller is null or invalid");
+			return false;
+		}
+		
+		// Check phase manager exists and is valid
+		if (_gameStateMachine == null || !GodotObject.IsInstanceValid(_gameStateMachine))
+		{
+			GD.PrintErr("[CarromGame] Validation failed: Game state machine is null or invalid");
+			return false;
+		}
+		
+		// Check current mode manager exists and is valid
+		if (_currentModeManager == null)
+		{
+			GD.PrintErr("[CarromGame] Validation failed: Current mode manager is null");
+			return false;
+		}
+		
+		// Check striker exists and is valid
+		var striker = _currentModeManager.GetStriker();
+		if (striker == null || !GodotObject.IsInstanceValid(striker))
+		{
+			GD.PrintErr("[CarromGame] Validation failed: Striker is null or invalid");
+			return false;
+		}
+		
+		// Validate input controller has proper references
+		if (!_inputController.HasGameState())
+		{
+			GD.PrintErr("[CarromGame] Validation failed: Input controller lacks game state reference");
+			return false;
+		}
+		
+		// Check that input is in a valid state
+		if (!_inputController.IsInputEnabled())
+		{
+			GD.Print("[CarromGame] Input currently disabled - this may be normal during setup");
+		}
+		
+		GD.Print("[CarromGame] ValidateInputControllerSynchronization: All validations passed");
+		return true;
+	}
+	
+	/// <summary>
+	/// Attempt to recover input controller synchronization if validation fails
+	/// </summary>
+	private void RecoverInputControllerSynchronization()
+	{
+		GD.Print("[CarromGame] RecoverInputControllerSynchronization: Starting recovery");
+		
+		// Re-establish game state reference
+		if (_inputController != null && _gameStateMachine != null)
+		{
+			_inputController.SetGameState(_gameStateMachine);
+			GD.Print("[CarromGame] Recovery: Re-established game state reference");
+		}
+		
+		// Update striker reference
+		UpdateInputControllerStriker();
+		GD.Print("[CarromGame] Recovery: Updated striker reference");
+		
+		// Re-validate after recovery
+		bool recoverySuccessful = ValidateInputControllerSynchronization();
+		
+		if (recoverySuccessful)
+		{
+			GD.Print("[CarromGame] Recovery successful - starting game");
+			// State machine handles game start automatically
+		}
+		else
+		{
+			GD.PrintErr("[CarromGame] Recovery failed - game may not function properly");
+			// Force start anyway to prevent complete blockage
+			// State machine handles game start automatically
+		}
+	}
+	
+	
+	
+	/// <summary>
+	/// DEBUG METHOD: Force enable input for debugging stuck input states
+	/// Call this method from debugger or add temporary UI button during development
+	/// </summary>
+	public void DEBUG_ForceEnableInput()
+	{
+		GD.Print("[CarromGame] DEBUG_ForceEnableInput: Force enabling input for debugging");
+		
+		// State machine handles transitions automatically
+		
+		// Force input controller to enabled state
+		if (_inputController != null)
+		{
+			// This assumes SetInputState method exists - may need to adjust based on actual InputController API
+			GD.Print("[CarromGame] DEBUG: Attempting to force input controller to enabled state");
+			
+			// Re-establish all references
+			_inputController.SetGameState(_gameStateMachine);
+			UpdateInputControllerStriker();
+			
+			GD.Print("[CarromGame] DEBUG: Re-established input controller references");
+		}
+		
+		// Log current state for debugging
+		LogGameState("DEBUG Force Enable Input");
 	}
 
 	/// <summary>
@@ -697,7 +1003,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnCompetitiveModeSetupComplete()
 	{
-		_phaseManager?.StartGame();
+		// State machine handles game start automatically
 	}
 
 	/// <summary>
@@ -780,10 +1086,6 @@ public partial class CarromGame : GameController
 			_inputController.AimingStateChanged -= OnAimingStateChanged;
 		}
 			
-		if (_phaseManager != null && GodotObject.IsInstanceValid(_phaseManager))
-		{
-			_phaseManager.PiecesSettled -= OnPiecesSettled;
-		}
 			
 		// Clean up manager signals
 		DisconnectManagerSignals();

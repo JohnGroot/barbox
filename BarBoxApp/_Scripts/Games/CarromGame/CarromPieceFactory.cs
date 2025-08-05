@@ -78,7 +78,6 @@ public partial class CarromPieceFactory : Node2D
 		
 		if (pieceTemplate == null)
 		{
-			GD.PrintErr($"[CarromPieceFactory] No template found for piece type: {type}");
 			return null;
 		}
 		
@@ -86,7 +85,6 @@ public partial class CarromPieceFactory : Node2D
 		var piece = pieceTemplate.Instantiate<CarromPiece>();
 		if (piece == null)
 		{
-			GD.PrintErr($"[CarromPieceFactory] Failed to instantiate piece of type: {type}");
 			return null;
 		}
 		
@@ -99,9 +97,6 @@ public partial class CarromPieceFactory : Node2D
 		piece.SetPhysicsLimits(_minVelocityThreshold, _angularMinThreshold, 
 			_maxVelocityLimit, _maxAngularVelocity, _velocityAlertThreshold);
 		
-		// Connect piece signals
-		piece.PieceStopped += OnPieceStopped;
-		piece.PieceCollided += OnPieceCollided;
 		
 		// Add to board
 		_board.AddChild(piece);
@@ -112,8 +107,6 @@ public partial class CarromPieceFactory : Node2D
 			_allPieces.Add(piece);
 		}
 		
-		// Connect to board signals for pocketing
-		piece.Connect(CarromPiece.SignalName.PieceStopped, Callable.From<CarromPiece>(OnPieceStopped));
 		
 		EmitSignal(SignalName.PieceCreated, piece);
 		
@@ -185,27 +178,6 @@ public partial class CarromPieceFactory : Node2D
 		return _allPieces.Where(p => GodotObject.IsInstanceValid(p) && p.Type == type).ToList();
 	}
 
-	/// <summary>
-	/// Handle piece stopped signal from individual pieces
-	/// </summary>
-	/// <param name="piece">The piece that stopped moving</param>
-	private void OnPieceStopped(CarromPiece piece)
-	{
-		// TODO: Implement piece settling detection for factory-level tracking
-		// Could be used for global settlement events or piece state management
-	}
-
-	/// <summary>
-	/// Handle piece collision signal from individual pieces
-	/// </summary>
-	/// <param name="thisPiece">The piece that initiated the collision</param>
-	/// <param name="otherPiece">The piece that was hit</param>
-	/// <param name="impactForce">The force of the collision</param>
-	private void OnPieceCollided(CarromPiece thisPiece, CarromPiece otherPiece, Vector2 impactForce)
-	{
-		// TODO: Implement collision tracking for statistics or sound effects
-		// Could be used for impact sound volume calculation or collision analysis
-	}
 
 	/// <summary>
 	/// Cleanup on exit
