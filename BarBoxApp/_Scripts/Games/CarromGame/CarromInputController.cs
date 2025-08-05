@@ -23,6 +23,12 @@ public partial class CarromInputController : Node2D
 	private float _aimLineLength = 100.0f;
 	private float _powerBarWidth = 60.0f;
 	private float _powerBarHeight = 8.0f;
+	
+	// Trajectory prediction parameters
+	private float _trajectoryMaxDistance = 300.0f;
+	private float _trajectoryPostCollisionDistance = 25.0f;
+	private float _trajectoryStepSize = 5.0f;
+	private int _trajectoryMaxSteps = 100;
 
 	[ExportCategory("Visual Feedback")]
 	[Export] public bool ShowAimingLine { get; set; } = true;
@@ -30,6 +36,13 @@ public partial class CarromInputController : Node2D
 	[Export] public Color AimingLineColor { get; set; } = Colors.Yellow;
 	[Export] public Color PowerBarColor { get; set; } = Colors.Green;
 	[Export] public float AimingLineWidth { get; set; } = 3.0f;
+	
+	[ExportCategory("Trajectory Prediction")]
+	[Export] public float TrajectoryMaxDistance { get; set; } = 300.0f;
+	[Export] public float TrajectoryPostCollisionDistance { get; set; } = 25.0f;
+	[Export] public Color TrajectoryColor { get; set; } = Colors.Yellow;
+	[Export] public Color PostCollisionTrajectoryColor { get; set; } = Colors.Orange;
+	[Export] public Color CollisionMarkerColor { get; set; } = Colors.Red;
 
 	// Input state
 	private CarromPiece _striker;
@@ -54,6 +67,14 @@ public partial class CarromInputController : Node2D
 	private Vector2 _lastScreenPosition;
 	private Vector2 _lastBoardPosition;
 	private bool _hasValidConversionCache = false;
+	
+	// Trajectory calculation caching
+	private Vector2 _lastTrajectoryDirection;
+	private float _lastTrajectoryPower;
+	private Vector2[] _cachedTrajectoryPoints = new Vector2[0];
+	private Vector2? _cachedCollisionPoint;
+	private Vector2[] _cachedPostCollisionPoints = new Vector2[0];
+	private bool _trajectoryCacheValid = false;
 
 	// Input modes
 	private enum InputMode
@@ -64,10 +85,10 @@ public partial class CarromInputController : Node2D
 	}
 
 	// Baseline tracking
-	private Vector2[] _baselinePositions;
+	private Vector2[] _baselinePositions = new Vector2[0];
 	private int _currentPlayerIndex = 0;
-	private CarromBoard _board;
-	private CarromCameraController _cameraController;
+	private CarromBoard? _board;
+	private CarromCameraController? _cameraController;
 	
 	// Cached baseline geometry for performance optimization
 	private Vector2 _cachedBaselineStart;
@@ -186,6 +207,13 @@ public partial class CarromInputController : Node2D
 		_aimLineLength = aimLineLength;
 		_powerBarWidth = powerBarWidth;
 		_powerBarHeight = powerBarHeight;
+		
+		// Update trajectory parameters from exports
+		_trajectoryMaxDistance = TrajectoryMaxDistance;
+		_trajectoryPostCollisionDistance = TrajectoryPostCollisionDistance;
+		
+		// Invalidate trajectory cache when parameters change
+		_trajectoryCacheValid = false;
 	}
 
 	/// <summary>
@@ -284,7 +312,6 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	public override void _Input(InputEvent @event)
 	{
-
 		if (!CanAcceptInput() || _striker == null) return;
 
 		HandleMouseInput(@event);
@@ -393,10 +420,20 @@ public partial class CarromInputController : Node2D
 				break;
 			case InputMode.PowerAiming:
 				HandlePowerAiming(inputVector);
+				// Invalidate trajectory cache when direction changes
+				InvalidateTrajectoryCache();
 				break;
 		}
 
 		RequestVisualUpdate(); // Update visual feedback
+	}
+	
+	/// <summary>
+	/// Invalidate trajectory cache to force recalculation
+	/// </summary>
+	private void InvalidateTrajectoryCache()
+	{
+		_trajectoryCacheValid = false;
 	}
 
 	/// <summary>
@@ -527,6 +564,9 @@ public partial class CarromInputController : Node2D
 		
 		// Stop any ongoing kinematic movement
 		_isMovingStriker = false;
+		
+		// Clear trajectory cache
+		InvalidateTrajectoryCache();
 		
 		// Clear visual feedback and emit state change signals
 		EmitSignal(SignalName.AimingStateChanged, false, Vector2.Zero, 0.0f);
@@ -675,7 +715,7 @@ public partial class CarromInputController : Node2D
 	}
 
 	/// <summary>
-	/// Draw aiming line
+	/// Draw aiming line with trajectory prediction
 	/// </summary>
 	private void DrawAimingLine(Vector2 strikerPos, Vector2 currentPos)
 	{
@@ -705,18 +745,52 @@ public partial class CarromInputController : Node2D
 				aimDirection = forwardDirection.Rotated(clampedAngle);
 			}
 			
-			Vector2 aimEnd = strikerPos + aimDirection * _aimLineLength; // Fixed length for visibility
+			// Calculate power level
+			float clampedDistance = Mathf.Clamp(inputDistance, _deadZone, _maxAimDistance);
+			float power = (clampedDistance - _deadZone) / (_maxAimDistance - _deadZone);
 			
-			DrawLine(strikerPos, aimEnd, AimingLineColor, AimingLineWidth, true);
+			// Get trajectory prediction
+			var trajectory = CalculateTrajectoryPoints(strikerPos, aimDirection, power);
 			
-			// Draw arrowhead
-			Vector2 arrowBase = aimEnd - aimDirection * 15.0f;
-			Vector2 perpendicular = aimDirection.Rotated(Mathf.Pi / 2) * 8.0f;
+			// Draw main trajectory
+			DrawTrajectoryPath(trajectory.trajectoryPoints, TrajectoryColor);
 			
-			DrawLine(aimEnd, arrowBase + perpendicular, AimingLineColor, AimingLineWidth, true);
-			DrawLine(aimEnd, arrowBase - perpendicular, AimingLineColor, AimingLineWidth, true);
+			// Draw collision marker if there's a collision
+			if (trajectory.collisionPoint.HasValue)
+			{
+				DrawCollisionMarker(trajectory.collisionPoint.Value);
+			}
+			
+			// Draw post-collision trajectory
+			if (trajectory.postCollisionPoints.Length > 0)
+			{
+				DrawTrajectoryPath(trajectory.postCollisionPoints, PostCollisionTrajectoryColor);
+			}
 		}
 	}
+	
+	/// <summary>
+	/// Draw trajectory path as connected line segments
+	/// </summary>
+	private void DrawTrajectoryPath(Vector2[] points, Color color)
+	{
+		if (points.Length < 2) return;
+		
+		for (int i = 0; i < points.Length - 1; i++)
+		{
+			DrawLine(points[i], points[i + 1], color, AimingLineWidth, true);
+		}
+	}
+	
+	/// <summary>
+	/// Draw collision marker
+	/// </summary>
+	private void DrawCollisionMarker(Vector2 position)
+	{
+		float markerRadius = 8.0f;
+		DrawArc(position, markerRadius, 0, Mathf.Tau, 16, CollisionMarkerColor, AimingLineWidth * 1.5f, true);
+	}
+	
 
 	/// <summary>
 	/// Draw power indicator
@@ -765,10 +839,10 @@ public partial class CarromInputController : Node2D
 		{
 			_currentPlayerIndex = playerIndex;
 			UpdateBaselinePositions(); // This will also update the cached geometry
+			InvalidateTrajectoryCache(); // Player change affects trajectory calculation
 		}
 	}
-
-
+	
 	/// <summary>
 	/// Check if currently aiming
 	/// </summary>
@@ -790,6 +864,198 @@ public partial class CarromInputController : Node2D
 	private float GetMinStrikePower() => _physicsConfig?.MinStrikePower ?? 200.0f;
 	private float GetMaxStrikeAngle() => _physicsConfig?.MaxStrikeAngle ?? 60.0f;
 	
+	/// <summary>
+	/// Calculate trajectory points with collision detection (constant distance)
+	/// </summary>
+	private (Vector2[] trajectoryPoints, Vector2? collisionPoint, Vector2[] postCollisionPoints) CalculateTrajectoryPoints(Vector2 startPos, Vector2 direction, float power)
+	{
+		if (_physicsConfig == null || _striker == null)
+		{
+			return (new Vector2[0], null, new Vector2[0]);
+		}
+		
+		// Check cache validity (only check direction, ignore power)
+		if (_trajectoryCacheValid && 
+			_lastTrajectoryDirection.DistanceTo(direction) < 0.01f)
+		{
+			return (_cachedTrajectoryPoints, _cachedCollisionPoint, _cachedPostCollisionPoints);
+		}
+		
+		// Use constant distance trajectory regardless of power
+		var result = SimulateConstantTrajectoryPath(startPos, direction);
+		
+		// Cache results
+		_lastTrajectoryDirection = direction;
+		_lastTrajectoryPower = power; // Still cache power for completeness
+		_cachedTrajectoryPoints = result.trajectoryPoints;
+		_cachedCollisionPoint = result.collisionPoint;
+		_cachedPostCollisionPoints = result.postCollisionPoints;
+		_trajectoryCacheValid = true;
+		
+		return result;
+	}
+	
+	/// <summary>
+	/// Simulate constant distance trajectory path with collision detection
+	/// </summary>
+	private (Vector2[] trajectoryPoints, Vector2? collisionPoint, Vector2[] postCollisionPoints) SimulateConstantTrajectoryPath(Vector2 startPos, Vector2 direction)
+	{
+		var trajectoryPoints = new System.Collections.Generic.List<Vector2>();
+		var postCollisionPoints = new System.Collections.Generic.List<Vector2>();
+		Vector2? collisionPoint = null;
+		
+		Vector2 position = startPos;
+		float distanceTraveled = 0.0f;
+		float strikerRadius = _physicsConfig.GetRadiusForPieceType(_striker.Type);
+		
+		trajectoryPoints.Add(position);
+		
+		// Step along the direction until we hit max distance or collision
+		while (distanceTraveled < _trajectoryMaxDistance)
+		{
+			Vector2 nextPosition = position + direction * _trajectoryStepSize;
+			
+			// Check for collisions
+			var collision = GetFirstCollision(position, nextPosition, strikerRadius);
+			
+			if (collision.hasCollision)
+			{
+				// First collision detected
+				collisionPoint = collision.point;
+				trajectoryPoints.Add(collision.point);
+				
+				// Calculate post-collision trajectory with simple reflection
+				Vector2 reflectedDirection = direction.Bounce(collision.normal);
+				var postCollisionResult = SimulateConstantPostCollisionPath(collision.point, reflectedDirection);
+				postCollisionPoints.AddRange(postCollisionResult);
+				break;
+			}
+			
+			// Continue main trajectory
+			position = nextPosition;
+			distanceTraveled += _trajectoryStepSize;
+			trajectoryPoints.Add(position);
+		}
+		
+		return (trajectoryPoints.ToArray(), collisionPoint, postCollisionPoints.ToArray());
+	}
+	
+	/// <summary>
+	/// Get first collision along trajectory path
+	/// </summary>
+	private (bool hasCollision, Vector2 point, Vector2 normal) GetFirstCollision(Vector2 from, Vector2 to, float radius)
+	{
+		if (_board == null)
+		{
+			return (false, Vector2.Zero, Vector2.Zero);
+		}
+		
+		// Check board boundaries first
+		var boardCollision = CheckBoardBoundaryCollision(from, to, radius);
+		if (boardCollision.hasCollision)
+		{
+			return boardCollision;
+		}
+		
+		// Use physics ray casting for other pieces
+		var spaceState = GetWorld2D()?.DirectSpaceState;
+		if (spaceState != null)
+		{
+			var query = PhysicsRayQueryParameters2D.Create(from, to);
+			query.CollisionMask = 1; // Collision layer for pieces
+			query.Exclude = new Godot.Collections.Array<Rid> { _striker.GetRid() };
+			
+			var result = spaceState.IntersectRay(query);
+			if (result.Count > 0)
+			{
+				Vector2 collisionPoint = result["position"].AsVector2();
+				Vector2 normal = result["normal"].AsVector2();
+				return (true, collisionPoint, normal);
+			}
+		}
+		
+		return (false, Vector2.Zero, Vector2.Zero);
+	}
+	
+	/// <summary>
+	/// Check collision with board boundaries
+	/// </summary>
+	private (bool hasCollision, Vector2 point, Vector2 normal) CheckBoardBoundaryCollision(Vector2 from, Vector2 to, float radius)
+	{
+		float boardHalfSize = _board.BoardHalfSize;
+		float effectiveBoundary = boardHalfSize - radius;
+		
+		// Check each boundary
+		Vector2 direction = (to - from).Normalized();
+		
+		// Right boundary
+		if (to.X > effectiveBoundary && direction.X > 0)
+		{
+			float t = (effectiveBoundary - from.X) / direction.X;
+			if (t >= 0 && t <= 1)
+			{
+				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
+				return (true, intersectionPoint, Vector2.Left);
+			}
+		}
+		
+		// Left boundary
+		if (to.X < -effectiveBoundary && direction.X < 0)
+		{
+			float t = (-effectiveBoundary - from.X) / direction.X;
+			if (t >= 0 && t <= 1)
+			{
+				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
+				return (true, intersectionPoint, Vector2.Right);
+			}
+		}
+		
+		// Top boundary
+		if (to.Y < -effectiveBoundary && direction.Y < 0)
+		{
+			float t = (-effectiveBoundary - from.Y) / direction.Y;
+			if (t >= 0 && t <= 1)
+			{
+				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
+				return (true, intersectionPoint, Vector2.Down);
+			}
+		}
+		
+		// Bottom boundary
+		if (to.Y > effectiveBoundary && direction.Y > 0)
+		{
+			float t = (effectiveBoundary - from.Y) / direction.Y;
+			if (t >= 0 && t <= 1)
+			{
+				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
+				return (true, intersectionPoint, Vector2.Up);
+			}
+		}
+		
+		return (false, Vector2.Zero, Vector2.Zero);
+	}
+	
+	
+	/// <summary>
+	/// Simulate simple post-collision trajectory path (constant distance)
+	/// </summary>
+	private Vector2[] SimulateConstantPostCollisionPath(Vector2 startPos, Vector2 direction)
+	{
+		var points = new System.Collections.Generic.List<Vector2>();
+		
+		Vector2 position = startPos;
+		float distanceTraveled = 0.0f;
+		
+		// Step along the reflected direction for the post-collision distance
+		while (distanceTraveled < _trajectoryPostCollisionDistance)
+		{
+			position += direction * _trajectoryStepSize;
+			distanceTraveled += _trajectoryStepSize;
+			points.Add(position);
+		}
+		
+		return points.ToArray();
+	}
 
 	// Public accessors
 	public bool IsInputEnabled() => CanAcceptInput();
