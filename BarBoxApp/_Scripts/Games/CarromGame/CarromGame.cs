@@ -637,7 +637,7 @@ public partial class CarromGame : GameController
 		try
 		{
 			// Use immediate physics reset to guarantee stopped state
-			striker.ResetWithImmediatePhysics(globalBaselinePosition);
+			striker.Reset(globalBaselinePosition, immediate: true);
 			
 			// Mark this restoration in the mode manager's settlement context
 			MarkRecentRestoration(striker);

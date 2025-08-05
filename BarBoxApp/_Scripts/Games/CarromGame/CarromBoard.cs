@@ -19,6 +19,9 @@ public partial class CarromBoard : Node2D
 	[Export] public Color PocketColor { get; set; } = Colors.Black;
 	[Export] public bool UseCurvedBorders { get; set; } = false;
 
+	[ExportCategory("Physics Configuration")]
+	[Export] public CarromPhysicsConfig PhysicsConfig { get; set; }
+
 	/// <summary>
 	/// Get baseline distance from board edge to baseline center (same for all sides since board is square)
 	/// </summary>
@@ -62,11 +65,7 @@ public partial class CarromBoard : Node2D
 	private const float PIECE_DIAMETER_CM = 3.1f; // Mid-range of official 3.02-3.18cm diameter
 	private const float PIECE_THICKNESS_CM = 0.8f; // Mid-range of official 0.70-0.90cm thickness
 
-	// Physics constants
-	private const float BOARD_FRICTION = 0.05f; // Very low friction for smooth sliding
-	private const float BOARD_BOUNCE = 0.9f; // High bounce for realistic collisions
-	private const float POCKET_INNER_MULTIPLIER = 0.8f; // Inner pocket hole size multiplier
-	private const float POCKET_HIGHLIGHT_MULTIPLIER = 0.9f; // Pocket highlight ring multiplier
+	// Physics constants - now using PhysicsConfig values
 	
 	// Computed properties using official Carrom Law specifications
 	public float ScaleFactor => BoardSize / A_BOARD_SIZE_REFERENCE;
@@ -116,11 +115,11 @@ public partial class CarromBoard : Node2D
 		_boardPhysics = new StaticBody2D();
 		AddChild(_boardPhysics);
 
-		// Setup physics material for low friction sliding
-		var boardMaterial = new PhysicsMaterial();
-		boardMaterial.Friction = BOARD_FRICTION; // Very low friction for smooth sliding
-		boardMaterial.Bounce = BOARD_BOUNCE; // High bounce for realistic collisions
-		_boardPhysics.PhysicsMaterialOverride = boardMaterial;
+		// Setup physics material using centralized config
+		if (PhysicsConfig != null)
+		{
+			_boardPhysics.PhysicsMaterialOverride = PhysicsConfig.CreateBoardMaterial();
+		}
 
 		// Create border collision shapes
 		CreateBorderCollisions();
@@ -591,11 +590,13 @@ public partial class CarromBoard : Node2D
 			// Outer pocket ring
 			DrawCircle(pocketPos, PocketRadius, PocketColor, true, -1f, true);
 			
-			// Inner pocket hole (darker)
-			DrawCircle(pocketPos, PocketRadius * POCKET_INNER_MULTIPLIER, PocketColor.Darkened(0.3f), true, -1f, true);
+			// Inner pocket hole (darker) - use centralized config if available
+			float innerMultiplier = PhysicsConfig?.PocketInnerMultiplier ?? 0.8f;
+			DrawCircle(pocketPos, PocketRadius * innerMultiplier, PocketColor.Darkened(0.3f), true, -1f, true);
 			
-			// Highlight ring
-			DrawArc(pocketPos, PocketRadius * POCKET_HIGHLIGHT_MULTIPLIER, 0, Mathf.Tau, 32, 
+			// Highlight ring - use centralized config if available  
+			float highlightMultiplier = PhysicsConfig?.PocketHighlightMultiplier ?? 0.9f;
+			DrawArc(pocketPos, PocketRadius * highlightMultiplier, 0, Mathf.Tau, 32, 
 					PocketColor.Lightened(0.2f), 2.0f, true);
 		}
 	}
@@ -682,10 +683,10 @@ public partial class CarromBoard : Node2D
 		float halfLineLength = HalfBaseLineLength; // 23.5cm from center to line end
 		
 		// Element 1: Exterior (thick) line (E dimension) - 3x corner line thickness (0.45cm) - towards walls  
-		DrawBaselineOutsideLine(center, isHorizontal, halfLineLength, baselineIndex, exteriorLinePos);
+		DrawBaselineLine(center, isHorizontal, halfLineLength, exteriorLinePos, true);
 		
 		// Element 2: Interior (thin) line - same thickness as corner lines (0.15cm) - towards center
-		DrawBaselineInsideLine(center, isHorizontal, halfLineLength, baselineIndex, interiorLinePos);
+		DrawBaselineLine(center, isHorizontal, halfLineLength, interiorLinePos, false);
 		
 		// Elements 3 & 4: End cap rings positioned at the ends of the 47cm line
 		DrawBaselineEndCapRing(leftEndPos);
@@ -697,45 +698,31 @@ public partial class CarromBoard : Node2D
 	}
 	
 	/// <summary>
-	/// Draw baseline exterior (thick) line (E dimension: 0.45cm thick) towards walls at specific position
+	/// Draw baseline line (either thick exterior or thin interior)
 	/// </summary>
-	private void DrawBaselineOutsideLine(Vector2 center, bool isHorizontal, float halfLength, int baselineIndex, float linePosition)
+	/// <param name="center">Baseline center position</param>
+	/// <param name="isHorizontal">True for horizontal baselines, false for vertical</param>
+	/// <param name="halfLength">Half the length of the baseline</param>
+	/// <param name="linePosition">Position offset from center where line should be drawn</param>
+	/// <param name="isThickLine">True for thick exterior line, false for thin interior line</param>
+	private void DrawBaselineLine(Vector2 center, bool isHorizontal, float halfLength, float linePosition, bool isThickLine)
 	{
+		Vector2 startPos, endPos;
 		if (isHorizontal)
 		{
 			// Horizontal baseline - use Y position
-			Vector2 startPos = new Vector2(center.X - halfLength, linePosition);
-			Vector2 endPos = new Vector2(center.X + halfLength, linePosition);
-			DrawLine(startPos, endPos, LineColor, BaselineBottomLineThickness);
+			startPos = new Vector2(center.X - halfLength, linePosition);
+			endPos = new Vector2(center.X + halfLength, linePosition);
 		}
 		else
 		{
 			// Vertical baseline - use X position
-			Vector2 startPos = new Vector2(linePosition, center.Y - halfLength);
-			Vector2 endPos = new Vector2(linePosition, center.Y + halfLength);
-			DrawLine(startPos, endPos, LineColor, BaselineBottomLineThickness);
+			startPos = new Vector2(linePosition, center.Y - halfLength);
+			endPos = new Vector2(linePosition, center.Y + halfLength);
 		}
-	}
-	
-	/// <summary>
-	/// Draw baseline interior (thin) line (0.15cm thick) towards center at specific position
-	/// </summary>
-	private void DrawBaselineInsideLine(Vector2 center, bool isHorizontal, float halfLength, int baselineIndex, float linePosition)
-	{
-		if (isHorizontal)
-		{
-			// Horizontal baseline - use Y position
-			Vector2 startPos = new Vector2(center.X - halfLength, linePosition);
-			Vector2 endPos = new Vector2(center.X + halfLength, linePosition);
-			DrawLine(startPos, endPos, LineColor, CornerLineThickness);
-		}
-		else
-		{
-			// Vertical baseline - use X position
-			Vector2 startPos = new Vector2(linePosition, center.Y - halfLength);
-			Vector2 endPos = new Vector2(linePosition, center.Y + halfLength);
-			DrawLine(startPos, endPos, LineColor, CornerLineThickness);
-		}
+		
+		float thickness = isThickLine ? BaselineBottomLineThickness : CornerLineThickness;
+		DrawLine(startPos, endPos, LineColor, thickness);
 	}
 	
 	/// <summary>
@@ -822,7 +809,8 @@ public partial class CarromBoard : Node2D
 			DrawLine(arrowStart, arrowEnd, LineColor, CornerLineThickness, true);
 			
 			// Draw filled triangle tip pointing toward pocket
-			DrawArrowTriangleTip(arrowEnd, arrowDirection, pocketPos);
+			Vector2 directionToPocket = (pocketPos - arrowEnd).Normalized();
+			DrawTriangleTip(arrowEnd, directionToPocket, false);
 			
 			// Draw corner arc at the center-end (start position) of the arrow
 			DrawCornerArrowArc(arrowStart, arrowDirection);
@@ -830,28 +818,41 @@ public partial class CarromBoard : Node2D
 	}
 
 	/// <summary>
-	/// Draw a filled equilateral triangle arrow tip pointing toward the target pocket
+	/// Draw a filled equilateral triangle arrow tip
 	/// </summary>
-	private void DrawArrowTriangleTip(Vector2 arrowEnd, Vector2 arrowDirection, Vector2 pocketPos)
+	/// <param name="basePosition">Position of the triangle base center</param>
+	/// <param name="pointDirection">Direction the triangle tip should point</param>
+	/// <param name="tipAtBase">If true, tip is at basePosition (corner line style), if false, base is at basePosition (arrow style)</param>
+	private void DrawTriangleTip(Vector2 basePosition, Vector2 pointDirection, bool tipAtBase = false)
 	{
 		// N dimension from diagram is 2.54cm, triangle side length should be half of that = 1.27cm
 		const float N_DIMENSION_CM = 2.54f; // From diagram
 		float triangleSideLength = (N_DIMENSION_CM / 2) * ScaleFactor; // 1.27cm scaled
 		
-		// Direction from arrow end toward pocket (ensures tip points to pocket)
-		Vector2 directionToPocket = (pocketPos - arrowEnd).Normalized();
+		Vector2 normalizedDirection = pointDirection.Normalized();
 		
 		// Calculate equilateral triangle vertices
 		// For equilateral triangle: height = side_length * sqrt(3) / 2
 		float triangleHeight = triangleSideLength * Mathf.Sqrt(3) / 2;
 		
-		// Tip point (pointing toward pocket)
-		Vector2 tipPoint = arrowEnd + directionToPocket * triangleHeight;
+		Vector2 tipPoint, baseCenter;
+		if (tipAtBase)
+		{
+			// Corner line style: tip at base position, base extends outward
+			tipPoint = basePosition;
+			baseCenter = basePosition - normalizedDirection * triangleHeight;
+		}
+		else
+		{
+			// Arrow style: base at base position, tip extends toward direction
+			baseCenter = basePosition;
+			tipPoint = basePosition + normalizedDirection * triangleHeight;
+		}
 		
 		// Base vertices (perpendicular to direction, equidistant from center)
-		Vector2 perpendicular = directionToPocket.Rotated(Mathf.Pi / 2);
-		Vector2 baseLeft = arrowEnd + perpendicular * (triangleSideLength / 2);
-		Vector2 baseRight = arrowEnd - perpendicular * (triangleSideLength / 2);
+		Vector2 perpendicular = normalizedDirection.Rotated(Mathf.Pi / 2);
+		Vector2 baseLeft = baseCenter + perpendicular * (triangleSideLength / 2);
+		Vector2 baseRight = baseCenter - perpendicular * (triangleSideLength / 2);
 		
 		// Draw filled equilateral triangle
 		Vector2[] trianglePoints = [tipPoint, baseLeft, baseRight];
@@ -910,43 +911,8 @@ public partial class CarromBoard : Node2D
 		Vector2 endTangent = endDotForward > endDotBackward ? baseTangentEnd : -baseTangentEnd;
 		
 		// Draw triangular arrow tips at arc endpoints
-		DrawCornerLineTriangleTip(arcStartPoint, startTangent);
-		DrawCornerLineTriangleTip(arcEndPoint, endTangent);
-	}
-	
-	/// <summary>
-	/// Draw a filled equilateral triangle arrow tip at corner line starts (same size as DrawArrowTriangleTip)
-	/// </summary>
-	private void DrawCornerLineTriangleTip(Vector2 position, Vector2 direction)
-	{
-		// Use same triangle size as DrawArrowTriangleTip: N dimension from diagram is 2.54cm, triangle side length should be half of that = 1.27cm
-		const float N_DIMENSION_CM = 2.54f; // From diagram
-		float triangleSideLength = (N_DIMENSION_CM / 2) * ScaleFactor; // 1.27cm scaled
-		
-		// Normalize direction vector
-		Vector2 normalizedDirection = direction.Normalized();
-		
-		// Calculate equilateral triangle vertices
-		// For equilateral triangle: height = side_length * sqrt(3) / 2
-		float triangleHeight = triangleSideLength * Mathf.Sqrt(3) / 2;
-		
-		// For corner line triangles, we want the BASE at the arc endpoint (position parameter)
-		// and the TIP pointing outward along the corner line direction
-		
-		// Base center is at the arc endpoint position
-		Vector2 baseCenter = position;
-		
-		// Tip point extends outward from base center along the direction
-		Vector2 tipPoint = baseCenter + normalizedDirection * triangleHeight;
-		
-		// Base vertices are perpendicular to direction, centered at the arc endpoint
-		Vector2 perpendicular = normalizedDirection.Rotated(Mathf.Pi / 2);
-		Vector2 baseLeft = baseCenter + perpendicular * (triangleSideLength / 2);
-		Vector2 baseRight = baseCenter - perpendicular * (triangleSideLength / 2);
-		
-		// Draw filled equilateral triangle
-		Vector2[] trianglePoints = { tipPoint, baseLeft, baseRight };
-		DrawColoredPolygon(trianglePoints, LineColor);
+		DrawTriangleTip(arcStartPoint, startTangent, false);
+		DrawTriangleTip(arcEndPoint, endTangent, false);
 	}
 	
 
@@ -1095,13 +1061,23 @@ public partial class CarromBoard : Node2D
 
 
 	/// <summary>
-	/// Set physics configuration for all pockets
+	/// Set physics configuration for all pockets and update board materials
 	/// </summary>
 	public void SetPocketPhysicsConfig(CarromPhysicsConfig physicsConfig)
 	{
+		// Update board physics config reference
+		PhysicsConfig = physicsConfig;
+		
+		// Update board physics material if already initialized
+		if (_boardPhysics != null && physicsConfig != null)
+		{
+			_boardPhysics.PhysicsMaterialOverride = physicsConfig.CreateBoardMaterial();
+		}
+		
+		// Update pocket physics configuration
 		foreach (var pocket in _pockets)
 		{
-			if (GodotObject.IsInstanceValid(pocket))
+			if (pocket != null)
 			{
 				pocket.PhysicsConfig = physicsConfig;
 			}
@@ -1119,7 +1095,7 @@ public partial class CarromBoard : Node2D
 			// Disconnect pocket signals
 			foreach (var pocket in _pockets)
 			{
-				if (GodotObject.IsInstanceValid(pocket))
+				if (pocket != null)
 				{
 					pocket.PiecePocketed -= OnPiecePocketed;
 				}

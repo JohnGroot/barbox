@@ -46,8 +46,13 @@ public partial class CarromPhysicsConfig : Resource
 	// Cached physics materials for performance optimization
 	private PhysicsMaterial _cachedPieceMaterial;
 	private PhysicsMaterial _cachedHighSpeedPieceMaterial;
-	private PhysicsMaterial _cachedBoardMaterial;
 	private bool _materialsInitialized = false;
+	
+	// Property change tracking for cache invalidation
+	private float _lastPieceFriction = -1f;
+	private float _lastPieceBounce = -1f;
+	private float _lastHighSpeedFriction = -1f;
+	private float _lastHighSpeedBounce = -1f;
 
 	[ExportCategory("Collision Detection")]
 	[Export(PropertyHint.Range, "5,20,1")] public int MaxContactsReported { get; set; } = 10;
@@ -73,56 +78,89 @@ public partial class CarromPhysicsConfig : Resource
 	
 	[Export(PropertyHint.Range, "15.0,120.0,5.0")] public float PocketMaxApproachAngle { get; set; } = 45.0f; // Max approach angle (degrees) for successful entry
 
+	[ExportCategory("Powder Effect Friction")]
+	[Export(PropertyHint.Range, "0.0,2.0,0.005")] public float InitialFrictionCoefficient { get; set; } = 0.05f; // μ_k when powder acts like ball bearings
+	[Export(PropertyHint.Range, "0.0,2.0,0.01")] public float FinalFrictionCoefficient { get; set; } = 0.15f; // μ_k after powder scatters
+	[Export(PropertyHint.Range, "100.0,500.0,25.0")] public float PowderTransitionDistance { get; set; } = 200.0f; // Distance (units) over which friction transitions
+	[Export(PropertyHint.Range, "800.0,1000.0,20.0")] public float GravityConstant { get; set; } = 900.0f; // Gravity acceleration (units/s²) for friction calculations
+	[Export] public bool EnablePowderEffectFriction { get; set; } = true; // Enable realistic powder-effect friction (vs built-in damping)
+
+	[ExportCategory("Physics Constants")]
+	[Export(PropertyHint.Range, "30.0,100.0,5.0")] public float MinimumMovementValidation { get; set; } = 50.0f; // Minimum velocity to count as "real movement"
+	[Export(PropertyHint.Range, "30.0,100.0,5.0")] public float AngularTorqueScale { get; set; } = 50.0f; // Realistic physics constants
+	[Export(PropertyHint.Range, "0.01,0.1,0.005")] public float BoardFrictionOverride { get; set; } = 0.05f; // Very low friction for smooth sliding
+	[Export(PropertyHint.Range, "0.7,1.0,0.05")] public float BoardBounceOverride { get; set; } = 0.9f; // High bounce for realistic collisions
+	[Export(PropertyHint.Range, "0.6,1.0,0.05")] public float PocketInnerMultiplier { get; set; } = 0.8f; // Inner pocket hole size multiplier
+	[Export(PropertyHint.Range, "0.8,1.0,0.05")] public float PocketHighlightMultiplier { get; set; } = 0.9f; // Pocket highlight ring multiplier
+
+	[ExportCategory("Movement Detection Timeouts")]
+	[Export(PropertyHint.Range, "1.0,5.0,0.5")] public float CompletelyStillTimeout { get; set; } = 2.0f; // Completely still after N seconds
+	[Export(PropertyHint.Range, "3.0,10.0,1.0")] public float StationaryPieceTimeout { get; set; } = 5.0f; // Any stationary piece after N seconds
+	[Export(PropertyHint.Range, "8.0,15.0,1.0")] public float AbsoluteTimeout { get; set; } = 10.0f; // Absolute timeout - any piece after N seconds
+	[Export(PropertyHint.Range, "10.0,20.0,1.0")] public float UltimateTimeout { get; set; } = 15.0f; // Ultimate fallback - no piece should block settlement
+
 	/// <summary>
-	/// Initialize cached physics materials for optimal performance
+	/// Initialize or update cached physics materials with property change detection
 	/// </summary>
-	private void InitializeMaterials()
+	private void UpdateMaterialCache()
 	{
-		if (_materialsInitialized) return;
+		// Check if piece material cache needs updating
+		if (_cachedPieceMaterial == null || _lastPieceFriction != PieceFriction || _lastPieceBounce != PieceBounce)
+		{
+			if (_cachedPieceMaterial == null)
+			{
+				_cachedPieceMaterial = new PhysicsMaterial();
+			}
+			_cachedPieceMaterial.Friction = PieceFriction;
+			_cachedPieceMaterial.Bounce = PieceBounce;
+			_lastPieceFriction = PieceFriction;
+			_lastPieceBounce = PieceBounce;
+		}
 		
-		// Create and cache piece material
-		_cachedPieceMaterial = new PhysicsMaterial();
-		_cachedPieceMaterial.Friction = PieceFriction;
-		_cachedPieceMaterial.Bounce = PieceBounce;
-		
-		// Create and cache high-speed piece material
-		_cachedHighSpeedPieceMaterial = new PhysicsMaterial();
-		_cachedHighSpeedPieceMaterial.Friction = HighSpeedFriction;
-		_cachedHighSpeedPieceMaterial.Bounce = HighSpeedBounce;
-		
-		// Create and cache board material
-		_cachedBoardMaterial = new PhysicsMaterial();
-		_cachedBoardMaterial.Friction = BoardFriction;
-		_cachedBoardMaterial.Bounce = BoardBounce;
+		// Check if high-speed material cache needs updating
+		if (_cachedHighSpeedPieceMaterial == null || _lastHighSpeedFriction != HighSpeedFriction || _lastHighSpeedBounce != HighSpeedBounce)
+		{
+			if (_cachedHighSpeedPieceMaterial == null)
+			{
+				_cachedHighSpeedPieceMaterial = new PhysicsMaterial();
+			}
+			_cachedHighSpeedPieceMaterial.Friction = HighSpeedFriction;
+			_cachedHighSpeedPieceMaterial.Bounce = HighSpeedBounce;
+			_lastHighSpeedFriction = HighSpeedFriction;
+			_lastHighSpeedBounce = HighSpeedBounce;
+		}
 		
 		_materialsInitialized = true;
 	}
 	
 	/// <summary>
-	/// Get cached physics material for pieces
+	/// Get cached physics material for pieces with automatic cache updating
 	/// </summary>
 	public PhysicsMaterial CreatePieceMaterial()
 	{
-		InitializeMaterials();
+		UpdateMaterialCache();
 		return _cachedPieceMaterial;
 	}
 	
 	/// <summary>
-	/// Get cached enhanced physics material for high-speed collisions
+	/// Get cached enhanced physics material for high-speed collisions with automatic cache updating
 	/// </summary>
 	public PhysicsMaterial CreateHighSpeedPieceMaterial()
 	{
-		InitializeMaterials();
+		UpdateMaterialCache();
 		return _cachedHighSpeedPieceMaterial;
 	}
 	
 	/// <summary>
-	/// Get cached physics material for board
+	/// Get cached physics material for board using centralized constants
 	/// </summary>
 	public PhysicsMaterial CreateBoardMaterial()
 	{
-		InitializeMaterials();
-		return _cachedBoardMaterial;
+		// Create fresh material with centralized constants instead of cached version
+		var boardMaterial = new PhysicsMaterial();
+		boardMaterial.Friction = BoardFrictionOverride;
+		boardMaterial.Bounce = BoardBounceOverride;
+		return boardMaterial;
 	}
 
 	/// <summary>
@@ -260,6 +298,21 @@ public partial class CarromPhysicsConfig : Resource
 		float maxAngleRadians = Mathf.DegToRad(PocketMaxApproachAngle);
 		
 		return approachAngle <= maxAngleRadians;
+	}
+
+	/// <summary>
+	/// Calculate current friction coefficient based on distance traveled (powder effect)
+	/// </summary>
+	public float CalculatePowderFrictionCoefficient(float distanceTraveled)
+	{
+		if (!EnablePowderEffectFriction || PowderTransitionDistance <= 0.0f)
+		{
+			return FinalFrictionCoefficient; // Use final coefficient if powder effect disabled
+		}
+		
+		// Linear interpolation from initial to final friction over transition distance
+		float t = Mathf.Clamp(distanceTraveled / PowderTransitionDistance, 0.0f, 1.0f);
+		return Mathf.Lerp(InitialFrictionCoefficient, FinalFrictionCoefficient, t);
 	}
 
 }

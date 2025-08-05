@@ -26,15 +26,23 @@ public partial class CarromPiece : RigidBody2D
 	private bool _wasMoving = false;
 	private float _stoppedTimer = 0.0f;
 	
-	// Deferred physics reset to prevent false settlement detection
+	// Reset state management
 	private bool _skipNextStoppedCheck = false;
-	private bool _deferredResetPending = false;
 	
 	// Movement history tracking for meaningful velocity validation
 	private bool _hasEverMoved = false;
 	private float _maxVelocityAchieved = 0.0f;
-	private float _minimumMovementValidation = 50.0f; // Minimum velocity to count as "real movement"
 	private double _creationTime = 0.0; // Track when piece was created for never-moved timeout
+	
+	// Powder-effect friction tracking
+	private float _distanceTraveled = 0.0f; // Total distance traveled for powder friction calculation
+	private Vector2 _lastPositionForFriction = Vector2.Zero; // Previous position for distance calculation
+	private bool _powderFrictionActive = false; // Whether custom friction is currently being applied
+	
+	// Cached calculations for performance
+	private float _cachedSpeed = 0.0f; // Cached current speed to avoid multiple Length() calls
+	private float _cachedFrictionCoefficient = 0.0f; // Cached friction coefficient to avoid repeated calculations
+	private bool _frictionCacheValid = false; // Whether cached friction values are valid
 
 	// Physics limits - set by CarromGame.cs
 	private float _minVelocityThreshold = 1.0f;
@@ -43,18 +51,14 @@ public partial class CarromPiece : RigidBody2D
 	private float _maxAngularVelocity = 50.0f;  
 	private float _velocityAlertThreshold = 1800.0f;
 	
-	// Realistic physics constants
-	private const float ANGULAR_TORQUE_SCALE = 50.0f;
+	// Realistic physics constants - now using PhysicsConfig values
 	
-	// Collision detection state tracking
-	private bool _useCcdCollision = false;
-	
-	// Velocity monitoring for tunneling protection validation
+	// Velocity monitoring for tunneling protection validation (used for debugging)
 	private float _maxSpeedAchieved = 0.0f;
 
 	public override void _Ready()
 	{
-		ValidateExports();
+		ValidatePhysicsConfig();
 		SetupPhysics();
 		SetupCollisionShape();
 		SetupVisual();
@@ -63,6 +67,9 @@ public partial class CarromPiece : RigidBody2D
 		
 		// Record creation time for never-moved timeout
 		_creationTime = Time.GetUnixTimeFromSystem();
+		
+		// Initialize powder friction tracking
+		_lastPositionForFriction = GlobalPosition;
 	}
 
 	/// <summary>
@@ -79,14 +86,13 @@ public partial class CarromPiece : RigidBody2D
 	}
 
 	/// <summary>
-	/// Validate export values and apply type-specific defaults
+	/// Validate physics configuration
 	/// </summary>
-	private void ValidateExports()
+	private void ValidatePhysicsConfig()
 	{
-		// Create default physics config if not provided
 		if (PhysicsConfig == null)
 		{
-			return;
+			GD.PrintErr($"[CarromPiece] No PhysicsConfig provided for piece {Type}. Physics behavior may be incorrect.");
 		}
 	}
 
@@ -96,7 +102,17 @@ public partial class CarromPiece : RigidBody2D
 	private void SetupPhysics()
 	{
 		GravityScale = 0.0f; // No gravity for top-down view
-		LinearDamp = PhysicsConfig.LinearDamping;
+		
+		// Use either powder-effect friction OR built-in damping, not both
+		if (PhysicsConfig.EnablePowderEffectFriction)
+		{
+			LinearDamp = 0.0f; // Disable built-in damping when using custom powder friction
+		}
+		else
+		{
+			LinearDamp = PhysicsConfig.LinearDamping; // Use built-in damping when powder friction disabled
+		}
+		
 		AngularDamp = PhysicsConfig.AngularDamping;
 		ContactMonitor = PhysicsConfig.ContactMonitor;
 		MaxContactsReported = PhysicsConfig.MaxContactsReported;
@@ -234,54 +250,68 @@ public partial class CarromPiece : RigidBody2D
 		}
 		
 		// Special case: Strikers can be considered stopped immediately after setup to allow input
-		if (Type == PieceType.Striker && !_hasEverMoved && LinearVelocity.Length() < _minVelocityThreshold)
+		if (IsStrikerReadyForInput())
 		{
 			return true;
 		}
 		
-		// CRITICAL FIX: Handle pieces that never moved significantly but are clearly settled
-		// In competitive mode, some pieces may never reach the movement threshold but are visually stopped
+		// Handle pieces that never moved significantly but are clearly settled
 		if (!_hasEverMoved)
 		{
-			// Check if piece is truly stationary (zero velocity and not in a transient state)
-			float currentVelocity = LinearVelocity.Length();
-			float currentAngularVel = Mathf.Abs(AngularVelocity);
-			
-			// Enhanced never-moved logic with multiple fallback conditions
-			bool isPhysicallyStationary = currentVelocity < _minVelocityThreshold && currentAngularVel < _angularMinThreshold;
-			bool isCompletelyStill = currentVelocity < 0.01f && currentAngularVel < 0.001f;
-			
-			// Calculate time alive once for all checks
-			double timeAlive = Time.GetUnixTimeFromSystem() - _creationTime;
-			
-			if (isPhysicallyStationary)
-			{
-				// Progressive timeout: stricter conditions for shorter times, more lenient for longer times
-				if (isCompletelyStill && timeAlive > 2.0) // Completely still after 2 seconds
-				{
-					return true;
-				}
-				else if (timeAlive > 5.0) // Any stationary piece after 5 seconds
-				{
-					return true;
-				}
-				else if (timeAlive > 10.0) // Absolute timeout - any piece after 10 seconds
-				{
-					return true;
-				}
-			}
-			
-			// Check if piece has been in this state too long (stuck detection)
-			if (timeAlive > 15.0) // Ultimate fallback - no piece should block settlement for 15+ seconds
-			{
-				return true;
-			}
-			
-			return false; // Cannot be considered "stopped" if it never moved
+			return CheckNeverMovedPieceSettlement();
 		}
 		
 		// Use physics config to determine if piece is stopped (includes hysteresis)
 		return PhysicsConfig.IsPieceStopped(LinearVelocity, AngularVelocity, _wasMoving);
+	}
+	
+	/// <summary>
+	/// Check if striker is ready for input (stopped after setup)
+	/// </summary>
+	private bool IsStrikerReadyForInput()
+	{
+		return Type == PieceType.Striker && !_hasEverMoved && LinearVelocity.Length() < _minVelocityThreshold;
+	}
+	
+	/// <summary>
+	/// Check if a piece that has never moved significantly should be considered settled
+	/// </summary>
+	private bool CheckNeverMovedPieceSettlement()
+	{
+		float currentVelocity = LinearVelocity.Length();
+		float currentAngularVel = Mathf.Abs(AngularVelocity);
+		
+		// Enhanced never-moved logic with multiple fallback conditions
+		bool isPhysicallyStationary = currentVelocity < _minVelocityThreshold && currentAngularVel < _angularMinThreshold;
+		bool isCompletelyStill = currentVelocity < 0.01f && currentAngularVel < 0.001f;
+		
+		// Calculate time alive once for all checks
+		double timeAlive = Time.GetUnixTimeFromSystem() - _creationTime;
+		
+		if (isPhysicallyStationary)
+		{
+			// Progressive timeout: stricter conditions for shorter times, more lenient for longer times
+			if (isCompletelyStill && timeAlive > PhysicsConfig.CompletelyStillTimeout)
+			{
+				return true;
+			}
+			else if (timeAlive > PhysicsConfig.StationaryPieceTimeout)
+			{
+				return true;
+			}
+			else if (timeAlive > PhysicsConfig.AbsoluteTimeout)
+			{
+				return true;
+			}
+		}
+		
+		// Ultimate fallback - no piece should block settlement indefinitely
+		if (timeAlive > PhysicsConfig.UltimateTimeout)
+		{
+			return true;
+		}
+		
+		return false; // Cannot be considered "stopped" if it never moved
 	}
 	
 
@@ -304,19 +334,84 @@ public partial class CarromPiece : RigidBody2D
 	}
 
 	/// <summary>
+	/// Apply powder-effect friction based on distance traveled
+	/// 
+	/// Mimics real carrom physics where board powder creates:
+	/// - Initial "frictionless" feel: Low friction coefficient (μ ≈ 0.05) when powder acts like ball bearings
+	/// - Gradual transition: Friction increases over distance as powder scatters and disperses
+	/// - "Sudden" slowdown: Same constant friction force becomes larger percentage of smaller velocities
+	/// - Physics accuracy: Applies constant deceleration (F = μ × m × g) rather than velocity-proportional damping
+	/// 
+	/// This eliminates the "floaty" feel by using realistic constant-force friction that matches 
+	/// research on carrom board powder physics behavior.
+	/// </summary>
+	public override void _PhysicsProcess(double delta)
+	{
+		if (PhysicsConfig == null || !PhysicsConfig.EnablePowderEffectFriction)
+		{
+			return; // Use built-in damping when powder effect disabled
+		}
+		
+		Vector2 currentPosition = GlobalPosition;
+		_cachedSpeed = LinearVelocity.Length(); // Cache speed calculation
+		
+		// Only apply custom friction when piece is moving significantly
+		if (_cachedSpeed > _minVelocityThreshold)
+		{
+			// Calculate distance traveled this frame
+			float frameDeltaDistance = (currentPosition - _lastPositionForFriction).Length();
+			_distanceTraveled += frameDeltaDistance;
+			
+			// Update friction coefficient cache if distance changed significantly
+			if (!_frictionCacheValid || frameDeltaDistance > 1.0f)
+			{
+				_cachedFrictionCoefficient = PhysicsConfig.CalculatePowderFrictionCoefficient(_distanceTraveled);
+				_frictionCacheValid = true;
+			}
+			
+			// Apply realistic friction force: F = μ × m × g
+			float frictionAcceleration = _cachedFrictionCoefficient * PhysicsConfig.GravityConstant;
+			Vector2 frictionForceVector = -LinearVelocity.Normalized() * frictionAcceleration * (float)delta;
+			
+			// Prevent friction from reversing direction
+			if (frictionForceVector.Length() > _cachedSpeed)
+			{
+				LinearVelocity = Vector2.Zero;
+				_cachedSpeed = 0.0f; // Update cached speed
+			}
+			else
+			{
+				LinearVelocity += frictionForceVector;
+				// Don't recalculate speed immediately as it will be updated next frame
+			}
+			
+			_powderFrictionActive = true;
+		}
+		else
+		{
+			_powderFrictionActive = false;
+		}
+		
+		// Update position tracking for next frame
+		_lastPositionForFriction = currentPosition;
+	}
+
+	/// <summary>
 	/// Process movement and stop detection with movement history tracking
 	/// </summary>
 	public override void _Process(double delta)
 	{
+		// Use cached speed if available from _PhysicsProcess, otherwise calculate
+		float currentSpeed = _cachedSpeed > 0.0f ? _cachedSpeed : LinearVelocity.Length();
+		
 		// Track movement history for meaningful velocity validation
-		float currentSpeed = LinearVelocity.Length();
 		if (currentSpeed > _maxVelocityAchieved)
 		{
 			_maxVelocityAchieved = currentSpeed;
 		}
 		
 		// Mark as having moved if velocity exceeds minimum threshold
-		if (currentSpeed > _minimumMovementValidation && !_hasEverMoved)
+		if (currentSpeed > PhysicsConfig.MinimumMovementValidation && !_hasEverMoved)
 		{
 			_hasEverMoved = true;
 		}
@@ -356,33 +451,65 @@ public partial class CarromPiece : RigidBody2D
 	}
 
 	/// <summary>
-	/// Internal method to restore piece to a clean physics and visual state
+	/// Reset piece to clean state with optional positioning and immediate physics sync
 	/// </summary>
-	private void RestorePieceState(bool restoreVisualProperties = true, bool conditionalUnfreeze = true)
+	/// <param name="globalPosition">Optional position to set piece to (null = no position change)</param>
+	/// <param name="immediate">If true, uses immediate physics sync to prevent interactions during reset</param>
+	/// <param name="restoreVisualProperties">If true, restores scale and modulate to default values</param>
+	public void Reset(Vector2? globalPosition = null, bool immediate = false, bool restoreVisualProperties = true)
 	{
-		// Stop all movement
-		ForceStop();
+		bool originalContactMonitor = ContactMonitor;
+		
+		// Temporarily disable collision monitoring if using immediate mode
+		if (immediate)
+		{
+			ContactMonitor = false;
+		}
+		
+		// Stop all movement and clear tracking flags
+		LinearVelocity = Vector2.Zero;
+		AngularVelocity = 0.0f;
+		_wasMoving = false;
+		_stoppedTimer = 0.0f;
 		
 		// Reset movement history for fresh settlement detection
 		_hasEverMoved = false;
 		_maxVelocityAchieved = 0.0f;
 		
-		// Handle freeze state
-		if (conditionalUnfreeze)
+		// Reset powder friction tracking
+		_distanceTraveled = 0.0f;
+		_powderFrictionActive = false;
+		
+		// Invalidate cached calculations
+		_cachedSpeed = 0.0f;
+		_frictionCacheValid = false;
+		
+		// Clear reset state flags
+		_skipNextStoppedCheck = false;
+		
+		// Handle positioning if requested
+		if (globalPosition.HasValue)
 		{
-			if (Freeze)
-			{
-				Freeze = false;
-			}
+			// Use physics server for immediate sync
+			PhysicsServer2D.BodySetState(GetRid(), PhysicsServer2D.BodyState.Transform, 
+				new Transform2D(0, globalPosition.Value));
+			GlobalPosition = globalPosition.Value;
+			_lastPositionForFriction = globalPosition.Value;
+			
+			// Additional force stop after positioning
+			LinearVelocity = Vector2.Zero;
+			AngularVelocity = 0.0f;
 		}
 		else
 		{
-			Freeze = false;
+			// Update position tracking for powder friction
+			_lastPositionForFriction = GlobalPosition;
 		}
 		
-		// Restore physics state
-		ContactMonitor = true;
+		// Restore physics and visual state
 		Visible = true;
+		Freeze = false;
+		ContactMonitor = originalContactMonitor;
 		
 		// Restore visual properties if requested
 		if (restoreVisualProperties)
@@ -390,130 +517,6 @@ public partial class CarromPiece : RigidBody2D
 			Scale = Vector2.One;
 			Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f);
 		}
-	}
-
-	/// <summary>
-	/// Reset piece to clean state (stop movement, restore physics, make visible)
-	/// </summary>
-	public void Reset()
-	{
-		RestorePieceState(restoreVisualProperties: true, conditionalUnfreeze: true);
-	}
-
-	/// <summary>
-	/// Reset piece and position it at the specified global coordinates
-	/// </summary>
-	public void Reset(Vector2 globalPosition)
-	{
-		// Step 1: Restore state with visual properties
-		RestorePieceState(restoreVisualProperties: true, conditionalUnfreeze: true);
-		
-		// Step 2: Force physics engine to sync position immediately
-		// This ensures the physics body's internal state is updated synchronously
-		PhysicsServer2D.BodySetState(GetRid(), PhysicsServer2D.BodyState.Transform, 
-			new Transform2D(0, globalPosition));
-		
-		// Step 3: Set GlobalPosition as backup
-		GlobalPosition = globalPosition;
-		
-		// Step 4: Final force stop after physics sync
-		ForceStop();
-	}
-	
-	/// <summary>
-	/// Reset piece with immediate, synchronous physics - guarantees stopped state without physics interactions
-	/// </summary>
-	public void ResetWithImmediatePhysics(Vector2 globalPosition)
-	{
-		// Step 1: Temporarily disable collision monitoring to prevent physics interactions during reset
-		bool originalContactMonitor = ContactMonitor;
-		ContactMonitor = false;
-		
-		// Step 2: Stop all movement immediately and clear tracking flags
-		LinearVelocity = Vector2.Zero;
-		AngularVelocity = 0.0f;
-		_wasMoving = false;
-		_stoppedTimer = 0.0f;
-		
-		// Step 3: Reset movement history for fresh settlement detection
-		_hasEverMoved = false;
-		_maxVelocityAchieved = 0.0f;
-		
-		// Step 4: Use synchronous positioning
-		SetPhysicsSafePositionImmediate(globalPosition, originalContactMonitor);
-		
-		// Step 5: Clear any deferred operation flags
-		_skipNextStoppedCheck = false;
-		_deferredResetPending = false;
-	}
-	
-	/// <summary>
-	/// Set position in a physics-safe manner that avoids triggering movement
-	/// </summary>
-	private void SetPhysicsSafePosition(Vector2 globalPosition, bool originalContactMonitor)
-	{
-		// Position the piece using physics server for immediate sync
-		PhysicsServer2D.BodySetState(GetRid(), PhysicsServer2D.BodyState.Transform, 
-			new Transform2D(0, globalPosition));
-		GlobalPosition = globalPosition;
-		
-		// Final velocity clearing after positioning
-		LinearVelocity = Vector2.Zero;
-		AngularVelocity = 0.0f;
-		
-		// Restore visual state
-		Visible = true;
-		Freeze = false;
-		Scale = Vector2.One;
-		Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f);
-		
-		// Re-enable collision monitoring after positioning is complete
-		ContactMonitor = originalContactMonitor;
-	}
-	
-	/// <summary>
-	/// Set position immediately and synchronously - no deferred operations
-	/// </summary>
-	private void SetPhysicsSafePositionImmediate(Vector2 globalPosition, bool originalContactMonitor)
-	{
-		// Position the piece using physics server for immediate sync
-		PhysicsServer2D.BodySetState(GetRid(), PhysicsServer2D.BodyState.Transform, 
-			new Transform2D(0, globalPosition));
-		GlobalPosition = globalPosition;
-		
-		// Final velocity clearing after positioning
-		LinearVelocity = Vector2.Zero;
-		AngularVelocity = 0.0f;
-		
-		// Restore visual state
-		Visible = true;
-		Freeze = false;
-		Scale = Vector2.One;
-		Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f);
-		
-		// Re-enable collision monitoring after positioning is complete
-		ContactMonitor = originalContactMonitor;
-	}
-	
-	/// <summary>
-	/// Apply deferred velocity reset after settlement processing
-	/// </summary>
-	private void ApplyDeferredVelocityReset()
-	{
-		if (!_deferredResetPending)
-		{
-			return; // Reset was cancelled or already applied
-		}
-		
-		// Now safe to reset velocities without triggering false settlement
-		LinearVelocity = Vector2.Zero;
-		AngularVelocity = 0.0f;
-		_wasMoving = false;
-		_stoppedTimer = 0.0f;
-		
-		// Clear deferred reset state
-		_skipNextStoppedCheck = false;
-		_deferredResetPending = false;
 	}
 
 	/// <summary>
@@ -608,21 +611,13 @@ public partial class CarromPiece : RigidBody2D
 
 		// Add border
 		DrawArc(Vector2.Zero, radius, 0, Mathf.Tau, 32, Colors.Black, 0.75f, true);
-
-		// Debug: Show CCD collision detection state
-		if (_useCcdCollision && !Engine.IsEditorHint())
-		{
-			DrawArc(Vector2.Zero, radius * 1.1f, 0, Mathf.Tau, 16, Colors.Blue, 1.0f, true);
-		}
 	}
 
 	public override void _ExitTree()
 	{
 		base._ExitTree();
-
-		if (IsInstanceValid(this))
-		{
-			BodyEntered -= OnBodyEntered;
-		}
+		
+		// Disconnect signals - no need for IsInstanceValid check as _ExitTree means object is still valid
+		BodyEntered -= OnBodyEntered;
 	}
 }
