@@ -1,13 +1,12 @@
 using Godot;
 
 /// <summary>
-/// Enhanced pocket physics system using zone-based detection:
-/// - Influence Zone: Gentle attraction forces guide pieces toward pocket
-/// - Capture Zone: Position-based capture detection with speed/angle validation  
-/// - Real physics simulation of piece falling through hole when center passes threshold
+/// Simplified pocket physics system using zone-based detection:
+/// - Detection Zone: Area2D for entry/exit tracking
+/// - Capture Zone: Position-based capture detection with approach validation  
+/// - Simple physics simulation where pieces are captured when center crosses threshold
 /// 
-/// The system uses multiple detection zones to create realistic pocket behavior
-/// where pieces are gradually drawn into pockets rather than instantly captured.
+/// The system uses a simple two-zone approach for authentic carrom pocket behavior.
 /// </summary>
 [GlobalClass]
 public partial class CarromPocket : Area2D
@@ -22,26 +21,19 @@ public partial class CarromPocket : Area2D
 	[Export] public float PocketDepth { get; set; } = 0.7f; // How deep pieces must go to be pocketed (0.0-1.0)
 
 	[ExportCategory("Detection Settings")]
-	[Export] public bool RequireSlowEntry { get; set; } = true; // Pieces must be moving slowly to be pocketed
-	[Export] public float MaxPocketingSpeed { get; set; } = 100.0f; // Legacy fallback - use physics config instead
-	[Export] public float PocketingDelay { get; set; } = 0.1f; // Delay before confirming pocket
-	[Export] public CarromPhysicsConfig PhysicsConfig { get; set; } // Physics configuration for enhanced pocket behavior
 
 	// Detection components
 	private CircleShape2D _detectionShape;
 	private CollisionShape2D _collisionShape2D;
 	
-	// Consolidated piece state tracking
-	private System.Collections.Generic.Dictionary<CarromPiece, PieceState> _pieceStates = new();
-	
-	// Piece state data structure
-	private class PieceState
-	{
-		public PocketZone Zone { get; set; } = PocketZone.Outside;
-		public Vector2 LastPosition { get; set; }
-		public float EntryTime { get; set; }
-		public bool HasMoved { get; set; } = true; // Start true to force initial zone calculation
-	}
+	// Simple piece presence tracking
+	private System.Collections.Generic.HashSet<CarromPiece> _piecesInPocket = new();
+
+	// Particle effect components
+	private GpuParticles2D _pocketParticles;
+	private float _particleTimer = 0.0f;
+	private bool _particlesActive = false;
+	private const float PARTICLE_DURATION = 1.5f;
 
 	// Zone definitions
 	public enum PocketZone
@@ -54,6 +46,7 @@ public partial class CarromPocket : Area2D
 	public override void _Ready()
 	{
 		SetupPocketDetection();
+		SetupParticles();
 		ConnectSignals();
 	}
 
@@ -79,6 +72,49 @@ public partial class CarromPocket : Area2D
 	}
 
 	/// <summary>
+	/// Setup particle effects for pocket entry visual feedback
+	/// </summary>
+	private void SetupParticles()
+	{
+		_pocketParticles = new GpuParticles2D();
+		AddChild(_pocketParticles);
+		
+		// Configure particle emission
+		_pocketParticles.Emitting = false;
+		_pocketParticles.Amount = 20;
+		_pocketParticles.Lifetime = 1.0f;
+		_pocketParticles.OneShot = true;
+		_pocketParticles.Explosiveness = 1.0f;
+		
+		// Create process material for particle behavior
+		var processMaterial = new ParticleProcessMaterial();
+		
+		// Emission settings - circular burst from pocket center for top-down view
+		processMaterial.EmissionShape = ParticleProcessMaterial.EmissionShapeEnum.Point;
+		processMaterial.Direction = Vector3.Zero; // No preferred direction - radial spread
+		processMaterial.Spread = 45.0f; // Full 360-degree spread
+		processMaterial.InitialVelocityMin = 80.0f;
+		processMaterial.InitialVelocityMax = 150.0f;
+		
+		// No gravity for top-down board view
+		processMaterial.Gravity = Vector3.Zero;
+		
+		// Use linear acceleration to push particles outward radially
+		processMaterial.LinearAccelMin = -20.0f;
+		processMaterial.LinearAccelMax = -50.0f; // Negative values slow particles over time
+		
+		// Damping to slow particles over time (simulates friction)
+		processMaterial.DampingMin = 1.0f;
+		processMaterial.DampingMax = 2.0f;
+		
+		// Size and scale settings
+		processMaterial.ScaleMin = 0.3f;
+		processMaterial.ScaleMax = 0.8f;
+		
+		_pocketParticles.ProcessMaterial = processMaterial;
+	}
+
+	/// <summary>
 	/// Connect area signals
 	/// </summary>
 	private void ConnectSignals()
@@ -95,27 +131,20 @@ public partial class CarromPocket : Area2D
 		// Update zone tracking only for pieces that have moved
 		UpdatePieceZones();
 		
+		// Update particle timer
+		UpdateParticleTimer((float)delta);
+		
 		// Clean up invalid pieces
 		CleanupInvalidPieces();
 	}
 
 	/// <summary>
-	/// Physics process for applying forces to pieces
+	/// Physics process - simplified without force application
 	/// </summary>
 	public override void _PhysicsProcess(double delta)
 	{
-		float deltaF = (float)delta;
-		
-		// Apply physics forces to pieces in zones
-		foreach (var kvp in _pieceStates)
-		{
-			var piece = kvp.Key;
-			if (!IsInstanceValid(piece)) 
-				continue;
-
-			var state = kvp.Value;
-			ApplyZonePhysics(piece, state.Zone, deltaF);
-		}
+		// Force application removed - let CarromPiece handle its own physics
+		// Zone detection and capture evaluation handled in _Process()
 	}
 
 	/// <summary>
@@ -125,13 +154,10 @@ public partial class CarromPocket : Area2D
 	{
 		if (body is CarromPiece piece)
 		{
-			// Initialize piece state
-			_pieceStates[piece] = new PieceState
-			{
-				LastPosition = piece.GlobalPosition,
-				EntryTime = (float)Time.GetUnixTimeFromSystem(),
-				HasMoved = true // Force initial zone calculation
-			};
+			_piecesInPocket.Add(piece);
+			
+			// Trigger particle effect with piece color
+			TriggerPocketParticles(piece.PieceColor);
 			
 			EmitSignal(SignalName.PieceEnteredPocketArea, piece);
 		}
@@ -144,92 +170,9 @@ public partial class CarromPocket : Area2D
 	{
 		if (body is CarromPiece piece)
 		{
-			_pieceStates.Remove(piece);
+			_piecesInPocket.Remove(piece);
 			EmitSignal(SignalName.PieceLeftPocketArea, piece);
 		}
-	}
-
-	/// <summary>
-	/// Check if piece can start the pocketing process
-	/// </summary>
-	private bool CanStartPocketing(CarromPiece piece)
-	{
-		// Don't pocket pieces that are moving too fast
-		if (RequireSlowEntry && piece.GetSpeed() > GetMaxPocketingSpeed())
-		{
-			return false;
-		}
-		
-		// Check if piece is deep enough in pocket
-		return IsPieceInPocketDepth(piece);
-	}
-
-	/// <summary>
-	/// Check if piece should be pocketed after timer expires
-	/// </summary>
-	private bool ShouldPocketPiece(CarromPiece piece)
-	{
-		// Verify piece is still in the pocket area
-		if (!_pieceStates.ContainsKey(piece))
-		{
-			return false;
-		}
-		
-		// Check piece is deep enough in pocket
-		if (!IsPieceInPocketDepth(piece))
-		{
-			return false;
-		}
-		
-		// Check speed requirement if enabled
-		if (RequireSlowEntry && piece.GetSpeed() > GetMaxPocketingSpeed())
-		{
-			return false;
-		}
-		
-		return true;
-	}
-
-	/// <summary>
-	/// Check if piece is deep enough in the pocket
-	/// </summary>
-	private bool IsPieceInPocketDepth(CarromPiece piece)
-	{
-		float distanceToCenter = GlobalPosition.DistanceTo(piece.GlobalPosition);
-		float requiredDepth = PocketRadius * PocketDepth;
-		return distanceToCenter <= requiredDepth;
-	}
-
-	/// <summary>
-	/// Pocket the piece
-	/// </summary>
-	private void PocketPiece(CarromPiece piece)
-	{
-		// Pocketing is always allowed when pieces are in capture zone
-		
-		// Stop piece physics
-		piece.ForceStop();
-		
-		// Hide piece with animation effect
-		CreatePocketingEffect(piece);
-		
-		// Disable piece
-		piece.PocketPiece();
-		
-		// Emit pocketing signal
-		EmitSignal(SignalName.PiecePocketed, piece);
-		
-	}
-
-	/// <summary>
-	/// Create visual effect for pocketing (immediate, no animation)
-	/// </summary>
-	private void CreatePocketingEffect(CarromPiece piece)
-	{
-		// Immediate pocketing effect - no animations to avoid race conditions with reset
-		piece.Scale = Vector2.Zero;
-		piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
-		piece.GlobalPosition = GlobalPosition;
 	}
 
 	/// <summary>
@@ -237,7 +180,7 @@ public partial class CarromPocket : Area2D
 	/// </summary>
 	public bool ContainsPiece(CarromPiece piece)
 	{
-		return _pieceStates.ContainsKey(piece);
+		return _piecesInPocket.Contains(piece);
 	}
 
 	/// <summary>
@@ -246,7 +189,7 @@ public partial class CarromPocket : Area2D
 	public CarromPiece[] GetPiecesInPocket()
 	{
 		var pieces = new System.Collections.Generic.List<CarromPiece>();
-		foreach (var piece in _pieceStates.Keys)
+		foreach (var piece in _piecesInPocket)
 		{
 			if (GodotObject.IsInstanceValid(piece))
 			{
@@ -262,7 +205,7 @@ public partial class CarromPocket : Area2D
 	public int GetPieceCount()
 	{
 		int count = 0;
-		foreach (var piece in _pieceStates.Keys)
+		foreach (var piece in _piecesInPocket)
 		{
 			if (GodotObject.IsInstanceValid(piece))
 			{
@@ -278,7 +221,7 @@ public partial class CarromPocket : Area2D
 	/// </summary>
 	public void ClearPocket()
 	{
-		_pieceStates.Clear();
+		_piecesInPocket.Clear();
 	}
 
 	/// <summary>
@@ -321,9 +264,7 @@ public partial class CarromPocket : Area2D
 	/// </summary>
 	private float GetInfluenceZoneRadius()
 	{
-		if (PhysicsConfig != null)
-			return PocketRadius * PhysicsConfig.PocketInfluenceZoneMultiplier;
-		return PocketRadius * 1.8f; // Fallback
+		return PocketRadius * 1.8f; // Simplified constant
 	}
 
 	/// <summary>
@@ -331,215 +272,100 @@ public partial class CarromPocket : Area2D
 	/// </summary>
 	private float GetHoleZoneRadius()
 	{
-		if (PhysicsConfig != null)
-			return PocketRadius * PhysicsConfig.PocketHoleZoneMultiplier;
-		return PocketRadius * 0.75f; // Fallback
+		return PocketRadius * 0.75f; // Simplified constant
 	}
 
-	/// <summary>
-	/// Determine which zone a piece is in based on distance to pocket center
-	/// </summary>
-	private PocketZone DeterminePieceZone(CarromPiece piece)
-	{
-		float distanceToCenter = GlobalPosition.DistanceTo(piece.GlobalPosition);
-		
-		if (distanceToCenter <= GetHoleZoneRadius())
-			return PocketZone.Capture;
-			
-		return distanceToCenter <= GetInfluenceZoneRadius() ? PocketZone.Influence : PocketZone.Outside;
-	}
 
 	/// <summary>
-	/// Update zone tracking only for pieces that have moved
+	/// Update zone tracking - simplified to check capture opportunities with optimized calculations
 	/// </summary>
 	private void UpdatePieceZones()
 	{
-		var keysToRemove = new System.Collections.Generic.List<CarromPiece>();
+		var piecesToRemove = new System.Collections.Generic.List<CarromPiece>();
 		
-		foreach (var kvp in _pieceStates)
+		foreach (var piece in _piecesInPocket)
 		{
-			var piece = kvp.Key;
-			var state = kvp.Value;
 			if (!IsInstanceValid(piece))
 			{
-				keysToRemove.Add(piece);
+				piecesToRemove.Add(piece);
 				continue;
 			}
 			
-			// Check if piece has moved significantly
-			var currentPosition = piece.GlobalPosition;
-			var movementThreshold = 1.0f; // Minimum movement to trigger zone recalculation
-			bool hasMoved = state.HasMoved || currentPosition.DistanceTo(state.LastPosition) > movementThreshold;
+			// Calculate distance once and reuse
+			float distanceToCenter = GlobalPosition.DistanceTo(piece.GlobalPosition);
 			
-			if (hasMoved)
+			// Check if piece is in capture zone using cached distance
+			if (distanceToCenter <= GetHoleZoneRadius())
 			{
-				var newZone = DeterminePieceZone(piece);
-				var oldZone = state.Zone;
-				
-				if (newZone != oldZone)
+				bool shouldCapture = ShouldCapturePiece(piece, distanceToCenter);
+				if (shouldCapture)
 				{
-					OnPieceZoneChanged(piece, oldZone, newZone);
+					// Let CarromPiece handle its own pocketing
+					piece.ForceStop();
+					piece.PocketPiece();
+					
+					// Apply simple visual effect
+					piece.Scale = Vector2.Zero;
+					piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+					piece.GlobalPosition = GlobalPosition;
+					
+					// Emit pocketing signal and remove from tracking
+					EmitSignal(SignalName.PiecePocketed, piece);
+					piecesToRemove.Add(piece);
 				}
-				
-				// Update state
-				state.Zone = newZone;
-				state.LastPosition = currentPosition;
-				state.HasMoved = false; // Reset movement flag
 			}
 		}
 		
 		// Clean up removed pieces
-		foreach (var piece in keysToRemove)
+		foreach (var piece in piecesToRemove)
 		{
-			_pieceStates.Remove(piece);
+			_piecesInPocket.Remove(piece);
 		}
-	}
-
-	/// <summary>
-	/// Handle piece zone transitions
-	/// </summary>
-	private void OnPieceZoneChanged(CarromPiece piece, PocketZone oldZone, PocketZone newZone)
-	{
-		// Handle entry to capture zone
-		if (newZone == PocketZone.Capture)
-		{
-			bool shouldCapture = ShouldCaptureImmediately(piece);
-			
-			if (shouldCapture)
-			{
-				PocketPiece(piece);
-			}
-		}
-	}
-
-	/// <summary>
-	/// Check if piece should be captured immediately when entering capture zone
-	/// </summary>
-	private bool ShouldCaptureImmediately(CarromPiece piece)
-	{
-		float pieceSpeed = piece.GetSpeed();
-		
-		if (PhysicsConfig != null)
-		{
-			float captureChance = PhysicsConfig.CalculatePocketCaptureChance(pieceSpeed);
-			Vector2 pocketDirection = (GlobalPosition - piece.GlobalPosition).Normalized();
-			bool validAngle = PhysicsConfig.IsValidPocketApproachAngle(piece.LinearVelocity, pocketDirection);
-			
-			return validAngle && (captureChance >= 1.0f || GD.Randf() < captureChance);
-		}
-		
-		// Fallback logic
-		return pieceSpeed < GetMaxPocketingSpeed();
-	}
-
-	/// <summary>
-	/// Apply physics forces based on piece zone
-	/// </summary>
-	private void ApplyZonePhysics(CarromPiece piece, PocketZone zone, float delta)
-	{
-		if (PhysicsConfig == null) return;
-		
-		Vector2 toPocketCenter = GlobalPosition - piece.GlobalPosition;
-		float distanceToCenter = toPocketCenter.Length();
-		
-		switch (zone)
-		{
-			case PocketZone.Influence:
-				ApplyInfluenceForces(piece, toPocketCenter, distanceToCenter, delta);
-				break;
-				
-			case PocketZone.Capture:
-				ApplyHolePhysics(piece, toPocketCenter, distanceToCenter, delta);
-				break;
-		}
-	}
-
-	/// <summary>
-	/// Apply gentle attraction forces in influence zone
-	/// </summary>
-	private void ApplyInfluenceForces(CarromPiece piece, Vector2 toPocketCenter, float distanceToCenter, float delta)
-	{
-		if (distanceToCenter < 1.0f) 
-			return;
-		
-		float forceStrength = PhysicsConfig.CalculatePocketRadialForce(distanceToCenter, PocketRadius);
-		Vector2 attractionForce = toPocketCenter.Normalized() * forceStrength;
-		
-		piece.ApplyForce(attractionForce * delta);
-		
-		// Apply slight friction to slow pieces down
-		Vector2 frictionForce = -piece.LinearVelocity * PhysicsConfig.PocketFrictionMultiplier * 0.5f;
-		piece.ApplyForce(frictionForce * delta);
 	}
 
 
 	/// <summary>
-	/// Apply hole zone physics - position-based capture detection
+	/// Check if piece should be captured - simplified logic with optimized calculations
 	/// </summary>
-	private void ApplyHolePhysics(CarromPiece piece, Vector2 toPocketCenter, float distanceToCenter, float delta)
+	private bool ShouldCapturePiece(CarromPiece piece, float? cachedDistance = null)
 	{
-		// Check if piece should be captured in the hole
-		if (ShouldCaptureInHole(piece))
+		// Check if piece is in pocket area
+		if (!_piecesInPocket.Contains(piece))
 		{
-			PocketPiece(piece);
-			return;
-		}
-		
-		// Apply attraction forces to guide piece toward hole center
-		if (distanceToCenter >= 1.0f)
-		{
-			float forceStrength = PhysicsConfig.CalculatePocketRadialForce(distanceToCenter, PocketRadius) * 3.0f;
-			Vector2 attractionForce = toPocketCenter.Normalized() * forceStrength;
-			piece.ApplyForce(attractionForce * delta);
-			
-			// High friction to help pieces settle
-			Vector2 frictionForce = -piece.LinearVelocity * PhysicsConfig.PocketFrictionMultiplier * 2.0f;
-			piece.ApplyForce(frictionForce * delta);
-		}
-	}
-	
-	/// <summary>
-	/// Check if piece should be captured in hole based on position and physics
-	/// </summary>
-	private bool ShouldCaptureInHole(CarromPiece piece)
-	{
-		float distanceToCenter = GlobalPosition.DistanceTo(piece.GlobalPosition);
-		float pieceRadius = PhysicsConfig?.GetRadiusForPieceType(piece.Type) ?? 12.0f;
-		
-		// Real carrom physics: piece falls through when its center gets close enough to hole edge
-		float holeRadius = PocketRadius; // 4.45cm diameter from real carrom specs
-		float captureThreshold = holeRadius - pieceRadius;
-		
-		// Basic position check
-		if (distanceToCenter > captureThreshold)
 			return false;
-			
-		// Validate approach angle - pieces moving away shouldn't fall in
-		if (PhysicsConfig != null)
-		{
-			Vector2 pocketDirection = (GlobalPosition - piece.GlobalPosition).Normalized();
-			bool validAngle = PhysicsConfig.IsValidPocketApproachAngle(piece.LinearVelocity, pocketDirection);
-			if (!validAngle)
-				return false;
 		}
 		
-		// Check speed requirements
+		// Use cached distance if provided, otherwise calculate once
+		float distanceToCenter = cachedDistance ?? GlobalPosition.DistanceTo(piece.GlobalPosition);
+		float captureRadius = PocketRadius * PocketDepth;
+		if (distanceToCenter > captureRadius)
+		{
+			return false;
+		}
+		
+		// Basic approach validation - ensure piece is moving toward pocket
 		float pieceSpeed = piece.GetSpeed();
-		return pieceSpeed <= GetMaxPocketingSpeed();
+		if (pieceSpeed < 10.0f) // Allow stationary pieces
+		{
+			return true;
+		}
+		
+		Vector2 velocityDirection = piece.LinearVelocity.Normalized();
+		Vector2 toPocketDirection = (GlobalPosition - piece.GlobalPosition).Normalized();
+		float approachDot = velocityDirection.Dot(toPocketDirection);
+		
+		// Moving toward pocket
+		return approachDot > 0.0f;
 	}
 
 
 
 
-	/// <summary>
-	/// Get max pocketing speed from physics config or fallback
-	/// </summary>
-	private float GetMaxPocketingSpeed()
-	{
-		if (PhysicsConfig != null)
-			return PhysicsConfig.PocketSlowCaptureSpeed;
-		return MaxPocketingSpeed; // Legacy fallback
-	}
+	
+
+
+
+
 
 	/// <summary>
 	/// Clean up invalid piece references
@@ -547,7 +373,7 @@ public partial class CarromPocket : Area2D
 	private void CleanupInvalidPieces()
 	{
 		var keysToRemove = new System.Collections.Generic.List<CarromPiece>();
-		foreach (var piece in _pieceStates.Keys)
+		foreach (var piece in _piecesInPocket)
 		{
 			if (!IsInstanceValid(piece))
 			{
@@ -557,7 +383,49 @@ public partial class CarromPocket : Area2D
 		
 		foreach (var piece in keysToRemove)
 		{
-			_pieceStates.Remove(piece);
+			_piecesInPocket.Remove(piece);
+		}
+	}
+
+	/// <summary>
+	/// Trigger particle effect with specified color
+	/// </summary>
+	private void TriggerPocketParticles(Color pieceColor)
+	{
+		if (_pocketParticles == null)
+			return;
+
+		// Set particle color to match the entering piece
+		_pocketParticles.Modulate = pieceColor;
+		
+		// Start emitting particles
+		_pocketParticles.Emitting = true;
+		_pocketParticles.Restart();
+		
+		// Reset and start the timer
+		_particleTimer = 0.0f;
+		_particlesActive = true;
+	}
+
+	/// <summary>
+	/// Update particle timer and deactivate when duration expires
+	/// </summary>
+	private void UpdateParticleTimer(float delta)
+	{
+		if (!_particlesActive)
+			return;
+
+		_particleTimer += delta;
+		
+		if (_particleTimer >= PARTICLE_DURATION)
+		{
+			// Deactivate particles after duration
+			if (_pocketParticles != null)
+			{
+				_pocketParticles.Emitting = false;
+			}
+			_particlesActive = false;
+			_particleTimer = 0.0f;
 		}
 	}
 
@@ -569,6 +437,13 @@ public partial class CarromPocket : Area2D
 		{
 			BodyEntered -= OnBodyEntered;
 			BodyExited -= OnBodyExited;
+		}
+		
+		// Clean up particle system
+		if (_pocketParticles != null)
+		{
+			_pocketParticles.Emitting = false;
+			_particlesActive = false;
 		}
 	}
 }

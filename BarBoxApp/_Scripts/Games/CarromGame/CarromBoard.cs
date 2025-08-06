@@ -1074,14 +1074,7 @@ public partial class CarromBoard : Node2D
 			_boardPhysics.PhysicsMaterialOverride = physicsConfig.CreateBoardMaterial();
 		}
 		
-		// Update pocket physics configuration
-		foreach (var pocket in _pockets)
-		{
-			if (pocket != null)
-			{
-				pocket.PhysicsConfig = physicsConfig;
-			}
-		}
+		// Pockets no longer need physics config - they use simplified constants
 	}
 
 
