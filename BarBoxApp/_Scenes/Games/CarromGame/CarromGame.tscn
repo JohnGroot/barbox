@@ -12,8 +12,6 @@
 [node name="CarromGame" type="Node2D"]
 script = ExtResource("1_0jy4h")
 PhysicsConfig = ExtResource("2_pw2n5")
-StrikeDeadZone = 20.0
-LateralAngleThreshold = 55.0
 MaxVelocityLimit = 4000.0
 MaxAngularVelocity = 100.0
 VelocityAlertThreshold = 4000.0
@@ -29,6 +27,8 @@ GameId = "carrom_game"
 script = ExtResource("2_mm0sl")
 EdgeColor = Color(0.647059, 0.270588, 0, 1)
 UseCurvedBorders = true
+PhysicsConfig = ExtResource("2_pw2n5")
+metadata/_edit_group_ = true
 
 [node name="CarromInputController" type="Node2D" parent="."]
 script = ExtResource("3_1r7uy")

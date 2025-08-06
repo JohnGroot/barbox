@@ -10,11 +10,6 @@ public partial class CarromInputController : Node2D
 	[Signal] public delegate void AimingStateChangedEventHandler(bool isAiming, Vector2 aimDirection, float power);
 	[Signal] public delegate void StrikerPositionChangedEventHandler(Vector2 newPosition);
 
-	// Strike parameters - set by CarromGame.cs
-	private float _deadZone = 30.0f;
-	private float _maxAimDistance = 200.0f;
-	private float _lateralSensitivity = 1.5f;
-	private float _lateralAngleThreshold = 45.0f;
 	
 	// Physics config reference for strike power and angle
 	private CarromPhysicsConfig _physicsConfig;
@@ -43,6 +38,27 @@ public partial class CarromInputController : Node2D
 	[Export] public Color TrajectoryColor { get; set; } = Colors.Yellow;
 	[Export] public Color PostCollisionTrajectoryColor { get; set; } = Colors.Orange;
 	[Export] public Color CollisionMarkerColor { get; set; } = Colors.Red;
+	
+	[ExportCategory("Input Parameters")]
+	[Export] public float DeadZone { get; set; } = 40.0f;
+	[Export] public float MaxAimDistance { get; set; } = 200.0f;
+	[Export] public float LateralSensitivity { get; set; } = 1.5f;
+	[Export(PropertyHint.Range, "5.0,90.0,1.0")] public float LateralAngleThreshold { get; set; } = 55.0f;
+
+	[ExportCategory("Deadzone Visualization")]
+	[Export] public bool ShowDeadzoneRing { get; set; } = true;
+	[Export] public Color DeadzoneRingColor { get; set; } = Colors.Gray;
+	[Export] public Color LateralAngleLineColor { get; set; } = Colors.White;
+	[Export] public Color LateralAngleArcColor { get; set; } = new Color(1.0f, 1.0f, 1.0f, 0.3f);
+	[Export] public Color PowerAimingZoneColor { get; set; } = new Color(0.2f, 0.8f, 0.2f, 0.3f);
+	[Export] public Color LateralMovementZoneColor { get; set; } = new Color(0.8f, 0.2f, 0.2f, 0.3f);
+	[Export] public float DeadzoneRingWidth { get; set; } = 2.0f;
+	[Export] public float LateralAngleLineWidth { get; set; } = 1.5f;
+	[Export] public float LateralAngleLineLength { get; set; } = 30.0f;
+	[Export] public float ZoneArcRadiusMultiplier { get; set; } = 1.2f;
+	[Export] public float ZoneArcWidthMultiplier { get; set; } = 1.5f;
+	[Export] public int ZoneArcSegments { get; set; } = 16;
+	[Export] public float FeedbackDimmingFactor { get; set; } = 0.6f;
 
 	// Input state
 	private CarromPiece _striker;
@@ -179,18 +195,6 @@ public partial class CarromInputController : Node2D
 		}
 	}
 
-	/// <summary>
-	/// Set strike parameters from CarromGame
-	/// </summary>
-	public void SetStrikeParameters(float deadZone, 
-		float maxAimDistance, float lateralSensitivity, float lateralAngleThreshold, float maxStrikeAngle)
-	{
-		_deadZone = deadZone;
-		_maxAimDistance = maxAimDistance;
-		_lateralSensitivity = lateralSensitivity;
-		_lateralAngleThreshold = lateralAngleThreshold;
-	}
-	
 	/// <summary>
 	/// Set physics config reference for strike power values
 	/// </summary>
@@ -407,7 +411,7 @@ public partial class CarromInputController : Node2D
 		float inputDistance = inputVector.Length();
 
 		// Determine input mode based on movement direction
-		if (_currentInputMode == InputMode.None && inputDistance > _deadZone)
+		if (_currentInputMode == InputMode.None && inputDistance > DeadZone)
 		{
 			DetermineInputMode(inputVector);
 		}
@@ -455,7 +459,7 @@ public partial class CarromInputController : Node2D
 		float angleFromBaselineDegrees = Mathf.RadToDeg(angleFromBaseline);
 		
 		// Check if input angle is greater than lateral threshold
-		bool isLateralInput = angleFromBaselineDegrees > _lateralAngleThreshold;
+		bool isLateralInput = angleFromBaselineDegrees > LateralAngleThreshold;
 		if (isLateralInput)
 		{
 			_currentInputMode = InputMode.LateralMovement;
@@ -519,8 +523,8 @@ public partial class CarromInputController : Node2D
 		
 		// Calculate power based on total input distance
 		float inputDistance = inputVector.Length();
-		float clampedDistance = Mathf.Clamp(inputDistance, 0, _maxAimDistance);
-		float power = clampedDistance / _maxAimDistance;
+		float clampedDistance = Mathf.Clamp(inputDistance, 0, MaxAimDistance);
+		float power = clampedDistance / MaxAimDistance;
 		
 		// Calculate aim direction from input vector, then clamp to valid angle range
 		Vector2 rawAimDirection = -inputVector.Normalized(); // Opposite of pull direction
@@ -581,10 +585,10 @@ public partial class CarromInputController : Node2D
 		Vector2 inputVector = _currentAimPosition - _aimStartPosition;
 		float inputDistance = inputVector.Length();
 		
-		if (inputDistance > _deadZone)
+		if (inputDistance > DeadZone)
 		{
-			float clampedDistance = Mathf.Clamp(inputDistance, _deadZone, _maxAimDistance);
-			float powerRatio = (clampedDistance - _deadZone) / (_maxAimDistance - _deadZone);
+			float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
+			float powerRatio = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
 			float strikePower = Mathf.Lerp(GetMinStrikePower(), GetMaxStrikePower(), powerRatio);
 			
 			// Calculate strike direction with angle clamping (same as HandlePowerAiming)
@@ -703,6 +707,18 @@ public partial class CarromInputController : Node2D
 		Vector2 strikerPos = _striker.GlobalPosition;
 		Vector2 currentPos = _currentAimPosition;
 
+		// Draw deadzone ring when input is in deadzone (before mode is determined)
+		if (_currentInputMode == InputMode.None)
+		{
+			Vector2 inputVector = currentPos - _aimStartPosition;
+			float inputDistance = inputVector.Length();
+			
+			if (inputDistance <= DeadZone)
+			{
+				DrawDeadzoneRing(strikerPos);
+			}
+		}
+
 		if (_currentInputMode == InputMode.PowerAiming && ShowAimingLine)
 		{
 			DrawAimingLine(strikerPos, currentPos);
@@ -722,7 +738,27 @@ public partial class CarromInputController : Node2D
 		Vector2 inputVector = currentPos - _aimStartPosition;
 		float inputDistance = inputVector.Length();
 		
-		if (inputDistance > _deadZone)
+		// Draw dotted line from striker to input position, clamped to max distance
+		if (inputDistance > 0)
+		{
+			float clampedDistance = Mathf.Clamp(inputDistance, 0, MaxAimDistance);
+			Vector2 clampedInputPos = _aimStartPosition + inputVector.Normalized() * clampedDistance;
+			
+			// Calculate power for color matching
+			float power = inputDistance > DeadZone ? 
+				Mathf.Clamp((inputDistance - DeadZone) / (MaxAimDistance - DeadZone), 0.0f, 1.0f) : 0.0f;
+			Color lineColor = power > 0.8f ? Colors.Red : 
+							 power > 0.5f ? Colors.Yellow : PowerBarColor;
+			
+			// Start line from opposite edge of striker (offset by radius)
+			Vector2 lineDirection = (clampedInputPos - strikerPos).Normalized();
+			float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
+			Vector2 lineStart = strikerPos + lineDirection * strikerRadius;
+			
+			DrawDottedLine(lineStart, clampedInputPos, lineColor, AimingLineWidth);
+		}
+		
+		if (inputDistance > DeadZone)
 		{
 			// Calculate aim direction with angle clamping (same as HandlePowerAiming)
 			Vector2 rawAimDirection = -inputVector.Normalized(); // Opposite of pull direction
@@ -746,8 +782,8 @@ public partial class CarromInputController : Node2D
 			}
 			
 			// Calculate power level
-			float clampedDistance = Mathf.Clamp(inputDistance, _deadZone, _maxAimDistance);
-			float power = (clampedDistance - _deadZone) / (_maxAimDistance - _deadZone);
+			float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
+			float power = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
 			
 			// Get trajectory prediction
 			var trajectory = CalculateTrajectoryPoints(strikerPos, aimDirection, power);
@@ -790,7 +826,106 @@ public partial class CarromInputController : Node2D
 		float markerRadius = 8.0f;
 		DrawArc(position, markerRadius, 0, Mathf.Tau, 16, CollisionMarkerColor, AimingLineWidth * 1.5f, true);
 	}
+
+	/// <summary>
+	/// Draw dotted line between two points
+	/// </summary>
+	private void DrawDottedLine(Vector2 from, Vector2 to, Color color, float width)
+	{
+		Vector2 direction = (to - from).Normalized();
+		float totalDistance = from.DistanceTo(to);
+		float dashLength = 8.0f;
+		float gapLength = 4.0f;
+		float segmentLength = dashLength + gapLength;
+		
+		Vector2 currentPos = from;
+		float distanceTraveled = 0.0f;
+		
+		while (distanceTraveled < totalDistance)
+		{
+			float remainingDistance = totalDistance - distanceTraveled;
+			float currentDashLength = Mathf.Min(dashLength, remainingDistance);
+			
+			Vector2 dashEnd = currentPos + direction * currentDashLength;
+			DrawLine(currentPos, dashEnd, color, width, true);
+			
+			// Move to next dash position
+			distanceTraveled += segmentLength;
+			currentPos = from + direction * distanceTraveled;
+		}
+	}
 	
+	/// <summary>
+	/// Draw deadzone ring with lateral angle indicators
+	/// </summary>
+	private void DrawDeadzoneRing(Vector2 strikerPos)
+	{
+		if (!ShowDeadzoneRing) return;
+		
+		// Draw deadzone ring
+		DrawArc(strikerPos, DeadZone, 0, Mathf.Tau, 32, DeadzoneRingColor, DeadzoneRingWidth, true);
+		
+		// Get forward direction (toward board center)
+		Vector2 forwardDirection = GetForwardDirection();
+		
+		// Calculate lateral angle threshold lines - these should be on the forward side
+		float lateralAngleRad = Mathf.DegToRad(LateralAngleThreshold);
+		
+		// Left and right angle lines rotated from the forward direction (not offset from it)
+		Vector2 leftAngleDirection = forwardDirection.Rotated(-lateralAngleRad);
+		Vector2 rightAngleDirection = forwardDirection.Rotated(lateralAngleRad);
+		
+		// Draw dashed angle indicator lines extending from deadzone ring
+		Vector2 leftLineEnd = strikerPos - leftAngleDirection * (DeadZone + LateralAngleLineLength);
+		Vector2 rightLineEnd = strikerPos - rightAngleDirection * (DeadZone + LateralAngleLineLength);
+		Vector2 leftLineStart = strikerPos - leftAngleDirection * DeadZone;
+		Vector2 rightLineStart = strikerPos - rightAngleDirection * DeadZone;
+
+		// Use dashed lines instead of solid lines
+		DrawDottedLine(leftLineStart, leftLineEnd, LateralAngleLineColor, LateralAngleLineWidth);
+		DrawDottedLine(rightLineStart, rightLineEnd, LateralAngleLineColor, LateralAngleLineWidth);
+
+		// Draw translucent arcs to indicate the input behavior zones
+		float forwardAngle = forwardDirection.Angle();
+
+		// Power aiming zone: backward swipes (toward forward direction) within lateral threshold
+		float powerAimingStartAngle = -forwardAngle - lateralAngleRad;
+		float powerAimingEndAngle = -forwardAngle + lateralAngleRad;
+
+		// Calculate colors based on current input direction within deadzone
+		Color powerAimingArcColor = PowerAimingZoneColor;
+		Color lateralMovementArcColor = LateralMovementZoneColor;
+		
+		// Check if currently in deadzone with active input
+		Vector2 inputVector = _currentAimPosition - _aimStartPosition;
+		float inputDistance = inputVector.Length();
+		if (inputDistance > 0 && inputDistance <= DeadZone)
+		{
+			Vector2 baselineDirection = -GetForwardDirection();
+			Vector2 normalizedInput = inputVector.Normalized();
+			
+			// Calculate angle from baseline direction to input vector
+			float angleFromBaseline = Mathf.Abs(baselineDirection.AngleTo(normalizedInput));
+			float angleFromBaselineDegrees = Mathf.RadToDeg(angleFromBaseline);
+			
+			// Check which direction input is more angled towards
+			bool isLateralInput = angleFromBaselineDegrees > LateralAngleThreshold;
+			if (isLateralInput)
+			{
+				// Input is in lateral zone - darken lateral movement arc
+				lateralMovementArcColor = new Color(LateralMovementZoneColor.R * FeedbackDimmingFactor, LateralMovementZoneColor.G * FeedbackDimmingFactor, LateralMovementZoneColor.B * FeedbackDimmingFactor, LateralMovementZoneColor.A * FeedbackDimmingFactor);
+			}
+			else
+			{
+				// Input is in power aiming zone - darken power aiming arc
+				powerAimingArcColor = new Color(PowerAimingZoneColor.R * FeedbackDimmingFactor, PowerAimingZoneColor.G * FeedbackDimmingFactor, PowerAimingZoneColor.B * FeedbackDimmingFactor, PowerAimingZoneColor.A * FeedbackDimmingFactor);
+			}
+		}
+
+		// Draw power aiming zone arc (backward swipes toward board center)
+		DrawArc(strikerPos, DeadZone * ZoneArcRadiusMultiplier, powerAimingStartAngle, powerAimingEndAngle, ZoneArcSegments, powerAimingArcColor, DeadZone * ZoneArcWidthMultiplier, true);
+		DrawArc(strikerPos, DeadZone * ZoneArcRadiusMultiplier, powerAimingEndAngle, powerAimingStartAngle + Mathf.Tau, ZoneArcSegments, lateralMovementArcColor, DeadZone * ZoneArcWidthMultiplier, true);
+	}
 
 	/// <summary>
 	/// Draw power indicator
@@ -800,10 +935,10 @@ public partial class CarromInputController : Node2D
 		Vector2 inputVector = currentPos - _aimStartPosition;
 		float inputDistance = inputVector.Length();
 		
-		if (inputDistance > _deadZone)
+		if (inputDistance > DeadZone)
 		{
-			float clampedDistance = Mathf.Clamp(inputDistance, _deadZone, _maxAimDistance);
-			float power = (clampedDistance - _deadZone) / (_maxAimDistance - _deadZone);
+			float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
+			float power = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
 			
 			// Draw power bar
 			Vector2 barPosition = strikerPos + Vector2.Up * 40;
@@ -1061,7 +1196,7 @@ public partial class CarromInputController : Node2D
 	public bool IsInputEnabled() => CanAcceptInput();
 	public CarromPiece GetStriker() => _striker;
 	public float GetMaxStrikePowerValue() => GetMaxStrikePower();
-	public float GetDeadZone() => _deadZone;
+	public float GetDeadZone() => DeadZone;
 	public string GetGameStateStatus() => _gameState?.GetCurrentStateName() ?? "No game state";
 	public bool HasGameState() => _gameState != null;
 }
