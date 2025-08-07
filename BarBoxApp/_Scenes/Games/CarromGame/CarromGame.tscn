@@ -28,7 +28,9 @@ script = ExtResource("2_mm0sl")
 EdgeColor = Color(0.647059, 0.270588, 0, 1)
 UseCurvedBorders = true
 PhysicsConfig = ExtResource("2_pw2n5")
-metadata/_edit_group_ = true
 
 [node name="CarromInputController" type="Node2D" parent="."]
 script = ExtResource("3_1r7uy")
+
+[node name="GameCamera" type="Camera2D" parent="."]
+ignore_rotation = false

@@ -166,6 +166,53 @@ public partial class CarromPlayer : BasePlayer
 		return new List<PieceType>(_pocketedPieces);
 	}
 
+	/// <summary>
+	/// Return a previously pocketed piece (for foul penalties)
+	/// Returns the piece type that was returned, or null if no pieces to return
+	/// </summary>
+	public virtual PieceType? ReturnPocketedPiece()
+	{
+		// Return the most recently pocketed assigned piece (not queen)
+		// This follows standard carrom penalty rules
+		for (int i = _pocketedPieces.Count - 1; i >= 0; i--)
+		{
+			var pieceType = _pocketedPieces[i];
+			if (pieceType == AssignedPieceType)
+			{
+				_pocketedPieces.RemoveAt(i);
+				PiecesPocketed--;
+				return pieceType;
+			}
+		}
+
+		// If no assigned pieces to return, check if we can return the queen
+		// (though this is rare in official rules)
+		if (HasQueen && !QueenCovered)
+		{
+			for (int i = _pocketedPieces.Count - 1; i >= 0; i--)
+			{
+				if (_pocketedPieces[i] == PieceType.Red)
+				{
+					_pocketedPieces.RemoveAt(i);
+					HasQueen = false;
+					return PieceType.Red;
+				}
+			}
+		}
+
+		// No pieces available to return
+		return null;
+	}
+
+	/// <summary>
+	/// Check if player has any pieces that can be returned for foul penalty
+	/// </summary>
+	public virtual bool CanReturnPiece()
+	{
+		// Can return if player has pocketed assigned pieces or uncovered queen
+		return PiecesPocketed > 0 || (HasQueen && !QueenCovered);
+	}
+
 
 	// Public accessors for game statistics
 	public int GetTotalShots() => _totalShots;

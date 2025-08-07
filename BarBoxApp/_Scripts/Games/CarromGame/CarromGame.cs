@@ -1,5 +1,11 @@
 using Godot;
 using System.Collections.Generic;
+using System.Linq;
+
+/*
+ * COMPLETED:
+ * ✓ Prevent striker from being placed overlapping with pieces on the baseline - implemented collision detection in CarromModeManagerBase.PositionStrikerAtBaseline()
+ */
 
 /// <summary>
 /// Traditional board game featuring physics-based striking and strategic pocket play
@@ -370,13 +376,16 @@ public partial class CarromGame : GameController
 	/// <summary>
 	/// Start competitive mode (full carrom rules)
 	/// </summary>
-	public virtual async void StartCompetitiveMode()
+	public virtual async void StartCompetitiveMode(int playerCount = 2)
 	{
 		if (_isGameActive) 
 			return;
 		
 		// Clean up practice mode before switching
 		_practiceModeManager?.CleanupMode();
+		
+		// Configure player count
+		_competitiveModeManager?.SetPlayerCount(playerCount);
 		
 		// Set current mode manager to competitive
 		_currentModeManager = _competitiveModeManager;
@@ -456,6 +465,13 @@ public partial class CarromGame : GameController
 		if (striker != null)
 		{
 			striker.ApplyStrike(force);
+			
+			// Record shot in competitive mode for statistics
+			if (_carromGameMode == CarromGameMode.Competitive && _competitiveModeManager != null)
+			{
+				var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
+				currentPlayer?.RecordShot();
+			}
 		}
 	}
 
@@ -778,14 +794,282 @@ public partial class CarromGame : GameController
 				RequestPracticeReset();
 			}, "🔄", true, "Reset practice session"));
 			
-			buttons.Add(new ContextButtonData("Play Competitive", () => {
+			buttons.Add(new ContextButtonData("2-Player Match", () => {
 				var userManager = UserManager.GetAutoload();
 				userManager?.ResetUserIdleTimer();
-				StartCompetitiveMode();
-			}, "🏆", true, "Start competitive match"));
+				StartCompetitiveMode(2);
+			}, "👥", true, "Start 2-player competitive match"));
+			
+			buttons.Add(new ContextButtonData("4-Player Match", () => {
+				var userManager = UserManager.GetAutoload();
+				userManager?.ResetUserIdleTimer();
+				StartCompetitiveMode(4);
+			}, "👨‍👩‍👧‍👦", true, "Start 4-player doubles match"));
+		}
+		else if (_carromGameMode == CarromGameMode.Competitive)
+		{
+			// Show current player turn
+			var currentPlayer = _competitiveModeManager?.GetCurrentPlayer();
+			if (currentPlayer != null)
+			{
+				buttons.Add(new ContextButtonData($"Current: {currentPlayer.PlayerId}", null, "👤", false, $"Current player turn"));
+			}
+			
+			// Show scores
+			buttons.Add(new ContextButtonData("Scores", () => {
+				ShowScoreboard();
+			}, "📊", true, "View current scores"));
+			
+			// Return to practice mode
+			buttons.Add(new ContextButtonData("Return to Practice", () => {
+				var userManager = UserManager.GetAutoload();
+				userManager?.ResetUserIdleTimer();
+				StartPracticeMode();
+			}, "🔄", true, "Return to practice mode"));
 		}
 
 		return buttons.ToArray();
+	}
+
+	/// <summary>
+	/// Show scoreboard with current game statistics
+	/// </summary>
+	private void ShowScoreboard()
+	{
+		if (_competitiveModeManager == null)
+		{
+			return;
+		}
+
+		var players = _competitiveModeManager.GetPlayers();
+		string scoreText = "=== CARROM SCOREBOARD ===\n\n";
+
+		foreach (var player in players)
+		{
+			scoreText += $"{player.PlayerId} ({player.AssignedPieceType})\n";
+			scoreText += $"Pieces: {player.PiecesPocketed}/9\n";
+			scoreText += $"Queen: {(player.HasQueen ? (player.QueenCovered ? "Covered" : "Uncovered") : "No")}\n";
+			scoreText += $"Accuracy: {player.GetAccuracy():P1}\n";
+			scoreText += $"Fouls: {player.GetFouls()}\n\n";
+		}
+
+		// Show scoreboard in a proper dialog instead of debug print
+		ShowScoreboardDialog(scoreText);
+	}
+
+	/// <summary>
+	/// Display scoreboard in a dialog window
+	/// </summary>
+	private void ShowScoreboardDialog(string scoreText)
+	{
+		var dialog = new AcceptDialog();
+		dialog.Title = "📊 Current Scores";
+		dialog.DialogText = scoreText;
+		dialog.Size = new Vector2I(400, 350);
+		
+		// Center the dialog
+		var viewport = GetViewport();
+		if (viewport != null)
+		{
+			var screenSize = viewport.GetVisibleRect().Size;
+			dialog.Position = new Vector2I(
+				(int)(screenSize.X / 2 - 200), 
+				(int)(screenSize.Y / 2 - 175)
+			);
+		}
+
+		// Add dialog to scene tree and show
+		GetTree().CurrentScene.AddChild(dialog);
+		dialog.PopupCentered();
+		
+		// Auto-remove dialog when closed
+		dialog.Confirmed += () => dialog.QueueFree();
+		dialog.Canceled += () => dialog.QueueFree();
+	}
+
+	/// <summary>
+	/// Show turn transition with player information and current scores
+	/// </summary>
+	private void ShowTurnTransition(string playerId, int turnNumber)
+	{
+		if (_carromGameMode != CarromGameMode.Competitive || _competitiveModeManager == null)
+			return;
+
+		var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
+		if (currentPlayer == null) 
+			return;
+
+		// Get current game state for display
+		// Map playerId to player index for camera rotation
+		// Player indices in competitive mode: 0=player1, 1=player2, 2=player3, 3=player4
+		var players = _competitiveModeManager.GetPlayers();
+		int playerIndex = currentPlayer.PlayerId switch
+		{
+			"player1" => 0, // Bottom
+			"player2" => 1, // Top  
+			"player3" => 2, // Left
+			"player4" => 3, // Right
+			_ => 0
+		};
+		
+		// Rotate camera to current player's perspective
+		if (_cameraController != null)
+		{
+			_cameraController.RotateToPlayer(playerIndex);
+		}
+
+		// Create turn transition message with current game status
+		string transitionMessage = $"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN\n\n";
+		transitionMessage += $"Piece Type: {currentPlayer.AssignedPieceType}\n";
+		transitionMessage += $"Turn Number: {turnNumber}\n\n";
+
+		// Add current standings
+		transitionMessage += "=== CURRENT STANDINGS ===\n";
+		foreach (var player in players)
+		{
+			string indicator = player.PlayerId == playerId ? "→ " : "  ";
+			transitionMessage += $"{indicator}{player.PlayerId}: {player.PiecesPocketed}/9 pieces";
+			if (player.HasQueen)
+			{
+				transitionMessage += player.QueenCovered ? " + Queen ✓" : " + Queen (not covered)";
+			}
+			transitionMessage += "\n";
+		}
+
+		// Show the transition message as a dialog
+		ShowTurnDialog(transitionMessage);
+	}
+
+	/// <summary>
+	/// Display turn transition dialog using Godot's AcceptDialog
+	/// </summary>
+	private void ShowTurnDialog(string message)
+	{
+		// Use Godot's built-in AcceptDialog for turn transitions
+		var dialog = new AcceptDialog();
+		dialog.Title = "Turn Change";
+		dialog.DialogText = message;
+		dialog.Size = new Vector2I(400, 300);
+		
+		// Center the dialog
+		var viewport = GetViewport();
+		if (viewport != null)
+		{
+			var screenSize = viewport.GetVisibleRect().Size;
+			dialog.Position = new Vector2I(
+				(int)(screenSize.X / 2 - 200), 
+				(int)(screenSize.Y / 2 - 150)
+			);
+		}
+
+		// Add dialog to scene tree and show
+		GetTree().CurrentScene.AddChild(dialog);
+		dialog.PopupCentered();
+		
+		// Auto-remove dialog when closed
+		dialog.Confirmed += () => dialog.QueueFree();
+		dialog.Canceled += () => dialog.QueueFree();
+	}
+
+	/// <summary>
+	/// Show comprehensive game over screen with final statistics
+	/// </summary>
+	private void ShowGameOverScreen(string winnerPlayerId)
+	{
+		if (_competitiveModeManager == null) return;
+
+		var players = _competitiveModeManager.GetPlayers();
+		var winner = players.FirstOrDefault(p => p.PlayerId == winnerPlayerId);
+		if (winner == null) return;
+
+		// Create comprehensive game over message
+		int playerCount = players.Count;
+		string modeText = playerCount == 4 ? "Doubles" : "Singles";
+		
+		string gameOverMessage = $"🏆 GAME OVER - {modeText.ToUpper()} 🏆\n\n";
+		gameOverMessage += $"WINNER: {winner.PlayerId.ToUpper()}\n";
+		gameOverMessage += $"Team: {winner.AssignedPieceType} Pieces\n\n";
+
+		// Winner's performance
+		gameOverMessage += "=== WINNER STATS ===\n";
+		gameOverMessage += $"Pieces Pocketed: {winner.PiecesPocketed}/9\n";
+		gameOverMessage += $"Queen Status: {(winner.HasQueen ? (winner.QueenCovered ? "Covered ✓" : "Not Covered ✗") : "Not Pocketed")}\n";
+		gameOverMessage += $"Accuracy: {winner.GetAccuracy():P1}\n";
+		gameOverMessage += $"Fouls: {winner.GetFouls()}\n\n";
+
+		// Final standings for all players
+		gameOverMessage += "=== FINAL STANDINGS ===\n";
+		var sortedPlayers = players.OrderByDescending(p => p.PiecesPocketed).ToList();
+		for (int i = 0; i < sortedPlayers.Count; i++)
+		{
+			var player = sortedPlayers[i];
+			string position = (i + 1) switch
+			{
+				1 => "1st",
+				2 => "2nd", 
+				3 => "3rd",
+				4 => "4th",
+				_ => $"{i + 1}th"
+			};
+			
+			gameOverMessage += $"{position}: {player.PlayerId} - {player.PiecesPocketed}/9 pieces";
+			if (player.HasQueen)
+			{
+				gameOverMessage += player.QueenCovered ? " + Queen ✓" : " + Queen ✗";
+			}
+			gameOverMessage += $" (Accuracy: {player.GetAccuracy():P1})\n";
+		}
+
+		gameOverMessage += "\nReturning to Practice Mode in 5 seconds...";
+
+		// Show the game over dialog
+		ShowGameOverDialog(gameOverMessage);
+
+		// Return to practice mode after delay
+		GetTree().CreateTimer(5.0f).Timeout += () => {
+			GD.Print("Returning to Practice Mode...");
+			StartPracticeMode();
+		};
+	}
+
+	/// <summary>
+	/// Display game over dialog with final statistics
+	/// </summary>
+	private void ShowGameOverDialog(string message)
+	{
+		var dialog = new AcceptDialog();
+		dialog.Title = "🏆 COMPETITIVE CARROM - GAME COMPLETE 🏆";
+		dialog.DialogText = message;
+		dialog.Size = new Vector2I(500, 400);
+		
+		// Center the dialog
+		var viewport = GetViewport();
+		if (viewport != null)
+		{
+			var screenSize = viewport.GetVisibleRect().Size;
+			dialog.Position = new Vector2I(
+				(int)(screenSize.X / 2 - 250), 
+				(int)(screenSize.Y / 2 - 200)
+			);
+		}
+
+		// Add dialog to scene tree and show
+		GetTree().CurrentScene.AddChild(dialog);
+		dialog.PopupCentered();
+		
+		// Auto-remove dialog when closed
+		dialog.Confirmed += () => dialog.QueueFree();
+		dialog.Canceled += () => dialog.QueueFree();
+		
+		// Also add a "Play Again" button if possible
+		dialog.AddButton("Return to Practice", false, "practice");
+		dialog.CustomAction += (action) => {
+			if (action.ToString() == "practice")
+			{
+				dialog.QueueFree();
+				StartPracticeMode();
+			}
+		};
 	}
 
 	/// <summary>
@@ -796,9 +1080,30 @@ public partial class CarromGame : GameController
 		return _carromGameMode switch
 		{
 			CarromGameMode.Practice => "Carrom - Practice",
-			CarromGameMode.Competitive => "Carrom - Competitive",
+			CarromGameMode.Competitive => GetCompetitiveModeTitle(),
 			_ => "Carrom"
 		};
+	}
+
+	/// <summary>
+	/// Get title for competitive mode with current player info
+	/// </summary>
+	private string GetCompetitiveModeTitle()
+	{
+		if (_competitiveModeManager == null)
+		{
+			return "Carrom - Competitive";
+		}
+
+		var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
+		if (currentPlayer != null)
+		{
+			var playerCount = _competitiveModeManager.GetPlayers().Count;
+			string modeText = playerCount == 4 ? "Doubles" : "Singles";
+			return $"Carrom {modeText} - {currentPlayer.PlayerId}'s Turn ({currentPlayer.AssignedPieceType})";
+		}
+
+		return "Carrom - Competitive";
 	}
 
 	// ================================================================
@@ -967,11 +1272,25 @@ public partial class CarromGame : GameController
 	}
 
 	/// <summary>
+	/// DEBUG METHOD: Test camera rotation manually
+	/// </summary>
+	public void DEBUG_TestCameraRotation(int playerIndex = 1, float duration = 1.0f)
+	{
+		_cameraController?.RotateToPlayer(playerIndex, duration);
+	}
+
+	/// <summary>
 	/// Handle turn change in competitive mode
 	/// </summary>
 	private void OnTurnChanged(string playerId, int turnNumber)
 	{
 		EmitSignal(SignalName.TurnChanged, playerId, turnNumber);
+		
+		// Show turn transition popup and handle camera rotation
+		ShowTurnTransition(playerId, turnNumber);
+		
+		// Refresh UI to show updated player turn and title
+		RefreshUI();
 	}
 
 	/// <summary>
@@ -981,6 +1300,11 @@ public partial class CarromGame : GameController
 	{
 		// Handle win condition
 		EndGame();
+		
+		// Show comprehensive game over screen
+		ShowGameOverScreen(playerId);
+		
+		RefreshUI();
 	}
 
 	/// <summary>

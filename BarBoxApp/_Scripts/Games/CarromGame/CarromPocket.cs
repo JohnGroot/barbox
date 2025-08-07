@@ -139,28 +139,16 @@ public partial class CarromPocket : Area2D
 	}
 
 	/// <summary>
-	/// Physics process - simplified without force application
-	/// </summary>
-	public override void _PhysicsProcess(double delta)
-	{
-		// Force application removed - let CarromPiece handle its own physics
-		// Zone detection and capture evaluation handled in _Process()
-	}
-
-	/// <summary>
 	/// Handle piece entering pocket area
 	/// </summary>
 	private void OnBodyEntered(Node2D body)
 	{
-		if (body is CarromPiece piece)
-		{
-			_piecesInPocket.Add(piece);
-			
-			// Trigger particle effect with piece color
-			TriggerPocketParticles(piece.PieceColor);
-			
-			EmitSignal(SignalName.PieceEnteredPocketArea, piece);
-		}
+		if (body is not CarromPiece piece)
+			return;
+
+		_piecesInPocket.Add(piece);
+
+		EmitSignal(SignalName.PieceEnteredPocketArea, piece);
 	}
 
 	/// <summary>
@@ -292,28 +280,30 @@ public partial class CarromPocket : Area2D
 			}
 			
 			// Calculate distance once and reuse
-			float distanceToCenter = GlobalPosition.DistanceTo(piece.GlobalPosition);
-			
 			// Check if piece is in capture zone using cached distance
-			if (distanceToCenter <= GetHoleZoneRadius())
-			{
-				bool shouldCapture = ShouldCapturePiece(piece, distanceToCenter);
-				if (shouldCapture)
-				{
-					// Let CarromPiece handle its own pocketing
-					piece.ForceStop();
-					piece.PocketPiece();
-					
-					// Apply simple visual effect
-					piece.Scale = Vector2.Zero;
-					piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
-					piece.GlobalPosition = GlobalPosition;
-					
-					// Emit pocketing signal and remove from tracking
-					EmitSignal(SignalName.PiecePocketed, piece);
-					piecesToRemove.Add(piece);
-				}
-			}
+			float distanceToCenter = GlobalPosition.DistanceTo(piece.GlobalPosition);
+			if (!(distanceToCenter <= GetHoleZoneRadius()))
+				continue;
+
+			bool shouldCapture = ShouldCapturePiece(piece, distanceToCenter);
+			if (!shouldCapture)
+				continue;
+
+			// Let CarromPiece handle its own pocketing
+			piece.ForceStop();
+			piece.PocketPiece();
+
+			// Apply simple visual effect
+			piece.Scale = Vector2.Zero;
+			piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+			piece.GlobalPosition = GlobalPosition;
+
+			// Emit pocketing signal and remove from tracking
+			EmitSignal(SignalName.PiecePocketed, piece);
+			piecesToRemove.Add(piece);
+
+			// Trigger particle effect with piece color
+			TriggerPocketParticles(piece.PieceColor);
 		}
 		
 		// Clean up removed pieces

@@ -93,14 +93,42 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	}
 	
 	/// <summary>
-	/// Position striker at baseline (default: use board baseline for player 0)
+	/// Position striker at baseline with collision detection to prevent overlapping with other pieces
 	/// </summary>
 	protected virtual void PositionStrikerAtBaseline()
 	{
 		if (!IsStrikerValid()) return;
 		
+		// Get default baseline position (existing behavior)
 		var baselinePosition = _board.ToGlobal(_board.GetBaselinePosition(0));
-		_striker.GlobalPosition = baselinePosition;
+		float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
+		
+		// Check for collisions with other pieces
+		if (!_board.IsPositionObstructed(baselinePosition, strikerRadius, _striker))
+		{
+			// Original position is clear - use it
+			_striker.GlobalPosition = baselinePosition;
+		}
+		else
+		{
+			// Find alternative position on baseline to avoid collision
+			var validPosition = _board.FindNearestValidPositionOnBaseline(
+				baselinePosition, 0, strikerRadius, _striker);
+				
+			if (validPosition.HasValue)
+			{
+				_striker.GlobalPosition = validPosition.Value;
+				GD.Print($"[{GetType().Name}] Striker repositioned to avoid collision: {validPosition.Value}");
+			}
+			else
+			{
+				// Fallback to original position with warning
+				_striker.GlobalPosition = baselinePosition;
+				GD.PrintErr($"[{GetType().Name}] Could not find valid striker position, using baseline center");
+			}
+		}
+		
+		// Clear movement (existing behavior)
 		_striker.LinearVelocity = Vector2.Zero;
 		_striker.AngularVelocity = 0.0f;
 	}

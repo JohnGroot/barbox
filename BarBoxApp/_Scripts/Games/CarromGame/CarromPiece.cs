@@ -451,12 +451,87 @@ public partial class CarromPiece : RigidBody2D
 	}
 
 	/// <summary>
-	/// Reset piece to clean state with optional positioning and immediate physics sync
+	/// Check if this piece can be placed at a given position without collision
+	/// </summary>
+	/// <param name="position">World position to check</param>
+	/// <param name="board">Reference to the CarromBoard for collision checking</param>
+	/// <returns>True if position is valid, false if obstructed</returns>
+	public bool CanBePlacedAt(Vector2 position, CarromBoard board = null)
+	{
+		if (board == null)
+		{
+			// Try to find board in parent hierarchy
+			var parent = GetParent();
+			while (parent != null)
+			{
+				if (parent is CarromBoard foundBoard)
+				{
+					board = foundBoard;
+					break;
+				}
+				parent = parent.GetParent();
+			}
+			
+			if (board == null)
+			{
+				GD.PrintErr("[CarromPiece] Cannot validate placement: No board reference found");
+				return true; // Assume valid if we can't check
+			}
+		}
+		
+		float pieceRadius = PhysicsConfig?.GetRadiusForPieceType(Type) ?? 15.0f;
+		return !board.IsPositionObstructed(position, pieceRadius, this);
+	}
+	
+	/// <summary>
+	/// Find a valid position for this piece near the target location
+	/// </summary>
+	/// <param name="targetPosition">Preferred position</param>
+	/// <param name="board">Reference to the CarromBoard</param>
+	/// <returns>Valid position near target, or null if no valid position found</returns>
+	public Vector2? FindValidPositionNear(Vector2 targetPosition, CarromBoard board = null)
+	{
+		if (board == null)
+		{
+			// Try to find board in parent hierarchy
+			var parent = GetParent();
+			while (parent != null)
+			{
+				if (parent is CarromBoard foundBoard)
+				{
+					board = foundBoard;
+					break;
+				}
+				parent = parent.GetParent();
+			}
+			
+			if (board == null)
+			{
+				GD.PrintErr("[CarromPiece] Cannot find valid position: No board reference found");
+				return targetPosition; // Return original position if we can't check
+			}
+		}
+		
+		float pieceRadius = PhysicsConfig?.GetRadiusForPieceType(Type) ?? 15.0f;
+		
+		// Check if target position is already valid
+		if (!board.IsPositionObstructed(targetPosition, pieceRadius, this))
+		{
+			return targetPosition;
+		}
+		
+		// Use board's spiral search to find alternative position
+		return board.FindValidPositionNearCenter(pieceRadius, this);
+	}
+	
+	/// <summary>
+	/// Reset piece to clean state with collision-aware positioning
 	/// </summary>
 	/// <param name="globalPosition">Optional position to set piece to (null = no position change)</param>
 	/// <param name="immediate">If true, uses immediate physics sync to prevent interactions during reset</param>
 	/// <param name="restoreVisualProperties">If true, restores scale and modulate to default values</param>
-	public void Reset(Vector2? globalPosition = null, bool immediate = false, bool restoreVisualProperties = true)
+	/// <param name="validatePlacement">If true, checks for collisions and finds alternative position if needed</param>
+	public void Reset(Vector2? globalPosition = null, bool immediate = false, bool restoreVisualProperties = true, bool validatePlacement = false)
 	{
 		bool originalContactMonitor = ContactMonitor;
 		
@@ -487,14 +562,30 @@ public partial class CarromPiece : RigidBody2D
 		// Clear reset state flags
 		_skipNextStoppedCheck = false;
 		
-		// Handle positioning if requested
+		// Handle positioning with optional collision validation
 		if (globalPosition.HasValue)
 		{
+			Vector2 finalPosition = globalPosition.Value;
+			
+			// Validate placement if requested
+			if (validatePlacement)
+			{
+				var validPosition = FindValidPositionNear(finalPosition);
+				if (validPosition.HasValue)
+				{
+					finalPosition = validPosition.Value;
+				}
+				else
+				{
+					GD.PrintErr($"[CarromPiece] Could not find valid position for piece {Type} near {finalPosition}, using original position");
+				}
+			}
+			
 			// Use physics server for immediate sync
 			PhysicsServer2D.BodySetState(GetRid(), PhysicsServer2D.BodyState.Transform, 
-				new Transform2D(0, globalPosition.Value));
-			GlobalPosition = globalPosition.Value;
-			_lastPositionForFriction = globalPosition.Value;
+				new Transform2D(0, finalPosition));
+			GlobalPosition = finalPosition;
+			_lastPositionForFriction = finalPosition;
 			
 			// Additional force stop after positioning
 			LinearVelocity = Vector2.Zero;

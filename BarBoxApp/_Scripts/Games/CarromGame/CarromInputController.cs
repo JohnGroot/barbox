@@ -103,8 +103,8 @@ public partial class CarromInputController : Node2D
 	// Baseline tracking
 	private Vector2[] _baselinePositions = new Vector2[0];
 	private int _currentPlayerIndex = 0;
-	private CarromBoard? _board;
-	private CarromCameraController? _cameraController;
+	private CarromBoard _board;
+	private CarromCameraController _cameraController;
 	
 	// Cached baseline geometry for performance optimization
 	private Vector2 _cachedBaselineStart;
@@ -112,6 +112,11 @@ public partial class CarromInputController : Node2D
 	private Vector2 _cachedBaselineVector;
 	private float _cachedBaselineLength;
 	private bool _baselineGeometryCached = false;
+	
+	// Collision feedback state
+	private bool _showCollisionFeedback = false;
+	private Vector2 _lastTargetPosition = Vector2.Zero;
+	private bool _lastPositionWasValid = true;
 
 	public override void _Ready()
 	{
@@ -482,18 +487,41 @@ public partial class CarromInputController : Node2D
 	}
 
 	/// <summary>
-	/// Handle lateral striker movement along baseline
+	/// Handle lateral striker movement along baseline with collision detection
 	/// </summary>
 	private void HandleLateralMovement(Vector2 inputVector)
 	{
-		if (_board == null) return;
+		if (_board == null || _striker == null) return;
 		
 		// Use cached geometry for fast position calculation
-		Vector2 closestPosition = GetClosestPositionOnBaselineCached(_currentAimPosition);
+		Vector2 targetPosition = GetClosestPositionOnBaselineCached(_currentAimPosition);
+		float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
 		
-		// Use kinematic movement instead of direct position assignment
-		StartKinematicMovement(closestPosition);
-		EmitSignal(SignalName.StrikerPositionChanged, closestPosition);
+		// Check if original target position would be obstructed
+		bool originalPositionValid = !_board.IsPositionObstructed(targetPosition, strikerRadius, _striker);
+		
+		// Check if target position is obstructed and find nearest valid position
+		Vector2? validPosition = _board.FindNearestValidPositionOnBaseline(
+			targetPosition, _currentPlayerIndex, strikerRadius, _striker);
+		
+		// Update collision feedback state
+		_showCollisionFeedback = true;
+		_lastTargetPosition = targetPosition;
+		_lastPositionWasValid = originalPositionValid;
+		
+		if (validPosition.HasValue)
+		{
+			// Use kinematic movement to valid position
+			StartKinematicMovement(validPosition.Value);
+			EmitSignal(SignalName.StrikerPositionChanged, validPosition.Value);
+		}
+		else
+		{
+			// No valid position found - keep striker at current position
+			// This should be rare but provides graceful handling
+			GD.PrintErr($"[CarromInputController] No valid baseline position found for player {_currentPlayerIndex}");
+			_lastPositionWasValid = false;
+		}
 		
 		// Update aiming feedback - no aiming direction for lateral movement
 		Vector2 aimDirection = Vector2.Zero;
@@ -571,6 +599,9 @@ public partial class CarromInputController : Node2D
 		
 		// Clear trajectory cache
 		InvalidateTrajectoryCache();
+		
+		// Clear collision feedback state
+		_showCollisionFeedback = false;
 		
 		// Clear visual feedback and emit state change signals
 		EmitSignal(SignalName.AimingStateChanged, false, Vector2.Zero, 0.0f);
@@ -717,6 +748,12 @@ public partial class CarromInputController : Node2D
 			{
 				DrawDeadzoneRing(strikerPos);
 			}
+		}
+
+		// Draw collision feedback for lateral movement
+		if (_currentInputMode == InputMode.LateralMovement && _showCollisionFeedback)
+		{
+			DrawCollisionFeedback();
 		}
 
 		if (_currentInputMode == InputMode.PowerAiming && ShowAimingLine)
@@ -954,6 +991,48 @@ public partial class CarromInputController : Node2D
 							  power > 0.5f ? Colors.Yellow : PowerBarColor;
 			DrawRect(new Rect2(barPosition - Vector2.Right * barWidth / 2, 
 							   new Vector2(barWidth * power, barHeight)), powerColor, true, -1f, true);
+		}
+	}
+	
+	/// <summary>
+	/// Draw collision feedback for lateral movement
+	/// </summary>
+	private void DrawCollisionFeedback()
+	{
+		if (_striker == null) return;
+		
+		float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
+		
+		// Draw indicator at the last target position
+		Color indicatorColor = _lastPositionWasValid ? Colors.Green : Colors.Red;
+		Color ringColor = _lastPositionWasValid ? new Color(0.0f, 1.0f, 0.0f, 0.3f) : new Color(1.0f, 0.0f, 0.0f, 0.3f);
+		
+		// Draw filled circle to show collision area
+		DrawCircle(_lastTargetPosition, strikerRadius, ringColor);
+		
+		// Draw outline ring
+		DrawArc(_lastTargetPosition, strikerRadius, 0, Mathf.Tau, 32, indicatorColor, 3.0f, true);
+		
+		// If position was invalid, draw an X to indicate collision
+		if (!_lastPositionWasValid)
+		{
+			float crossSize = strikerRadius * 0.6f;
+			Vector2 offset1 = new Vector2(crossSize, crossSize);
+			Vector2 offset2 = new Vector2(crossSize, -crossSize);
+			
+			DrawLine(_lastTargetPosition - offset1, _lastTargetPosition + offset1, Colors.Red, 4.0f);
+			DrawLine(_lastTargetPosition - offset2, _lastTargetPosition + offset2, Colors.Red, 4.0f);
+		}
+		else
+		{
+			// If position was valid, draw a checkmark
+			float checkSize = strikerRadius * 0.4f;
+			Vector2 checkStart = _lastTargetPosition + new Vector2(-checkSize * 0.5f, 0);
+			Vector2 checkMid = _lastTargetPosition + new Vector2(-checkSize * 0.2f, checkSize * 0.3f);
+			Vector2 checkEnd = _lastTargetPosition + new Vector2(checkSize * 0.5f, -checkSize * 0.3f);
+			
+			DrawLine(checkStart, checkMid, Colors.Green, 4.0f, true);
+			DrawLine(checkMid, checkEnd, Colors.Green, 4.0f, true);
 		}
 	}
 

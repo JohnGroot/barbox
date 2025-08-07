@@ -101,6 +101,9 @@ public partial class CarromBoard : Node2D
 
 	public override void _Ready()
 	{
+		// Ensure board is positioned at world origin for proper camera rotation
+		Position = Vector2.Zero;
+		
 		SetupBoardPhysics();
 		SetupPockets();
 		CalculatePocketPositions();
@@ -113,6 +116,7 @@ public partial class CarromBoard : Node2D
 	private void SetupBoardPhysics()
 	{
 		_boardPhysics = new StaticBody2D();
+		_boardPhysics.Position = Vector2.Zero; // Ensure physics body is also centered
 		AddChild(_boardPhysics);
 
 		// Setup physics material using centralized config
@@ -1078,6 +1082,216 @@ public partial class CarromBoard : Node2D
 	}
 
 
+	/// <summary>
+	/// Check if a circular position is obstructed by other pieces
+	/// </summary>
+	/// <param name="position">Position to check</param>
+	/// <param name="radius">Radius of the circular area</param>
+	/// <param name="excludePiece">Piece to exclude from collision check (e.g. the piece being moved)</param>
+	/// <returns>True if position is obstructed, false if clear</returns>
+	public bool IsPositionObstructed(Vector2 position, float radius, CarromPiece excludePiece = null)
+	{
+		// Check if position is within board bounds
+		if (!IsOnBoard(position))
+		{
+			return true;
+		}
+		
+		// Use physics space state for accurate collision detection
+		var spaceState = GetWorld2D()?.DirectSpaceState;
+		if (spaceState == null)
+		{
+			return false;
+		}
+		
+		// Create shape query for circular area
+		var circleShape = new CircleShape2D();
+		circleShape.Radius = radius;
+		
+		var query = new PhysicsShapeQueryParameters2D();
+		query.Shape = circleShape;
+		query.Transform = new Transform2D(0, position);
+		query.CollisionMask = 1; // Collision layer for pieces
+		
+		// Exclude specific piece if provided
+		if (excludePiece != null && IsInstanceValid(excludePiece))
+		{
+			query.Exclude = new Godot.Collections.Array<Rid> { excludePiece.GetRid() };
+		}
+		
+		// Check for collisions
+		var results = spaceState.IntersectShape(query);
+		return results.Count > 0;
+	}
+	
+	/// <summary>
+	/// Get all pieces within a circular radius of a position
+	/// </summary>
+	/// <param name="position">Center position to search from</param>
+	/// <param name="radius">Search radius</param>
+	/// <returns>Array of CarromPieces within the radius</returns>
+	public CarromPiece[] GetPiecesInRadius(Vector2 position, float radius)
+	{
+		var piecesInRadius = new System.Collections.Generic.List<CarromPiece>();
+		
+		// Use physics space state for accurate detection
+		var spaceState = GetWorld2D()?.DirectSpaceState;
+		if (spaceState == null)
+		{
+			return piecesInRadius.ToArray();
+		}
+		
+		// Create shape query for circular area
+		var circleShape = new CircleShape2D();
+		circleShape.Radius = radius;
+		
+		var query = new PhysicsShapeQueryParameters2D();
+		query.Shape = circleShape;
+		query.Transform = new Transform2D(0, position);
+		query.CollisionMask = 1; // Collision layer for pieces
+		
+		// Get all collision results
+		var results = spaceState.IntersectShape(query);
+		
+		// Convert results to CarromPiece array
+		foreach (var result in results)
+		{
+			var body = result["collider"].AsGodotObject();
+			if (body is CarromPiece piece)
+			{
+				piecesInRadius.Add(piece);
+			}
+		}
+		
+		return piecesInRadius.ToArray();
+	}
+	
+	/// <summary>
+	/// Find the nearest valid position on a baseline for a piece
+	/// </summary>
+	/// <param name="targetPosition">Desired position on baseline</param>
+	/// <param name="playerIndex">Player's baseline index (0-3)</param>
+	/// <param name="pieceRadius">Radius of piece to be placed</param>
+	/// <param name="excludePiece">Piece to exclude from collision check</param>
+	/// <returns>Valid position on baseline, or null if no valid position found</returns>
+	public Vector2? FindNearestValidPositionOnBaseline(Vector2 targetPosition, int playerIndex, float pieceRadius, CarromPiece excludePiece = null)
+	{
+		// First, project target position onto baseline
+		Vector2 baselinePosition = GetClosestPositionOnBaseline(targetPosition, playerIndex);
+		
+		// Check if projected position is already valid
+		if (!IsPositionObstructed(baselinePosition, pieceRadius, excludePiece))
+		{
+			return baselinePosition;
+		}
+		
+		// Get baseline geometry for search
+		Vector2 baselineCenter = GetBaselinePosition(playerIndex);
+		bool isHorizontalBaseline = playerIndex <= 1; // Players 0,1 use horizontal baselines
+		
+		// Calculate baseline bounds
+		float halfBaselineLength = HalfBaseLineLength;
+		Vector2 baselineStart, baselineEnd, searchDirection;
+		
+		if (isHorizontalBaseline)
+		{
+			baselineStart = baselineCenter + new Vector2(-halfBaselineLength, 0);
+			baselineEnd = baselineCenter + new Vector2(halfBaselineLength, 0);
+			searchDirection = Vector2.Right;
+		}
+		else
+		{
+			baselineStart = baselineCenter + new Vector2(0, -halfBaselineLength);
+			baselineEnd = baselineCenter + new Vector2(0, halfBaselineLength);
+			searchDirection = Vector2.Down;
+		}
+		
+		// Search outward from projected position in both directions
+		float searchStep = pieceRadius * 0.5f; // Search in steps of half piece radius
+		float maxSearchDistance = halfBaselineLength; // Don't search beyond baseline bounds
+		
+		for (float distance = searchStep; distance <= maxSearchDistance; distance += searchStep)
+		{
+			// Search in both directions along baseline
+			Vector2[] candidatePositions = {
+				baselinePosition + searchDirection * distance,
+				baselinePosition - searchDirection * distance
+			};
+			
+			foreach (var candidate in candidatePositions)
+			{
+				// Check if candidate is within baseline bounds
+				if (isHorizontalBaseline)
+				{
+					if (candidate.X >= baselineStart.X && candidate.X <= baselineEnd.X)
+					{
+						if (!IsPositionObstructed(candidate, pieceRadius, excludePiece))
+						{
+							return candidate;
+						}
+					}
+				}
+				else
+				{
+					if (candidate.Y >= baselineStart.Y && candidate.Y <= baselineEnd.Y)
+					{
+						if (!IsPositionObstructed(candidate, pieceRadius, excludePiece))
+						{
+							return candidate;
+						}
+					}
+				}
+			}
+		}
+		
+		// No valid position found on baseline
+		return null;
+	}
+	
+	/// <summary>
+	/// Find a valid position near the board center for piece restoration (e.g. after fouls)
+	/// Uses spiral search pattern to find unobstructed location
+	/// </summary>
+	/// <param name="pieceRadius">Radius of piece to be placed</param>
+	/// <param name="excludePiece">Piece to exclude from collision check</param>
+	/// <returns>Valid position near center, or board center if no obstructions found</returns>
+	public Vector2 FindValidPositionNearCenter(float pieceRadius, CarromPiece excludePiece = null)
+	{
+		Vector2 centerPosition = GetCenterPosition();
+		
+		// Check if center is already valid
+		if (!IsPositionObstructed(centerPosition, pieceRadius, excludePiece))
+		{
+			return centerPosition;
+		}
+		
+		// Spiral search outward from center
+		float searchStep = pieceRadius; // Search in steps of piece radius
+		float maxSearchRadius = BoardHalfSize * 0.7f; // Don't search too close to edges
+		int maxSpirals = 8; // Number of directions in spiral
+		
+		for (float radius = searchStep; radius <= maxSearchRadius; radius += searchStep)
+		{
+			// Check positions in a circle around center
+			for (int i = 0; i < maxSpirals; i++)
+			{
+				float angle = (i * Mathf.Tau) / maxSpirals;
+				Vector2 candidate = centerPosition + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+				
+				// Ensure candidate is on board
+				if (IsOnBoard(candidate) && !IsPositionObstructed(candidate, pieceRadius, excludePiece))
+				{
+					return candidate;
+				}
+			}
+		}
+		
+		// Fallback to center position (better than no position)
+		// This should rarely happen unless board is extremely crowded
+		GD.PrintErr($"[CarromBoard] Could not find valid position near center for piece with radius {pieceRadius}, using center as fallback");
+		return centerPosition;
+	}
+	
 	/// <summary>
 	/// Cleanup on exit
 	/// </summary>

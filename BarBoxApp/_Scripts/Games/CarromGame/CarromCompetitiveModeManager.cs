@@ -23,6 +23,10 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	private List<CarromPiece> _competitivePieces = new List<CarromPiece>();
 	private int _currentPlayerIndex = 0;
 	private List<CarromPlayer> _players = new List<CarromPlayer>();
+	
+	// Turn state tracking
+	private bool _validPocketThisStroke = false;
+	private bool _foulThisStroke = false;
 
 	// Piece templates
 	private PackedScene _whitePieceTemplate;
@@ -32,6 +36,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 
 	// Settings
 	private int _competitiveCreditCost = 1;
+	private int _playerCount = 2; // Can be 2 or 4 players
 
 	/// <summary>
 	/// Initialize with piece templates (competitive-specific version)
@@ -116,22 +121,64 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	
 	/// <summary>
 	/// Check if win condition is met for competitive mode
+	/// Official Carrom Rules: Player/team wins by pocketing all assigned pieces and covering queen if pocketed
 	/// </summary>
 	public override bool CheckWinCondition(string playerId)
 	{
-		// Simple win condition: check if player has pocketed all their pieces
-		int remainingPieces = CountRemainingPiecesForPlayer(playerId);
-		return remainingPieces == 0;
+		// Find the player by ID
+		var player = _players.FirstOrDefault(p => p.PlayerId == playerId);
+		if (player == null)
+		{
+			return false;
+		}
+
+		if (_playerCount == 2)
+		{
+			// 2-player mode: Individual player must meet win condition
+			return player.HasWon();
+		}
+		else if (_playerCount == 4)
+		{
+			// 4-player doubles mode: Check team win condition
+			// Team wins when combined efforts meet the win requirements
+			var playerPieceType = player.AssignedPieceType;
+			var teamPlayers = _players.Where(p => p.AssignedPieceType == playerPieceType).ToList();
+			
+			// Calculate team statistics
+			int teamPiecesPocketed = teamPlayers.Sum(p => p.PiecesPocketed);
+			bool teamHasQueen = teamPlayers.Any(p => p.HasQueen);
+			bool teamQueenCovered = teamPlayers.Any(p => p.QueenCovered);
+			
+			// Team wins if they've pocketed all 9 pieces and covered queen if they have it
+			return teamPiecesPocketed >= 9 && (!teamHasQueen || teamQueenCovered);
+		}
+
+		return false;
 	}
 	
 	/// <summary>
 	/// Determine if current turn should continue in competitive mode
+	/// Official Carrom Rule: "As long as a player pockets his own pieces and/or Queen, his turn shall continue"
 	/// </summary>
 	public override bool ShouldContinueTurn(string playerId)
 	{
-		// In competitive mode, turns typically switch after each strike
-		// This could be enhanced with actual carrom rules for continuing turns
-		return false;
+		// Get the current player
+		var currentPlayer = GetCurrentPlayer();
+		if (currentPlayer == null || currentPlayer.PlayerId != playerId)
+		{
+			return false;
+		}
+
+		// Apply official carrom rules for turn continuation:
+		// Turn continues if player pocketed valid pieces AND committed no fouls
+		// Turn ends if player committed fouls OR pocketed no valid pieces
+		bool shouldContinue = _validPocketThisStroke && !_foulThisStroke;
+		
+		// Reset stroke flags for next stroke
+		_validPocketThisStroke = false;
+		_foulThisStroke = false;
+		
+		return shouldContinue;
 	}
 	
 	/// <summary>
@@ -160,25 +207,87 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	
 	/// <summary>
 	/// Handle competitive-specific piece pocketing logic
+	/// Implements official carrom rules for piece pocketing, fouls, and turn continuation
 	/// </summary>
 	protected override void HandlePiecePocketed(CarromPiece piece)
 	{
-		// Get current player ID
-		string playerId = GetCurrentPlayer()?.PlayerId ?? "player1";
-		
-		if (piece.Type == PieceType.Striker)
+		// Get current player
+		var currentPlayer = GetCurrentPlayer();
+		if (currentPlayer == null)
 		{
-			// Striker foul
-			EmitSignal(SignalName.FoulCommitted, playerId);
+			return;
 		}
-		else
+
+		string playerId = currentPlayer.PlayerId;
+		bool isFoul = false;
+		bool validPocket = false;
+
+		// Handle different piece types according to carrom rules
+		switch (piece.Type)
 		{
-			// Check for continue turn or win condition
-			if (CheckWinCondition(playerId))
-			{
-				EmitSignal(SignalName.PlayerWon, playerId);
-			}
+			case PieceType.Striker:
+				// Striker pocketing is always a foul
+				isFoul = true;
+				_foulThisStroke = true;
+				currentPlayer.RecordFoul();
+				EmitSignal(SignalName.FoulCommitted, playerId);
+				// Apply foul penalty (return piece)
+				ApplyFoulPenalty(currentPlayer);
+				break;
+
+			case PieceType.Red: // Queen
+				// Queen can only be pocketed if player has at least one assigned piece
+				if (currentPlayer.CanPocketQueen())
+				{
+					validPocket = true;
+					_validPocketThisStroke = true;
+					currentPlayer.RecordPocketedPiece(PieceType.Red);
+				}
+				else
+				{
+					// Pocketing queen without eligibility - return queen to center and apply penalty
+					isFoul = true;
+					_foulThisStroke = true;
+					currentPlayer.RecordFoul();
+					EmitSignal(SignalName.FoulCommitted, playerId);
+					// Return the queen to center and apply additional penalty
+					ReturnPieceToCenter(PieceType.Red);
+					ApplyFoulPenalty(currentPlayer);
+				}
+				break;
+
+			case PieceType.White:
+			case PieceType.Black:
+				// Check if this is the player's assigned piece type
+				if (currentPlayer.IsAssignedPiece(piece.Type))
+				{
+					validPocket = true;
+					_validPocketThisStroke = true;
+					currentPlayer.RecordPocketedPiece(piece.Type);
+				}
+				else
+				{
+					// Pocketing opponent's piece is a foul
+					isFoul = true;
+					_foulThisStroke = true;
+					currentPlayer.RecordFoul();
+					EmitSignal(SignalName.FoulCommitted, playerId);
+					// Return the opponent's piece to center and apply penalty
+					ReturnPieceToCenter(piece.Type);
+					ApplyFoulPenalty(currentPlayer);
+				}
+				break;
 		}
+
+		// Check win condition after valid pocketing
+		if (validPocket && CheckWinCondition(playerId))
+		{
+			EmitSignal(SignalName.PlayerWon, playerId);
+		}
+
+		// Note: Turn continuation is determined by ShouldContinueTurn() after all pieces settle
+		// Valid pocketing (validPocket = true) allows turn to continue
+		// Fouls (isFoul = true) end the turn
 	}
 
 	// ================================================================
@@ -355,18 +464,76 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	}
 
 	/// <summary>
-	/// Setup players for competitive mode
+	/// Set the number of players for competitive mode (2 or 4)
+	/// </summary>
+	public void SetPlayerCount(int playerCount)
+	{
+		if (playerCount == 2 || playerCount == 4)
+		{
+			_playerCount = playerCount;
+		}
+	}
+
+	/// <summary>
+	/// Setup players for competitive mode with proper piece type assignments
+	/// Supports both 2-player and 4-player (doubles) modes
 	/// </summary>
 	private void SetupCompetitivePlayers()
 	{
 		// Create players for competitive mode
 		_players.Clear();
 		
-		var player1 = new CarromPlayer();
-		player1.PlayerId = "player1";
-		_players.Add(player1);
+		if (_playerCount == 2)
+		{
+			// 2-player mode: One player gets white, other gets black
+			var player1 = new CarromPlayer();
+			player1.PlayerId = "player1";
+			player1.AssignPieceType(PieceType.White);
+			player1.ResetGameStats();
+			_players.Add(player1);
+			
+			var player2 = new CarromPlayer();
+			player2.PlayerId = "player2";
+			player2.AssignPieceType(PieceType.Black);
+			player2.ResetGameStats();
+			_players.Add(player2);
+		}
+		else if (_playerCount == 4)
+		{
+			// 4-player doubles mode: Players sit opposite as partners
+			// Team 1: Player 1 and Player 3 (white pieces)
+			// Team 2: Player 2 and Player 4 (black pieces)
+			
+			var player1 = new CarromPlayer();
+			player1.PlayerId = "player1";
+			player1.AssignPieceType(PieceType.White);
+			player1.ResetGameStats();
+			_players.Add(player1);
+			
+			var player2 = new CarromPlayer();
+			player2.PlayerId = "player2";
+			player2.AssignPieceType(PieceType.Black);
+			player2.ResetGameStats();
+			_players.Add(player2);
+			
+			var player3 = new CarromPlayer();
+			player3.PlayerId = "player3";
+			player3.AssignPieceType(PieceType.White); // Partner with player1
+			player3.ResetGameStats();
+			_players.Add(player3);
+			
+			var player4 = new CarromPlayer();
+			player4.PlayerId = "player4";
+			player4.AssignPieceType(PieceType.Black); // Partner with player2
+			player4.ResetGameStats();
+			_players.Add(player4);
+		}
 		
+		// Start with player 1 (white pieces) as breaking player
 		_currentPlayerIndex = 0;
+		
+		// Sync input controller with initial player
+		_inputController?.SetCurrentPlayer(_currentPlayerIndex);
 		
 		EmitSignal(SignalName.TurnChanged, GetCurrentPlayer()?.PlayerId ?? "player1", 1);
 	}
@@ -379,10 +546,13 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		// Step 1: Switch to next player index
 		_currentPlayerIndex = (_currentPlayerIndex + 1) % _players.Count;
 
-		// Step 2: Position striker at new player's baseline (no input control needed here)
+		// Step 2: Sync input controller with new player
+		_inputController?.SetCurrentPlayer(_currentPlayerIndex);
+
+		// Step 3: Position striker at new player's baseline (no input control needed here)
 		PositionStrikerAtBaseline();
 
-		// Step 3: Emit turn changed signal
+		// Step 4: Emit turn changed signal
 		var currentPlayer = GetCurrentPlayer();
 		EmitSignal(SignalName.TurnChanged, currentPlayer?.PlayerId ?? "unknown", _currentPlayerIndex + 1);
 	}
@@ -426,6 +596,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	{
 		_players.Clear();
 		_currentPlayerIndex = 0;
+		
+		// Sync input controller with reset player
+		_inputController?.SetCurrentPlayer(_currentPlayerIndex);
 	}
 
 	/// <summary>
@@ -434,5 +607,103 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	public List<CarromPlayer> GetPlayers()
 	{
 		return [.._players];
+	}
+
+	// ================================================================
+	// FOUL PENALTY SYSTEM
+	// ================================================================
+
+	/// <summary>
+	/// Apply foul penalty - return one of the player's pocketed pieces to center
+	/// </summary>
+	private void ApplyFoulPenalty(CarromPlayer foulPlayer)
+	{
+		if (foulPlayer == null || !foulPlayer.CanReturnPiece())
+			return;
+
+		// Get a piece to return from the player's pocketed pieces
+		var pieceTypeToReturn = foulPlayer.ReturnPocketedPiece();
+		if (pieceTypeToReturn.HasValue)
+		{
+			// Create the piece at center of board
+			ReturnPieceToCenter(pieceTypeToReturn.Value);
+			
+			GD.Print($"[FOUL PENALTY] {foulPlayer.PlayerId} returns {pieceTypeToReturn.Value} piece to center");
+		}
+	}
+
+	/// <summary>
+	/// Create a piece at the center of the board (for foul penalties and queen returns)
+	/// </summary>
+	private void ReturnPieceToCenter(PieceType pieceType)
+	{
+		if (_board == null) return;
+
+		// Find a safe position near center that doesn't overlap with existing pieces
+		Vector2 centerPosition = _board.GetCenterPosition();
+		Vector2 safePosition = FindSafePositionNearCenter(centerPosition, pieceType);
+
+		// Create the piece using the centralized factory
+		var returnedPiece = CreatePiece(pieceType, safePosition);
+		if (returnedPiece != null)
+		{
+			// Add to competitive pieces list so it's tracked
+			if (pieceType != PieceType.Striker)
+			{
+				_competitivePieces.Add(returnedPiece);
+			}
+
+			GD.Print($"[PIECE RETURN] {pieceType} piece returned to center at {safePosition}");
+		}
+	}
+
+	/// <summary>
+	/// Find a safe position near center that doesn't overlap with existing pieces
+	/// </summary>
+	private Vector2 FindSafePositionNearCenter(Vector2 center, PieceType pieceType)
+	{
+		// Start at center and spiral outward until we find a free spot
+		Vector2 testPosition = center;
+		float pieceRadius = _board?.PieceRadius ?? 15.0f;
+		float searchRadius = pieceRadius * 2.5f; // Initial search radius
+		int maxAttempts = 20;
+
+		for (int attempt = 0; attempt < maxAttempts; attempt++)
+		{
+			bool positionFree = true;
+			
+			// Check against all existing competitive pieces
+			foreach (var existingPiece in _competitivePieces)
+			{
+				if (!GodotObject.IsInstanceValid(existingPiece) || !existingPiece.Visible)
+					continue;
+
+				float distance = testPosition.DistanceTo(existingPiece.GlobalPosition);
+				if (distance < pieceRadius * 2.2f) // Pieces need to be separated
+				{
+					positionFree = false;
+					break;
+				}
+			}
+
+			if (positionFree)
+			{
+				return testPosition;
+			}
+
+			// Try a new position in a spiral pattern
+			float angle = attempt * 0.5f; // Spiral pattern
+			testPosition = center + new Vector2(
+				Mathf.Cos(angle) * searchRadius,
+				Mathf.Sin(angle) * searchRadius
+			);
+			
+			// Increase search radius for next attempt
+			searchRadius += pieceRadius * 0.5f;
+		}
+
+		// Fallback to center if no safe position found
+		GD.PrintErr($"[WARNING] Could not find safe position for returned {pieceType} piece, using center");
+		return center;
 	}
 }

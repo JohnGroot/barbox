@@ -3,10 +3,13 @@ using Godot;
 /// <summary>
 /// Handles camera positioning and zoom for the Carrom game
 /// Centers the camera on the board at origin (0,0) instead of moving the board to screen center
+/// Supports rotation for 4-player competitive mode
 /// </summary>
 [GlobalClass]
 public partial class CarromCameraController : Node
 {
+	[Signal] public delegate void RotationCompleteEventHandler();
+
 	// ================================================================
 	// EXPORT PROPERTIES
 	// ================================================================
@@ -15,6 +18,7 @@ public partial class CarromCameraController : Node
 	[Export] public float DefaultZoom { get; set; } = 1.0f;
 	[Export] public float MinZoom { get; set; } = 0.5f;
 	[Export] public float MaxZoom { get; set; } = 2.0f;
+	[Export] public float RotationDuration { get; set; } = 1.0f;
 
 	// ================================================================
 	// CONSTANTS
@@ -29,6 +33,8 @@ public partial class CarromCameraController : Node
 
 	private Camera2D _boardCamera;
 	private CarromBoard _board;
+	private Tween _rotationTween;
+	private int _currentPlayerIndex = 0;
 
 	// ================================================================
 	// PUBLIC PROPERTIES
@@ -50,10 +56,17 @@ public partial class CarromCameraController : Node
 	{
 		_board = board;
 		
-		// Create and setup camera
-		_boardCamera = new Camera2D();
+		// Get camera from scene instead of creating one programmatically
+		_boardCamera = GetParent().GetNode<Camera2D>("GameCamera");
+		if (_boardCamera == null)
+		{
+			GD.PrintErr("[CarromCameraController] Failed to find GameCamera node in parent scene");
+			return;
+		}
+		
+		// Ensure camera is enabled and current
 		_boardCamera.Enabled = true;
-		AddChild(_boardCamera);
+		_boardCamera.MakeCurrent();
 
 		// Position camera to center on board at origin
 		PositionCameraOverBoard();
@@ -74,6 +87,9 @@ public partial class CarromCameraController : Node
 		var viewport = GetViewport();
 		if (viewport == null) return;
 
+		// Preserve current rotation during positioning
+		float currentRotation = _boardCamera.Rotation;
+
 		Vector2 viewportSize = viewport.GetVisibleRect().Size;
 		
 		// Position camera at origin (0,0) to look directly at the board
@@ -89,6 +105,9 @@ public partial class CarromCameraController : Node
 		// Calculate zoom to fit board in playable area
 		CalculateAndSetZoom(playableArea);
 		
+		// Restore the rotation after positioning
+		_boardCamera.Rotation = currentRotation;
+		_boardCamera.ForceUpdateScroll();
 	}
 
 	/// <summary>
@@ -167,12 +186,151 @@ public partial class CarromCameraController : Node
 	}
 
 	// ================================================================
+	// CAMERA ROTATION FOR COMPETITIVE MODE
+	// ================================================================
+
+	/// <summary>
+	/// Rotate camera so the specified player appears at the bottom of the screen
+	/// Player indices: 0=bottom, 1=top, 2=left, 3=right
+	/// </summary>
+	public void RotateToPlayer(int playerIndex, float duration = -1.0f)
+	{
+		// Validate camera exists and is properly set up
+		if (!ValidateCameraState())
+		{
+			GD.PrintErr("[CarromCameraController] Camera validation failed - cannot rotate");
+			return;
+		}
+
+		_currentPlayerIndex = playerIndex;
+		float useDuration = duration < 0 ? RotationDuration : duration;
+		
+		// Calculate target rotation - each player is 90 degrees apart
+		// Player 0: 0° (bottom), Player 1: 180° (top), Player 2: 90° (left), Player 3: 270° (right)
+		float targetRotation = playerIndex switch
+		{
+			0 => 0.0f,      // Bottom player - no rotation
+			1 => Mathf.Pi,  // Top player - 180° rotation
+			2 => Mathf.Pi / 2,    // Left player - 90° rotation
+			3 => -Mathf.Pi / 2,   // Right player - 270° (-90°) rotation
+			_ => 0.0f
+		};
+
+		// Stop any existing rotation
+		_rotationTween?.Kill();
+
+		if (useDuration <= 0.0f)
+		{
+			// Immediate rotation
+			_boardCamera.Rotation = targetRotation;
+			_boardCamera.ForceUpdateScroll();
+			EmitSignal(SignalName.RotationComplete);
+		}
+		else
+		{
+			// Animated rotation
+			_rotationTween = CreateTween();
+			if (_rotationTween == null)
+			{
+				GD.PrintErr("[CarromCameraController] Failed to create tween - falling back to immediate rotation");
+				_boardCamera.Rotation = targetRotation;
+				_boardCamera.ForceUpdateScroll();
+				EmitSignal(SignalName.RotationComplete);
+				return;
+			}
+			
+			_rotationTween.TweenProperty(_boardCamera, "rotation", targetRotation, useDuration);
+			_rotationTween.TweenCallback(Callable.From(() => {
+				_boardCamera.ForceUpdateScroll();
+				EmitSignal(SignalName.RotationComplete);
+			}));
+		}
+	}
+
+	/// <summary>
+	/// Rotate camera to current player immediately without animation
+	/// </summary>
+	public void SnapToPlayer(int playerIndex)
+	{
+		RotateToPlayer(playerIndex, 0.0f);
+	}
+
+	/// <summary>
+	/// Get the current player index that the camera is oriented towards
+	/// </summary>
+	public int GetCurrentPlayerIndex()
+	{
+		return _currentPlayerIndex;
+	}
+
+	/// <summary>
+	/// Reset camera to default orientation (player 0 at bottom)
+	/// </summary>
+	public void ResetRotation(float duration = -1.0f)
+	{
+		RotateToPlayer(0, duration);
+	}
+
+	// ================================================================
+	// CAMERA VALIDATION AND DEBUGGING
+	// ================================================================
+
+	/// <summary>
+	/// Validate that the camera is in a proper state for rotation operations
+	/// </summary>
+	private bool ValidateCameraState()
+	{
+		// Check camera exists and is valid
+		if (_boardCamera == null || !IsInstanceValid(_boardCamera))
+		{
+			GD.PrintErr("[CarromCameraController] Camera is null or invalid");
+			return false;
+		}
+
+		// Check camera is enabled
+		if (!_boardCamera.Enabled)
+		{
+			GD.PrintErr("[CarromCameraController] Camera is disabled");
+			return false;
+		}
+
+		// Ensure camera is current
+		if (!_boardCamera.IsCurrent())
+		{
+			_boardCamera.MakeCurrent();
+			if (!_boardCamera.IsCurrent())
+			{
+				GD.PrintErr("[CarromCameraController] Failed to make camera current");
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/// <summary>
+	/// Get comprehensive camera debug information
+	/// </summary>
+	public string GetCameraDebugInfo()
+	{
+		if (_boardCamera == null)
+			return "Camera: null";
+
+		if (!IsInstanceValid(_boardCamera))
+			return "Camera: invalid Godot object";
+
+		return $"Camera - Enabled: {_boardCamera.Enabled}, Current: {_boardCamera.IsCurrent()}, " +
+		       $"Position: {_boardCamera.GlobalPosition}, Offset: {_boardCamera.Offset}, " +
+		       $"Zoom: {_boardCamera.Zoom}, Rotation: {Mathf.RadToDeg(_boardCamera.Rotation):F1}°";
+	}
+
+	// ================================================================
 	// CLEANUP
 	// ================================================================
 
 	public override void _ExitTree()
 	{
-		// Camera cleanup is handled automatically by Godot
+		_rotationTween?.Kill();
 		base._ExitTree();
 	}
 }
