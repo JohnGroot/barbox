@@ -215,7 +215,17 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		var currentPlayer = GetCurrentPlayer();
 		if (currentPlayer == null)
 		{
-			return;
+			GD.PrintErr($"[CarromCompetitive] No current player during piece pocket: {piece?.Type}. Attempting player reset.");
+			
+			// Attempt recovery - reset to player 0
+			_currentPlayerIndex = 0;
+			currentPlayer = GetCurrentPlayer();
+			
+			if (currentPlayer == null)
+			{
+				GD.PrintErr($"[CarromCompetitive] Player reset failed. Aborting piece processing. Players count: {_players.Count}");
+				return;
+			}
 		}
 
 		string playerId = currentPlayer.PlayerId;
@@ -639,12 +649,22 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	{
 		if (_board == null) return;
 
-		// Find a safe position near center that doesn't overlap with existing pieces
-		Vector2 centerPosition = _board.GetCenterPosition();
-		Vector2 safePosition = FindSafePositionNearCenter(centerPosition, pieceType);
+		// FIRST: Try to find and restore an existing hidden piece of this type
+		var hiddenPiece = FindHiddenPieceOfType(pieceType);
+		if (hiddenPiece != null)
+		{
+			// Find a safe position near center that doesn't overlap with existing pieces
+			Vector2 centerPosition = _board.GetCenterPosition();
+			Vector2 safePosition = FindSafePositionNearCenter(centerPosition, pieceType);
+			
+			// Restore the existing hidden piece instead of creating new one
+			hiddenPiece.Reset(safePosition, validatePlacement: true);
+			return;
+		}
 
-		// Create the piece using the centralized factory
-		var returnedPiece = CreatePiece(pieceType, safePosition);
+		// FALLBACK: Only create new piece if no hidden piece found
+		Vector2 fallbackPosition = FindSafePositionNearCenter(_board.GetCenterPosition(), pieceType);
+		var returnedPiece = CreatePiece(pieceType, fallbackPosition);
 		if (returnedPiece != null)
 		{
 			// Add to competitive pieces list so it's tracked
@@ -655,6 +675,18 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 
 			GD.Print($"[PIECE RETURN] {pieceType} piece returned to center at {safePosition}");
 		}
+	}
+
+	/// <summary>
+	/// Find a hidden (pocketed) piece of the specified type that can be restored
+	/// </summary>
+	private CarromPiece FindHiddenPieceOfType(PieceType pieceType)
+	{
+		return _competitivePieces.FirstOrDefault(p => 
+			GodotObject.IsInstanceValid(p) && 
+			p.Type == pieceType && 
+			!p.Visible && 
+			p.Freeze);
 	}
 
 	/// <summary>

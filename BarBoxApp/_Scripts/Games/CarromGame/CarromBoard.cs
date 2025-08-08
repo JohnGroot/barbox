@@ -1073,7 +1073,7 @@ public partial class CarromBoard : Node2D
 		// Exclude specific piece if provided
 		if (excludePiece != null && IsInstanceValid(excludePiece))
 		{
-			query.Exclude = new Godot.Collections.Array<Rid> { excludePiece.GetRid() };
+			query.Exclude = [excludePiece.GetRid()];
 		}
 		
 		// Check for collisions
@@ -1089,7 +1089,7 @@ public partial class CarromBoard : Node2D
 	/// <returns>Array of CarromPieces within the radius</returns>
 	public CarromPiece[] GetPiecesInRadius(Vector2 position, float radius)
 	{
-		var piecesInRadius = new System.Collections.Generic.List<CarromPiece>();
+		var piecesInRadius = new List<CarromPiece>();
 		
 		// Use physics space state for accurate detection
 		var spaceState = GetWorld2D()?.DirectSpaceState;
@@ -1164,7 +1164,7 @@ public partial class CarromBoard : Node2D
 		}
 		
 		// Search outward from projected position in both directions
-		float searchStep = pieceRadius * 0.5f; // Search in steps of half piece radius
+		float searchStep = pieceRadius * 0.1f; // Search in steps of half piece radius
 		float maxSearchDistance = halfBaselineLength; // Don't search beyond baseline bounds
 		
 		for (float distance = searchStep; distance <= maxSearchDistance; distance += searchStep)

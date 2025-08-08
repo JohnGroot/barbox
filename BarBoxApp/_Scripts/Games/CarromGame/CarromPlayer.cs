@@ -69,6 +69,21 @@ public partial class CarromPlayer : BasePlayer
 	/// </summary>
 	public virtual void RecordPocketedPiece(PieceType pieceType)
 	{
+		// CRITICAL FIX: Validate piece type BEFORE modifying any state
+		if (AssignedPieceType == PieceType.Striker)
+		{
+			GD.PrintErr($"[CarromPlayer] Cannot pocket pieces - no assigned piece type for player {PlayerId}");
+			return;
+		}
+		
+		// Validate that this is a legal piece type to pocket
+		if (pieceType == PieceType.Striker)
+		{
+			GD.PrintErr($"[CarromPlayer] Striker should never be recorded as pocketed for player {PlayerId}");
+			return;
+		}
+
+		// NOW safe to modify state after validation
 		_pocketedPieces.Add(pieceType);
 
 		if (pieceType == PieceType.Red)
