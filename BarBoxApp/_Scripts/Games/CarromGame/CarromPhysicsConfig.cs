@@ -20,16 +20,9 @@ public partial class CarromPhysicsConfig : Resource
 	[Export(PropertyHint.Range, "1.2,3.0,0.1")] public float StrikerMass { get; set; } = 2.7f;
 
 	[ExportCategory("Material Properties")]
-	[Export(PropertyHint.Range, "0.0,1.0,0.05")] public float PieceFriction { get; set; } = 0.1f;
-	[Export(PropertyHint.Range, "0.0,2.0,0.1")] public float PieceBounce { get; set; } = 0.6f;
-	[Export(PropertyHint.Range, "0.0,1.0,0.05")] public float BoardFriction { get; set; } = 0.2f;
-	[Export(PropertyHint.Range, "0.0,1.0,0.1")] public float BoardBounce { get; set; } = 0.3f;
-	
-	[ExportCategory("High-Speed Collision Enhancement")]
-	[Export(PropertyHint.Range, "0.0,1.0,0.05")] public float HighSpeedFriction { get; set; } = 0.3f;
-	[Export(PropertyHint.Range, "0.0,1.0,0.1")] public float HighSpeedBounce { get; set; } = 0.5f;
-	[Export(PropertyHint.Range, "200.0,1000.0,50.0")] public float HighSpeedThreshold { get; set; } = 500.0f;
-	[Export(PropertyHint.Range, "0.8,1.0,0.05")] public float CollisionSafetyMargin { get; set; } = 0.9f;
+	[Export(PropertyHint.Range, "0.0,1.0,0.05")] public float PieceFriction { get; set; } = 0.02f; // Very low base friction for powder system
+	[Export(PropertyHint.Range, "0.0,2.0,0.1")] public float PieceBounce { get; set; } = 0.95f; // High bounce for realistic carrom physics
+	[Export(PropertyHint.Range, "0.8,1.0,0.05")] public float CollisionSafetyMargin { get; set; } = 0.85f;
 	
 
 
@@ -45,14 +38,11 @@ public partial class CarromPhysicsConfig : Resource
 	
 	// Cached physics materials for performance optimization
 	private PhysicsMaterial _cachedPieceMaterial;
-	private PhysicsMaterial _cachedHighSpeedPieceMaterial;
 	private bool _materialsInitialized = false;
 	
 	// Property change tracking for cache invalidation
 	private float _lastPieceFriction = -1f;
 	private float _lastPieceBounce = -1f;
-	private float _lastHighSpeedFriction = -1f;
-	private float _lastHighSpeedBounce = -1f;
 
 	[ExportCategory("Collision Detection")]
 	[Export(PropertyHint.Range, "5,20,1")] public int MaxContactsReported { get; set; } = 10;
@@ -88,8 +78,8 @@ public partial class CarromPhysicsConfig : Resource
 	[ExportCategory("Physics Constants")]
 	[Export(PropertyHint.Range, "30.0,100.0,5.0")] public float MinimumMovementValidation { get; set; } = 50.0f; // Minimum velocity to count as "real movement"
 	[Export(PropertyHint.Range, "30.0,100.0,5.0")] public float AngularTorqueScale { get; set; } = 50.0f; // Realistic physics constants
-	[Export(PropertyHint.Range, "0.01,0.1,0.005")] public float BoardFrictionOverride { get; set; } = 0.05f; // Very low friction for smooth sliding
-	[Export(PropertyHint.Range, "0.7,1.0,0.05")] public float BoardBounceOverride { get; set; } = 0.9f; // High bounce for realistic collisions
+	[Export(PropertyHint.Range, "0.01,0.1,0.005")] public float BoardFriction { get; set; } = 0.02f; // Very low friction for smooth sliding
+	[Export(PropertyHint.Range, "0.7,1.0,0.05")] public float BoardBounce { get; set; } = 0.95f; // High bounce for realistic collisions
 	[Export(PropertyHint.Range, "0.6,1.0,0.05")] public float PocketInnerMultiplier { get; set; } = 0.8f; // Inner pocket hole size multiplier
 	[Export(PropertyHint.Range, "0.8,1.0,0.05")] public float PocketHighlightMultiplier { get; set; } = 0.9f; // Pocket highlight ring multiplier
 
@@ -117,19 +107,6 @@ public partial class CarromPhysicsConfig : Resource
 			_lastPieceBounce = PieceBounce;
 		}
 		
-		// Check if high-speed material cache needs updating
-		if (_cachedHighSpeedPieceMaterial == null || _lastHighSpeedFriction != HighSpeedFriction || _lastHighSpeedBounce != HighSpeedBounce)
-		{
-			if (_cachedHighSpeedPieceMaterial == null)
-			{
-				_cachedHighSpeedPieceMaterial = new PhysicsMaterial();
-			}
-			_cachedHighSpeedPieceMaterial.Friction = HighSpeedFriction;
-			_cachedHighSpeedPieceMaterial.Bounce = HighSpeedBounce;
-			_lastHighSpeedFriction = HighSpeedFriction;
-			_lastHighSpeedBounce = HighSpeedBounce;
-		}
-		
 		_materialsInitialized = true;
 	}
 	
@@ -143,23 +120,14 @@ public partial class CarromPhysicsConfig : Resource
 	}
 	
 	/// <summary>
-	/// Get cached enhanced physics material for high-speed collisions with automatic cache updating
-	/// </summary>
-	public PhysicsMaterial CreateHighSpeedPieceMaterial()
-	{
-		UpdateMaterialCache();
-		return _cachedHighSpeedPieceMaterial;
-	}
-	
-	/// <summary>
 	/// Get cached physics material for board using centralized constants
 	/// </summary>
 	public PhysicsMaterial CreateBoardMaterial()
 	{
 		// Create fresh material with centralized constants instead of cached version
 		var boardMaterial = new PhysicsMaterial();
-		boardMaterial.Friction = BoardFrictionOverride;
-		boardMaterial.Bounce = BoardBounceOverride;
+		boardMaterial.Friction = BoardFriction;
+		boardMaterial.Bounce = BoardBounce;
 		return boardMaterial;
 	}
 
@@ -206,13 +174,6 @@ public partial class CarromPhysicsConfig : Resource
 		return GetRadiusForPieceType(type) * CollisionSafetyMargin;
 	}
 	
-	/// <summary>
-	/// Check if velocity qualifies as high-speed for enhanced collision detection
-	/// </summary>
-	public bool IsHighSpeedVelocity(float velocity)
-	{
-		return velocity > HighSpeedThreshold;
-	}
 
 	/// <summary>
 	/// Check if piece is stopped based on threshold and hysteresis

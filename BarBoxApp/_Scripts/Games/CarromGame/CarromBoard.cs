@@ -18,6 +18,10 @@ public partial class CarromBoard : Node2D
 	[Export(PropertyHint.Range, "1.0,10.0,0.5")] public float LineWidth { get; set; } = 3.0f;
 	[Export] public Color PocketColor { get; set; } = Colors.Black;
 	[Export] public bool UseCurvedBorders { get; set; } = false;
+	
+	[ExportCategory("Debug")]
+	[Export] public bool ShowCollisionDebug { get; set; } = false;
+	[Export] public Color CollisionDebugColor { get; set; } = new Color(1.0f, 0.0f, 0.0f, 0.5f); // Red with 50% alpha
 
 	[ExportCategory("Physics Configuration")]
 	[Export] public CarromPhysicsConfig PhysicsConfig { get; set; }
@@ -35,7 +39,16 @@ public partial class CarromBoard : Node2D
 	private Vector2[] _cornerArrowEnds = new Vector2[4];
 	private bool _needsRedraw = true;
 	
-	// Curved border geometry
+	// Debug collision visualization
+	private struct CollisionDebugInfo
+	{
+		public Vector2 Position;
+		public Vector2 Size;
+		public float Rotation;
+	}
+	private List<CollisionDebugInfo> _debugCollisionShapes = new List<CollisionDebugInfo>();
+	
+	// Curved border geometry for visual drawing
 	private const int CORNER_ARC_SEGMENTS = 48;
 
 	// Board layout constants based on official Carrom Laws (indiancarrom.co.in)
@@ -115,6 +128,9 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	private void SetupBoardPhysics()
 	{
+		// Clear debug shapes from previous setup
+		_debugCollisionShapes.Clear();
+		
 		_boardPhysics = new StaticBody2D();
 		_boardPhysics.Position = Vector2.Zero; // Ensure physics body is also centered
 		AddChild(_boardPhysics);
@@ -130,51 +146,15 @@ public partial class CarromBoard : Node2D
 	}
 
 	/// <summary>
-	/// Create collision shapes for board borders with optional curved corners
+	/// Create collision shapes for board borders using solid rectangles
 	/// </summary>
 	private void CreateBorderCollisions()
 	{
-		if (UseCurvedBorders && ValidateCurvedGeometry())
-		{
-			CreateCurvedBorderCollisions();
-		}
-		else
-		{
-			CreateRectangularBorderCollisions();
-		}
+		// Always use solid rectangular collision for reliable physics at all velocities
+		// This approach works for both curved and rectangular visual borders
+		CreateSolidBorderCollision();
 	}
 	
-	/// <summary>
-	/// Create traditional rectangular border collision shapes
-	/// </summary>
-	private void CreateRectangularBorderCollisions()
-	{
-		float totalBorder = BorderWidth + LineWidth;
-
-		// Top border
-		CreateBorderSegment(
-			new Vector2(0, -BoardHalfSize - totalBorder / 2),
-			new Vector2(BoardSize + totalBorder * 2, totalBorder)
-		);
-
-		// Bottom border
-		CreateBorderSegment(
-			new Vector2(0, BoardHalfSize + totalBorder / 2),
-			new Vector2(BoardSize + totalBorder * 2, totalBorder)
-		);
-
-		// Left border
-		CreateBorderSegment(
-			new Vector2(-BoardHalfSize - totalBorder / 2, 0),
-			new Vector2(totalBorder, BoardSize)
-		);
-
-		// Right border
-		CreateBorderSegment(
-			new Vector2(BoardHalfSize + totalBorder / 2, 0),
-			new Vector2(totalBorder, BoardSize)
-		);
-	}
 
 	/// <summary>
 	/// Create a single border collision segment
@@ -187,119 +167,56 @@ public partial class CarromBoard : Node2D
 		collisionShape.Shape = rectShape;
 		collisionShape.Position = position;
 		_boardPhysics.AddChild(collisionShape);
+		
+		// Store debug info
+		if (ShowCollisionDebug)
+		{
+			_debugCollisionShapes.Add(new CollisionDebugInfo
+			{
+				Position = position,
+				Size = size,
+				Rotation = 0.0f
+			});
+		}
 	}
 	
-	/// <summary>
-	/// Validate curved border geometry and provide fallbacks
-	/// </summary>
-	private bool ValidateCurvedGeometry()
-	{
-		// Ensure pocket radius is reasonable for curved corners
-		if (PocketRadius > BorderWidth * 0.8f)
-		{
-			GD.PrintErr("[CarromBoard] PocketRadius too large for curved borders, falling back to rectangular borders");
-			return false;
-		}
-		
-		if (PocketRadius <= 0)
-		{
-			GD.PrintErr("[CarromBoard] Invalid PocketRadius for curved borders, falling back to rectangular borders");
-			return false;
-		}
-		
-		return true;
-	}
 	
 	/// <summary>
-	/// Create curved border collision using simple segments for reliable physics
+	/// Create solid rectangular border collision for reliable high-velocity collision
 	/// </summary>
-	private void CreateCurvedBorderCollisions()
+	private void CreateSolidBorderCollision()
 	{
-		// Use simple rectangular outer border (reliable collision)
+		// Use solid rectangular borders for reliable collision at all velocities
+		// Works for both curved and rectangular visual borders
 		float totalBorder = BorderWidth + LineWidth;
-		
-		// Create outer border collision (same as rectangular approach)
+
+		// Top border
 		CreateBorderSegment(
 			new Vector2(0, -BoardHalfSize - totalBorder / 2),
 			new Vector2(BoardSize + totalBorder * 2, totalBorder)
 		);
+		
+		// Bottom border  
 		CreateBorderSegment(
 			new Vector2(0, BoardHalfSize + totalBorder / 2),
 			new Vector2(BoardSize + totalBorder * 2, totalBorder)
 		);
+		
+		// Left border
 		CreateBorderSegment(
 			new Vector2(-BoardHalfSize - totalBorder / 2, 0),
 			new Vector2(totalBorder, BoardSize)
 		);
+		
+		// Right border
 		CreateBorderSegment(
 			new Vector2(BoardHalfSize + totalBorder / 2, 0),
 			new Vector2(totalBorder, BoardSize)
 		);
-		
-		// Add inner curved boundary collision using segments
-		CreateInnerCurvedBoundary();
 	}
 	
 	/// <summary>
-	/// Create inner curved boundary collision using simple line segments
-	/// </summary>
-	private void CreateInnerCurvedBoundary()
-	{
-		float innerRadius = PocketRadius;
-		float cornerOffset = BoardHalfSize - innerRadius;
-		
-		// Calculate corner centers for interior curves
-		Vector2[] cornerCenters = new Vector2[]
-		{
-			new Vector2(-cornerOffset, -cornerOffset), // Top-left
-			new Vector2(cornerOffset, -cornerOffset),  // Top-right
-			new Vector2(cornerOffset, cornerOffset),   // Bottom-right
-			new Vector2(-cornerOffset, cornerOffset)   // Bottom-left
-		};
-		
-		// Create straight edge segments
-		CreateLineSegment(new Vector2(-cornerOffset, -BoardHalfSize), new Vector2(cornerOffset, -BoardHalfSize)); // Top
-		CreateLineSegment(new Vector2(BoardHalfSize, -cornerOffset), new Vector2(BoardHalfSize, cornerOffset)); // Right
-		CreateLineSegment(new Vector2(cornerOffset, BoardHalfSize), new Vector2(-cornerOffset, BoardHalfSize)); // Bottom
-		CreateLineSegment(new Vector2(-BoardHalfSize, cornerOffset), new Vector2(-BoardHalfSize, -cornerOffset)); // Left
-		
-		// Create curved corner segments using line segments
-		CreateCurvedCornerSegments(cornerCenters[0], innerRadius, Mathf.Pi, 3 * Mathf.Pi / 2); // Top-left
-		CreateCurvedCornerSegments(cornerCenters[1], innerRadius, 3 * Mathf.Pi / 2, 2 * Mathf.Pi); // Top-right
-		CreateCurvedCornerSegments(cornerCenters[2], innerRadius, 0, Mathf.Pi / 2); // Bottom-right
-		CreateCurvedCornerSegments(cornerCenters[3], innerRadius, Mathf.Pi / 2, Mathf.Pi); // Bottom-left
-	}
-	
-	/// <summary>
-	/// Create a simple line segment collision shape
-	/// </summary>
-	private void CreateLineSegment(Vector2 start, Vector2 end)
-	{
-		var collisionShape = new CollisionShape2D();
-		var segmentShape = new SegmentShape2D();
-		segmentShape.A = start;
-		segmentShape.B = end;
-		collisionShape.Shape = segmentShape;
-		_boardPhysics.AddChild(collisionShape);
-	}
-	
-	/// <summary>
-	/// Create curved corner collision using multiple line segments
-	/// </summary>
-	private void CreateCurvedCornerSegments(Vector2 center, float radius, float startAngle, float endAngle)
-	{
-		// Generate arc points using existing method
-		var arcPoints = GenerateCornerArc(center, radius, startAngle, endAngle, CORNER_ARC_SEGMENTS);
-		
-		// Create line segments between consecutive arc points
-		for (int i = 0; i < arcPoints.Length - 1; i++)
-		{
-			CreateLineSegment(arcPoints[i], arcPoints[i + 1]);
-		}
-	}
-	
-	/// <summary>
-	/// Generate tessellated quarter-circle arc points
+	/// Generate tessellated quarter-circle arc points for visual curved borders
 	/// </summary>
 	private Vector2[] GenerateCornerArc(Vector2 center, float radius, float startAngle, float endAngle, int segments)
 	{
@@ -312,7 +229,6 @@ public partial class CarromBoard : Node2D
 		}
 		return points;
 	}
-	
 
 	/// <summary>
 	/// Setup pocket detection areas
@@ -370,6 +286,12 @@ public partial class CarromBoard : Node2D
 		DrawCenterCircle();
 		DrawPockets();
 		DrawCirclesBetweenBaselines();
+		
+		// Draw collision debug shapes if enabled
+		if (ShowCollisionDebug)
+		{
+			DrawCollisionDebugShapes();
+		}
 	}
 
 	/// <summary>
@@ -387,7 +309,7 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	private void DrawBorders()
 	{
-		if (UseCurvedBorders && ValidateCurvedGeometry())
+		if (UseCurvedBorders)
 		{
 			DrawCurvedBorders();
 		}
@@ -644,6 +566,44 @@ public partial class CarromBoard : Node2D
 		for (int i = 0; i < cornerPoints.Length; i += 2)
 		{
 			DrawArc(cornerPoints[i].Lerp(cornerPoints[i + 1], 0.5f), CornerBaselineDiameter, 0, Mathf.Tau, 32, LineColor, LineWidth / 2f, true);
+		}
+	}
+	
+	/// <summary>
+	/// Draw debug visualization of collision shapes
+	/// </summary>
+	private void DrawCollisionDebugShapes()
+	{
+		foreach (var shape in _debugCollisionShapes)
+		{
+			// Draw rotated rectangle
+			var transform = new Transform2D(shape.Rotation, shape.Position);
+			Vector2 halfSize = shape.Size * 0.5f;
+			
+			// Calculate rectangle corners in local space
+			Vector2[] corners = new Vector2[]
+			{
+				new Vector2(-halfSize.X, -halfSize.Y),
+				new Vector2(halfSize.X, -halfSize.Y),
+				new Vector2(halfSize.X, halfSize.Y),
+				new Vector2(-halfSize.X, halfSize.Y)
+			};
+			
+			// Transform corners to world space
+			for (int i = 0; i < corners.Length; i++)
+			{
+				corners[i] = transform * corners[i];
+			}
+			
+			// Draw filled rectangle
+			DrawColoredPolygon(corners, CollisionDebugColor);
+			
+			// Draw outline
+			for (int i = 0; i < corners.Length; i++)
+			{
+				int nextIndex = (i + 1) % corners.Length;
+				DrawLine(corners[i], corners[nextIndex], CollisionDebugColor.Lightened(0.3f), 2.0f);
+			}
 		}
 	}
 	
@@ -1028,6 +988,14 @@ public partial class CarromBoard : Node2D
 	{
 		_needsRedraw = true;
 		QueueRedraw();
+	}
+	
+	/// <summary>
+	/// Force redraw when debug settings change
+	/// </summary>
+	public void RefreshCollisionDebug()
+	{
+		QueueRedraw(); // Debug shapes don't require full redraw
 	}
 
 	/// <summary>
