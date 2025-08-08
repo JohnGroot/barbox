@@ -7,7 +7,6 @@ using Godot;
 public partial class CarromPiece : RigidBody2D
 {
 	[Signal] public delegate void PieceCollidedEventHandler(CarromPiece thisPiece, CarromPiece otherPiece, Vector2 impactForce);
-	[Signal] public delegate void PieceStoppedEventHandler(CarromPiece piece);
 
 	[ExportCategory("Piece Settings")]
 	[Export] public PieceType Type { get; set; } = PieceType.White;
@@ -432,7 +431,6 @@ public partial class CarromPiece : RigidBody2D
 			if (_stoppedTimer >= PhysicsConfig.StopConfirmationTime)
 			{
 				ForceStop();
-				EmitSignal(SignalName.PieceStopped, this);
 			}
 		}
 

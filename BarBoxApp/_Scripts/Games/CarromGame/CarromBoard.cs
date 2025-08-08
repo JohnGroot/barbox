@@ -8,8 +8,6 @@ using System.Linq;
 [GlobalClass]
 public partial class CarromBoard : Node2D
 {
-	[Signal] public delegate void PiecePocketedEventHandler(CarromPiece piece);
-
 	[ExportCategory("Board Design")]
 	[Export] public float BoardSize { get; set; } = 700;
 	[Export] public Color BoardColor { get; set; } = new Color(0.8f, 0.6f, 0.4f); // Wood color
@@ -243,8 +241,6 @@ public partial class CarromBoard : Node2D
 			AddChild(pocket);
 			_pockets.Add(pocket);
 
-			// Connect pocket signals
-			pocket.PiecePocketed += OnPiecePocketed;
 		}
 	}
 
@@ -607,13 +603,6 @@ public partial class CarromBoard : Node2D
 		}
 	}
 	
-	/// <summary>
-	/// Handle piece being pocketed
-	/// </summary>
-	private void OnPiecePocketed(CarromPiece piece)
-	{
-		EmitSignal(SignalName.PiecePocketed, piece);
-	}
 
 	/// <summary>
 	/// Calculate actual endcap positions for a baseline using official D dimension
@@ -1263,18 +1252,12 @@ public partial class CarromBoard : Node2D
 	/// <summary>
 	/// Cleanup on exit
 	/// </summary>
-	public override void _Notification(int what)
+	/// <summary>
+	/// Get pocket instances for direct connection to game manager
+	/// </summary>
+	public List<CarromPocket> GetPockets()
 	{
-		if (what == NotificationExitTree)
-		{
-			// Disconnect pocket signals
-			foreach (var pocket in _pockets)
-			{
-				if (pocket != null)
-				{
-					pocket.PiecePocketed -= OnPiecePocketed;
-				}
-			}
-		}
+		return _pockets;
 	}
+
 }

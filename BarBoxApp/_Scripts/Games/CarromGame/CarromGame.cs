@@ -2,11 +2,6 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 
-/*
- * COMPLETED:
- * ✓ Prevent striker from being placed overlapping with pieces on the baseline - implemented collision detection in CarromModeManagerBase.PositionStrikerAtBaseline()
- */
-
 /// <summary>
 /// Traditional board game featuring physics-based striking and strategic pocket play
 /// </summary>
@@ -135,8 +130,14 @@ public partial class CarromGame : GameController
 			
 			// Board should be self-contained with its own export properties
 			
-			// Connect board signals
-			_board.PiecePocketed += OnPiecePocketed;
+			var pockets = _board.GetPockets();
+			foreach (var pocket in pockets)
+			{
+				if (pocket != null)
+				{
+					pocket.PiecePocketed += OnPiecePocketed;
+				}
+			}
 		}
 		catch (System.Exception ex)
 		{
@@ -522,10 +523,6 @@ public partial class CarromGame : GameController
 		// Add particle effects, etc.
 	}
 
-	/// <summary>
-	/// Handle piece stopped signal - simplified since CarromGameStateMachine handles settlement
-	/// </summary>
-	private void OnPieceStoppedSignal(CarromPiece stoppedPiece) { }
 
 	/// <summary>
 	/// Get point value for a piece type
@@ -1330,7 +1327,6 @@ public partial class CarromGame : GameController
 	{
 		// Connect piece signals for main game events
 		piece.PieceCollided += OnPieceCollided;
-		piece.PieceStopped += OnPieceStoppedSignal;
 		
 		// Update input controller if this is a striker
 		if (piece.Type == PieceType.Striker)
@@ -1348,7 +1344,6 @@ public partial class CarromGame : GameController
 		if (GodotObject.IsInstanceValid(piece))
 		{
 			piece.PieceCollided -= OnPieceCollided;
-			piece.PieceStopped -= OnPieceStoppedSignal;
 		}
 		
 		// Update input controller if striker was destroyed
@@ -1394,7 +1389,14 @@ public partial class CarromGame : GameController
 		// Clean up signals and references
 		if (_board != null && GodotObject.IsInstanceValid(_board))
 		{
-			_board.PiecePocketed -= OnPiecePocketed;
+			var pockets = _board.GetPockets();
+			foreach (var pocket in pockets)
+			{
+				if (pocket != null && GodotObject.IsInstanceValid(pocket))
+				{
+					pocket.PiecePocketed -= OnPiecePocketed;
+				}
+			}
 		}
 			
 		if (_inputController != null && GodotObject.IsInstanceValid(_inputController))
