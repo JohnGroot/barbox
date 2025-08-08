@@ -513,25 +513,25 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			// 4-player doubles mode: Players sit opposite as partners
 			// Team 1: Player 1 and Player 3 (white pieces)
 			// Team 2: Player 2 and Player 4 (black pieces)
-			
+
 			var player1 = new CarromPlayer();
 			player1.PlayerId = "player1";
 			player1.AssignPieceType(PieceType.White);
 			player1.ResetGameStats();
 			_players.Add(player1);
-			
+
 			var player2 = new CarromPlayer();
 			player2.PlayerId = "player2";
 			player2.AssignPieceType(PieceType.Black);
 			player2.ResetGameStats();
 			_players.Add(player2);
-			
+
 			var player3 = new CarromPlayer();
 			player3.PlayerId = "player3";
 			player3.AssignPieceType(PieceType.White); // Partner with player1
 			player3.ResetGameStats();
 			_players.Add(player3);
-			
+
 			var player4 = new CarromPlayer();
 			player4.PlayerId = "player4";
 			player4.AssignPieceType(PieceType.Black); // Partner with player2
@@ -665,15 +665,10 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		// FALLBACK: Only create new piece if no hidden piece found
 		Vector2 fallbackPosition = FindSafePositionNearCenter(_board.GetCenterPosition(), pieceType);
 		var returnedPiece = CreatePiece(pieceType, fallbackPosition);
-		if (returnedPiece != null)
-		{
+		if (returnedPiece != null && pieceType != PieceType.Striker)
+		{ 
 			// Add to competitive pieces list so it's tracked
-			if (pieceType != PieceType.Striker)
-			{
-				_competitivePieces.Add(returnedPiece);
-			}
-
-			GD.Print($"[PIECE RETURN] {pieceType} piece returned to center at {safePosition}");
+			_competitivePieces.Add(returnedPiece);
 		}
 	}
 
@@ -707,7 +702,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			// Check against all existing competitive pieces
 			foreach (var existingPiece in _competitivePieces)
 			{
-				if (!GodotObject.IsInstanceValid(existingPiece) || !existingPiece.Visible)
+				if (!IsInstanceValid(existingPiece) || !existingPiece.Visible)
 					continue;
 
 				float distance = testPosition.DistanceTo(existingPiece.GlobalPosition);
