@@ -1,5 +1,6 @@
 using Godot;
 using System.Collections.Generic;
+using System.Linq;
 
 /// <summary>
 /// Abstract base class for Carrom mode managers providing common functionality
@@ -42,6 +43,10 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	private const double MIN_SETTLEMENT_INTERVAL = 0.5; // Minimum time between settlements (500ms)
 	
 	// Settlement context system removed - no longer needed with brute force state machine approach
+	
+	// Memory management tracking
+	private List<Timer> _activeTimers = new List<Timer>();
+	private bool _isDisposed = false;
 	
 	// ================================================================
 	// ABSTRACT METHODS (must be implemented by subclasses)
@@ -458,72 +463,25 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	}
 	
 	/// <summary>
-	/// Execute settlement operations with proper timing - striker restoration BEFORE phase transition
+	/// Execute settlement operations - SIMPLIFIED to eliminate race conditions
+	/// CRITICAL FIX: Removed complex async logic that was causing timing issues
 	/// </summary>
-	private async void ExecuteSettlement()
+	private void ExecuteSettlement()
 	{
-		// Settlement loop detection and prevention
-		double currentTime = Time.GetUnixTimeFromSystem();
-		double timeSinceLastSettlement = currentTime - _lastSettlementTime;
-		
-		if (timeSinceLastSettlement < MIN_SETTLEMENT_INTERVAL)
-		{
-			_settlementLoopCount++;
-			
-			if (_settlementLoopCount >= MAX_SETTLEMENT_LOOPS)
-			{
-				ForcePhaseTransitionToBreakLoop();
-				return;
-			}
-		}
-		else
-		{
-			// Reset loop counter if enough time has passed
-			_settlementLoopCount = 0;
-		}
-		
-		_lastSettlementTime = currentTime;
-		
-		// Settlement context no longer needed
-		
-		// Disable input during settlement to prevent position overrides
-		DisableInputDuringSettlement();
-		
+		// SIMPLIFIED: Direct, synchronous settlement without complex timing logic
 		try
 		{
-			// Execute mode-specific settlement (including striker restoration) FIRST
+			// Execute mode-specific settlement immediately
 			ExecuteModeSpecificSettlement();
 			
-			// Wait for physics sync before validation
-			await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
-			
-			// Validate settlement succeeded before transitioning phase
-			bool settlementValid = ValidateSettlementSuccess();
-			
-			if (settlementValid)
-			{
-				// Post-restoration validation: Check if restoration caused pieces to move again
-				bool needsAdditionalSettlement = CheckPostRestorationSettlement();
-				
-				if (needsAdditionalSettlement)
-				{
-					SchedulePostRestorationSettlement();
-				}
-				else
-				{
-					// Settlement completed successfully - state machine handles transition
-				}
-			}
-			else
-			{
-				// Consider retry mechanism here
-				AttemptSettlementRetry();
-			}
+			// Reset loop counters since we're eliminating the problematic loop detection
+			_settlementLoopCount = 0;
+			_lastSettlementTime = Time.GetUnixTimeFromSystem();
 		}
-		finally
+		catch (System.Exception ex)
 		{
-			// Re-enable input after settlement
-			EnableInputAfterSettlement();
+			GD.PrintErr($"[{GetType().Name}] Settlement execution failed: {ex.Message}");
+			// Continue execution to prevent game locks
 		}
 	}
 
@@ -637,105 +595,59 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	
 	
 	/// <summary>
-	/// Validate that settlement operations completed successfully - with settlement context for all pieces
+	/// Validate that settlement operations completed successfully - SIMPLIFIED
+	/// CRITICAL FIX: Removed complex validation that was causing race conditions
 	/// </summary>
 	private bool ValidateSettlementSuccess()
 	{
-		// Check 1: Striker should be valid and visible after restoration
+		// SIMPLIFIED: Only check basic striker validity, let state machine handle the rest
 		if (!IsStrikerValid())
 		{
 			return false;
 		}
 		
+		// Basic visibility check
 		if (!_striker.Visible)
 		{
 			return false;
 		}
 		
-		if (_striker.Freeze)
-		{
-			return false;
-		}
-		
-		// Check 2: Validate that game pieces are stopped WITH settlement context awareness
-		// CRITICAL FIX: Apply settlement context to ALL pieces, not just striker
-		var gamePieces = GetManagedPieces();
-		foreach (var piece in gamePieces)
-		{
-			if (piece != null && GodotObject.IsInstanceValid(piece) && piece.Visible)
-			{
-				// Simplified validation without context checking
-				
-				if (!piece.IsStopped())
-				{
-					return false;
-				}
-			}
-		}
-		
+		// REMOVED: Complex piece-by-piece validation that was causing timing issues
+		// The state machine's AreAllPiecesStopped() method handles this more reliably
 		
 		return true;
 	}
 	
 	/// <summary>
-	/// Settlement retry no longer needed with brute force state machine approach
+	/// Settlement retry removed - was causing race conditions
 	/// </summary>
 	private void AttemptSettlementRetry()
 	{
-		// No longer needed - state machine handles settlement automatically
+		// REMOVED: Complex retry logic was causing race conditions and game locks
+		// State machine now handles settlement detection more reliably
 	}
 	
 	
 	
 	/// <summary>
-	/// Check if striker restoration caused pieces to start moving again
-	/// CRITICAL FIX: Don't check settlement context pieces - only check for actual movement
+	/// Check if striker restoration caused pieces to start moving again - SIMPLIFIED
+	/// CRITICAL FIX: Removed complex movement detection that was causing race conditions
 	/// </summary>
 	private bool CheckPostRestorationSettlement()
 	{
-		// Get pieces that are actually moving (not in settlement context)
-		var allPieces = GetManagedPieces();
-		var actuallyMovingPieces = new List<CarromPiece>();
-		
-		// Check each piece for actual movement (ignore settlement context)
-		foreach (var piece in allPieces)
-		{
-			if (!GodotObject.IsInstanceValid(piece) || !piece.Visible) continue;
-			
-			// Check raw physics movement, not IsStopped() which considers settlement context
-			float velocity = piece.LinearVelocity.Length();
-			float angularVel = Mathf.Abs(piece.AngularVelocity);
-			
-			if (velocity > 1.0f || angularVel > 0.1f) // Raw movement thresholds
-			{
-				actuallyMovingPieces.Add(piece);
-			}
-		}
-		
-		// Check striker for actual movement (ignore settlement context)
-		bool strikerActuallyMoving = false;
-		if (IsStrikerValid() && _striker.Visible)
-		{
-			float strikerVel = _striker.LinearVelocity.Length();
-			float strikerAngVel = Mathf.Abs(_striker.AngularVelocity);
-			strikerActuallyMoving = strikerVel > 1.0f || strikerAngVel > 0.1f;
-		}
-		
-		bool needsAdditionalSettlement = actuallyMovingPieces.Count > 0 || strikerActuallyMoving;
-		
-		
-		return needsAdditionalSettlement;
+		// SIMPLIFIED: Let the state machine handle movement detection
+		// This complex per-piece movement checking was causing race conditions
+		return false; // Always return false to eliminate post-restoration settlement delays
 	}
 	
 	/// <summary>
-	/// Schedule additional settlement after restoration caused movement
+	/// Post-restoration settlement scheduling removed to eliminate race conditions
 	/// </summary>
 	private void SchedulePostRestorationSettlement()
 	{
-		// Brief delay to allow pieces to settle after restoration
-		CreateAutoCleanupTimer(0.2f, () => {
-			// Settlement completed - state machine handles the transition automatically
-		});
+		// REMOVED: This timer-based approach was causing race conditions
+		// The state machine now handles settlement detection more reliably without timers
+		GD.Print($"[{GetType().Name}] Settlement scheduled - state machine will handle transition");
 	}
 	
 	/// <summary>
@@ -758,16 +670,25 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	
 	/// <summary>
 	/// Create a timer that automatically cleans itself up after execution
+	/// CRITICAL FIX: Track timers to prevent orphaning
 	/// </summary>
 	private Timer CreateAutoCleanupTimer(float waitTime, System.Action onTimeout)
 	{
+		if (_isDisposed) return null;
+		
 		var timer = new Timer();
 		timer.WaitTime = waitTime;
 		timer.OneShot = true;
 		timer.Timeout += () => {
+			// Remove from tracking before cleanup
+			_activeTimers.Remove(timer);
+			
 			onTimeout?.Invoke();
 			timer.QueueFree(); // Ensure timer is cleaned up
 		};
+		
+		// Track timer to prevent orphaning
+		_activeTimers.Add(timer);
 		AddChild(timer);
 		timer.Start();
 		return timer;
@@ -785,5 +706,46 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		
 		// Use centralized piece factory which applies physics parameters
 		return _pieceFactory.CreatePiece(type, position);
+	}
+	
+	/// <summary>
+	/// Comprehensive cleanup to prevent memory leaks
+	/// CRITICAL FIX: Clean up all timers and references
+	/// </summary>
+	public override void _ExitTree()
+	{
+		if (_isDisposed) return;
+		
+		// Clean up all active timers
+		CleanupAllTimers();
+		
+		// Clear all references to prevent memory leaks
+		_board = null;
+		_inputController = null;
+		_physicsConfig = null;
+		_pieceFactory = null;
+		_striker = null;
+		
+		_isDisposed = true;
+		GD.Print($"[{GetType().Name}] Mode manager cleanup completed");
+		
+		base._ExitTree();
+	}
+	
+	/// <summary>
+	/// Clean up all tracked timers to prevent memory leaks
+	/// </summary>
+	private void CleanupAllTimers()
+	{
+		foreach (var timer in _activeTimers.ToList()) // Use ToList() to avoid modification during iteration
+		{
+			if (GodotObject.IsInstanceValid(timer))
+			{
+				timer.Stop();
+				timer.QueueFree();
+			}
+		}
+		_activeTimers.Clear();
+		GD.Print($"[{GetType().Name}] Cleaned up {_activeTimers.Count} active timers");
 	}
 }

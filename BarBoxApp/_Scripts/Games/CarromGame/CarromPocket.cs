@@ -1,4 +1,5 @@
 using Godot;
+using System.Linq;
 
 /// <summary>
 /// Simplified pocket physics system using zone-based detection:
@@ -46,6 +47,11 @@ public partial class CarromPocket : Area2D
 	// PERFORMANCE OPTIMIZATION: Pre-calculated values for expensive operations
 	private float _captureRadiusSquared;  // Cached for faster distance comparisons
 	private float _holeZoneRadiusSquared; // Cached for faster zone calculations
+	
+	private const float INFLUENCE_ZONE_MULTIPLIER = 1.8f;
+	private const float HOLE_ZONE_MULTIPLIER = 0.75f;
+	private const float STATIONARY_PIECE_SPEED_THRESHOLD = 10.0f;
+	private const float ZERO_VELOCITY_THRESHOLD = 0.0f;
 
 	public override void _Ready()
 	{
@@ -263,7 +269,7 @@ public partial class CarromPocket : Area2D
 	/// </summary>
 	private float GetInfluenceZoneRadius()
 	{
-		return PocketRadius * 1.8f; // Simplified constant
+		return PocketRadius * INFLUENCE_ZONE_MULTIPLIER;
 	}
 
 	/// <summary>
@@ -271,7 +277,7 @@ public partial class CarromPocket : Area2D
 	/// </summary>
 	private float GetHoleZoneRadius()
 	{
-		return PocketRadius * 0.75f; // Simplified constant
+		return PocketRadius * HOLE_ZONE_MULTIPLIER;
 	}
 
 
@@ -282,7 +288,9 @@ public partial class CarromPocket : Area2D
 	{
 		var piecesToRemove = new System.Collections.Generic.List<CarromPiece>();
 		
-		foreach (var piece in _piecesInPocket)
+		var piecesArray = _piecesInPocket.ToArray();
+		
+		foreach (var piece in piecesArray)
 		{
 			if (!IsInstanceValid(piece))
 			{
@@ -350,7 +358,7 @@ public partial class CarromPocket : Area2D
 		
 		// Basic approach validation - ensure piece is moving toward pocket
 		float pieceSpeed = piece.GetSpeed();
-		if (pieceSpeed < 10.0f) // Allow stationary pieces
+		if (pieceSpeed < STATIONARY_PIECE_SPEED_THRESHOLD) // Allow stationary pieces
 		{
 			return true;
 		}
@@ -360,7 +368,7 @@ public partial class CarromPocket : Area2D
 		float approachDot = velocityDirection.Dot(toPocketDirection);
 		
 		// Moving toward pocket
-		return approachDot > 0.0f;
+		return approachDot > ZERO_VELOCITY_THRESHOLD;
 	}
 
 

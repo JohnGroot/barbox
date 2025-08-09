@@ -839,19 +839,20 @@ public partial class CarromGame : GameController
 		}
 
 		var players = _competitiveModeManager.GetPlayers();
-		string scoreText = "=== CARROM SCOREBOARD ===\n\n";
+		var scoreText = new System.Text.StringBuilder("=== CARROM SCOREBOARD ===\n\n");
 
 		foreach (var player in players)
 		{
-			scoreText += $"{player.PlayerId} ({player.AssignedPieceType})\n";
-			scoreText += $"Pieces: {player.PiecesPocketed}/9\n";
-			scoreText += $"Queen: {(player.HasQueen ? (player.QueenCovered ? "Covered" : "Uncovered") : "No")}\n";
-			scoreText += $"Accuracy: {player.GetAccuracy():P1}\n";
-			scoreText += $"Fouls: {player.GetFouls()}\n\n";
+			scoreText.AppendLine($"{player.PlayerId} ({player.AssignedPieceType})");
+			scoreText.AppendLine($"Pieces: {player.PiecesPocketed}/9");
+			scoreText.AppendLine($"Queen: {(player.HasQueen ? (player.QueenCovered ? "Covered" : "Uncovered") : "No")}");
+			scoreText.AppendLine($"Accuracy: {player.GetAccuracy():P1}");
+			scoreText.AppendLine($"Fouls: {player.GetFouls()}");
+			scoreText.AppendLine(); // Empty line between players
 		}
 
 		// Show scoreboard in a proper dialog instead of debug print
-		ShowScoreboardDialog(scoreText);
+		ShowScoreboardDialog(scoreText.ToString());
 	}
 
 	/// <summary>
@@ -915,26 +916,26 @@ public partial class CarromGame : GameController
 			_cameraController.RotateToPlayer(playerIndex);
 		}
 
-		// Create turn transition message with current game status
-		string transitionMessage = $"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN\n\n";
-		transitionMessage += $"Piece Type: {currentPlayer.AssignedPieceType}\n";
-		transitionMessage += $"Turn Number: {turnNumber}\n\n";
+		var transitionMessage = new System.Text.StringBuilder($"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN\n\n");
+		transitionMessage.AppendLine($"Piece Type: {currentPlayer.AssignedPieceType}");
+		transitionMessage.AppendLine($"Turn Number: {turnNumber}");
+		transitionMessage.AppendLine();
 
 		// Add current standings
-		transitionMessage += "=== CURRENT STANDINGS ===\n";
+		transitionMessage.AppendLine("=== CURRENT STANDINGS ===");
 		foreach (var player in players)
 		{
 			string indicator = player.PlayerId == playerId ? "→ " : "  ";
-			transitionMessage += $"{indicator}{player.PlayerId}: {player.PiecesPocketed}/9 pieces";
+			transitionMessage.Append($"{indicator}{player.PlayerId}: {player.PiecesPocketed}/9 pieces");
 			if (player.HasQueen)
 			{
-				transitionMessage += player.QueenCovered ? " + Queen ✓" : " + Queen (not covered)";
+				transitionMessage.Append(player.QueenCovered ? " + Queen ✓" : " + Queen (not covered)");
 			}
-			transitionMessage += "\n";
+			transitionMessage.AppendLine();
 		}
 
 		// Show the transition message as a dialog
-		ShowTurnDialog(transitionMessage);
+		ShowTurnDialog(transitionMessage.ToString());
 	}
 
 	/// <summary>
@@ -979,23 +980,24 @@ public partial class CarromGame : GameController
 		var winner = players.FirstOrDefault(p => p.PlayerId == winnerPlayerId);
 		if (winner == null) return;
 
-		// Create comprehensive game over message
 		int playerCount = players.Count;
 		string modeText = playerCount == 4 ? "Doubles" : "Singles";
 		
-		string gameOverMessage = $"🏆 GAME OVER - {modeText.ToUpper()} 🏆\n\n";
-		gameOverMessage += $"WINNER: {winner.PlayerId.ToUpper()}\n";
-		gameOverMessage += $"Team: {winner.AssignedPieceType} Pieces\n\n";
+		var gameOverMessage = new System.Text.StringBuilder($"🏆 GAME OVER - {modeText.ToUpper()} 🏆\n\n");
+		gameOverMessage.AppendLine($"WINNER: {winner.PlayerId.ToUpper()}");
+		gameOverMessage.AppendLine($"Team: {winner.AssignedPieceType} Pieces");
+		gameOverMessage.AppendLine();
 
 		// Winner's performance
-		gameOverMessage += "=== WINNER STATS ===\n";
-		gameOverMessage += $"Pieces Pocketed: {winner.PiecesPocketed}/9\n";
-		gameOverMessage += $"Queen Status: {(winner.HasQueen ? (winner.QueenCovered ? "Covered ✓" : "Not Covered ✗") : "Not Pocketed")}\n";
-		gameOverMessage += $"Accuracy: {winner.GetAccuracy():P1}\n";
-		gameOverMessage += $"Fouls: {winner.GetFouls()}\n\n";
+		gameOverMessage.AppendLine("=== WINNER STATS ===");
+		gameOverMessage.AppendLine($"Pieces Pocketed: {winner.PiecesPocketed}/9");
+		gameOverMessage.AppendLine($"Queen Status: {(winner.HasQueen ? (winner.QueenCovered ? "Covered ✓" : "Not Covered ✗") : "Not Pocketed")}");
+		gameOverMessage.AppendLine($"Accuracy: {winner.GetAccuracy():P1}");
+		gameOverMessage.AppendLine($"Fouls: {winner.GetFouls()}");
+		gameOverMessage.AppendLine();
 
 		// Final standings for all players
-		gameOverMessage += "=== FINAL STANDINGS ===\n";
+		gameOverMessage.AppendLine("=== FINAL STANDINGS ===");
 		var sortedPlayers = players.OrderByDescending(p => p.PiecesPocketed).ToList();
 		for (int i = 0; i < sortedPlayers.Count; i++)
 		{
@@ -1009,18 +1011,19 @@ public partial class CarromGame : GameController
 				_ => $"{i + 1}th"
 			};
 			
-			gameOverMessage += $"{position}: {player.PlayerId} - {player.PiecesPocketed}/9 pieces";
+			gameOverMessage.Append($"{position}: {player.PlayerId} - {player.PiecesPocketed}/9 pieces");
 			if (player.HasQueen)
 			{
-				gameOverMessage += player.QueenCovered ? " + Queen ✓" : " + Queen ✗";
+				gameOverMessage.Append(player.QueenCovered ? " + Queen ✓" : " + Queen ✗");
 			}
-			gameOverMessage += $" (Accuracy: {player.GetAccuracy():P1})\n";
+			gameOverMessage.AppendLine($" (Accuracy: {player.GetAccuracy():P1})");
 		}
 
-		gameOverMessage += "\nReturning to Practice Mode in 5 seconds...";
+		gameOverMessage.AppendLine();
+		gameOverMessage.Append("Returning to Practice Mode in 5 seconds...");
 
 		// Show the game over dialog
-		ShowGameOverDialog(gameOverMessage);
+		ShowGameOverDialog(gameOverMessage.ToString());
 
 		// Return to practice mode after delay
 		GetTree().CreateTimer(5.0f).Timeout += () => {

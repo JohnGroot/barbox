@@ -37,6 +37,22 @@ public partial class CarromBoard : Node2D
 	private Vector2[] _cornerArrowEnds = new Vector2[4];
 	private bool _needsRedraw = true;
 	
+	// PERFORMANCE CACHE: Physics query result caching
+	private struct PhysicsQueryCache
+	{
+		public Vector2 Position;
+		public float Radius;
+		public CarromPiece ExcludePiece;
+		public bool IsObstructed;
+		public CarromPiece[] PiecesInRadius;
+		public float CacheTime;
+		public bool IsValid;
+	}
+	
+	private PhysicsQueryCache _obstructionCache;
+	private PhysicsQueryCache _radiusCache;
+	private const float CACHE_DURATION = 0.016f; // Cache for one frame (60fps)
+	
 	// Debug collision visualization
 	private struct CollisionDebugInfo
 	{
@@ -874,6 +890,12 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	public Vector2 GetBaselinePosition(int playerIndex)
 	{
+		if (playerIndex < 0 || playerIndex > 3)
+		{
+			GD.PrintErr($"[CarromBoard] Invalid player index: {playerIndex}. Must be 0-3. Defaulting to player 0.");
+			playerIndex = 0;
+		}
+
 		// Use computed properties for consistent positioning
 		return playerIndex switch
 		{
@@ -881,7 +903,7 @@ public partial class CarromBoard : Node2D
 			1 => new Vector2(0, -BaselineCenterDistanceFromCenter),    // Top (Player 2)  
 			2 => new Vector2(-BaselineCenterDistanceFromCenter, 0),    // Left (Player 3)
 			3 => new Vector2(BaselineCenterDistanceFromCenter, 0),     // Right (Player 4)
-			_ => new Vector2(0, BaselineCenterDistanceFromCenter)      // Default to bottom
+			_ => new Vector2(0, BaselineCenterDistanceFromCenter)      // Default to bottom (should not reach here)
 		};
 	}
 
@@ -890,6 +912,12 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	public Vector2[] GetBaselinePositions(int playerIndex)
 	{
+		if (playerIndex < 0 || playerIndex > 3)
+		{
+			GD.PrintErr($"[CarromBoard] Invalid player index: {playerIndex}. Must be 0-3.");
+			return new Vector2[0];
+		}
+
 		Vector2 baselineCenter = GetBaselinePosition(playerIndex);
 		Vector2[] positions = new Vector2[11]; // 11 positions along baseline
 		
@@ -1054,6 +1082,18 @@ public partial class CarromBoard : Node2D
 			return true;
 		}
 		
+		float currentTime = (float)Time.GetUnixTimeFromSystem();
+		bool cacheValid = _obstructionCache.IsValid &&
+		                  (currentTime - _obstructionCache.CacheTime) < CACHE_DURATION &&
+		                  _obstructionCache.Position.DistanceSquaredTo(position) < 0.01f &&
+		                  Mathf.Abs(_obstructionCache.Radius - radius) < 0.01f &&
+		                  _obstructionCache.ExcludePiece == excludePiece;
+		
+		if (cacheValid)
+		{
+			return _obstructionCache.IsObstructed;
+		}
+		
 		// Use physics space state for accurate collision detection
 		var spaceState = GetWorld2D()?.DirectSpaceState;
 		if (spaceState == null)
@@ -1078,7 +1118,19 @@ public partial class CarromBoard : Node2D
 		
 		// Check for collisions
 		var results = spaceState.IntersectShape(query);
-		return results.Count > 0;
+		bool isObstructed = results.Count > 0;
+		
+		_obstructionCache = new PhysicsQueryCache
+		{
+			Position = position,
+			Radius = radius,
+			ExcludePiece = excludePiece,
+			IsObstructed = isObstructed,
+			CacheTime = currentTime,
+			IsValid = true
+		};
+		
+		return isObstructed;
 	}
 	
 	/// <summary>
@@ -1089,6 +1141,31 @@ public partial class CarromBoard : Node2D
 	/// <returns>Array of CarromPieces within the radius</returns>
 	public CarromPiece[] GetPiecesInRadius(Vector2 position, float radius)
 	{
+		float currentTime = (float)Time.GetUnixTimeFromSystem();
+		bool cacheValid = _radiusCache.IsValid &&
+		                  (currentTime - _radiusCache.CacheTime) < CACHE_DURATION &&
+		                  _radiusCache.Position.DistanceSquaredTo(position) < 0.01f &&
+		                  Mathf.Abs(_radiusCache.Radius - radius) < 0.01f;
+		
+		if (cacheValid && _radiusCache.PiecesInRadius != null)
+		{
+			// Validate cached pieces are still valid
+			bool allPiecesValid = true;
+			foreach (var piece in _radiusCache.PiecesInRadius)
+			{
+				if (piece == null || !GodotObject.IsInstanceValid(piece))
+				{
+					allPiecesValid = false;
+					break;
+				}
+			}
+			
+			if (allPiecesValid)
+			{
+				return (CarromPiece[])_radiusCache.PiecesInRadius.Clone();
+			}
+		}
+		
 		var piecesInRadius = new List<CarromPiece>();
 		
 		// Use physics space state for accurate detection
@@ -1120,7 +1197,18 @@ public partial class CarromBoard : Node2D
 			}
 		}
 		
-		return piecesInRadius.ToArray();
+		var piecesArray = piecesInRadius.ToArray();
+		
+		_radiusCache = new PhysicsQueryCache
+		{
+			Position = position,
+			Radius = radius,
+			PiecesInRadius = piecesArray,
+			CacheTime = currentTime,
+			IsValid = true
+		};
+		
+		return piecesArray;
 	}
 	
 	/// <summary>

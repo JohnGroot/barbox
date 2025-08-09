@@ -73,6 +73,9 @@ public partial class CarromInputController : Node2D
 	private bool _isMovingStriker = false;
 	private const float STRIKER_MOVE_SPEED = 2500.0f; // Pixels per second
 	
+	private const float TRAJECTORY_CACHE_DIRECTION_TOLERANCE_SQUARED = 0.0001f;
+	private const float TRAJECTORY_CACHE_POWER_TOLERANCE = 0.1f;
+	
 	// Simplified state management - single source of truth
 	private ICarromGameState _gameState;
 	
@@ -117,12 +120,18 @@ public partial class CarromInputController : Node2D
 	private bool _showCollisionFeedback = false;
 	private Vector2 _lastTargetPosition = Vector2.Zero;
 	private bool _lastPositionWasValid = true;
+	
+	// Memory management tracking
+	private bool _isDisposed = false;
 
 	public override void _Ready()
 	{
 		SetProcessInput(true);
 		SetPhysicsProcess(true); // Enable physics processing for smooth movement
 		SetProcess(true); // Enable process for batched visual updates
+		
+		// Initialize memory tracking
+		_isDisposed = false;
 	}
 	
 	/// <summary>
@@ -1088,9 +1097,9 @@ public partial class CarromInputController : Node2D
 			return (new Vector2[0], null, new Vector2[0]);
 		}
 		
-		// Check cache validity (only check direction, ignore power)
 		if (_trajectoryCacheValid && 
-			_lastTrajectoryDirection.DistanceTo(direction) < 0.01f)
+			_lastTrajectoryDirection.DistanceSquaredTo(direction) < TRAJECTORY_CACHE_DIRECTION_TOLERANCE_SQUARED &&
+			Mathf.Abs(_lastTrajectoryPower - power) < TRAJECTORY_CACHE_POWER_TOLERANCE)
 		{
 			return (_cachedTrajectoryPoints, _cachedCollisionPoint, _cachedPostCollisionPoints);
 		}
@@ -1098,9 +1107,8 @@ public partial class CarromInputController : Node2D
 		// Use constant distance trajectory regardless of power
 		var result = SimulateConstantTrajectoryPath(startPos, direction);
 		
-		// Cache results
 		_lastTrajectoryDirection = direction;
-		_lastTrajectoryPower = power; // Still cache power for completeness
+		_lastTrajectoryPower = power;
 		_cachedTrajectoryPoints = result.trajectoryPoints;
 		_cachedCollisionPoint = result.collisionPoint;
 		_cachedPostCollisionPoints = result.postCollisionPoints;
@@ -1271,11 +1279,71 @@ public partial class CarromInputController : Node2D
 		return points.ToArray();
 	}
 
+	/// <summary>
+	/// Comprehensive cleanup to prevent memory leaks
+	/// CRITICAL FIX: Add proper signal disconnection and cache clearing
+	/// </summary>
+	public override void _ExitTree()
+	{
+		if (_isDisposed) return;
+		
+		// Disconnect from game state if connected
+		_gameState = null;
+		
+		// Clear all cached data to prevent memory leaks
+		ClearAllCaches();
+		
+		// Clear piece references
+		_striker = null;
+		_board = null;
+		_cameraController = null;
+		_physicsConfig = null;
+		
+		// Stop all processing
+		SetProcessInput(false);
+		SetPhysicsProcess(false);
+		SetProcess(false);
+		
+		_isDisposed = true;
+		GD.Print($"[CarromInputController] Cleanup completed");
+		
+		base._ExitTree();
+	}
+	
+	/// <summary>
+	/// Clear all cached data to free memory
+	/// </summary>
+	private void ClearAllCaches()
+	{
+		// Clear coordinate conversion cache
+		_hasValidConversionCache = false;
+		_lastScreenPosition = Vector2.Zero;
+		_lastBoardPosition = Vector2.Zero;
+		
+		// Clear trajectory calculation cache
+		_trajectoryCacheValid = false;
+		_cachedTrajectoryPoints = new Vector2[0];
+		_cachedPostCollisionPoints = new Vector2[0];
+		_cachedCollisionPoint = null;
+		_lastTrajectoryDirection = Vector2.Zero;
+		_lastTrajectoryPower = 0.0f;
+		
+		// Clear baseline geometry cache
+		_baselineGeometryCached = false;
+		_baselinePositions = new Vector2[0];
+		_cachedBaselineStart = Vector2.Zero;
+		_cachedBaselineEnd = Vector2.Zero;
+		_cachedBaselineVector = Vector2.Zero;
+		_cachedBaselineLength = 0.0f;
+		
+		GD.Print($"[CarromInputController] All caches cleared");
+	}
+	
 	// Public accessors
-	public bool IsInputEnabled() => CanAcceptInput();
-	public CarromPiece GetStriker() => _striker;
+	public bool IsInputEnabled() => !_isDisposed && CanAcceptInput();
+	public CarromPiece GetStriker() => _isDisposed ? null : _striker;
 	public float GetMaxStrikePowerValue() => GetMaxStrikePower();
 	public float GetDeadZone() => DeadZone;
 	public string GetGameStateStatus() => _gameState?.GetCurrentStateName() ?? "No game state";
-	public bool HasGameState() => _gameState != null;
+	public bool HasGameState() => !_isDisposed && _gameState != null;
 }

@@ -38,6 +38,35 @@ public partial class CarromPieceFactory : Node2D
 						   PackedScene whiteTemplate, PackedScene blackTemplate,
 						   PackedScene redTemplate, PackedScene strikerTemplate)
 	{
+		if (board == null || !GodotObject.IsInstanceValid(board))
+		{
+			GD.PrintErr("[CarromPieceFactory] Initialize failed - board is null or invalid");
+			return;
+		}
+
+		if (physicsConfig == null || !GodotObject.IsInstanceValid(physicsConfig))
+		{
+			GD.PrintErr("[CarromPieceFactory] Initialize failed - physics config is null or invalid");
+			return;
+		}
+
+		var templates = new (PackedScene template, string name)[]
+		{
+			(whiteTemplate, "white"),
+			(blackTemplate, "black"),
+			(redTemplate, "red"),
+			(strikerTemplate, "striker")
+		};
+
+		foreach (var (template, name) in templates)
+		{
+			if (template == null || !GodotObject.IsInstanceValid(template))
+			{
+				GD.PrintErr($"[CarromPieceFactory] Initialize failed - {name} template is null or invalid");
+				return;
+			}
+		}
+
 		_board = board;
 		_physicsConfig = physicsConfig;
 		_whitePieceTemplate = whiteTemplate;
@@ -74,23 +103,52 @@ public partial class CarromPieceFactory : Node2D
 	/// </summary>
 	public CarromPiece CreatePiece(PieceType type, Vector2 position)
 	{
+		if (_board == null || !GodotObject.IsInstanceValid(_board))
+		{
+			GD.PrintErr($"[CarromPieceFactory] Cannot create piece - board reference is null or invalid");
+			return null;
+		}
+
 		PackedScene pieceTemplate = GetPieceTemplate(type);
 		
 		if (pieceTemplate == null)
 		{
+			GD.PrintErr($"[CarromPieceFactory] No template found for piece type: {type}");
 			return null;
 		}
 		
-		// Instantiate the scene
-		var piece = pieceTemplate.Instantiate<CarromPiece>();
-		if (piece == null)
+		if (!GodotObject.IsInstanceValid(pieceTemplate))
 		{
+			GD.PrintErr($"[CarromPieceFactory] Piece template for {type} is invalid");
+			return null;
+		}
+		
+		// Instantiate the scene with error handling
+		CarromPiece piece = null;
+		try
+		{
+			piece = pieceTemplate.Instantiate<CarromPiece>();
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[CarromPieceFactory] Failed to instantiate piece {type}: {ex.Message}");
+			return null;
+		}
+		
+		if (piece == null || !GodotObject.IsInstanceValid(piece))
+		{
+			GD.PrintErr($"[CarromPieceFactory] Failed to create valid piece instance for type: {type}");
 			return null;
 		}
 		
 		// Configure the piece
 		piece.Type = type;
-		piece.PhysicsConfig = _physicsConfig;
+		
+		if (_physicsConfig != null && GodotObject.IsInstanceValid(_physicsConfig))
+		{
+			piece.PhysicsConfig = _physicsConfig;
+		}
+		
 		piece.Position = position; // Use local position relative to board
 		
 		// Apply centralized physics limits
@@ -98,8 +156,17 @@ public partial class CarromPieceFactory : Node2D
 			_maxVelocityLimit, _maxAngularVelocity, _velocityAlertThreshold);
 		
 		
-		// Add to board
-		_board.AddChild(piece);
+		// Add to board with error handling
+		try
+		{
+			_board.AddChild(piece);
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[CarromPieceFactory] Failed to add piece to board: {ex.Message}");
+			piece?.QueueFree();
+			return null;
+		}
 		
 		// Track pieces (excluding striker for some operations)
 		if (type != PieceType.Striker)
