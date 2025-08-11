@@ -1126,7 +1126,6 @@ public partial class CarromGame : GameController
 	{
 		GD.Print("[CarromGame] Settlement completed - game ready for next turn");
 	}
-	
 
 	/// <summary>
 	/// Handle practice reset request from practice mode manager

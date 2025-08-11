@@ -41,14 +41,14 @@ public abstract partial class AutoloadBase : Node
 	/// <returns>The autoload instance or null if not found</returns>
 	public static T GetAutoload<T>() where T : AutoloadBase
 	{
-		var tree = Engine.GetMainLoop() as SceneTree;
-		if (tree == null) return null;
+		if (Engine.GetMainLoop() is not SceneTree tree) 
+			return null;
 
 		string serviceName = typeof(T).Name;
 
 		// Primary: Group-based discovery
-		var serviceFromGroup = tree.GetFirstNodeInGroup(serviceName) as T;
-		if (serviceFromGroup != null) return serviceFromGroup;
+		if (tree.GetFirstNodeInGroup(serviceName) is T serviceFromGroup) 
+			return serviceFromGroup;
 
 		// Fallback: Direct node path discovery
 		var serviceFromPath = tree.Root?.GetNode($"/root/{serviceName}") as T;
