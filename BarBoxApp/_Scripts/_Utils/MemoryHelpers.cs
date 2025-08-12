@@ -1,9 +1,11 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
+
 
 public static class MemoryHelpers {
-	public static unsafe int SizeOf<T>() where T: unmanaged {
-		return sizeof(T);
+	public static int SizeOf<T>() {
+		return Unsafe.SizeOf<T>();
 	}
 
 	public static unsafe ReadOnlySpan<T> AsReadOnlySpan<T>(this T[] array) where T: unmanaged {
@@ -15,6 +17,9 @@ public static class MemoryHelpers {
 	}
 
 	public static unsafe ReadOnlySpan<byte> AsBytes<T>(this ReadOnlySpan<T> span) where T: unmanaged {
+		return MemoryMarshal.Cast<T, byte>(span);
+	}
+	public static unsafe ReadOnlySpan<byte> AsBytes<T>(this Span<T> span) where T: unmanaged {
 		return MemoryMarshal.Cast<T, byte>(span);
 	}
 }
