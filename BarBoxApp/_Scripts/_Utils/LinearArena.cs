@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Generic = System.Collections.Generic;
 
+#nullable enable
 public unsafe class LinearArena : IDisposable {
     public byte* _buffer;
     nint _offset;
@@ -211,3 +212,4 @@ static class Alignment {
         return (int)Marshal.OffsetOf<AlignOfHelper<T>>(nameof(AlignOfHelper<T>.Value));
     }
 }
+#nullable disable
