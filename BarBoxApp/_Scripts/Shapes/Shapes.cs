@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 
 [Tool]
 [GlobalClass]
-public partial class DrawTest: CompositorEffect {
+public partial class Shapes: CompositorEffect {
 	public required RenderingDevice renderingDevice;
 	public required ShapeResources[] shapeResourcesArray;
 	public required Rid?[] shapePipelines = new Rid?[NUM_SHAPE_TYPES];
@@ -56,7 +56,7 @@ public partial class DrawTest: CompositorEffect {
 	const int DEBUG_INSTANCES = 100;
 
 	// Godot seems to require a constructor
-	public DrawTest():base() {
+	public Shapes():base() {
 		this.renderingDevice = RenderingServer.GetRenderingDevice();
 		this.shapeResourcesArray = new ShapeResources[NUM_SHAPE_TYPES];
 		this.shapePipelines = new Rid?[NUM_SHAPE_TYPES];
@@ -70,8 +70,8 @@ public partial class DrawTest: CompositorEffect {
 	}
 
 	static readonly string[] SHADER_PATHS = new [] {
-		"res://shaders/draw_test.glsl",
-		"res://shaders/draw_test.glsl"
+		"res://_Shaders/draw_test.glsl",
+		"res://_Shaders/draw_test.glsl"
 	};
 
 	static Rid MakePipeline(RenderingDevice rd, long vertexFormat, Rid shader, Rid framebuffer) {
@@ -102,7 +102,7 @@ public partial class DrawTest: CompositorEffect {
 		);
 	}
 
-    public static void _Init(DrawTest instance) {
+    public static void _Init(Shapes instance) {
 		ShapeResources InitPolylineResources() {
 	    	ReadOnlySpan<Vector3> verts = stackalloc Vector3[] {
 	            new(-0.5f, -0.5f, 0f),
@@ -164,7 +164,7 @@ public partial class DrawTest: CompositorEffect {
 				idxBuffer, 0, (uint)ids.Length
 			);
 
-			var shaderFile = GD.Load<RDShaderFile>("res://shaders/draw_test.glsl");
+			var shaderFile = GD.Load<RDShaderFile>("res://_Shaders/draw_test.glsl");
 			var spv = shaderFile.GetSpirV();
 			var shader = instance.renderingDevice.ShaderCreateFromSpirV(spv);
 
@@ -324,8 +324,8 @@ public partial class DrawTest: CompositorEffect {
 
     	if (renderingDevice is {} rd) {
     		if (callbackType == (int)EffectCallbackTypeEnum.PostTransparent) {
-    			var sw = new System.Diagnostics.Stopwatch();
-    			sw.Start();
+
+    			DrawDemo1();
     			if (renderData.GetRenderSceneBuffers() is RenderSceneBuffersRD sb) {
     				var size = sb.GetInternalSize();
 
@@ -435,8 +435,6 @@ public partial class DrawTest: CompositorEffect {
 						}
 					}
     			}
-    			sw.Stop();
-    			// GD.Print($"elapsed: {sw.ElapsedTicks / 10_000f}");
     		}
     	}
     }
