@@ -22,7 +22,7 @@ public partial class CarromInputController : Node2D
 	// Trajectory prediction parameters
 	private float _trajectoryMaxDistance = 300.0f;
 	private float _trajectoryPostCollisionDistance = 25.0f;
-	private float _trajectoryStepSize = 5.0f;
+	private float _trajectoryStepSize = 1f;
 	private int _trajectoryMaxSteps = 100;
 
 	[ExportCategory("Visual Feedback")]
@@ -73,8 +73,8 @@ public partial class CarromInputController : Node2D
 	private bool _isMovingStriker = false;
 	private const float STRIKER_MOVE_SPEED = 2500.0f; // Pixels per second
 	
-	private const float TRAJECTORY_CACHE_DIRECTION_TOLERANCE_SQUARED = 0.0001f;
-	private const float TRAJECTORY_CACHE_POWER_TOLERANCE = 0.1f;
+	private const float TRAJECTORY_CACHE_DIRECTION_TOLERANCE_SQUARED = 0.000001f;
+	private const float TRAJECTORY_CACHE_POWER_TOLERANCE = 0.001f;
 	
 	// Simplified state management - single source of truth
 	private ICarromGameState _gameState;
@@ -161,7 +161,7 @@ public partial class CarromInputController : Node2D
 	private Vector2 ScreenToBoardPositionCached(Vector2 screenPosition)
 	{
 		// Use cache if position hasn't changed significantly (within 2 pixels)
-		if (_hasValidConversionCache && _lastScreenPosition.DistanceTo(screenPosition) < 2.0f)
+		if (_hasValidConversionCache && _lastScreenPosition.DistanceTo(screenPosition) < 0.25f)
 		{
 			return _lastBoardPosition;
 		}
@@ -389,9 +389,7 @@ public partial class CarromInputController : Node2D
 	private void StartInput(Vector2 screenPosition)
 	{
 		if (!CanStartInput()) 
-		{
 			return;
-		}
 
 		// Convert screen position to board coordinates using cached conversion
 		Vector2 boardPosition = ScreenToBoardPositionCached(screenPosition);
@@ -500,7 +498,8 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private void HandleLateralMovement(Vector2 inputVector)
 	{
-		if (_board == null || _striker == null) return;
+		if (_board == null || _striker == null) 
+			return;
 		
 		// Use cached geometry for fast position calculation
 		Vector2 targetPosition = GetClosestPositionOnBaselineCached(_currentAimPosition);
@@ -624,42 +623,42 @@ public partial class CarromInputController : Node2D
 	{
 		Vector2 inputVector = _currentAimPosition - _aimStartPosition;
 		float inputDistance = inputVector.Length();
-		
-		if (inputDistance > DeadZone)
+
+		if (!(inputDistance > DeadZone))
+			return;
+
+		float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
+		float powerRatio = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
+		float strikePower = Mathf.Lerp(GetMinStrikePower(), GetMaxStrikePower(), powerRatio);
+			
+		// Calculate strike direction with angle clamping (same as HandlePowerAiming)
+		Vector2 rawStrikeDirection = -inputVector.Normalized(); // Opposite of pull direction
+		Vector2 forwardDirection = GetForwardDirection();
+			
+		// Clamp strike direction to valid angle range (±maxStrikeAngle from forward)
+		float maxAngleRad = Mathf.DegToRad(GetMaxStrikeAngle());
+		float currentAngle = forwardDirection.AngleTo(rawStrikeDirection);
+			
+		Vector2 strikeDirection;
+		if (Mathf.Abs(currentAngle) <= maxAngleRad)
 		{
-			float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
-			float powerRatio = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
-			float strikePower = Mathf.Lerp(GetMinStrikePower(), GetMaxStrikePower(), powerRatio);
-			
-			// Calculate strike direction with angle clamping (same as HandlePowerAiming)
-			Vector2 rawStrikeDirection = -inputVector.Normalized(); // Opposite of pull direction
-			Vector2 forwardDirection = GetForwardDirection();
-			
-			// Clamp strike direction to valid angle range (±maxStrikeAngle from forward)
-			float maxAngleRad = Mathf.DegToRad(GetMaxStrikeAngle());
-			float currentAngle = forwardDirection.AngleTo(rawStrikeDirection);
-			
-			Vector2 strikeDirection;
-			if (Mathf.Abs(currentAngle) <= maxAngleRad)
-			{
-				// Within valid range, use raw direction
-				strikeDirection = rawStrikeDirection;
-			}
-			else
-			{
-				// Clamp to nearest valid angle
-				float clampedAngle = Mathf.Sign(currentAngle) * maxAngleRad;
-				strikeDirection = forwardDirection.Rotated(clampedAngle);
-			}
-			
-			Vector2 strikeForce = strikeDirection * strikePower;
-			
-			// Emit signal first to apply force before state transition
-			EmitSignal(SignalName.StrikeExecuted, strikeForce);
-			
-			// Defer state machine notification to ensure force is applied
-			CallDeferred(MethodName.NotifyStrikeExecuted);
+			// Within valid range, use raw direction
+			strikeDirection = rawStrikeDirection;
 		}
+		else
+		{
+			// Clamp to nearest valid angle
+			float clampedAngle = Mathf.Sign(currentAngle) * maxAngleRad;
+			strikeDirection = forwardDirection.Rotated(clampedAngle);
+		}
+			
+		Vector2 strikeForce = strikeDirection * strikePower;
+			
+		// Emit signal first to apply force before state transition
+		EmitSignal(SignalName.StrikeExecuted, strikeForce);
+			
+		// Defer state machine notification to ensure force is applied
+		CallDeferred(MethodName.NotifyStrikeExecuted);
 	}
 
 	/// <summary>
@@ -856,7 +855,8 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private void DrawTrajectoryPath(Vector2[] points, Color color)
 	{
-		if (points.Length < 2) return;
+		if (points.Length < 2) 
+			return;
 		
 		for (int i = 0; i < points.Length - 1; i++)
 		{
@@ -906,7 +906,8 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private void DrawDeadzoneRing(Vector2 strikerPos)
 	{
-		if (!ShowDeadzoneRing) return;
+		if (!ShowDeadzoneRing) 
+			return;
 		
 		// Draw deadzone ring
 		DrawArc(strikerPos, DeadZone, 0, Mathf.Tau, 32, DeadzoneRingColor, DeadzoneRingWidth, true);
@@ -980,27 +981,27 @@ public partial class CarromInputController : Node2D
 	{
 		Vector2 inputVector = currentPos - _aimStartPosition;
 		float inputDistance = inputVector.Length();
-		
-		if (inputDistance > DeadZone)
-		{
-			float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
-			float power = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
+
+		if (!(inputDistance > DeadZone))
+			return;
+
+		float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
+		float power = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
 			
-			// Draw power bar
-			Vector2 barPosition = strikerPos + Vector2.Up * 40;
-			float barWidth = _powerBarWidth;
-			float barHeight = _powerBarHeight;
+		// Draw power bar
+		Vector2 barPosition = strikerPos + Vector2.Up * 40;
+		float barWidth = _powerBarWidth;
+		float barHeight = _powerBarHeight;
 			
-			// Background
-			DrawRect(new Rect2(barPosition - Vector2.Right * barWidth / 2, 
-							   new Vector2(barWidth, barHeight)), Colors.Gray, true, -1f, true);
+		// Background
+		DrawRect(new Rect2(barPosition - Vector2.Right * barWidth / 2, 
+			new Vector2(barWidth, barHeight)), Colors.Gray, true, -1f, true);
 			
-			// Power fill
-			Color powerColor = power > 0.8f ? Colors.Red : 
-							  power > 0.5f ? Colors.Yellow : PowerBarColor;
-			DrawRect(new Rect2(barPosition - Vector2.Right * barWidth / 2, 
-							   new Vector2(barWidth * power, barHeight)), powerColor, true, -1f, true);
-		}
+		// Power fill
+		Color powerColor = power > 0.8f ? Colors.Red : 
+			power > 0.5f ? Colors.Yellow : PowerBarColor;
+		DrawRect(new Rect2(barPosition - Vector2.Right * barWidth / 2, 
+			new Vector2(barWidth * power, barHeight)), powerColor, true, -1f, true);
 	}
 	
 	/// <summary>
@@ -1058,12 +1059,12 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	public void SetCurrentPlayer(int playerIndex)
 	{
-		if (_currentPlayerIndex != playerIndex)
-		{
-			_currentPlayerIndex = playerIndex;
-			UpdateBaselinePositions(); // This will also update the cached geometry
-			InvalidateTrajectoryCache(); // Player change affects trajectory calculation
-		}
+		if (_currentPlayerIndex == playerIndex)
+			return;
+
+		_currentPlayerIndex = playerIndex;
+		UpdateBaselinePositions(); // This will also update the cached geometry
+		InvalidateTrajectoryCache(); // Player change affects trajectory calculation
 	}
 	
 	/// <summary>
@@ -1094,7 +1095,7 @@ public partial class CarromInputController : Node2D
 	{
 		if (_physicsConfig == null || _striker == null)
 		{
-			return (new Vector2[0], null, new Vector2[0]);
+			return ([], null, []);
 		}
 		
 		if (_trajectoryCacheValid && 
@@ -1214,7 +1215,7 @@ public partial class CarromInputController : Node2D
 		if (to.X > effectiveBoundary && direction.X > 0)
 		{
 			float t = (effectiveBoundary - from.X) / direction.X;
-			if (t >= 0 && t <= 1)
+			if (t is >= 0 and <= 1)
 			{
 				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
 				return (true, intersectionPoint, Vector2.Left);
@@ -1225,7 +1226,7 @@ public partial class CarromInputController : Node2D
 		if (to.X < -effectiveBoundary && direction.X < 0)
 		{
 			float t = (-effectiveBoundary - from.X) / direction.X;
-			if (t >= 0 && t <= 1)
+			if (t is >= 0 and <= 1)
 			{
 				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
 				return (true, intersectionPoint, Vector2.Right);
@@ -1236,7 +1237,7 @@ public partial class CarromInputController : Node2D
 		if (to.Y < -effectiveBoundary && direction.Y < 0)
 		{
 			float t = (-effectiveBoundary - from.Y) / direction.Y;
-			if (t >= 0 && t <= 1)
+			if (t is >= 0 and <= 1)
 			{
 				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
 				return (true, intersectionPoint, Vector2.Down);
@@ -1247,7 +1248,7 @@ public partial class CarromInputController : Node2D
 		if (to.Y > effectiveBoundary && direction.Y > 0)
 		{
 			float t = (effectiveBoundary - from.Y) / direction.Y;
-			if (t >= 0 && t <= 1)
+			if (t is >= 0 and <= 1)
 			{
 				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
 				return (true, intersectionPoint, Vector2.Up);
@@ -1322,8 +1323,8 @@ public partial class CarromInputController : Node2D
 		
 		// Clear trajectory calculation cache
 		_trajectoryCacheValid = false;
-		_cachedTrajectoryPoints = new Vector2[0];
-		_cachedPostCollisionPoints = new Vector2[0];
+		_cachedTrajectoryPoints = [];
+		_cachedPostCollisionPoints = [];
 		_cachedCollisionPoint = null;
 		_lastTrajectoryDirection = Vector2.Zero;
 		_lastTrajectoryPower = 0.0f;
