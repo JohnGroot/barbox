@@ -10,7 +10,7 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	[GlobalClass]
 	public partial class RacingUIManager : Node
-{
+	{
 	// ================================================================
 	// SIGNALS
 	// ================================================================

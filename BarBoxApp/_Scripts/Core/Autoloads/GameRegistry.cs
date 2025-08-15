@@ -97,5 +97,20 @@ public partial class GameRegistry : AutoloadBase
 			Category = "Board",
 			DifficultyRating = 3.0f
 		});
+
+		// Idle mining game with upgrades and gem collection
+		RegisterGame(new GameMetadata
+		{
+			GameId = "mining_game",
+			DisplayName = "Mining Game",
+			Description = "Idle mining game where you collect gems, upgrade your equipment, and extract resources across different locations",
+			ScenePath = "res://_Scenes/Games/MiningGame/MiningGame.tscn",
+			ThumbnailPath = "res://_Scenes/Games/MiningGame/Assets/thumbnail.png",
+			MaxPlayers = 1,
+			CreditCost = 1,
+			IsActive = true,
+			Category = "Idle",
+			DifficultyRating = 1.5f
+		});
 	}
 }
