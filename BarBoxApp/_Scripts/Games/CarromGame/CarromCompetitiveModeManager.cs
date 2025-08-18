@@ -18,11 +18,18 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	[Signal] public delegate void PlayerWonEventHandler(string playerId);
 	[Signal] public delegate void FoulCommittedEventHandler(string playerId);
 	[Signal] public delegate void CompetitiveModeSetupCompleteEventHandler();
+	[Signal] public delegate void RoundCompletedEventHandler(int roundNumber);
+	[Signal] public delegate void MaxRoundsReachedEventHandler(string winnerId);
 
 	// Competitive mode state
 	private List<CarromPiece> _competitivePieces = new List<CarromPiece>();
 	private int _currentPlayerIndex = 0;
 	private List<CarromPlayer> _players = new List<CarromPlayer>();
+	
+	// Round tracking
+	private int _currentRound = 1;
+	private int _maxRounds = 50; // Default 50 rounds as per specification
+	private Dictionary<string, int> _tournamentPoints = new Dictionary<string, int>();
 	
 	// Turn state tracking
 	private bool _validPocketThisStroke = false;
@@ -213,7 +220,8 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		// Turn ends if player committed fouls OR pocketed no valid pieces
 		bool shouldContinue = _validPocketThisStroke && !_foulThisStroke;
 		
-		// Reset stroke flags for next stroke
+		// Reset stroke flags for next stroke AFTER storing the decision
+		// This ensures flags are available for settlement logic
 		_validPocketThisStroke = false;
 		_foulThisStroke = false;
 		
@@ -523,6 +531,22 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			_playerCount = playerCount;
 		}
 	}
+	
+	/// <summary>
+	/// Set the maximum number of rounds for this tournament
+	/// </summary>
+	public void SetMaxRounds(int maxRounds)
+	{
+		_maxRounds = maxRounds > 0 ? maxRounds : 50; // Default to 50 if invalid
+	}
+	
+	/// <summary>
+	/// Get current round information
+	/// </summary>
+	public (int current, int max) GetRoundInfo()
+	{
+		return (_currentRound, _maxRounds);
+	}
 
 	/// <summary>
 	/// Setup players for competitive mode with proper piece type assignments
@@ -609,6 +633,23 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		
 		// Step 2: Switch to next player index
 		_currentPlayerIndex = (_currentPlayerIndex + 1) % _players.Count;
+		
+		// Check for round completion - when we cycle back to first player
+		if (_currentPlayerIndex == 0)
+		{
+			_currentRound++;
+			EmitSignal(SignalName.RoundCompleted, _currentRound);
+			GD.Print($"[CarromCompetitive] Round {_currentRound - 1} completed, starting round {_currentRound}");
+			
+			// Check if max rounds reached
+			if (_currentRound > _maxRounds)
+			{
+				string winnerId = DetermineWinnerByPoints();
+				EmitSignal(SignalName.MaxRoundsReached, winnerId);
+				GD.Print($"[CarromCompetitive] Max rounds ({_maxRounds}) reached, tournament won by {winnerId}");
+				return; // End the game, don't continue with turn setup
+			}
+		}
 
 		// Step 3: Start new turn for next player
 		var nextPlayer = GetCurrentPlayer();
@@ -667,6 +708,10 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		_isBreakingTurn = true;
 		_breakingAttempts = 0;
 		_piecesDisturbedInBreaking = false;
+		
+		// Reset round tracking
+		_currentRound = 1;
+		_tournamentPoints.Clear();
 		
 		// Sync input controller with reset player
 		_inputController?.SetCurrentPlayer(_currentPlayerIndex);
@@ -836,6 +881,75 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			player.ResetTournamentStats();
 		}
 		GD.Print("[Tournament] Tournament statistics reset for all players");
+	}
+	
+	/// <summary>
+	/// Determine winner based on current scores when max rounds are reached
+	/// Uses tournament points system per ICF rules
+	/// </summary>
+	private string DetermineWinnerByPoints()
+	{
+		if (_players.Count == 0)
+		{
+			return "unknown";
+		}
+		
+		// Calculate current tournament points for each player
+		// Tournament points = opponent's remaining pieces (max 12 per round)
+		// Queen adds 3 points if covered and player wins
+		var playerScores = new Dictionary<string, int>();
+		
+		foreach (var player in _players)
+		{
+			int tournamentPoints = player.TournamentPoints;
+			
+			// Add current round points (pieces pocketed)
+			int currentRoundPoints = CalculateCurrentRoundPoints(player);
+			
+			playerScores[player.PlayerId] = tournamentPoints + currentRoundPoints;
+		}
+		
+		// Find player with highest score
+		var winner = playerScores.Aggregate((l, r) => l.Value > r.Value ? l : r);
+		
+		GD.Print($"[Tournament] Final scores when max rounds reached:");
+		foreach (var score in playerScores)
+		{
+			GD.Print($"  {score.Key}: {score.Value} points");
+		}
+		
+		return winner.Key;
+	}
+	
+	/// <summary>
+	/// Calculate tournament points for current round based on ICF rules
+	/// </summary>
+	private int CalculateCurrentRoundPoints(CarromPlayer player)
+	{
+		// Tournament points = opponent's remaining pieces
+		int opponentRemainingPieces = 0;
+		
+		foreach (var opponent in _players)
+		{
+			if (opponent.PlayerId != player.PlayerId)
+			{
+				// Count remaining pieces (9 total - pocketed)
+				opponentRemainingPieces += Mathf.Max(0, 9 - opponent.PiecesPocketed);
+			}
+		}
+		
+		// Add queen points if player has queen covered
+		int queenPoints = 0;
+		if (player.HasQueen && player.QueenCovered)
+		{
+			// Queen is worth 3 points, but only up to 21 total points per ICF rules
+			queenPoints = 3;
+		}
+		
+		// Maximum 12 points per board per ICF rules
+		int totalPoints = Mathf.Min(12, opponentRemainingPieces + queenPoints);
+		
+		return totalPoints;
 	}
 	
 	/// <summary>

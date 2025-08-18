@@ -50,8 +50,6 @@ public partial class CarromPocket : Area2D
 	
 	private const float INFLUENCE_ZONE_MULTIPLIER = 1.8f;
 	private const float HOLE_ZONE_MULTIPLIER = 0.75f;
-	private const float STATIONARY_PIECE_SPEED_THRESHOLD = 10.0f;
-	private const float ZERO_VELOCITY_THRESHOLD = 0.0f;
 
 	public override void _Ready()
 	{
@@ -339,8 +337,7 @@ public partial class CarromPocket : Area2D
 
 
 	/// <summary>
-	/// Check if piece should be captured - simplified logic with optimized calculations
-	/// PERFORMANCE: Updated to use squared distance for faster comparisons
+	/// Check if piece should be captured - simplified overlap-based detection
 	/// </summary>
 	private bool ShouldCapturePiece(CarromPiece piece, float distanceSquared)
 	{
@@ -350,25 +347,8 @@ public partial class CarromPocket : Area2D
 			return false;
 		}
 		
-		// Use pre-calculated squared capture radius for comparison
-		if (distanceSquared > _captureRadiusSquared)
-		{
-			return false;
-		}
-		
-		// Basic approach validation - ensure piece is moving toward pocket
-		float pieceSpeed = piece.GetSpeed();
-		if (pieceSpeed < STATIONARY_PIECE_SPEED_THRESHOLD) // Allow stationary pieces
-		{
-			return true;
-		}
-		
-		Vector2 velocityDirection = piece.LinearVelocity.Normalized();
-		Vector2 toPocketDirection = (GlobalPosition - piece.GlobalPosition).Normalized();
-		float approachDot = velocityDirection.Dot(toPocketDirection);
-		
-		// Moving toward pocket
-		return approachDot > ZERO_VELOCITY_THRESHOLD;
+		// Simple overlap check - capture if piece center is within capture radius
+		return distanceSquared <= _captureRadiusSquared;
 	}
 
 
