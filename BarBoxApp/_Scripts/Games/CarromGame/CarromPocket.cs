@@ -19,7 +19,7 @@ public partial class CarromPocket : Area2D
 	[ExportCategory("Pocket Settings")]
 	[Export] public float PocketRadius { get; set; } = 30.0f;
 	[Export] public int PocketIndex { get; set; } = 0;
-	[Export] public float PocketDepth { get; set; } = 0.7f; // How deep pieces must go to be pocketed (0.0-1.0)
+	[Export] public float PocketDepth { get; set; } = 0.75f; // How deep pieces must go to be pocketed (0.0-1.0)
 
 	[ExportCategory("Detection Settings")]
 
