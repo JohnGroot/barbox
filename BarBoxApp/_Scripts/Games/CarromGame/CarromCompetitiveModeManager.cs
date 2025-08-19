@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 {
 	[Signal] public delegate void TurnChangedEventHandler(string playerId, int turnNumber);
+	[Signal] public delegate void TurnReadyForPassEventHandler(string playerId, int turnNumber);
 	[Signal] public delegate void PlayerWonEventHandler(string playerId);
 	[Signal] public delegate void FoulCommittedEventHandler(string playerId);
 	[Signal] public delegate void CompetitiveModeSetupCompleteEventHandler();
@@ -114,16 +115,21 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	/// </summary>
 	protected override void ExecuteModeSpecificSettlement()
 	{
-		// Get current player before potential switch
+		// Settlement only handles game rule validation and piece management
+		// Turn advancement is now explicit through manual pass turn only
+		
+		// Get current player for settlement logic
 		var currentPlayer = GetCurrentPlayer();
 		string currentPlayerId = currentPlayer?.PlayerId ?? "unknown";
 		
-		// Check if current player should continue their turn
+		// Check if current player should continue their turn based on game rules
 		bool shouldContinue = ShouldContinueTurn(currentPlayerId);
 		
 		if (shouldContinue)
 		{
-			// Current player continues - restore striker to same player's baseline
+			GD.Print($"[CarromCompetitive] {currentPlayerId} continues turn after successful pocketing");
+			
+			// Only restore striker if player continues their turn
 			var carromGame = GetParent<CarromGame>();
 			if (carromGame != null)
 			{
@@ -135,26 +141,13 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 				EnsureStrikerRestored();
 				PositionStrikerAtBaseline();
 			}
-			
-			GD.Print($"[CarromCompetitive] {currentPlayerId} continues turn after successful pocketing");
 		}
 		else
 		{
-			// Turn ends - switch to next player then restore striker to new player's baseline
-			SwitchToNextPlayer();
-			
-			// Restore striker to the NEW player's baseline
-			var carromGame = GetParent<CarromGame>();
-			if (carromGame != null)
-			{
-				carromGame.RestoreStrikerToBaseline();
-			}
-			else
-			{
-				// Fallback to local striker restoration
-				EnsureStrikerRestored();
-				PositionStrikerAtBaseline();
-			}
+			// Emit TurnReadyForPass signal to trigger pass turn button display
+			// This shows the button without actually switching players yet
+			// Striker restoration will happen AFTER pass turn is pressed
+			EmitSignal(SignalName.TurnReadyForPass, currentPlayerId, _currentPlayerIndex + 1);
 		}
 	}
 	

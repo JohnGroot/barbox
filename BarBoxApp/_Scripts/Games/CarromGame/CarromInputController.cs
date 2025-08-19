@@ -121,6 +121,12 @@ public partial class CarromInputController : Node2D
 	private Vector2 _lastTargetPosition = Vector2.Zero;
 	private bool _lastPositionWasValid = true;
 	
+	// Input blocked visual state
+	private bool _isInputBlocked = false;
+	private float _inputBlockedAlpha = 0.5f;
+	private readonly Color INPUT_BLOCKED_COLOR = new Color(0.9f, 0.2f, 0.1f, 0.6f);
+	private readonly Color INPUT_READY_COLOR = new Color(0.2f, 0.9f, 0.3f, 0.3f);
+	
 	// Memory management tracking
 	private bool _isDisposed = false;
 
@@ -261,6 +267,10 @@ public partial class CarromInputController : Node2D
 	public void SetGameState(ICarromGameState gameState)
 	{
 		_gameState = gameState;
+		
+		// Update initial input blocked state
+		_isInputBlocked = !(_gameState?.CanAcceptInput ?? false);
+		RequestVisualUpdate();
 	}
 
 	/// <summary>
@@ -732,7 +742,16 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private bool CanAcceptInput()
 	{
-		return _gameState?.CanAcceptInput ?? false;
+		bool canAccept = _gameState?.CanAcceptInput ?? false;
+		
+		// Update visual blocked state
+		if (_isInputBlocked != !canAccept)
+		{
+			_isInputBlocked = !canAccept;
+			RequestVisualUpdate();
+		}
+		
+		return canAccept;
 	}
 
 	/// <summary>
@@ -740,6 +759,12 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	public override void _Draw()
 	{
+		// Draw input blocked overlay if input is blocked
+		if (_striker != null && IsInstanceValid(_striker))
+		{
+			DrawInputStateIndicator();
+		}
+		
 		if (!_isAiming || _striker == null) return;
 
 		// Since board is at origin, striker positions are already in the right coordinate space
@@ -1002,6 +1027,15 @@ public partial class CarromInputController : Node2D
 			power > 0.5f ? Colors.Yellow : PowerBarColor;
 		DrawRect(new Rect2(barPosition - Vector2.Right * barWidth / 2, 
 			new Vector2(barWidth * power, barHeight)), powerColor, true, -1f, true);
+	}
+	
+	/// <summary>
+	/// Draw input state indicator around striker
+	/// </summary>
+	private void DrawInputStateIndicator()
+	{
+		// Input state feedback is now handled entirely by the score bar
+		// No visual indicators around the striker to avoid gameplay confusion
 	}
 	
 	/// <summary>

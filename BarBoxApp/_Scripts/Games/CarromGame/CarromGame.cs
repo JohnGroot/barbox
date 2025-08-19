@@ -280,6 +280,9 @@ public partial class CarromGame : GameController
 		_scoreDisplay = new CarromScoreDisplay();
 		AddChild(_scoreDisplay);
 		_scoreDisplay.SetVisible(false); // Hidden by default, shown in competitive mode
+		
+		// Connect to Pass Turn signal for manual turn advancement
+		_scoreDisplay.PassTurnRequested += OnPassTurnRequested;
 	}
 	
 	/// <summary>
@@ -327,6 +330,7 @@ public partial class CarromGame : GameController
 		
 		// Competitive mode signals
 		_competitiveModeManager.TurnChanged += OnTurnChanged;
+		_competitiveModeManager.TurnReadyForPass += OnTurnReadyForPass;
 		_competitiveModeManager.PlayerWon += OnPlayerWon;
 		_competitiveModeManager.FoulCommitted += OnFoulCommitted;
 		_competitiveModeManager.CompetitiveModeSetupComplete += OnCompetitiveModeSetupComplete;
@@ -919,6 +923,7 @@ public partial class CarromGame : GameController
 
 	/// <summary>
 	/// Show turn transition with player information and current scores
+	/// Camera rotation happens when pass turn is actually executed, not immediately
 	/// </summary>
 	private void ShowTurnTransition(string playerId, int turnNumber)
 	{
@@ -929,77 +934,66 @@ public partial class CarromGame : GameController
 		if (currentPlayer == null) 
 			return;
 
-		// Get current game state for display
-		// Map playerId to player index for camera rotation
-		// Player indices in competitive mode: 0=player1, 1=player2, 2=player3, 3=player4
-		var players = _competitiveModeManager.GetPlayers();
-		int playerIndex = currentPlayer.PlayerId switch
-		{
-			"player1" => 0, // Bottom
-			"player2" => 1, // Top  
-			"player3" => 2, // Left
-			"player4" => 3, // Right
-			_ => 0
-		};
+		// Build compact transition message for the score bar
+		string pieceIcon = currentPlayer.AssignedPieceType == PieceType.White ? "⚪" : "⚫";
+		string transitionMessage = $"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN {pieceIcon} - Turn {turnNumber}";
 		
-		// Rotate camera to current player's perspective
-		if (_cameraController != null)
+		// Show transition in the score display bar - this shows the pass turn button
+		if (_scoreDisplay != null)
 		{
+			_scoreDisplay.ShowTurnTransition(transitionMessage, 3.0f);
+			
+			// Update all player scores during transition
+			var players = _competitiveModeManager.GetPlayers();
+			_scoreDisplay.UpdateAllPlayerScores(players);
+		}
+		
+		// Camera rotation now happens in OnPassTurnRequested when turn is actually advanced
+	}
+	
+	/// <summary>
+	/// Handle manual pass turn request from score display
+	/// Now includes proper camera rotation timing after turn switch
+	/// </summary>
+	private void OnPassTurnRequested()
+	{
+		// Only process pass turn requests in competitive mode when all pieces have settled
+		if (_carromGameMode != CarromGameMode.Competitive || _competitiveModeManager == null)
+			return;
+		
+		// Check if we're in a state where turn can be passed (all pieces stopped)
+		bool allPiecesStopped = AreAllPiecesStopped();
+		if (!allPiecesStopped)
+		{
+			return;
+		}
+		
+		// Transition state machine to Ready before switching players
+		_gameStateMachine?.ForceToReady();
+		
+		_competitiveModeManager?.SwitchToNextPlayer();
+		
+		// Now rotate camera to the new player's perspective
+		var newCurrentPlayer = _competitiveModeManager?.GetCurrentPlayer();
+		if (newCurrentPlayer != null && _cameraController != null)
+		{
+			// Map playerId to player index for camera rotation
+			int playerIndex = newCurrentPlayer.PlayerId switch
+			{
+				"player1" => 0, // Bottom
+				"player2" => 1, // Top  
+				"player3" => 2, // Left
+				"player4" => 3, // Right
+				_ => 0
+			};
+			
 			_cameraController.RotateToPlayer(playerIndex);
 		}
-
-		var transitionMessage = new System.Text.StringBuilder($"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN\n\n");
-		transitionMessage.AppendLine($"Piece Type: {currentPlayer.AssignedPieceType}");
-		transitionMessage.AppendLine($"Turn Number: {turnNumber}");
-		transitionMessage.AppendLine();
-
-		// Add current standings
-		transitionMessage.AppendLine("=== CURRENT STANDINGS ===");
-		foreach (var player in players)
-		{
-			string indicator = player.PlayerId == playerId ? "→ " : "  ";
-			transitionMessage.Append($"{indicator}{player.PlayerId}: {player.PiecesPocketed}/9 pieces");
-			if (player.HasQueen)
-			{
-				transitionMessage.Append(player.QueenCovered ? " + Queen ✓" : " + Queen (not covered)");
-			}
-			transitionMessage.AppendLine();
-		}
-
-		// Show the transition message as a dialog
-		ShowTurnDialog(transitionMessage.ToString());
+		
+		// Restore striker to new player's baseline position
+		RestoreStrikerToBaseline();
 	}
 
-	/// <summary>
-	/// Display turn transition dialog using Godot's AcceptDialog
-	/// </summary>
-	private void ShowTurnDialog(string message)
-	{
-		// Use Godot's built-in AcceptDialog for turn transitions
-		var dialog = new AcceptDialog();
-		dialog.Title = "Turn Change";
-		dialog.DialogText = message;
-		dialog.Size = new Vector2I(400, 300);
-		
-		// Center the dialog
-		var viewport = GetViewport();
-		if (viewport != null)
-		{
-			var screenSize = viewport.GetVisibleRect().Size;
-			dialog.Position = new Vector2I(
-				(int)(screenSize.X / 2 - 200), 
-				(int)(screenSize.Y / 2 - 150)
-			);
-		}
-
-		// Add dialog to scene tree and show
-		GetTree().CurrentScene.AddChild(dialog);
-		dialog.PopupCentered();
-		
-		// Auto-remove dialog when closed
-		dialog.Confirmed += () => dialog.QueueFree();
-		dialog.Canceled += () => dialog.QueueFree();
-	}
 
 	/// <summary>
 	/// Show comprehensive game over screen with final statistics
@@ -1218,10 +1212,24 @@ public partial class CarromGame : GameController
 	
 	/// <summary>
 	/// Handle game state changes from state machine
+	/// Game state machine is the single source of truth for input state
 	/// </summary>
 	private void OnGameStateChanged(CarromGameStateMachine.GameState oldState, CarromGameStateMachine.GameState newState)
 	{
 		GD.Print($"[CarromGame] Game state changed: {oldState} → {newState}");
+		
+		// Update score display with current state
+		if (_scoreDisplay != null)
+		{
+			_scoreDisplay.UpdateGameState(newState.ToString());
+			
+			// Game state machine is the single source of truth for input blocking
+			bool inputBlocked = newState != CarromGameStateMachine.GameState.Ready;
+			_scoreDisplay.SetInputBlockedVisual(inputBlocked);
+		}
+		
+		// Update title to reflect current state for debugging
+		RefreshUI();
 	}
 	
 	/// <summary>
@@ -1229,7 +1237,8 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnSettlementCompleted()
 	{
-		GD.Print("[CarromGame] Settlement completed - game ready for next turn");
+		// Input remains blocked until pass turn button is pressed
+		// Input state controlled by game state machine
 	}
 
 	/// <summary>
@@ -1384,24 +1393,48 @@ public partial class CarromGame : GameController
 	}
 
 	/// <summary>
-	/// Handle turn change in competitive mode
+	/// Handle turn change in competitive mode - called AFTER turn has been advanced
 	/// </summary>
 	private void OnTurnChanged(string playerId, int turnNumber)
 	{
 		EmitSignal(SignalName.TurnChanged, playerId, turnNumber);
 		
-		// Update score display
+		// Update score display to reflect new current player
 		if (_scoreDisplay != null && _competitiveModeManager != null)
 		{
 			_scoreDisplay.SetCurrentPlayer(playerId);
 			_scoreDisplay.UpdateAllPlayerScores(_competitiveModeManager.GetPlayers());
 		}
 		
-		// Show turn transition popup and handle camera rotation
-		ShowTurnTransition(playerId, turnNumber);
+		// No need to show turn transition here - that's handled by OnTurnReadyForPass
+		// This method is called AFTER the turn has been advanced via pass turn button
 		
 		// Refresh UI to show updated player turn and title
 		RefreshUI();
+	}
+	
+	/// <summary>
+	/// Handle turn ready for pass - shows pass turn button without changing players
+	/// </summary>
+	private void OnTurnReadyForPass(string playerId, int turnNumber)
+	{
+		// Show only the pass turn button, no camera rotation or player switching
+		if (_carromGameMode != CarromGameMode.Competitive || _competitiveModeManager == null)
+			return;
+
+		var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
+		if (currentPlayer == null) 
+			return;
+
+		// Build message for the pass turn button display
+		string pieceIcon = currentPlayer.AssignedPieceType == PieceType.White ? "⚪" : "⚫";
+		string transitionMessage = $"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN {pieceIcon} - Turn {turnNumber}";
+		
+		// Show ONLY the pass turn button, no other UI updates
+		if (_scoreDisplay != null)
+		{
+			_scoreDisplay.ShowTurnTransition(transitionMessage, 3.0f);
+		}
 	}
 
 	/// <summary>

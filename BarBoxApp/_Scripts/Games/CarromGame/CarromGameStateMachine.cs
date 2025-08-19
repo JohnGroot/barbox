@@ -297,8 +297,8 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 			// Emit settlement completed signal
 			EmitSignal(SignalName.SettlementCompleted);
 			
-			// Transition back to Ready for next turn
-			TransitionTo(GameState.Ready);
+			// Stay in Settlement state - transition to Ready will happen after pass turn
+			// TransitionTo(GameState.Ready); // REMOVED: Now handled by pass turn processing
 		}
 		catch (System.Exception ex)
 		{
