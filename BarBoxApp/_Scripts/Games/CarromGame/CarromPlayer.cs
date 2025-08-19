@@ -9,6 +9,7 @@ public partial class CarromPlayer : BasePlayer
 {
 	[Signal] public delegate void PieceAssignmentChangedEventHandler();
 	[Signal] public delegate void ScoreUpdatedEventHandler(int newScore);
+	[Signal] public delegate void QueenCoveredSuccessfullyEventHandler(string playerId);
 
 	[ExportCategory("Carrom Settings")]
 	[Export] public PieceType AssignedPieceType { get; set; } = PieceType.White;
@@ -120,6 +121,9 @@ public partial class CarromPlayer : BasePlayer
 				QueenCovered = true;
 				_needsQueenCovering = false;
 				GD.Print($"[CarromPlayer] {PlayerId} covered queen with {pieceType} piece");
+				
+				// Emit signal for queen covered event so UI can show floating text
+				EmitSignal(SignalName.QueenCoveredSuccessfully, PlayerId);
 			}
 			
 			EmitSignal(SignalName.ScoreUpdated, PiecesPocketed);

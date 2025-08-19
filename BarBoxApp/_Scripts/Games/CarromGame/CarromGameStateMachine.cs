@@ -300,8 +300,11 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 		catch (System.Exception ex)
 		{
 			GD.PrintErr($"[CarromGameStateMachine] Settlement processing failed: {ex.Message}");
-			// Force to Ready state even if settlement fails
-			TransitionTo(GameState.Ready);
+			GD.PrintErr($"[CarromGameStateMachine] Stack trace: {ex.StackTrace}");
+			
+			// Allow settlement to complete normally instead of forcing Ready state
+			// The settlement completed signal should still be emitted to continue normal flow
+			EmitSignal(SignalName.SettlementCompleted);
 		}
 	}
 

@@ -54,6 +54,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	// Settings
 	private int _competitiveCreditCost = 1;
 	private int _playerCount = 2; // Can be 2 or 4 players
+	
+	// UI Dependencies
+	private CarromScoreDisplay _scoreDisplay;
 
 	/// <summary>
 	/// Initialize with piece templates (competitive-specific version)
@@ -69,6 +72,14 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		_redPieceTemplate = redTemplate;
 		_strikerTemplate = strikerTemplate;
 		_competitiveCreditCost = creditCost;
+	}
+	
+	/// <summary>
+	/// Set the score display for direct floating text calls
+	/// </summary>
+	public void SetScoreDisplay(CarromScoreDisplay scoreDisplay)
+	{
+		_scoreDisplay = scoreDisplay;
 	}
 
 	// ================================================================
@@ -154,6 +165,11 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			// Striker restoration will happen AFTER pass turn is pressed
 			EmitSignal(SignalName.TurnReadyForPass, currentPlayerId, _currentPlayerIndex + 1);
 		}
+		
+		// Reset stroke flags for next stroke AFTER all settlement processing is complete
+		// This ensures flags are available throughout the entire settlement process
+		_validPocketThisStroke = false;
+		_foulThisStroke = false;
 	}
 	
 	/// <summary>
@@ -218,10 +234,8 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		// Turn ends if player committed fouls OR pocketed no valid pieces
 		bool shouldContinue = _validPocketThisStroke && !_foulThisStroke;
 		
-		// Reset stroke flags for next stroke AFTER storing the decision
-		// This ensures flags are available for settlement logic
-		_validPocketThisStroke = false;
-		_foulThisStroke = false;
+		// DO NOT reset flags here - they may still be needed by penalty processing
+		// Flags will be reset at the end of settlement in ExecuteModeSpecificSettlement
 		
 		return shouldContinue;
 	}
@@ -284,6 +298,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 				_foulThisStroke = true;
 				currentPlayer.RecordFoul();
 				EmitSignal(SignalName.FoulCommitted, playerId);
+				
 				// Apply striker pocketing penalty
 				ApplyFoulPenalty(currentPlayer, FoulType.StrikerPocketed);
 				break;
@@ -297,6 +312,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 					_validPocketThisStroke = true;
 					currentPlayer.RecordPocketedPiece(PieceType.Red);
 					GD.Print($"[CarromCompetitive] {playerId} pocketed queen - can cover: {currentPlayer.CanCoverQueen()}");
+					
+					// Show floating text for queen pocketed
+					_scoreDisplay?.ShowFloatingText(playerId, "Queen Pocketed! 👑", Colors.Gold);
 				}
 				else
 				{
@@ -304,6 +322,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 					_foulThisStroke = true;
 					currentPlayer.RecordFoul();
 					EmitSignal(SignalName.FoulCommitted, playerId);
+					
 					// Return the queen to center and apply additional penalty
 					ReturnPieceToCenter(PieceType.Red, deferTweening: true);
 					ApplyFoulPenalty(currentPlayer, FoulType.ImproperQueenPocketing);
@@ -318,6 +337,13 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 					validPocket = true;
 					_validPocketThisStroke = true;
 					currentPlayer.RecordPocketedPiece(piece.Type);
+					
+					// Show floating text for valid piece pocketed
+					if (_scoreDisplay != null)
+					{
+						string pieceIcon = piece.Type == PieceType.White ? "⚪" : "⚫";
+						_scoreDisplay.ShowFloatingText(playerId, $"{pieceIcon} Piece Pocketed!", Colors.Green);
+					}
 				}
 				else
 				{
@@ -325,6 +351,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 					_foulThisStroke = true;
 					currentPlayer.RecordFoul();
 					EmitSignal(SignalName.FoulCommitted, playerId);
+					
 					// Return the opponent's piece to center and apply additional penalty
 					ReturnPieceToCenter(piece.Type, deferTweening: true);
 					ApplyFoulPenalty(currentPlayer, FoulType.OpponentPiecePocketed);
@@ -562,12 +589,14 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			player1.PlayerId = "player1";
 			player1.AssignPieceType(PieceType.White);
 			player1.ResetGameStats();
+			player1.QueenCoveredSuccessfully += OnQueenCoveredSuccessfully;
 			_players.Add(player1);
 			
 			var player2 = new CarromPlayer();
 			player2.PlayerId = "player2";
 			player2.AssignPieceType(PieceType.Black);
 			player2.ResetGameStats();
+			player2.QueenCoveredSuccessfully += OnQueenCoveredSuccessfully;
 			_players.Add(player2);
 		}
 		else if (_playerCount == 4)
@@ -580,24 +609,28 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			player1.PlayerId = "player1";
 			player1.AssignPieceType(PieceType.White);
 			player1.ResetGameStats();
+			player1.QueenCoveredSuccessfully += OnQueenCoveredSuccessfully;
 			_players.Add(player1);
 
 			var player2 = new CarromPlayer();
 			player2.PlayerId = "player2";
 			player2.AssignPieceType(PieceType.Black);
 			player2.ResetGameStats();
+			player2.QueenCoveredSuccessfully += OnQueenCoveredSuccessfully;
 			_players.Add(player2);
 
 			var player3 = new CarromPlayer();
 			player3.PlayerId = "player3";
 			player3.AssignPieceType(PieceType.White); // Partner with player1
 			player3.ResetGameStats();
+			player3.QueenCoveredSuccessfully += OnQueenCoveredSuccessfully;
 			_players.Add(player3);
 
 			var player4 = new CarromPlayer();
 			player4.PlayerId = "player4";
 			player4.AssignPieceType(PieceType.Black); // Partner with player2
 			player4.ResetGameStats();
+			player4.QueenCoveredSuccessfully += OnQueenCoveredSuccessfully;
 			_players.Add(player4);
 		}
 		
@@ -623,6 +656,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			bool queenNeedsReturning = currentPlayer.HandleEndOfTurn();
 			if (queenNeedsReturning)
 			{
+				// Show floating text for queen returned
+				_scoreDisplay?.ShowFloatingText(currentPlayer.PlayerId, "Queen Returned 👑", Colors.Orange);
+
 				// Return uncovered queen to center
 				ReturnPieceToCenter(PieceType.Red, deferTweening: true);
 				GD.Print($"[CarromCompetitive] Returned uncovered queen to center for {currentPlayer.PlayerId}");
@@ -1233,5 +1269,14 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	public void ClearTweenReturnList()
 	{
 		_piecesNeedingTweenReturn.Clear();
+	}
+	
+	/// <summary>
+	/// Handle queen covered event from player
+	/// </summary>
+	private void OnQueenCoveredSuccessfully(string playerId)
+	{
+		// Show floating text for queen covered
+		_scoreDisplay?.ShowFloatingText(playerId, "Queen Covered! 👑✓", Colors.Gold);
 	}
 }

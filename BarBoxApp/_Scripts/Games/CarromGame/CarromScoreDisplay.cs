@@ -2,6 +2,21 @@ using Godot;
 using System.Collections.Generic;
 
 /// <summary>
+/// Helper class for queuing floating text requests
+/// </summary>
+public class FloatingTextRequest
+{
+	public string Message { get; set; }
+	public Color? Color { get; set; }
+	
+	public FloatingTextRequest(string message, Color? color = null)
+	{
+		Message = message;
+		Color = color;
+	}
+}
+
+/// <summary>
 /// Real-time score display UI for Carrom competitive mode
 /// Horizontal bar at bottom showing scores, turn info, and transitions
 /// </summary>
@@ -27,6 +42,10 @@ public partial class CarromScoreDisplay : CanvasLayer
 	
 	// Transition system
 	private bool _isShowingTransition = false;
+	
+	// Floating text queuing system
+	private Dictionary<string, Queue<FloatingTextRequest>> _pendingTextRequests = new Dictionary<string, Queue<FloatingTextRequest>>();
+	private Dictionary<string, bool> _playerTextActive = new Dictionary<string, bool>();
 	
 	// Styling constants
 	private const float PANEL_HEIGHT = 120.0f;
@@ -469,5 +488,126 @@ public partial class CarromScoreDisplay : CanvasLayer
 
 		// Emit signal to notify game that player wants to pass turn
 		EmitSignal(SignalName.PassTurnRequested);
+	}
+	
+	/// <summary>
+	/// Show floating text effect above the current player's name
+	/// Creates a temporary label that rises and fades out with scaling animation
+	/// Implements queuing to prevent overlapping when called multiple times in same frame
+	/// </summary>
+	public void ShowFloatingText(string playerId, string message, Color? color = null)
+	{
+		// Create request object
+		var request = new FloatingTextRequest(message, color);
+		
+		// Initialize queues if needed
+		if (!_pendingTextRequests.ContainsKey(playerId))
+		{
+			_pendingTextRequests[playerId] = new Queue<FloatingTextRequest>();
+			_playerTextActive[playerId] = false;
+		}
+		
+		// If player has active animation, queue this request
+		if (_playerTextActive[playerId])
+		{
+			_pendingTextRequests[playerId].Enqueue(request);
+			return;
+		}
+		
+		// Start the animation immediately
+		StartFloatingTextAnimation(playerId, request);
+	}
+	
+	/// <summary>
+	/// Start the actual floating text animation
+	/// </summary>
+	private void StartFloatingTextAnimation(string playerId, FloatingTextRequest request)
+	{
+		// Find the player's entry to position the text above it
+		if (!_playerEntries.TryGetValue(playerId, out var playerEntry))
+		{
+			GD.PrintErr($"Cannot show floating text - player {playerId} not found");
+			return;
+		}
+		
+		// Mark player as having active animation
+		_playerTextActive[playerId] = true;
+		
+		// Create the floating text label with proper initialization
+		var floatingLabel = new Label();
+		floatingLabel.Text = request.Message;
+		floatingLabel.AddThemeStyleboxOverride("normal", new StyleBoxEmpty());
+		floatingLabel.AddThemeFontSizeOverride("font_size", 18);
+		floatingLabel.Modulate = request.Color ?? Colors.White;
+		floatingLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		floatingLabel.AutowrapMode = TextServer.AutowrapMode.Off;
+		
+		// Add to the main panel first to ensure proper sizing and coordinate space
+		_mainPanel.AddChild(floatingLabel);
+		
+		// Convert from playerEntry's global position to _mainPanel's local coordinate space
+		var playerEntryGlobalPos = playerEntry.GlobalPosition;
+		var mainPanelGlobalPos = _mainPanel.GlobalPosition;
+		var localPos = playerEntryGlobalPos - mainPanelGlobalPos;
+		
+		// Calculate proper text centering using actual text dimensions
+		var font = floatingLabel.GetThemeFont("font");
+		var fontSize = floatingLabel.GetThemeFontSize("font_size");
+		var textSize = font.GetStringSize(request.Message, HorizontalAlignment.Left, -1, fontSize);
+		
+		// Position the label above the player's entry with proper centering
+		floatingLabel.Position = new Vector2(
+			localPos.X + (playerEntry.Size.X - textSize.X) / 2, // True horizontal center
+			localPos.Y - textSize.Y - 10 // Position above with proper clearance
+		);
+		
+		// Create the animation tween
+		var tween = GetTree().CreateTween();
+		
+		// Scaling animation - 25% scale-up then back to normal
+		tween.Parallel().TweenProperty(floatingLabel, TweenConstants.Scale, Vector2.One * 1.25f, 0.2f)
+			.SetTrans(Tween.TransitionType.Back)
+			.SetEase(Tween.EaseType.Out);
+		// tween.Parallel().TweenProperty(floatingLabel, TweenConstants.Scale, Vector2.One, 0.3f)
+		// 	.SetDelay(0.2f)
+		// 	.SetTrans(Tween.TransitionType.Quart)
+		// 	.SetEase(Tween.EaseType.Out);
+		
+		// Rise animation - move up by 60 pixels over 1.5 seconds
+		tween.Parallel().TweenProperty(floatingLabel, TweenConstants.Position, 
+			floatingLabel.Position + Vector2.Up * 60.0f, 1.5f)
+			.SetTrans(Tween.TransitionType.Quart)
+			.SetEase(Tween.EaseType.Out);
+		
+		// Fade animation - start fading after 0.3 seconds, complete in 1.2 seconds
+		tween.Parallel().TweenProperty(floatingLabel, TweenConstants.ModulateAlpha, 
+			0.0f, 1.2f)
+			.SetDelay(0.3f);
+		
+		// Queue next text at 30% completion (0.45 seconds)
+		tween.TweenCallback(Callable.From(() => ProcessNextQueuedText(playerId)))
+			.SetDelay(0.45f);
+		
+		// Clean up the label when animation completes
+		tween.Finished += () => 
+		{
+			floatingLabel.QueueFree();
+			// Mark player as no longer having active animation
+			_playerTextActive[playerId] = false;
+		};
+	}
+	
+	/// <summary>
+	/// Process the next queued text for a player
+	/// </summary>
+	private void ProcessNextQueuedText(string playerId)
+	{
+		if (!_pendingTextRequests.ContainsKey(playerId) || _pendingTextRequests[playerId].Count == 0)
+		{
+			return;
+		}
+		
+		var nextRequest = _pendingTextRequests[playerId].Dequeue();
+		StartFloatingTextAnimation(playerId, nextRequest);
 	}
 }

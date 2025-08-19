@@ -1474,11 +1474,37 @@ public partial class CarromGame : GameController
 	
 	/// <summary>
 	/// Handle settlement completion from state machine
+	/// Only enable input if the current player should continue their turn
 	/// </summary>
 	private void OnSettlementCompleted()
 	{
-		// Input remains blocked until pass turn button is pressed
-		// Input state controlled by game state machine
+		// Check if we're in competitive mode and should wait for manual turn pass
+		if (_carromGameMode == CarromGameMode.Competitive && _competitiveModeManager != null)
+		{
+			var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
+			if (currentPlayer != null)
+			{
+				// Only enable input if the current player should continue their turn
+				bool shouldContinue = _competitiveModeManager.ShouldContinueTurn(currentPlayer.PlayerId);
+				if (shouldContinue)
+				{
+					// Continue turn - enable input immediately  
+					_gameStateMachine?.ForceToReady();
+				}
+				// If shouldContinue is false, don't enable input - wait for manual turn pass
+				// The TurnReadyForPass signal will be emitted by ExecuteModeSpecificSettlement()
+			}
+			else
+			{
+				// Fallback: enable input if no current player found
+				_gameStateMachine?.ForceToReady();
+			}
+		}
+		else
+		{
+			// Practice mode or fallback: always enable input
+			_gameStateMachine?.ForceToReady();
+		}
 	}
 	
 	/// <summary>
@@ -1748,6 +1774,12 @@ public partial class CarromGame : GameController
 	private void OnFoulCommitted(string playerId)
 	{
 		EmitSignal(SignalName.StrikerFoul, playerId);
+		
+		// Show floating text for foul
+		if (_scoreDisplay != null)
+		{
+			_scoreDisplay.ShowFloatingText(playerId, "Foul! ⚠️", Colors.Red);
+		}
 	}
 
 	/// <summary>
@@ -1760,6 +1792,9 @@ public partial class CarromGame : GameController
 		{
 			_scoreDisplay.SetVisible(true);
 			_scoreDisplay.ClearPlayers();
+			
+			// Provide score display to competitive mode manager for direct floating text calls
+			_competitiveModeManager.SetScoreDisplay(_scoreDisplay);
 			
 			// Add all players to score display
 			var players = _competitiveModeManager.GetPlayers();
@@ -1918,4 +1953,5 @@ public partial class CarromGame : GameController
 		// Clean up manager signals
 		DisconnectManagerSignals();
 	}
+	
 }
