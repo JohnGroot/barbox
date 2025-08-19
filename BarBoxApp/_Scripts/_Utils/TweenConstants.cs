@@ -2,52 +2,52 @@ using Godot;
 
 /// <summary>
 /// Static constants for common Tween properties to reduce GC allocation.
-/// Instead of creating new StringName instances each time, use these cached constants.
+/// Instead of creating new NodePath instances each time, use these cached constants.
 /// </summary>
 public static class TweenConstants
 {
 	// Common property names for TweenProperty() calls
-	public static readonly StringName Position = "position";
-	public static readonly StringName GlobalPosition = "global_position";
-	public static readonly StringName Rotation = "rotation";
-	public static readonly StringName Scale = "scale";
-	public static readonly StringName Modulate = "modulate";
-	public static readonly StringName ModulateAlpha = "modulate:a";
+	public static readonly NodePath Position = new("position");
+	public static readonly NodePath GlobalPosition = new("global_position");
+	public static readonly NodePath Rotation = new("rotation");
+	public static readonly NodePath Scale = new("scale");
+	public static readonly NodePath Modulate = new("modulate");
+	public static readonly NodePath ModulateAlpha = new("modulate:a");
 	
 	// Transform properties
-	public static readonly StringName Transform = "transform";
-	public static readonly StringName Basis = "basis";
+	public static readonly NodePath Transform = new("transform");
+	public static readonly NodePath Basis = new("basis");
 	
 	// Size and region properties
-	public static readonly StringName Size = "size";
-	public static readonly StringName CustomMinimumSize = "custom_minimum_size";
+	public static readonly NodePath Size = new("size");
+	public static readonly NodePath CustomMinimumSize = new("custom_minimum_size");
 	
 	// Anchor and margin properties (Control nodes)
-	public static readonly StringName AnchorLeft = "anchor_left";
-	public static readonly StringName AnchorRight = "anchor_right";
-	public static readonly StringName AnchorTop = "anchor_top";
-	public static readonly StringName AnchorBottom = "anchor_bottom";
+	public static readonly NodePath AnchorLeft = new("anchor_left");
+	public static readonly NodePath AnchorRight = new("anchor_right");
+	public static readonly NodePath AnchorTop = new("anchor_top");
+	public static readonly NodePath AnchorBottom = new("anchor_bottom");
 	
 	// Camera properties
-	public static readonly StringName Zoom = "zoom";
-	public static readonly StringName Offset = "offset";
+	public static readonly NodePath Zoom = new("zoom");
+	public static readonly NodePath Offset = new("offset");
 	
 	// Audio properties
-	public static readonly StringName VolumeDb = "volume_db";
-	public static readonly StringName PitchScale = "pitch_scale";
+	public static readonly NodePath VolumeDb = new("volume_db");
+	public static readonly NodePath PitchScale = new("pitch_scale");
 	
 	// Animation player
-	public static readonly StringName CurrentAnimationPosition = "current_animation_position";
-	public static readonly StringName SpeedScale = "speed_scale";
+	public static readonly NodePath CurrentAnimationPosition = new("current_animation_position");
+	public static readonly NodePath SpeedScale = new("speed_scale");
 	
 	// CanvasItem properties
-	public static readonly StringName Visible = "visible";
-	public static readonly StringName ZIndex = "z_index";
+	public static readonly NodePath Visible = new("visible");
+	public static readonly NodePath ZIndex = new("z_index");
 	
 	// Material properties
-	public static readonly StringName AlbedoColor = "albedo_color";
-	public static readonly StringName Metallic = "metallic";
-	public static readonly StringName Roughness = "roughness";
+	public static readonly NodePath AlbedoColor = new("albedo_color");
+	public static readonly NodePath Metallic = new("metallic");
+	public static readonly NodePath Roughness = new("roughness");
 	
 	// Common transition types (cached to avoid enum boxing)
 	public const Tween.TransitionType TransSine = Tween.TransitionType.Sine;
