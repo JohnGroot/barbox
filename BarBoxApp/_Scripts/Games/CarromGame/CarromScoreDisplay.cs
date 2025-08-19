@@ -109,8 +109,8 @@ public partial class CarromScoreDisplay : CanvasLayer
 				// Add pulsing animation effect
 				var tween = GetTree().CreateTween();
 				tween.SetLoops();
-				tween.TweenProperty(BackgroundPanel, "modulate:a", 0.6f, 0.5f);
-				tween.TweenProperty(BackgroundPanel, "modulate:a", 0.4f, 0.5f);
+				tween.TweenProperty(BackgroundPanel, TweenConstants.ModulateAlpha, 0.6f, 0.5f);
+				tween.TweenProperty(BackgroundPanel, TweenConstants.ModulateAlpha, 0.4f, 0.5f);
 			}
 			else
 			{
@@ -372,7 +372,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 		_passTurnButton.Modulate = new Color(1, 1, 1, 0);
 		
 		var tween = GetTree().CreateTween();
-		tween.TweenProperty(_passTurnButton, "modulate:a", 1.0f, 0.3f);
+		tween.TweenProperty(_passTurnButton, TweenConstants.ModulateAlpha, 1.0f, 0.3f);
 		
 		// Ensure input is visually blocked while waiting for pass turn
 		SetInputBlockedVisual(true);
@@ -387,7 +387,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 		
 		// Fade out and hide the Pass Turn button
 		var tween = GetTree().CreateTween();
-		tween.TweenProperty(_passTurnButton, "modulate:a", 0.0f, 0.3f);
+		tween.TweenProperty(_passTurnButton, TweenConstants.ModulateAlpha, 0.0f, 0.3f);
 		tween.Finished += () => _passTurnButton.Visible = false;
 		
 		// Input state is controlled by game state machine, not by UI transitions

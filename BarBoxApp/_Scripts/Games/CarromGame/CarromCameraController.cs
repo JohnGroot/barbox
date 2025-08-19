@@ -239,7 +239,7 @@ public partial class CarromCameraController : Node
 				return;
 			}
 			
-			_rotationTween.TweenProperty(_boardCamera, "rotation", targetRotation, useDuration);
+			_rotationTween.TweenProperty(_boardCamera, TweenConstants.Rotation, targetRotation, useDuration);
 			_rotationTween.TweenCallback(Callable.From(() => {
 				_boardCamera.ForceUpdateScroll();
 				EmitSignal(SignalName.RotationComplete);
