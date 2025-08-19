@@ -69,6 +69,9 @@ public partial class CarromGame : GameController
 	
 	// Game state
 	private bool _waitingForPiecesToStop = false;
+	
+	// Animation components
+	private Tween _strikerTween;
 
 	// ================================================================
 	// INITIALIZATION
@@ -167,6 +170,9 @@ public partial class CarromGame : GameController
 		_cameraController = new CarromCameraController();
 		AddChild(_cameraController);
 		_cameraController.Initialize(_board);
+		
+		// Connect camera signals
+		_cameraController.CameraTransitionCompleted += OnCameraTransitionCompleted;
 	}
 
 	/// <summary>
@@ -750,6 +756,108 @@ public partial class CarromGame : GameController
 		
 		return true;
 	}
+	
+	/// <summary>
+	/// Smoothly tween striker to baseline position for cinematic camera transitions
+	/// </summary>
+	public void TweenStrikerToBaseline(int? playerIndexOverride = null, float duration = 0.6f)
+	{
+		var striker = _currentModeManager?.GetStriker();
+		if (striker == null || !GodotObject.IsInstanceValid(striker))
+		{
+			GD.PrintErr("[CarromGame] TweenStrikerToBaseline: No valid striker found");
+			return;
+		}
+
+		// Determine appropriate baseline position based on game mode (same logic as RestoreStrikerToBaseline)
+		Vector2 baselinePosition;
+		int playerIndex;
+		
+		if (_carromGameMode == CarromGameMode.Practice)
+		{
+			// Practice mode: Always use player 0 baseline (bottom)
+			playerIndex = 0;
+			baselinePosition = _board?.GetBaselinePosition(playerIndex) ?? Vector2.Zero;
+		}
+		else
+		{
+			// Competitive mode: Use specified player index or current player's baseline
+			if (playerIndexOverride.HasValue)
+			{
+				playerIndex = playerIndexOverride.Value;
+			}
+			else
+			{
+				// Default to current player
+				playerIndex = _competitiveModeManager?.GetCurrentPlayer()?.PlayerId == "player1" ? 0 : 1;
+			}
+			
+			baselinePosition = _board?.GetBaselinePosition(playerIndex) ?? Vector2.Zero;
+		}
+		
+		// Convert to global coordinates
+		Vector2 globalBaselinePosition = _board?.ToGlobal(baselinePosition) ?? Vector2.Zero;
+
+		try
+		{
+			// Ensure striker is in proper state for tweening (re-enable if pocketed)
+			striker.LinearVelocity = Vector2.Zero;
+			striker.AngularVelocity = 0.0f;
+			striker.Visible = true;
+			striker.Freeze = false;
+			striker.ContactMonitor = true; // Re-enable collision detection
+			
+			// Restore visual properties (pocket may have made it invisible/scaled to zero)
+			striker.Scale = Vector2.One;
+			striker.Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f); // Fully opaque
+			
+			// Mark this restoration in the mode manager's settlement context
+			MarkRecentRestoration(striker);
+
+			// Stop any existing striker tween with proper cleanup
+			if (_strikerTween != null && _strikerTween.IsValid())
+			{
+				_strikerTween.Kill();
+			}
+			_strikerTween = null;
+			
+			// Create and configure tween
+			_strikerTween = CreateTween();
+			if (_strikerTween == null)
+			{
+				GD.PrintErr("[CarromGame] Failed to create striker tween - falling back to immediate restoration");
+				RestoreStrikerToBaseline(playerIndexOverride);
+				return;
+			}
+
+			// Configure tween properties for smooth movement
+			_strikerTween.SetEase(Tween.EaseType.Out);
+			_strikerTween.SetTrans(Tween.TransitionType.Cubic);
+
+			// Animate striker position
+			_strikerTween.TweenProperty(striker, TweenConstants.GlobalPosition, globalBaselinePosition, duration);
+			
+			// Validate final position after tween completes
+			_strikerTween.TweenCallback(Callable.From(() => {
+				// Validate final position (don't interfere with physics - let tween handle positioning)
+				bool tweenSucceeded = ValidateStrikerRestoration(striker, globalBaselinePosition);
+				if (tweenSucceeded)
+				{
+					GD.Print($"[CarromGame] Striker tween to baseline completed successfully");
+				}
+				else
+				{
+					GD.PrintErr("[CarromGame] Striker tween validation failed after completion");
+				}
+			}));
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[CarromGame] TweenStrikerToBaseline: Exception during tween setup: {ex.Message}");
+			// Fallback to immediate restoration
+			RestoreStrikerToBaseline(playerIndexOverride);
+		}
+	}
 
 	// ================================================================
 	// CONTEXT DETECTION
@@ -973,11 +1081,11 @@ public partial class CarromGame : GameController
 		
 		_competitiveModeManager?.SwitchToNextPlayer();
 		
-		// Now rotate camera to the new player's perspective
+		// Start cinematic camera transition to the new player's perspective
 		var newCurrentPlayer = _competitiveModeManager?.GetCurrentPlayer();
 		if (newCurrentPlayer != null && _cameraController != null)
 		{
-			// Map playerId to player index for camera rotation
+			// Map playerId to player index for camera transition
 			int playerIndex = newCurrentPlayer.PlayerId switch
 			{
 				"player1" => 0, // Bottom
@@ -987,11 +1095,11 @@ public partial class CarromGame : GameController
 				_ => 0
 			};
 			
-			_cameraController.RotateToPlayer(playerIndex);
+			// Start cinematic zoom transition (striker restoration happens when transition completes)
+			_cameraController.TransitionToPlayerWithZoom(playerIndex, 1.2f);
 		}
 		
-		// Restore striker to new player's baseline position
-		RestoreStrikerToBaseline();
+		// Note: Striker restoration now happens via CameraTransitionCompleted signal
 	}
 
 
@@ -1239,6 +1347,15 @@ public partial class CarromGame : GameController
 	{
 		// Input remains blocked until pass turn button is pressed
 		// Input state controlled by game state machine
+	}
+	
+	/// <summary>
+	/// Handle camera transition completion - smoothly tween striker to new player's baseline
+	/// </summary>
+	private void OnCameraTransitionCompleted()
+	{
+		// Smoothly animate striker to new player's baseline position after cinematic camera transition
+		TweenStrikerToBaseline(duration: 0.6f);
 	}
 
 	/// <summary>
@@ -1605,7 +1722,14 @@ public partial class CarromGame : GameController
 			_inputController.StrikeExecuted -= OnStrikeExecuted;
 			_inputController.AimingStateChanged -= OnAimingStateChanged;
 		}
-			
+		
+		if (_cameraController != null && GodotObject.IsInstanceValid(_cameraController))
+		{
+			_cameraController.CameraTransitionCompleted -= OnCameraTransitionCompleted;
+		}
+		
+		// Clean up animation components
+		_strikerTween?.Kill();
 			
 		// Clean up manager signals
 		DisconnectManagerSignals();

@@ -651,10 +651,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		// Step 4: Sync input controller with new player
 		_inputController?.SetCurrentPlayer(_currentPlayerIndex);
 
-		// Step 5: Position striker at new player's baseline (no input control needed here)
-		PositionStrikerAtBaseline();
-
-		// Step 6: Emit turn changed signal
+		// Step 5: Emit turn changed signal (striker positioning will happen after camera transition)
 		EmitSignal(SignalName.TurnChanged, nextPlayer?.PlayerId ?? "unknown", _currentPlayerIndex + 1);
 	}
 

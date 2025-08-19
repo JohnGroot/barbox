@@ -9,6 +9,7 @@ using Godot;
 public partial class CarromCameraController : Node
 {
 	[Signal] public delegate void RotationCompleteEventHandler();
+	[Signal] public delegate void CameraTransitionCompletedEventHandler();
 
 	// ================================================================
 	// EXPORT PROPERTIES
@@ -19,6 +20,9 @@ public partial class CarromCameraController : Node
 	[Export] public float MinZoom { get; set; } = 0.5f;
 	[Export] public float MaxZoom { get; set; } = 2.0f;
 	[Export] public float RotationDuration { get; set; } = 1.0f;
+	[Export] public float ZoomOutFactor { get; set; } = 0.8f; // Zoom out to 80% for better view
+	[Export] public float ZoomOutDuration { get; set; } = 0.15f;
+	[Export] public float ZoomInDuration { get; set; } = 0.15f;
 
 	// ================================================================
 	// CONSTANTS
@@ -34,6 +38,7 @@ public partial class CarromCameraController : Node
 	private Camera2D _boardCamera;
 	private CarromBoard _board;
 	private Tween _rotationTween;
+	private Tween _zoomTween;
 	private int _currentPlayerIndex = 0;
 
 	// ================================================================
@@ -272,6 +277,173 @@ public partial class CarromCameraController : Node
 	}
 
 	// ================================================================
+	// CAMERA ZOOM TRANSITIONS
+	// ================================================================
+
+	/// <summary>
+	/// Animate zoom out to show more of the board
+	/// </summary>
+	private void AnimateZoomOut(float zoomOutFactor, float duration)
+	{
+		if (!ValidateCameraState()) return;
+
+		// Stop any existing zoom tween
+		_zoomTween?.Kill();
+
+		Vector2 currentZoom = _boardCamera.Zoom;
+		Vector2 targetZoom = currentZoom * zoomOutFactor;
+
+		if (duration <= 0.0f)
+		{
+			// Immediate zoom
+			_boardCamera.Zoom = targetZoom;
+			_boardCamera.ForceUpdateScroll();
+		}
+		else
+		{
+			// Animated zoom out
+			_zoomTween = CreateTween();
+			if (_zoomTween != null)
+			{
+				_zoomTween.TweenProperty(_boardCamera, TweenConstants.Zoom, targetZoom, duration);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Animate zoom back to original level
+	/// </summary>
+	private void AnimateZoomIn(float duration)
+	{
+		if (!ValidateCameraState()) return;
+
+		// Stop any existing zoom tween
+		_zoomTween?.Kill();
+
+		// Calculate original zoom based on current viewport
+		var viewport = GetViewport();
+		if (viewport == null) return;
+
+		Vector2 viewportSize = viewport.GetVisibleRect().Size;
+		Vector2 playableArea = new Vector2(viewportSize.X, viewportSize.Y - TOP_MENU_HEIGHT);
+		
+		// Calculate target zoom that fits the board properly
+		Vector2 targetZoom = CalculateOptimalZoom(playableArea);
+
+		if (duration <= 0.0f)
+		{
+			// Immediate zoom
+			_boardCamera.Zoom = targetZoom;
+			_boardCamera.ForceUpdateScroll();
+		}
+		else
+		{
+			// Animated zoom in
+			_zoomTween = CreateTween();
+			if (_zoomTween != null)
+			{
+				_zoomTween.TweenProperty(_boardCamera, TweenConstants.Zoom, targetZoom, duration);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Calculate optimal zoom level for current viewport
+	/// </summary>
+	private Vector2 CalculateOptimalZoom(Vector2 playableArea)
+	{
+		if (_board == null)
+		{
+			return new Vector2(DefaultZoom, DefaultZoom);
+		}
+
+		float boardSize = _board.BoardSize;
+		float padding = 0.1f; // 10% padding for visual breathing room
+		Vector2 paddedBoardSize = Vector2.One * boardSize * (1.0f + padding * 2.0f);
+
+		// Prevent division by zero
+		if (paddedBoardSize.X <= 0 || paddedBoardSize.Y <= 0 || playableArea.X <= 0 || playableArea.Y <= 0)
+		{
+			return new Vector2(DefaultZoom, DefaultZoom);
+		}
+
+		// Calculate zoom to fit board in playable area
+		float scaleX = playableArea.X / paddedBoardSize.X;
+		float scaleY = playableArea.Y / paddedBoardSize.Y;
+		float zoom = Mathf.Clamp(Mathf.Min(scaleX, scaleY), MinZoom, MaxZoom);
+
+		return new Vector2(zoom, zoom);
+	}
+
+	/// <summary>
+	/// Execute cinematic camera transition: zoom out → rotate → zoom in
+	/// </summary>
+	public void TransitionToPlayerWithZoom(int playerIndex, float totalDuration = 1.2f)
+	{
+		if (!ValidateCameraState())
+		{
+			GD.PrintErr("[CarromCameraController] Camera validation failed - cannot perform zoom transition");
+			return;
+		}
+
+		_currentPlayerIndex = playerIndex;
+
+		// Calculate timing for each phase
+		float zoomOutTime = ZoomOutDuration;
+		float rotationTime = totalDuration - ZoomOutDuration - ZoomInDuration;
+		float zoomInTime = ZoomInDuration;
+
+		// Ensure rotation time is reasonable
+		if (rotationTime < 0.1f)
+		{
+			rotationTime = 0.6f; // Default rotation duration
+			zoomOutTime = 0.3f;
+			zoomInTime = 0.3f;
+		}
+
+		// Phase 1: Zoom out
+		AnimateZoomOut(ZoomOutFactor, zoomOutTime);
+
+		// Phase 2: Rotate (delayed by zoom out duration)
+		GetTree().CreateTimer(zoomOutTime).Timeout += () => {
+			if (!ValidateCameraState()) return;
+			
+			// Calculate target rotation
+			float targetRotation = playerIndex switch
+			{
+				0 => 0.0f,            // Bottom player - no rotation
+				1 => Mathf.Pi,        // Top player - 180° rotation
+				2 => Mathf.Pi / 2,    // Left player - 90° rotation
+				3 => -Mathf.Pi / 2,   // Right player - 270° (-90°) rotation
+				_ => 0.0f
+			};
+
+			// Stop any existing rotation
+			_rotationTween?.Kill();
+
+			// Animate rotation
+			_rotationTween = CreateTween();
+			if (_rotationTween != null)
+			{
+				_rotationTween.TweenProperty(_boardCamera, TweenConstants.Rotation, targetRotation, rotationTime);
+				_rotationTween.TweenCallback(Callable.From(() => {
+					_boardCamera.ForceUpdateScroll();
+					
+					// Phase 3: Zoom in (delayed by rotation duration)
+					GetTree().CreateTimer(0.05f).Timeout += () => {
+						AnimateZoomIn(zoomInTime);
+						
+						// Final callback after zoom in completes
+						GetTree().CreateTimer(zoomInTime).Timeout += () => {
+							EmitSignal(SignalName.CameraTransitionCompleted);
+						};
+					};
+				}));
+			}
+		};
+	}
+
+	// ================================================================
 	// CAMERA VALIDATION AND DEBUGGING
 	// ================================================================
 
@@ -331,6 +503,7 @@ public partial class CarromCameraController : Node
 	public override void _ExitTree()
 	{
 		_rotationTween?.Kill();
+		_zoomTween?.Kill();
 		base._ExitTree();
 	}
 }
