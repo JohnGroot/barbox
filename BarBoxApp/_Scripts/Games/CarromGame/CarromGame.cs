@@ -15,6 +15,7 @@ public partial class CarromGame : GameController
 	[Signal] public delegate void PiecePocketedEventHandler(string playerId, CarromPiece piece);
 	[Signal] public delegate void StrikerFoulEventHandler(string playerId);
 	[Signal] public delegate void TurnChangedEventHandler(string playerId, int turnNumber);
+	[Signal] public delegate void PenaltyPiecesTweenCompletedEventHandler();
 
 	// ================================================================
 	// EXPORT PROPERTIES - CARROM SETTINGS
@@ -72,6 +73,8 @@ public partial class CarromGame : GameController
 	
 	// Animation components
 	private Tween _strikerTween;
+	private Tween _penaltyPiecesTween;
+	private int _penaltyPieceIndex = 0;
 
 	// ================================================================
 	// INITIALIZATION
@@ -173,6 +176,9 @@ public partial class CarromGame : GameController
 		
 		// Connect camera signals
 		_cameraController.CameraTransitionCompleted += OnCameraTransitionCompleted;
+		
+		// Connect penalty tween signals
+		PenaltyPiecesTweenCompleted += OnPenaltyPiecesTweenCompleted;
 	}
 
 	/// <summary>
@@ -254,6 +260,7 @@ public partial class CarromGame : GameController
 		// Connect state machine signals
 		_gameStateMachine.StateChanged += OnGameStateChanged;
 		_gameStateMachine.SettlementCompleted += OnSettlementCompleted;
+		_gameStateMachine.InputAvailabilityChanged += OnInputAvailabilityChanged;
 		
 		GD.Print("[CarromGame] Game state machine initialized");
 	}
@@ -849,6 +856,9 @@ public partial class CarromGame : GameController
 				{
 					GD.PrintErr("[CarromGame] Striker tween validation failed after completion");
 				}
+				
+				// Complete the turn flow by transitioning game state to Ready (re-enables input)
+				ForceGameStateToReady();
 			}));
 		}
 		catch (System.Exception ex)
@@ -857,6 +867,141 @@ public partial class CarromGame : GameController
 			// Fallback to immediate restoration
 			RestoreStrikerToBaseline(playerIndexOverride);
 		}
+	}
+
+	/// <summary>
+	/// Force the game state machine to Ready state (called by mode manager for continued turns)
+	/// </summary>
+	public void ForceGameStateToReady()
+	{
+		_gameStateMachine?.ForceToReady();
+	}
+
+	/// <summary>
+	/// Tween penalty pieces to board sequentially before turn transition
+	/// </summary>
+	public void TweenPenaltyPiecesToBoard()
+	{
+		if (_carromGameMode != CarromGameMode.Competitive || _competitiveModeManager == null)
+		{
+			// No penalty pieces in practice mode, proceed directly to camera transition
+			EmitSignal(SignalName.PenaltyPiecesTweenCompleted);
+			return;
+		}
+
+		var penaltyPieces = ((CarromCompetitiveModeManager)_competitiveModeManager).GetPiecesNeedingTweenReturn();
+		if (penaltyPieces.Count == 0)
+		{
+			// No penalty pieces to animate, proceed directly to camera transition
+			EmitSignal(SignalName.PenaltyPiecesTweenCompleted);
+			return;
+		}
+
+		GD.Print($"[PENALTY TWEEN] Starting tween animation for {penaltyPieces.Count} penalty pieces");
+
+		// Stop any existing penalty tween with proper cleanup
+		if (_penaltyPiecesTween != null && _penaltyPiecesTween.IsValid())
+		{
+			_penaltyPiecesTween.Kill();
+		}
+		_penaltyPiecesTween = null;
+
+		// Create and configure tween for sequential animation
+		_penaltyPiecesTween = CreateTween();
+		if (_penaltyPiecesTween == null)
+		{
+			GD.PrintErr("[PENALTY TWEEN] Failed to create penalty pieces tween - falling back to immediate completion");
+			EmitSignal(SignalName.PenaltyPiecesTweenCompleted);
+			return;
+		}
+
+		// Configure tween properties for smooth movement
+		_penaltyPiecesTween.SetEase(Tween.EaseType.Out);
+		_penaltyPiecesTween.SetTrans(Tween.TransitionType.Cubic);
+
+		// Build linear tween chain - no recursion, no callback violations
+		BuildLinearTweenChain(penaltyPieces);
+	}
+
+	/// <summary>
+	/// Build a linear tween chain for all penalty pieces - avoids recursive callback issues
+	/// </summary>
+	private void BuildLinearTweenChain(List<CarromPiece> penaltyPieces)
+	{
+		const float pieceAnimationDuration = 0.4f;
+		const float delayBetweenPieces = 0.1f;
+		
+		// Build the complete animation chain upfront
+		for (int i = 0; i < penaltyPieces.Count; i++)
+		{
+			var piece = penaltyPieces[i];
+			if (!GodotObject.IsInstanceValid(piece))
+			{
+				continue; // Skip invalid pieces
+			}
+
+			// Get target position from metadata
+			var targetPosition = piece.GetMeta("tween_target_position", Vector2.Zero).AsVector2();
+			
+			GD.Print($"[PENALTY TWEEN] Queuing animation for {piece.Type} piece {i + 1}/{penaltyPieces.Count}");
+
+			// First, reveal the piece (restore visual properties from pocket state)
+			_penaltyPiecesTween.TweenCallback(Callable.From(() => RevealPieceForAnimation(piece)));
+			
+			// Then animate the piece to its target position
+			_penaltyPiecesTween.TweenProperty(piece, TweenConstants.GlobalPosition, targetPosition, pieceAnimationDuration);
+			
+			// Add delay between pieces (except after the last piece)
+			if (i < penaltyPieces.Count - 1)
+			{
+				_penaltyPiecesTween.TweenInterval(delayBetweenPieces);
+			}
+		}
+
+		// Single completion callback at the end of the entire chain
+		_penaltyPiecesTween.TweenCallback(Callable.From(OnAllPenaltyPiecesTweenCompleted));
+	}
+
+	/// <summary>
+	/// Reveal a penalty piece for animation by restoring its visual properties
+	/// </summary>
+	private void RevealPieceForAnimation(CarromPiece piece)
+	{
+		if (!GodotObject.IsInstanceValid(piece)) return;
+		
+		// Restore piece visibility and visual properties from pocket state
+		piece.Visible = true;
+		piece.Scale = Vector2.One;
+		piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f);
+		
+		GD.Print($"[PENALTY TWEEN] Revealed {piece.Type} piece for animation");
+	}
+
+	/// <summary>
+	/// Called when all penalty pieces have finished tweening
+	/// </summary>
+	private void OnAllPenaltyPiecesTweenCompleted()
+	{
+		GD.Print("[PENALTY TWEEN] All penalty pieces tween animation completed");
+		
+		// Clear the competitive mode manager's tween list
+		if (_competitiveModeManager is CarromCompetitiveModeManager competitiveModeManager)
+		{
+			competitiveModeManager.ClearTweenReturnList();
+		}
+		
+		// Reset animation state
+		_penaltyPieceIndex = 0;
+		
+		// Clean up tween
+		if (_penaltyPiecesTween != null && _penaltyPiecesTween.IsValid())
+		{
+			_penaltyPiecesTween.Kill();
+		}
+		_penaltyPiecesTween = null;
+		
+		// Signal completion to trigger camera transition
+		EmitSignal(SignalName.PenaltyPiecesTweenCompleted);
 	}
 
 	// ================================================================
@@ -1081,25 +1226,12 @@ public partial class CarromGame : GameController
 		
 		_competitiveModeManager?.SwitchToNextPlayer();
 		
-		// Start cinematic camera transition to the new player's perspective
-		var newCurrentPlayer = _competitiveModeManager?.GetCurrentPlayer();
-		if (newCurrentPlayer != null && _cameraController != null)
-		{
-			// Map playerId to player index for camera transition
-			int playerIndex = newCurrentPlayer.PlayerId switch
-			{
-				"player1" => 0, // Bottom
-				"player2" => 1, // Top  
-				"player3" => 2, // Left
-				"player4" => 3, // Right
-				_ => 0
-			};
-			
-			// Start cinematic zoom transition (striker restoration happens when transition completes)
-			_cameraController.TransitionToPlayerWithZoom(playerIndex, 1.2f);
-		}
+		// Start penalty pieces tween animation sequence (if any penalty pieces need to be returned)
+		// This will either animate penalty pieces sequentially or proceed directly to camera transition
+		TweenPenaltyPiecesToBoard();
 		
-		// Note: Striker restoration now happens via CameraTransitionCompleted signal
+		// Note: Camera transition now happens via PenaltyPiecesTweenCompleted signal
+		// Striker restoration happens after camera transition via CameraTransitionCompleted signal
 	}
 
 
@@ -1356,6 +1488,48 @@ public partial class CarromGame : GameController
 	{
 		// Smoothly animate striker to new player's baseline position after cinematic camera transition
 		TweenStrikerToBaseline(duration: 0.6f);
+	}
+
+	/// <summary>
+	/// Handle penalty pieces tween completion - proceed to camera transition
+	/// </summary>
+	private void OnPenaltyPiecesTweenCompleted()
+	{
+		GD.Print("[PENALTY TWEEN] Penalty pieces tween completed, proceeding to camera transition");
+		
+		// Start cinematic camera transition to the new player's perspective
+		var newCurrentPlayer = _competitiveModeManager?.GetCurrentPlayer();
+		if (newCurrentPlayer != null && _cameraController != null)
+		{
+			// Map playerId to player index for camera transition
+			int playerIndex = newCurrentPlayer.PlayerId switch
+			{
+				"player1" => 0, // Bottom
+				"player2" => 1, // Top  
+				"player3" => 2, // Left
+				"player4" => 3, // Right
+				_ => 0
+			};
+			
+			// Start cinematic zoom transition (striker restoration happens when transition completes)
+			_cameraController.TransitionToPlayerWithZoom(playerIndex, 1.2f);
+		}
+	}
+
+	/// <summary>
+	/// Handle input availability changes from state machine
+	/// </summary>
+	private void OnInputAvailabilityChanged(bool canAcceptInput)
+	{
+		GD.Print($"[CarromGame] Input availability changed: {canAcceptInput}");
+		
+		// Update score display visual state
+		if (_scoreDisplay != null && GodotObject.IsInstanceValid(_scoreDisplay))
+		{
+			_scoreDisplay.SetInputBlockedVisual(!canAcceptInput);
+		}
+		
+		// Input controller automatically checks _gameState.CanAcceptInput, so no direct update needed
 	}
 
 	/// <summary>
@@ -1728,8 +1902,18 @@ public partial class CarromGame : GameController
 			_cameraController.CameraTransitionCompleted -= OnCameraTransitionCompleted;
 		}
 		
+		// Clean up penalty tween signal
+		PenaltyPiecesTweenCompleted -= OnPenaltyPiecesTweenCompleted;
+		
+		// Clean up game state machine signals
+		if (_gameStateMachine != null && GodotObject.IsInstanceValid(_gameStateMachine))
+		{
+			_gameStateMachine.InputAvailabilityChanged -= OnInputAvailabilityChanged;
+		}
+		
 		// Clean up animation components
 		_strikerTween?.Kill();
+		_penaltyPiecesTween?.Kill();
 			
 		// Clean up manager signals
 		DisconnectManagerSignals();

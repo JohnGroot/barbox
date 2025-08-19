@@ -296,26 +296,6 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 			
 			// Emit settlement completed signal
 			EmitSignal(SignalName.SettlementCompleted);
-			
-			// Check if player should continue their turn (e.g., after pocketing pieces)
-			bool playerContinues = false;
-			if (_modeManager is CarromCompetitiveModeManager competitiveModeManager)
-			{
-				var currentPlayer = competitiveModeManager.GetCurrentPlayer();
-				playerContinues = competitiveModeManager.ShouldContinueTurn(currentPlayer?.PlayerId);
-			}
-			else if (_modeManager is CarromPracticeModeManager practiceModeManager)
-			{
-				// Practice mode always continues turn
-				playerContinues = true;
-			}
-			
-			if (playerContinues)
-			{
-				// Player continues - auto-transition back to Ready for more input
-				TransitionTo(GameState.Ready);
-			}
-			// else: Stay in Settlement state until manual turn pass
 		}
 		catch (System.Exception ex)
 		{

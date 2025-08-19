@@ -47,6 +47,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	private PackedScene _blackPieceTemplate;
 	private PackedScene _redPieceTemplate;
 	private PackedScene _strikerTemplate;
+	
+	// Penalty piece tween tracking
+	private List<CarromPiece> _piecesNeedingTweenReturn = new List<CarromPiece>();
 
 	// Settings
 	private int _competitiveCreditCost = 1;
@@ -129,11 +132,13 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		{
 			GD.Print($"[CarromCompetitive] {currentPlayerId} continues turn after successful pocketing");
 			
-			// Only restore striker if player continues their turn
+			// Restore striker and transition state machine back to Ready for continued turn
 			var carromGame = GetParent<CarromGame>();
 			if (carromGame != null)
 			{
 				carromGame.RestoreStrikerToBaseline();
+				// Transition state machine to Ready to re-enable input
+				carromGame.ForceGameStateToReady();
 			}
 			else
 			{
@@ -300,7 +305,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 					currentPlayer.RecordFoul();
 					EmitSignal(SignalName.FoulCommitted, playerId);
 					// Return the queen to center and apply additional penalty
-					ReturnPieceToCenter(PieceType.Red);
+					ReturnPieceToCenter(PieceType.Red, deferTweening: true);
 					ApplyFoulPenalty(currentPlayer, FoulType.ImproperQueenPocketing);
 				}
 				break;
@@ -321,7 +326,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 					currentPlayer.RecordFoul();
 					EmitSignal(SignalName.FoulCommitted, playerId);
 					// Return the opponent's piece to center and apply additional penalty
-					ReturnPieceToCenter(piece.Type);
+					ReturnPieceToCenter(piece.Type, deferTweening: true);
 					ApplyFoulPenalty(currentPlayer, FoulType.OpponentPiecePocketed);
 				}
 				break;
@@ -619,7 +624,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			if (queenNeedsReturning)
 			{
 				// Return uncovered queen to center
-				ReturnPieceToCenter(PieceType.Red);
+				ReturnPieceToCenter(PieceType.Red, deferTweening: true);
 				GD.Print($"[CarromCompetitive] Returned uncovered queen to center for {currentPlayer.PlayerId}");
 			}
 		}
@@ -1006,17 +1011,17 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		var pieceTypeToReturn = foulPlayer.ReturnPocketedPiece();
 		if (pieceTypeToReturn.HasValue)
 		{
-			// Create the piece at center of board
-			ReturnPieceToCenter(pieceTypeToReturn.Value);
+			// Create the piece at center of board with deferred tweening
+			ReturnPieceToCenter(pieceTypeToReturn.Value, deferTweening: true);
 			
-			GD.Print($"[FOUL PENALTY] {foulPlayer.PlayerId} returns {pieceTypeToReturn.Value} piece to center for {foulReason}");
+			GD.Print($"[FOUL PENALTY] {foulPlayer.PlayerId} returns {pieceTypeToReturn.Value} piece to center for {foulReason} (deferred for tween)");
 		}
 	}
 
 	/// <summary>
 	/// Create a piece at the center of the board (for foul penalties and queen returns)
 	/// </summary>
-	private void ReturnPieceToCenter(PieceType pieceType)
+	private void ReturnPieceToCenter(PieceType pieceType, bool deferTweening = false)
 	{
 		if (_board == null) return;
 
@@ -1028,8 +1033,16 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			Vector2 centerPosition = _board.GetCenterPosition();
 			Vector2 safePosition = FindSafePositionNearCenter(centerPosition, pieceType);
 			
-			// Restore the existing hidden piece instead of creating new one
-			hiddenPiece.Reset(safePosition, validatePlacement: true);
+			if (deferTweening)
+			{
+				// Position piece off-screen and add to tween list
+				PrepareHiddenPieceForTweening(hiddenPiece, safePosition);
+			}
+			else
+			{
+				// Restore the existing hidden piece immediately
+				hiddenPiece.Reset(safePosition, validatePlacement: true);
+			}
 			return;
 		}
 
@@ -1040,6 +1053,12 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		{ 
 			// Add to competitive pieces list so it's tracked
 			_competitivePieces.Add(returnedPiece);
+			
+			if (deferTweening)
+			{
+				// Position new piece off-screen and add to tween list
+				PrepareNewPieceForTweening(returnedPiece, fallbackPosition);
+			}
 		}
 	}
 
@@ -1103,5 +1122,116 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		// Fallback to center if no safe position found
 		GD.PrintErr($"[WARNING] Could not find safe position for returned {pieceType} piece, using center");
 		return center;
+	}
+
+	/// <summary>
+	/// Prepare a hidden piece for tween animation by positioning it at a realistic pocket position
+	/// </summary>
+	private void PrepareHiddenPieceForTweening(CarromPiece piece, Vector2 finalPosition)
+	{
+		// Use piece's current position (should be at pocket center) as starting point
+		Vector2 pocketPosition = piece.GlobalPosition;
+		
+		// If piece position seems invalid, find nearest pocket position
+		if (pocketPosition.Length() < 10.0f) // Too close to origin, probably invalid
+		{
+			pocketPosition = FindNearestPocketPosition(finalPosition);
+		}
+		
+		// Reset piece physics state but keep it hidden until tween starts
+		piece.Reset(pocketPosition, immediate: true, restoreVisualProperties: false, validatePlacement: false);
+		
+		// Keep piece hidden in pocket until tween animation begins
+		piece.Visible = false;
+		piece.Scale = Vector2.Zero;
+		piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+		
+		// Store both the start and target positions as metadata
+		piece.SetMeta("tween_start_position", pocketPosition);
+		piece.SetMeta("tween_target_position", finalPosition);
+		
+		// Add to tween list
+		_piecesNeedingTweenReturn.Add(piece);
+		
+		GD.Print($"[PENALTY TWEEN] Prepared hidden {piece.Type} piece for tween return from pocket at {pocketPosition} (kept hidden)");
+	}
+
+	/// <summary>
+	/// Prepare a newly created piece for tween animation
+	/// </summary>
+	private void PrepareNewPieceForTweening(CarromPiece piece, Vector2 finalPosition)
+	{
+		// For new pieces, find a reasonable pocket position to start from
+		Vector2 pocketPosition = FindNearestPocketPosition(finalPosition);
+		
+		// Move piece to pocket position
+		piece.GlobalPosition = pocketPosition;
+		
+		// Start hidden like pocketed pieces, will be revealed when tween starts
+		piece.Visible = false;
+		piece.Freeze = false;
+		piece.Scale = Vector2.Zero;
+		piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+		
+		// Store both the start and target positions as metadata
+		piece.SetMeta("tween_start_position", pocketPosition);
+		piece.SetMeta("tween_target_position", finalPosition);
+		
+		// Add to tween list
+		_piecesNeedingTweenReturn.Add(piece);
+		
+		GD.Print($"[PENALTY TWEEN] Prepared new {piece.Type} piece for tween return from pocket at {pocketPosition} (kept hidden)");
+	}
+
+	/// <summary>
+	/// Find the nearest pocket position for piece tween animations
+	/// </summary>
+	private Vector2 FindNearestPocketPosition(Vector2 centerPosition)
+	{
+		if (_board == null) return new Vector2(centerPosition.X, -200.0f); // Fallback to off-screen
+		
+		// Get pocket positions from board
+		var pockets = _board.GetPockets();
+		if (pockets.Count == 0) return new Vector2(centerPosition.X, -200.0f); // Fallback
+		
+		// Find the pocket closest to the center position (reasonable visual choice)
+		Vector2 nearestPocketPosition = pockets[0].GlobalPosition;
+		float nearestDistance = centerPosition.DistanceTo(nearestPocketPosition);
+		
+		foreach (var pocket in pockets)
+		{
+			if (pocket != null && GodotObject.IsInstanceValid(pocket))
+			{
+				Vector2 pocketPos = pocket.GlobalPosition;
+				float distance = centerPosition.DistanceTo(pocketPos);
+				if (distance < nearestDistance)
+				{
+					nearestDistance = distance;
+					nearestPocketPosition = pocketPos;
+				}
+			}
+		}
+		
+		return nearestPocketPosition;
+	}
+
+	/// <summary>
+	/// Get pieces that need tween return animation
+	/// </summary>
+	public List<CarromPiece> GetPiecesNeedingTweenReturn()
+	{
+		// Clean up any invalid pieces first
+		_piecesNeedingTweenReturn.RemoveAll(p => !GodotObject.IsInstanceValid(p));
+		
+		// Return a copy to avoid modification during iteration
+		return new List<CarromPiece>(_piecesNeedingTweenReturn);
+	}
+
+	/// <summary>
+	/// Clear the tween return list (called after tweening is complete)
+	/// </summary>
+	public void ClearTweenReturnList()
+	{
+		_piecesNeedingTweenReturn.Clear();
 	}
 }
