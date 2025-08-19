@@ -41,6 +41,9 @@ public partial class CarromGame : GameController
 	[Export] public float PowerBarWidth { get; set; } = 60.0f;
 	[Export] public float PowerBarHeight { get; set; } = 8.0f;
 
+	[ExportCategory("Debug Options")]
+	[Export] public bool EnableTrails { get; set; } = false;
+
 	// Board settings are now managed by the CarromBoard component itself
 
 	[ExportCategory("Piece Templates")]
@@ -246,8 +249,57 @@ public partial class CarromGame : GameController
 			// Pass visual parameters to input controller
 			_inputController.SetVisualParameters(AimLineLength, PowerBarWidth, PowerBarHeight);
 		}
+		
+		// Initialize trail system based on debug setting
+		InitializeTrailSystem();
 	}
 
+	/// <summary>
+	/// Initialize trail system for debug visualization
+	/// </summary>
+	private void InitializeTrailSystem()
+	{
+		// Enable trails globally based on debug setting
+		CarromPiece.SetTrailsEnabled(EnableTrails);
+		
+		GD.Print($"[CarromGame] Trail system initialized - Enabled: {EnableTrails}");
+	}
+	
+	/// <summary>
+	/// Clear all piece trails
+	/// </summary>
+	private void ClearAllTrails()
+	{
+		// Find all CarromPiece instances in the scene tree
+		var allPieces = GetTree().GetNodesInGroup("pieces");
+		if (allPieces.Count == 0)
+		{
+			// Fallback: search for CarromPiece nodes in the board
+			if (_board != null)
+			{
+				foreach (Node child in _board.GetChildren())
+				{
+					if (child is CarromPiece piece)
+					{
+						piece.ClearTrail();
+					}
+				}
+			}
+		}
+		else
+		{
+			// Use group-based approach
+			foreach (Node node in allPieces)
+			{
+				if (node is CarromPiece piece && GodotObject.IsInstanceValid(piece))
+				{
+					piece.ClearTrail();
+				}
+			}
+		}
+		
+		GD.Print("[CarromGame] All piece trails cleared");
+	}
 	
 	/// <summary>
 	/// Initialize game state machine - replaces complex distributed state management
@@ -1715,6 +1767,9 @@ public partial class CarromGame : GameController
 	private void OnTurnChanged(string playerId, int turnNumber)
 	{
 		EmitSignal(SignalName.TurnChanged, playerId, turnNumber);
+		
+		// Clear all piece trails when turn changes for clean visual reset
+		ClearAllTrails();
 		
 		// Update score display to reflect new current player
 		if (_scoreDisplay != null && _competitiveModeManager != null)

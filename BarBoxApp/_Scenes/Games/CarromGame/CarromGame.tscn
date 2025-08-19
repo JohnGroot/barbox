@@ -17,6 +17,7 @@ MaxAngularVelocity = 100.0
 VelocityAlertThreshold = 4000.0
 AimLineLength = 150.0
 PowerBarWidth = 80.0
+EnableTrails = true
 WhitePieceTemplate = ExtResource("2_1b4uc")
 BlackPieceTemplate = ExtResource("3_pw2n5")
 RedPieceTemplate = ExtResource("4_oio5e")

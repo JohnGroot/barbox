@@ -1,4 +1,6 @@
 using Godot;
+using System.Collections.Generic;
+using System.Linq;
 
 /// <summary>
 /// Carrom piece with realistic physics using RigidBody2D
@@ -54,6 +56,26 @@ public partial class CarromPiece : RigidBody2D
 	
 	// Velocity monitoring for tunneling protection validation (used for debugging)
 	private float _maxSpeedAchieved = 0.0f;
+	
+	// Trail system for debug visualization
+	private Queue<TrailPoint> _trailPoints = new();
+	private static bool _globalTrailsEnabled = false;
+	private const int MAX_TRAIL_POINTS = 50;
+	private const float TRAIL_SAMPLE_DISTANCE = 2.0f;
+	private const float TRAIL_MAX_AGE = 10.0f; // seconds
+	
+	// Trail point data structure
+	private struct TrailPoint
+	{
+		public Vector2 Position;
+		public double Timestamp;
+		
+		public TrailPoint(Vector2 position, double timestamp)
+		{
+			Position = position;
+			Timestamp = timestamp;
+		}
+	}
 
 	public override void _Ready()
 	{
@@ -63,6 +85,9 @@ public partial class CarromPiece : RigidBody2D
 		SetupVisual();
 		SetupPhysicsMaterial();
 		ConnectSignals();
+		
+		// Add to pieces group for easy access
+		AddToGroup("pieces");
 		
 		// Record creation time for never-moved timeout
 		_creationTime = Time.GetUnixTimeFromSystem();
@@ -194,6 +219,21 @@ public partial class CarromPiece : RigidBody2D
 	private Color GetPieceColor()
 	{
 		return PieceColor;
+	}
+
+	/// <summary>
+	/// Get trail color for piece type - each piece has unique trail color
+	/// </summary>
+	private Color GetTrailColor()
+	{
+		return Type switch
+		{
+			PieceType.White => new Color(0.4f, 0.8f, 1.0f), // Light blue
+			PieceType.Black => new Color(0.8f, 0.4f, 1.0f), // Purple
+			PieceType.Red => new Color(1.0f, 0.8f, 0.2f),   // Gold
+			PieceType.Striker => new Color(0.2f, 1.0f, 0.2f), // Bright green
+			_ => Colors.Gray
+		};
 	}
 
 	/// <summary>
@@ -393,6 +433,9 @@ public partial class CarromPiece : RigidBody2D
 		
 		// Update position tracking for next frame
 		_lastPositionForFriction = currentPosition;
+		
+		// Update trail if enabled
+		UpdateTrail();
 	}
 
 	/// <summary>
@@ -557,6 +600,9 @@ public partial class CarromPiece : RigidBody2D
 		_cachedSpeed = 0.0f;
 		_frictionCacheValid = false;
 		
+		// Clear trail when resetting piece
+		ClearTrail();
+		
 		// Clear reset state flags
 		_skipNextStoppedCheck = false;
 		
@@ -684,10 +730,114 @@ public partial class CarromPiece : RigidBody2D
 	}
 
 	/// <summary>
+	/// Enable or disable trails globally for all pieces
+	/// </summary>
+	public static void SetTrailsEnabled(bool enabled)
+	{
+		_globalTrailsEnabled = enabled;
+		
+		// Clear all trails when disabling
+		if (!enabled)
+		{
+			// This will be called on each piece individually via ClearTrail()
+		}
+	}
+	
+	/// <summary>
+	/// Check if trails are currently enabled
+	/// </summary>
+	public static bool AreTrailsEnabled()
+	{
+		return _globalTrailsEnabled;
+	}
+	
+	/// <summary>
+	/// Clear this piece's trail
+	/// </summary>
+	public void ClearTrail()
+	{
+		_trailPoints.Clear();
+		QueueRedraw(); // Request redraw to remove trail visuals
+	}
+	
+	/// <summary>
+	/// Update trail with current position if piece is moving
+	/// </summary>
+	private void UpdateTrail()
+	{
+		if (!_globalTrailsEnabled) return;
+		
+		Vector2 currentPos = GlobalPosition;
+		double currentTime = Time.GetUnixTimeFromSystem();
+		
+		// Only add trail point if piece is moving and we've moved enough distance
+		if (_cachedSpeed > _minVelocityThreshold)
+		{
+			// Check if we've moved far enough for a new trail point
+			if (_trailPoints.Count == 0 || 
+			    (_trailPoints.Count > 0 && _trailPoints.Last().Position.DistanceTo(currentPos) >= TRAIL_SAMPLE_DISTANCE))
+			{
+				_trailPoints.Enqueue(new TrailPoint(currentPos, currentTime));
+				
+				// Limit trail length for performance
+				while (_trailPoints.Count > MAX_TRAIL_POINTS)
+				{
+					_trailPoints.Dequeue();
+				}
+			}
+		}
+		
+		// Remove old trail points
+		while (_trailPoints.Count > 0 && 
+		       (currentTime - _trailPoints.Peek().Timestamp) > TRAIL_MAX_AGE)
+		{
+			_trailPoints.Dequeue();
+		}
+		
+		// Request redraw if we have trail points
+		if (_trailPoints.Count > 0)
+		{
+			QueueRedraw();
+		}
+	}
+	
+	/// <summary>
+	/// Render trail lines with fading effect
+	/// </summary>
+	private void DrawTrail()
+	{
+		if (!_globalTrailsEnabled || _trailPoints.Count < 2) return;
+		
+		var trailArray = _trailPoints.ToArray();
+		Color trailColor = GetTrailColor();
+		double currentTime = Time.GetUnixTimeFromSystem();
+		
+		// Draw line segments between trail points with fading effect
+		for (int i = 0; i < trailArray.Length - 1; i++)
+		{
+			Vector2 fromPos = ToLocal(trailArray[i].Position);
+			Vector2 toPos = ToLocal(trailArray[i + 1].Position);
+			
+			// Calculate alpha based on age (newer = more opaque)
+			double age = currentTime - trailArray[i].Timestamp;
+			float alpha = Mathf.Clamp(1.0f - (float)(age / TRAIL_MAX_AGE), 0.1f, 0.8f);
+			
+			// Make trail points progressively thinner and more transparent
+			float width = Mathf.Lerp(1.0f, 3.0f, alpha);
+			Color segmentColor = new Color(trailColor.R, trailColor.G, trailColor.B, alpha);
+			
+			DrawLine(fromPos, toPos, segmentColor, width, true);
+		}
+	}
+
+	/// <summary>
 	/// Custom drawing for circular pieces
 	/// </summary>
 	public override void _Draw()
 	{
+		// Draw trail first (behind the piece)
+		DrawTrail();
+		
 		// Use visual radius (not collision radius) for drawing
 		float radius = PhysicsConfig.GetRadiusForPieceType(Type);
 
@@ -705,6 +855,9 @@ public partial class CarromPiece : RigidBody2D
 	public override void _ExitTree()
 	{
 		base._ExitTree();
+		
+		// Remove from pieces group
+		RemoveFromGroup("pieces");
 		
 		// Disconnect signals - no need for IsInstanceValid check as _ExitTree means object is still valid
 		BodyEntered -= OnBodyEntered;
