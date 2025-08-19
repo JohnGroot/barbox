@@ -38,6 +38,15 @@ public partial class CarromInputController : Node2D
 	[Export] public Color TrajectoryColor { get; set; } = Colors.Yellow;
 	[Export] public Color PostCollisionTrajectoryColor { get; set; } = Colors.Orange;
 	[Export] public Color CollisionMarkerColor { get; set; } = Colors.Red;
+	[Export] public Color HitPieceTrajectoryColor { get; set; } = Colors.Cyan;
+	[Export] public float HitPieceTrajectoryDistance { get; set; } = 150.0f;
+	[Export] public bool ShowHitPieceTrajectory { get; set; } = true;
+	
+	[ExportCategory("Gradient Colors")]
+	[Export] public Color PowerGradientLow { get; set; } = Colors.Green;
+	[Export] public Color PowerGradientMid { get; set; } = Colors.Yellow;
+	[Export] public Color PowerGradientHigh { get; set; } = Colors.Red;
+	[Export] public bool UseGradientForAimLine { get; set; } = true;
 	
 	[ExportCategory("Input Parameters")]
 	[Export] public float DeadZone { get; set; } = 40.0f;
@@ -93,6 +102,8 @@ public partial class CarromInputController : Node2D
 	private Vector2[] _cachedTrajectoryPoints = new Vector2[0];
 	private Vector2? _cachedCollisionPoint;
 	private Vector2[] _cachedPostCollisionPoints = new Vector2[0];
+	private CarromPiece _cachedHitPiece;
+	private Vector2[] _cachedHitPieceTrajectory = new Vector2[0];
 	private bool _trajectoryCacheValid = false;
 
 	// Input modes
@@ -808,24 +819,30 @@ public partial class CarromInputController : Node2D
 		Vector2 inputVector = currentPos - _aimStartPosition;
 		float inputDistance = inputVector.Length();
 		
-		// Draw dotted line from striker to input position, clamped to max distance
-		if (inputDistance > 0)
+		// Only draw dotted line when outside the deadzone
+		if (inputDistance > DeadZone)
 		{
 			float clampedDistance = Mathf.Clamp(inputDistance, 0, MaxAimDistance);
 			Vector2 clampedInputPos = _aimStartPosition + inputVector.Normalized() * clampedDistance;
 			
 			// Calculate power for color matching
-			float power = inputDistance > DeadZone ? 
-				Mathf.Clamp((inputDistance - DeadZone) / (MaxAimDistance - DeadZone), 0.0f, 1.0f) : 0.0f;
-			Color lineColor = power > 0.8f ? Colors.Red : 
-							 power > 0.5f ? Colors.Yellow : PowerBarColor;
+			float power = Mathf.Clamp((inputDistance - DeadZone) / (MaxAimDistance - DeadZone), 0.0f, 1.0f);
 			
 			// Start line from opposite edge of striker (offset by radius)
 			Vector2 lineDirection = (clampedInputPos - strikerPos).Normalized();
 			float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
 			Vector2 lineStart = strikerPos + lineDirection * strikerRadius;
 			
-			DrawDottedLine(lineStart, clampedInputPos, lineColor, AimingLineWidth);
+			if (UseGradientForAimLine)
+			{
+				DrawGradientDottedLine(lineStart, clampedInputPos, power, AimingLineWidth);
+			}
+			else
+			{
+				Color lineColor = power > 0.8f ? Colors.Red : 
+								 power > 0.5f ? Colors.Yellow : PowerBarColor;
+				DrawDottedLine(lineStart, clampedInputPos, lineColor, AimingLineWidth);
+			}
 		}
 		
 		if (inputDistance > DeadZone)
@@ -872,6 +889,12 @@ public partial class CarromInputController : Node2D
 			{
 				DrawTrajectoryPath(trajectory.postCollisionPoints, PostCollisionTrajectoryColor);
 			}
+			
+			// Draw hit piece trajectory if available
+			if (ShowHitPieceTrajectory && trajectory.hitPieceTrajectory.Length > 0)
+			{
+				DrawHitPieceTrajectory(trajectory.hitPieceTrajectory, HitPieceTrajectoryColor);
+			}
 		}
 	}
 	
@@ -883,10 +906,8 @@ public partial class CarromInputController : Node2D
 		if (points.Length < 2) 
 			return;
 		
-		for (int i = 0; i < points.Length - 1; i++)
-		{
-			DrawLine(points[i], points[i + 1], color, AimingLineWidth, true);
-		}
+		// Draw as solid polyline for main trajectory
+		DrawPolyline(points, color, AimingLineWidth, true);
 	}
 	
 	/// <summary>
@@ -899,30 +920,152 @@ public partial class CarromInputController : Node2D
 	}
 
 	/// <summary>
-	/// Draw dotted line between two points
+	/// Draw dotted line between two points with consistent dash sizes
 	/// </summary>
 	private void DrawDottedLine(Vector2 from, Vector2 to, Color color, float width)
 	{
-		Vector2 direction = (to - from).Normalized();
-		float totalDistance = from.DistanceTo(to);
+		// Draw manually to ensure consistent dash sizes regardless of line length
 		float dashLength = 8.0f;
 		float gapLength = 4.0f;
-		float segmentLength = dashLength + gapLength;
+		float totalPattern = dashLength + gapLength;
 		
-		Vector2 currentPos = from;
-		float distanceTraveled = 0.0f;
+		Vector2 direction = (to - from).Normalized();
+		float totalDistance = from.DistanceTo(to);
 		
-		while (distanceTraveled < totalDistance)
+		// Calculate how many complete dash-gap patterns we can fit
+		int completePatterns = Mathf.FloorToInt(totalDistance / totalPattern);
+		float remainingDistance = totalDistance - (completePatterns * totalPattern);
+		
+		// Draw complete patterns
+		for (int i = 0; i < completePatterns; i++)
 		{
-			float remainingDistance = totalDistance - distanceTraveled;
-			float currentDashLength = Mathf.Min(dashLength, remainingDistance);
+			Vector2 dashStart = from + direction * (i * totalPattern);
+			Vector2 dashEnd = dashStart + direction * dashLength;
+			DrawLine(dashStart, dashEnd, color, width, true);
+		}
+		
+		// Draw final dash if there's remaining space
+		if (remainingDistance > 0)
+		{
+			Vector2 finalDashStart = from + direction * (completePatterns * totalPattern);
+			Vector2 finalDashEnd = finalDashStart + direction * Mathf.Min(dashLength, remainingDistance);
+			DrawLine(finalDashStart, finalDashEnd, color, width, true);
+		}
+	}
+	
+	/// <summary>
+	/// Draw gradient dotted line between two points with consistent dash sizes
+	/// </summary>
+	private void DrawGradientDottedLine(Vector2 from, Vector2 to, float power, float width)
+	{
+		// Draw dashes manually with gradient colors and consistent sizing
+		float dashLength = 8.0f;
+		float gapLength = 4.0f;
+		float totalPattern = dashLength + gapLength;
+		
+		Vector2 direction = (to - from).Normalized();
+		float totalDistance = from.DistanceTo(to);
+		
+		// Calculate how many complete dash-gap patterns we can fit
+		int completePatterns = Mathf.FloorToInt(totalDistance / totalPattern);
+		float remainingDistance = totalDistance - (completePatterns * totalPattern);
+		
+		// Draw complete patterns with gradient
+		for (int i = 0; i < completePatterns; i++)
+		{
+			float patternStart = i * totalPattern;
+			float patternMid = patternStart + (dashLength / 2.0f);
 			
-			Vector2 dashEnd = currentPos + direction * currentDashLength;
-			DrawLine(currentPos, dashEnd, color, width, true);
+			// Calculate gradient position for this dash
+			float gradientT = patternMid / totalDistance;
+			float colorT = Mathf.Lerp(0.0f, power, gradientT);
+			Color dashColor = GetPowerGradientColor(colorT);
 			
-			// Move to next dash position
-			distanceTraveled += segmentLength;
-			currentPos = from + direction * distanceTraveled;
+			Vector2 dashStart = from + direction * patternStart;
+			Vector2 dashEnd = dashStart + direction * dashLength;
+			DrawLine(dashStart, dashEnd, dashColor, width, true);
+		}
+		
+		// Draw final dash if there's remaining space
+		if (remainingDistance > 0)
+		{
+			float finalDashLength = Mathf.Min(dashLength, remainingDistance);
+			float finalPatternStart = completePatterns * totalPattern;
+			float finalPatternMid = finalPatternStart + (finalDashLength / 2.0f);
+			
+			// Calculate gradient for final dash
+			float gradientT = finalPatternMid / totalDistance;
+			float colorT = Mathf.Lerp(0.0f, power, gradientT);
+			Color dashColor = GetPowerGradientColor(colorT);
+			
+			Vector2 finalDashStart = from + direction * finalPatternStart;
+			Vector2 finalDashEnd = finalDashStart + direction * finalDashLength;
+			DrawLine(finalDashStart, finalDashEnd, dashColor, width, true);
+		}
+	}
+	
+	/// <summary>
+	/// Get gradient color based on power level
+	/// </summary>
+	private Color GetPowerGradientColor(float power)
+	{
+		if (power <= 0.5f)
+		{
+			// Interpolate between low and mid colors
+			float t = power * 2.0f; // Scale 0-0.5 to 0-1
+			return PowerGradientLow.Lerp(PowerGradientMid, t);
+		}
+		else
+		{
+			// Interpolate between mid and high colors
+			float t = (power - 0.5f) * 2.0f; // Scale 0.5-1 to 0-1
+			return PowerGradientMid.Lerp(PowerGradientHigh, t);
+		}
+	}
+	
+	/// <summary>
+	/// Draw hit piece trajectory as dotted line with fading
+	/// </summary>
+	private void DrawHitPieceTrajectory(Vector2[] points, Color color)
+	{
+		if (points.Length < 2) 
+			return;
+		
+		// Define consistent dash pattern for hit piece
+		float dashLength = 5.0f;
+		float gapLength = 3.0f;
+		float totalPattern = dashLength + gapLength;
+		
+		// Draw trajectory segments with fading alpha
+		for (int i = 0; i < points.Length - 1; i++)
+		{
+			Vector2 segmentStart = points[i];
+			Vector2 segmentEnd = points[i + 1];
+			Vector2 direction = (segmentEnd - segmentStart).Normalized();
+			float segmentLength = segmentStart.DistanceTo(segmentEnd);
+			
+			// Add transparency fade based on distance from collision
+			float fadeAlpha = 1.0f - (i * 0.1f); // Gradually fade trajectory
+			fadeAlpha = Mathf.Max(fadeAlpha, 0.2f); // Keep minimum visibility
+			Color fadedColor = new Color(color.R, color.G, color.B, color.A * fadeAlpha);
+			
+			// Draw dashes with consistent sizing
+			int dashCount = Mathf.FloorToInt(segmentLength / totalPattern);
+			for (int j = 0; j < dashCount; j++)
+			{
+				Vector2 dashStart = segmentStart + direction * (j * totalPattern);
+				Vector2 dashEnd = dashStart + direction * dashLength;
+				DrawLine(dashStart, dashEnd, fadedColor, AimingLineWidth * 0.8f, true);
+			}
+			
+			// Draw final partial dash if needed
+			float remaining = segmentLength - (dashCount * totalPattern);
+			if (remaining > 0)
+			{
+				Vector2 finalDashStart = segmentStart + direction * (dashCount * totalPattern);
+				Vector2 finalDashEnd = finalDashStart + direction * Mathf.Min(dashLength, remaining);
+				DrawLine(finalDashStart, finalDashEnd, fadedColor, AimingLineWidth * 0.8f, true);
+			}
 		}
 	}
 	
@@ -953,7 +1096,7 @@ public partial class CarromInputController : Node2D
 		Vector2 leftLineStart = strikerPos - leftAngleDirection * DeadZone;
 		Vector2 rightLineStart = strikerPos - rightAngleDirection * DeadZone;
 
-		// Use dashed lines instead of solid lines
+		// Use dotted lines for angle indicators with consistent dash sizes
 		DrawDottedLine(leftLineStart, leftLineEnd, LateralAngleLineColor, LateralAngleLineWidth);
 		DrawDottedLine(rightLineStart, rightLineEnd, LateralAngleLineColor, LateralAngleLineWidth);
 
@@ -1125,41 +1268,45 @@ public partial class CarromInputController : Node2D
 	/// <summary>
 	/// Calculate trajectory points with collision detection (constant distance)
 	/// </summary>
-	private (Vector2[] trajectoryPoints, Vector2? collisionPoint, Vector2[] postCollisionPoints) CalculateTrajectoryPoints(Vector2 startPos, Vector2 direction, float power)
+	private (Vector2[] trajectoryPoints, Vector2? collisionPoint, Vector2[] postCollisionPoints, Vector2[] hitPieceTrajectory) CalculateTrajectoryPoints(Vector2 startPos, Vector2 direction, float power)
 	{
 		if (_physicsConfig == null || _striker == null)
 		{
-			return ([], null, []);
+			return ([], null, [], []);
 		}
 		
 		if (_trajectoryCacheValid && 
 			_lastTrajectoryDirection.DistanceSquaredTo(direction) < TRAJECTORY_CACHE_DIRECTION_TOLERANCE_SQUARED &&
 			Mathf.Abs(_lastTrajectoryPower - power) < TRAJECTORY_CACHE_POWER_TOLERANCE)
 		{
-			return (_cachedTrajectoryPoints, _cachedCollisionPoint, _cachedPostCollisionPoints);
+			return (_cachedTrajectoryPoints, _cachedCollisionPoint, _cachedPostCollisionPoints, _cachedHitPieceTrajectory);
 		}
 		
 		// Use constant distance trajectory regardless of power
-		var result = SimulateConstantTrajectoryPath(startPos, direction);
+		var result = SimulateConstantTrajectoryPath(startPos, direction, power);
 		
 		_lastTrajectoryDirection = direction;
 		_lastTrajectoryPower = power;
 		_cachedTrajectoryPoints = result.trajectoryPoints;
 		_cachedCollisionPoint = result.collisionPoint;
 		_cachedPostCollisionPoints = result.postCollisionPoints;
+		_cachedHitPiece = result.hitPiece;
+		_cachedHitPieceTrajectory = result.hitPieceTrajectory;
 		_trajectoryCacheValid = true;
 		
-		return result;
+		return (result.trajectoryPoints, result.collisionPoint, result.postCollisionPoints, result.hitPieceTrajectory);
 	}
 	
 	/// <summary>
 	/// Simulate constant distance trajectory path with collision detection
 	/// </summary>
-	private (Vector2[] trajectoryPoints, Vector2? collisionPoint, Vector2[] postCollisionPoints) SimulateConstantTrajectoryPath(Vector2 startPos, Vector2 direction)
+	private (Vector2[] trajectoryPoints, Vector2? collisionPoint, Vector2[] postCollisionPoints, CarromPiece hitPiece, Vector2[] hitPieceTrajectory) SimulateConstantTrajectoryPath(Vector2 startPos, Vector2 direction, float power)
 	{
 		var trajectoryPoints = new System.Collections.Generic.List<Vector2>();
 		var postCollisionPoints = new System.Collections.Generic.List<Vector2>();
+		var hitPieceTrajectory = new System.Collections.Generic.List<Vector2>();
 		Vector2? collisionPoint = null;
+		CarromPiece hitPiece = null;
 		
 		Vector2 position = startPos;
 		float distanceTraveled = 0.0f;
@@ -1179,12 +1326,26 @@ public partial class CarromInputController : Node2D
 			{
 				// First collision detected
 				collisionPoint = collision.point;
+				hitPiece = collision.hitPiece;
 				trajectoryPoints.Add(collision.point);
 				
 				// Calculate post-collision trajectory with simple reflection
 				Vector2 reflectedDirection = direction.Bounce(collision.normal);
 				var postCollisionResult = SimulateConstantPostCollisionPath(collision.point, reflectedDirection);
 				postCollisionPoints.AddRange(postCollisionResult);
+				
+				// Calculate hit piece trajectory if we hit a piece
+				if (hitPiece != null)
+				{
+					Vector2 hitPieceDirection = CalculateHitPieceDirection(direction, collision.point, hitPiece.GlobalPosition, power);
+					
+					// Start trajectory from far edge of hit piece
+					float hitPieceRadius = _physicsConfig.GetRadiusForPieceType(hitPiece.Type);
+					Vector2 trajectoryStartPos = hitPiece.GlobalPosition + hitPieceDirection * hitPieceRadius;
+					
+					var hitPieceResult = SimulateHitPieceTrajectory(trajectoryStartPos, hitPieceDirection);
+					hitPieceTrajectory.AddRange(hitPieceResult);
+				}
 				break;
 			}
 			
@@ -1194,24 +1355,24 @@ public partial class CarromInputController : Node2D
 			trajectoryPoints.Add(position);
 		}
 		
-		return (trajectoryPoints.ToArray(), collisionPoint, postCollisionPoints.ToArray());
+		return (trajectoryPoints.ToArray(), collisionPoint, postCollisionPoints.ToArray(), hitPiece, hitPieceTrajectory.ToArray());
 	}
 	
 	/// <summary>
 	/// Get first collision along trajectory path
 	/// </summary>
-	private (bool hasCollision, Vector2 point, Vector2 normal) GetFirstCollision(Vector2 from, Vector2 to, float radius)
+	private (bool hasCollision, Vector2 point, Vector2 normal, CarromPiece hitPiece) GetFirstCollision(Vector2 from, Vector2 to, float radius)
 	{
 		if (_board == null)
 		{
-			return (false, Vector2.Zero, Vector2.Zero);
+			return (false, Vector2.Zero, Vector2.Zero, null);
 		}
 		
 		// Check board boundaries first
 		var boardCollision = CheckBoardBoundaryCollision(from, to, radius);
 		if (boardCollision.hasCollision)
 		{
-			return boardCollision;
+			return (boardCollision.hasCollision, boardCollision.point, boardCollision.normal, null);
 		}
 		
 		// Use physics ray casting for other pieces
@@ -1227,11 +1388,20 @@ public partial class CarromInputController : Node2D
 			{
 				Vector2 collisionPoint = result["position"].AsVector2();
 				Vector2 normal = result["normal"].AsVector2();
-				return (true, collisionPoint, normal);
+				
+				// Try to get the hit piece
+				CarromPiece hitPiece = null;
+				if (result.ContainsKey("collider"))
+				{
+					var collider = result["collider"].AsGodotObject();
+					hitPiece = collider as CarromPiece;
+				}
+				
+				return (true, collisionPoint, normal, hitPiece);
 			}
 		}
 		
-		return (false, Vector2.Zero, Vector2.Zero);
+		return (false, Vector2.Zero, Vector2.Zero, null);
 	}
 	
 	/// <summary>
@@ -1313,6 +1483,51 @@ public partial class CarromInputController : Node2D
 		
 		return points.ToArray();
 	}
+	
+	/// <summary>
+	/// Calculate the direction the hit piece will move after collision
+	/// Uses simplified physics for momentum transfer
+	/// </summary>
+	private Vector2 CalculateHitPieceDirection(Vector2 strikerDirection, Vector2 collisionPoint, Vector2 hitPiecePosition, float power)
+	{
+		// Calculate the impact vector from collision point to hit piece center
+		Vector2 impactVector = (hitPiecePosition - collisionPoint).Normalized();
+		
+		// For simplicity, assume elastic collision with equal masses
+		// The hit piece will move in the direction of the impact vector
+		// with some influence from the striker's original direction
+		
+		// Blend between pure impact direction and striker direction
+		// More power means more direct transfer of striker's momentum
+		float directionalInfluence = Mathf.Clamp(power, 0.3f, 0.7f);
+		Vector2 resultDirection = impactVector.Lerp(strikerDirection, directionalInfluence).Normalized();
+		
+		return resultDirection;
+	}
+	
+	/// <summary>
+	/// Simulate hit piece trajectory after being struck
+	/// </summary>
+	private Vector2[] SimulateHitPieceTrajectory(Vector2 startPos, Vector2 direction)
+	{
+		var points = new System.Collections.Generic.List<Vector2>();
+		
+		Vector2 position = startPos;
+		float distanceTraveled = 0.0f;
+		
+		// Simulate hit piece movement for configured distance
+		while (distanceTraveled < HitPieceTrajectoryDistance)
+		{
+			position += direction * _trajectoryStepSize;
+			distanceTraveled += _trajectoryStepSize;
+			points.Add(position);
+			
+			// Could add collision detection here for more accurate prediction
+			// For now, just show the initial trajectory
+		}
+		
+		return points.ToArray();
+	}
 
 	/// <summary>
 	/// Comprehensive cleanup to prevent memory leaks
@@ -1360,6 +1575,8 @@ public partial class CarromInputController : Node2D
 		_cachedTrajectoryPoints = [];
 		_cachedPostCollisionPoints = [];
 		_cachedCollisionPoint = null;
+		_cachedHitPiece = null;
+		_cachedHitPieceTrajectory = [];
 		_lastTrajectoryDirection = Vector2.Zero;
 		_lastTrajectoryPower = 0.0f;
 		

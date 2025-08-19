@@ -403,7 +403,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 		{
 			_gameStatusLabel.Text = "Waiting...";
 			_gameStatusLabel.Modulate = INPUT_BLOCKED_COLOR;
-			_inputStateLabel.Text = "Input disabled during turn transition";
+			_inputStateLabel.Text = "Input Disabled";
 			_inputStateLabel.Modulate = INPUT_BLOCKED_COLOR;
 		}
 		else
@@ -441,7 +441,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 	/// <summary>
 	/// Update all player scores from a list of players
 	/// </summary>
-	public void UpdateAllPlayerScores(System.Collections.Generic.List<CarromPlayer> players)
+	public void UpdateAllPlayerScores(List<CarromPlayer> players)
 	{
 		foreach (var player in players)
 		{
@@ -466,10 +466,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 		// Hide the button immediately when pressed to prevent double-clicks
 		_passTurnButton.Visible = false;
 		_isShowingTransition = false;
-		
-		// DO NOT update input state here - let the game state machine control it
-		// SetInputBlockedVisual(false); // REMOVED: This was causing premature input unblocking
-		
+
 		// Emit signal to notify game that player wants to pass turn
 		EmitSignal(SignalName.PassTurnRequested);
 	}
