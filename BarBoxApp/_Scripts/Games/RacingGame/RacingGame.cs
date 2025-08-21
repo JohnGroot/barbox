@@ -2,13 +2,41 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace BarBox.Games.Racing
+namespace BarBox.Games.Racing;
+
+/// <summary>
+/// Complete UI state for Racing Game - eliminates need for state caching
+/// </summary>
+public class RacingUIState
 {
-	/// <summary>
-	/// 2D time trial racing game with comprehensive racing mechanics, track system, and UI
-	/// </summary>
-	[GlobalClass]
-	public partial class RacingGame : GameController
+	// Game status
+	public bool IsGamePaused { get; set; }
+	public bool IsInCountdown { get; set; }
+	public bool IsTimeTrialInProgress { get; set; } // Tracks formal race vs practice
+	public bool CanStartTimeTrial { get; set; }
+	public GameController.GameMode GameMode { get; set; }
+		
+	// Player data
+	public float CarSpeed { get; set; }
+	public int CurrentLap { get; set; }
+	public int TargetLaps { get; set; }
+	public float TimeDisplay { get; set; }
+	public string TimeLabel { get; set; }
+		
+	// Authentication
+	public bool IsUserLoggedIn { get; set; }
+		
+	// Game over
+	public bool ShowGameOverOverlay { get; set; }
+	public float FinalTime { get; set; }
+	public bool CanAffordReplay { get; set; }
+}
+
+/// <summary>
+/// 2D time trial racing game with comprehensive racing mechanics, track system, and UI
+/// </summary>
+[GlobalClass]
+public partial class RacingGame : GameController
 {
 	// ================================================================
 	// SIGNALS
@@ -42,10 +70,6 @@ namespace BarBox.Games.Racing
 
 	[ExportCategory("Track Settings")]
 	[Export] public Godot.Collections.Array<PackedScene> TrackScenes { get; set; } = new Godot.Collections.Array<PackedScene>();
-
-
-
-
 
 	// ================================================================
 	// CONSTANTS
@@ -88,6 +112,9 @@ namespace BarBox.Games.Racing
 	
 	// UI manager for all racing game UI elements
 	private RacingUIManager _uiManager;
+	
+	// Cached service references
+	private UserManager _cachedUserManager;
 
 	// ================================================================
 	// PRIVATE FIELDS - VISUAL FEEDBACK SYSTEM
@@ -109,8 +136,11 @@ namespace BarBox.Games.Racing
 		GD.Print("[RacingGame] _Ready() starting");
 		GameId = "racing_game";
 		SetGameMode(GameMode.Practice); // Start in practice mode
-		
-		// Initialize all systems FIRST before calling base._Ready()
+
+		// Detect context FIRST to ensure proper player data is available
+		DetectAndAdaptToContext();
+
+		// Initialize all systems AFTER context detection
 		// This ensures timing system exists when InitializeGame() is called
 		SetupTimingSystem();
 		SetupTrackValidationSystem();
@@ -118,12 +148,20 @@ namespace BarBox.Games.Racing
 		SetupCarController();
 		SetupUI();
 		InitializeTrackSystem();
-		
+
 		// THEN call base which triggers InitializeGame() -> StartPractice()
 		base._Ready();
+
+		// Connect to user authentication signals for UI updates - cache reference
+		_cachedUserManager = UserManager.GetAutoload();
+		if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
+		{
+			_cachedUserManager.UserLoggedIn += OnUserLoggedIn;
+			_cachedUserManager.UserLoggedOut += OnUserLoggedOut;
+		}
 		
-		// Context detection can happen after everything is ready
-		DetectAndAdaptToContext();
+		// Ensure UI gets initial update after setup completes
+		CallDeferred(MethodName.UpdateUI);
 		
 		GD.Print("[RacingGame] _Ready() completed");
 	}
@@ -139,65 +177,17 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void SetupTimingSystem()
 	{
-		try
-		{
-			_timingSystem = new RacingTimingSystem();
-			if (_timingSystem == null)
-			{
-				GD.PrintErr("[RacingGame] Failed to create RacingTimingSystem instance");
-				return;
-			}
-			
-			_timingSystem.TargetLaps = TargetLaps;
-			_timingSystem.SetGameMode(_currentGameMode);
-			AddChild(_timingSystem);
-			
-			// Verify the node was added successfully
-			if (!GodotObject.IsInstanceValid(_timingSystem) || _timingSystem.GetParent() != this)
-			{
-				GD.PrintErr("[RacingGame] Failed to add RacingTimingSystem to scene tree");
-				_timingSystem = null;
-				return;
-			}
-			
-			// Connect timing system signals to maintain existing behavior
-			_timingSystem.LapCompleted += (playerId, lapNumber, lapTime) => 
-			{
-				// Update player score (best lap time or total time)
-				if (_currentGameMode == GameMode.Practice)
-				{
-					UpdateScore(playerId, _timingSystem.GetPlayerBestLapTime(playerId));
-				}
-				else
-				{
-					// In time trial, score is total time
-					float totalTime = _timingSystem.CalculatePlayerScore(playerId, _currentGameMode);
-					UpdateScore(playerId, totalTime);
-				}
-				
-				// Forward the signal to maintain existing external integrations
-				EmitSignal(SignalName.LapCompleted, playerId, lapNumber, lapTime);
-			};
+		_timingSystem = new RacingTimingSystem();
+		_timingSystem.TargetLaps = TargetLaps;
+		_timingSystem.SetGameMode(_currentGameMode);
+		AddChild(_timingSystem);
 
-			_timingSystem.RaceCompleted += (playerId, totalTime) => 
-			{
-				// Forward the signal to maintain existing external integrations
-				EmitSignal(SignalName.RaceCompleted, playerId, totalTime);
-			};
-
-			_timingSystem.CheckpointCrossed += (playerId, checkpointIndex, gapTime) => 
-			{
-				// Forward the signal to maintain existing external integrations
-				EmitSignal(SignalName.CheckpointCrossed, playerId, checkpointIndex, gapTime);
-			};
-			
-			GD.Print("[RacingGame] RacingTimingSystem initialized successfully");
-		}
-		catch (System.Exception ex)
-		{
-			GD.PrintErr($"[RacingGame] Exception creating RacingTimingSystem: {ex.Message}");
-			_timingSystem = null;
-		}
+		// Connect timing system signals for direct processing
+		_timingSystem.LapCompleted += OnTimingSystemLapCompleted;
+		_timingSystem.RaceCompleted += OnTimingSystemRaceCompleted;
+		_timingSystem.CheckpointCrossed += OnTimingSystemCheckpointCrossed;
+		
+		GD.Print("[RacingGame] RacingTimingSystem initialized successfully");
 	}
 
 	/// <summary>
@@ -205,41 +195,20 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void SetupTrackValidationSystem()
 	{
-		try
-		{
-			_trackValidationSystem = new RacingTrackValidationSystem();
-			if (_trackValidationSystem == null)
-			{
-				GD.PrintErr("[RacingGame] Failed to create RacingTrackValidationSystem instance");
-				return;
-			}
-			
-			// Set default values (these would be configurable via exports on the system)
-			_trackValidationSystem.CenterLineProximityRange = 40.0f;
-			_trackValidationSystem.CenterLineAccelerationBonus = 1.5f;
-			_trackValidationSystem.TrackProximityRange = 20.0f;
-			_trackValidationSystem.OffTrackSpeedPenalty = 0.3f;
-			_trackValidationSystem.OffTrackTurnPenalty = 0.3f;
-			_trackValidationSystem.OffTrackAccelerationPenalty = 0.3f;
-			_trackValidationSystem.OffTrackPenaltyLerpSpeed = 3.0f;
-			
-			AddChild(_trackValidationSystem);
-			
-			// Verify the node was added successfully
-			if (!GodotObject.IsInstanceValid(_trackValidationSystem) || _trackValidationSystem.GetParent() != this)
-			{
-				GD.PrintErr("[RacingGame] Failed to add RacingTrackValidationSystem to scene tree");
-				_trackValidationSystem = null;
-				return;
-			}
-			
-			GD.Print("[RacingGame] RacingTrackValidationSystem initialized successfully");
-		}
-		catch (System.Exception ex)
-		{
-			GD.PrintErr($"[RacingGame] Exception creating RacingTrackValidationSystem: {ex.Message}");
-			_trackValidationSystem = null;
-		}
+		_trackValidationSystem = new RacingTrackValidationSystem();
+		
+		// Set default values (these would be configurable via exports on the system)
+		_trackValidationSystem.CenterLineProximityRange = 40.0f;
+		_trackValidationSystem.CenterLineAccelerationBonus = 1.5f;
+		_trackValidationSystem.TrackProximityRange = 20.0f;
+		_trackValidationSystem.OffTrackSpeedPenalty = 0.3f;
+		_trackValidationSystem.OffTrackTurnPenalty = 0.3f;
+		_trackValidationSystem.OffTrackAccelerationPenalty = 0.3f;
+		_trackValidationSystem.OffTrackPenaltyLerpSpeed = 3.0f;
+		
+		AddChild(_trackValidationSystem);
+		
+		GD.Print("[RacingGame] RacingTrackValidationSystem initialized successfully");
 	}
 
 	/// <summary>
@@ -247,42 +216,13 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void SetupCameraController()
 	{
-		try
-		{
-			_cameraController = new RacingCameraController();
-			if (_cameraController == null)
-			{
-				GD.PrintErr("[RacingGame] Failed to create RacingCameraController instance");
-				return;
-			}
-			
-			_cameraController.ScreenEdgeColliderThickness = 8.0f; // Default value
-			AddChild(_cameraController);
-			
-			// Verify the node was added successfully
-			if (!GodotObject.IsInstanceValid(_cameraController) || _cameraController.GetParent() != this)
-			{
-				GD.PrintErr("[RacingGame] Failed to add RacingCameraController to scene tree");
-				_cameraController = null;
-				return;
-			}
-			
-			_cameraController.Initialize();
-			
-			// Verify initialization succeeded
-			if (_cameraController.TrackCamera == null)
-			{
-				GD.PrintErr("[RacingGame] RacingCameraController initialization failed - no camera created");
-				return;
-			}
-			
-			GD.Print("[RacingGame] RacingCameraController initialized successfully");
-		}
-		catch (System.Exception ex)
-		{
-			GD.PrintErr($"[RacingGame] Exception creating RacingCameraController: {ex.Message}");
-			_cameraController = null;
-		}
+		_cameraController = new RacingCameraController();
+		_cameraController.ScreenEdgeColliderThickness = 8.0f; // Default value
+		AddChild(_cameraController);
+
+		_cameraController.Initialize();
+	
+		GD.Print("[RacingGame] RacingCameraController initialized");
 	}
 
 	/// <summary>
@@ -290,82 +230,41 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void SetupCarController()
 	{
-		try
+		_carController = new RacingCarController();
+
+		// Set default car settings
+		_carController.MaxSpeed = 1800.0f;
+		_carController.MinSpeed = 100.0f;
+		_carController.MaxInputDistance = 500.0f;
+		_carController.AccelerationRate = 300.0f;
+		_carController.DecelerationRate = 600.0f;
+		_carController.RotationLerpSpeed = 5.0f;
+		_carController.CarSize = new Vector2(40, 80);
+		
+		AddChild(_carController);
+
+		// Initialize with validated dependencies
+		_carController.Initialize(_cameraController, _trackValidationSystem);
+
+		// Connect car movement events for visual feedback
+		_carController.CarMoved += OnCarMoved;
+		
+		// Add player to game controller
+		var player = _carController.GetPlayer();
+		if (player != null)
 		{
-			// Validate dependencies first
-			if (!GodotObject.IsInstanceValid(_cameraController) || !GodotObject.IsInstanceValid(_trackValidationSystem))
-			{
-				GD.PrintErr("[RacingGame] Cannot setup car controller - camera or track validation system not ready");
-				return;
-			}
-			
-			if (_cameraController.TrackCamera == null)
-			{
-				GD.PrintErr("[RacingGame] Cannot setup car controller - camera not initialized");
-				return;
-			}
-			
-			_carController = new RacingCarController();
-			if (_carController == null)
-			{
-				GD.PrintErr("[RacingGame] Failed to create RacingCarController instance");
-				return;
-			}
-			
-			// Set default car settings
-			_carController.MaxSpeed = 1800.0f;
-			_carController.MinSpeed = 100.0f;
-			_carController.MaxInputDistance = 500.0f;
-			_carController.AccelerationRate = 300.0f;
-			_carController.DecelerationRate = 600.0f;
-			_carController.RotationLerpSpeed = 5.0f;
-			_carController.CarSize = new Vector2(40, 80);
-			
-			AddChild(_carController);
-			
-			// Verify the node was added successfully
-			if (!GodotObject.IsInstanceValid(_carController) || _carController.GetParent() != this)
-			{
-				GD.PrintErr("[RacingGame] Failed to add RacingCarController to scene tree");
-				_carController = null;
-				return;
-			}
-			
-			// Initialize with validated dependencies
-			_carController.Initialize(_cameraController, _trackValidationSystem);
-			
-			// Verify initialization succeeded
-			if (!_carController.IsInitialized)
-			{
-				GD.PrintErr("[RacingGame] RacingCarController initialization failed");
-				return;
-			}
-			
-			// Connect car movement events for visual feedback
-			_carController.CarMoved += OnCarMoved;
-			
-			// Add player to game controller
-			var player = _carController.GetPlayer();
-			if (player != null)
-			{
-				AddPlayer(player);
-			}
-			else
-			{
-				GD.PrintErr("[RacingGame] Failed to get player from car controller");
-				return;
-			}
-			
-			// Initialize visual feedback renderer
-			SetupVisualRenderer();
-			
-			GD.Print("[RacingGame] RacingCarController initialized successfully");
+			AddPlayer(player);
 		}
-		catch (System.Exception ex)
+		else
 		{
-			GD.PrintErr($"[RacingGame] Exception creating RacingCarController: {ex.Message}");
-			_carController = null;
+			GD.PrintErr("[RacingGame] Failed to get player from car controller");
+			return;
 		}
+		
+		// Initialize visual feedback renderer
+		SetupVisualRenderer();
+		
+		GD.Print("[RacingGame] RacingCarController initialized successfully");
 	}
 
 	/// <summary>
@@ -373,40 +272,11 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void SetupVisualRenderer()
 	{
-		try
-		{
-			// Validate car controller dependency
-			if (!GodotObject.IsInstanceValid(_carController) || !_carController.IsInitialized)
-			{
-				GD.PrintErr("[RacingGame] Cannot setup visual renderer - car controller not ready");
-				return;
-			}
-			
-			_visualRenderer = new RacingVisualFeedbackRenderer();
-			if (_visualRenderer == null)
-			{
-				GD.PrintErr("[RacingGame] Failed to create RacingVisualFeedbackRenderer instance");
-				return;
-			}
-			
-			_visualRenderer.Initialize(_carController);
-			AddChild(_visualRenderer);
-			
-			// Verify the node was added successfully
-			if (!GodotObject.IsInstanceValid(_visualRenderer) || _visualRenderer.GetParent() != this)
-			{
-				GD.PrintErr("[RacingGame] Failed to add RacingVisualFeedbackRenderer to scene tree");
-				_visualRenderer = null;
-				return;
-			}
-			
-			GD.Print("[RacingGame] RacingVisualFeedbackRenderer initialized successfully");
-		}
-		catch (System.Exception ex)
-		{
-			GD.PrintErr($"[RacingGame] Exception creating RacingVisualFeedbackRenderer: {ex.Message}");
-			_visualRenderer = null;
-		}
+		_visualRenderer = new RacingVisualFeedbackRenderer();
+		_visualRenderer.Initialize(_carController);
+		AddChild(_visualRenderer);
+
+		GD.Print("[RacingGame] RacingVisualFeedbackRenderer initialized successfully");
 	}
 
 	/// <summary>
@@ -415,10 +285,9 @@ namespace BarBox.Games.Racing
 	public new void SetGameMode(GameMode mode)
 	{
 		base.SetGameMode(mode);
-		if (_timingSystem != null)
-		{
-			_timingSystem.SetGameMode(mode);
-		}
+		
+		// Timing system may be null during initial setup
+		_timingSystem?.SetGameMode(mode);
 	}
 
 	// ================================================================
@@ -430,7 +299,8 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void HandleDirectInput()
 	{
-		if (!_isGameActive || _isGamePaused) 
+		// Check if input should be enabled based on racing state
+		if (!_isGameActive || _isGamePaused || !IsInputEnabled()) 
 		{
 			_hasDirectInput = false;
 			return;
@@ -450,10 +320,15 @@ namespace BarBox.Games.Racing
 		{
 			// Get raw screen position from InputManager - direct 1:1 mapping like original
 			_directTargetPosition = inputManager.GetTouchPosition();
-			
-			// Debug output for coordinate validation (remove in production)
-			// GD.Print($"[RacingGame] Direct Input - Screen = World: {_directTargetPosition}");
 		}
+	}
+
+	/// <summary>
+	/// Check if input should be enabled based on current racing state
+	/// </summary>
+	public bool IsInputEnabled()
+	{
+		return _timingSystem?.IsInputEnabled() ?? true;
 	}
 
 	// ================================================================
@@ -467,16 +342,13 @@ namespace BarBox.Games.Racing
 		// Handle direct input for arc positioning fix
 		HandleDirectInput();
 		
-		if (GodotObject.IsInstanceValid(_timingSystem))
+		if (_timingSystem != null && _timingSystem.IsInCountdown)
 		{
-			if (_timingSystem.IsInCountdown)
-			{
-				HandleCountdown((float)delta);
-			}
-			else if (_isGameActive && !_isGamePaused)
-			{
-				_timingSystem.UpdateRacingTimers((float)delta, _players);
-			}
+			HandleCountdown((float)delta);
+		}
+		else if (_isGameActive && !_isGamePaused && _timingSystem != null)
+		{
+			_timingSystem.UpdateRacingTimers((float)delta, _players);
 		}
 		
 		UpdateUI();
@@ -485,21 +357,21 @@ namespace BarBox.Games.Racing
 	protected override void UpdateGame(float delta)
 	{
 		base.UpdateGame(delta);
-		
-		if (GodotObject.IsInstanceValid(_carController) && _carController.IsInitialized)
+
+		if (!IsInstanceValid(_carController) || !_carController.IsInitialized)
+			return;
+
+		// Update track validation and penalties
+		if (IsInstanceValid(_trackValidationSystem))
 		{
-			// Update track validation and penalties
-			if (GodotObject.IsInstanceValid(_trackValidationSystem))
-			{
-				_trackValidationSystem.UpdateOffTrackPenalties(_carController.GetCarPosition(), delta);
-			}
+			_trackValidationSystem.UpdateOffTrackPenalties(_carController.GetCarPosition(), delta);
+		}
 			
-			// Update visual feedback renderer
-			if (GodotObject.IsInstanceValid(_visualRenderer))
-			{
-				_visualRenderer.UpdateVisualFeedback(delta);
-				_visualRenderer.UpdateTireTrails();
-			}
+		// Update visual feedback renderer
+		if (IsInstanceValid(_visualRenderer))
+		{
+			_visualRenderer.UpdateVisualFeedback(delta);
+			_visualRenderer.UpdateTireTrails();
 		}
 	}
 
@@ -507,11 +379,75 @@ namespace BarBox.Games.Racing
 	{
 		// Visual feedback is now handled by VisualFeedbackRenderer
 		// Update renderer visibility based on game state
-		if (GodotObject.IsInstanceValid(_visualRenderer))
+		if (!IsInstanceValid(_visualRenderer))
+			return;
+
+		_visualRenderer.ShouldRender = IsGameActive() && !IsGamePaused() && 
+		                               IsInstanceValid(_carController) && _carController.IsInitialized;
+	}
+
+	// ================================================================
+	// HIGH-LEVEL SIGNAL HANDLERS
+	// ================================================================
+
+	/// <summary>
+	/// Handle lap completion - centralized signal processing
+	/// </summary>
+	private void OnTimingSystemLapCompleted(string playerId, int lapNumber, float lapTime)
+	{
+		// Update player score (best lap time or total time)
+		if (_currentGameMode == GameMode.Practice)
 		{
-			_visualRenderer.ShouldRender = IsGameActive() && !IsGamePaused() && 
-				GodotObject.IsInstanceValid(_carController) && _carController.IsInitialized;
+			UpdateScore(playerId, _timingSystem.GetPlayerBestLapTime(playerId));
 		}
+		else
+		{
+			// In time trial, score is total time
+			float totalTime = _timingSystem.CalculatePlayerScore(playerId, _currentGameMode);
+			UpdateScore(playerId, totalTime);
+		}
+		
+		// Emit signal for external integrations (GameHost) at high level
+		EmitSignal(SignalName.LapCompleted, playerId, lapNumber, lapTime);
+	}
+
+	/// <summary>
+	/// Handle race completion - centralized signal processing
+	/// </summary>
+	private void OnTimingSystemRaceCompleted(string playerId, float totalTime)
+	{
+		// End the game when race is completed
+		EndGame();
+		
+		// Emit signal for external integrations (GameHost) at high level
+		EmitSignal(SignalName.RaceCompleted, playerId, totalTime);
+	}
+
+	/// <summary>
+	/// Handle checkpoint crossing - centralized signal processing
+	/// </summary>
+	private void OnTimingSystemCheckpointCrossed(string playerId, int checkpointIndex, float gapTime)
+	{
+		// Emit signal for external integrations (GameHost) at high level
+		EmitSignal(SignalName.CheckpointCrossed, playerId, checkpointIndex, gapTime);
+	}
+
+	/// <summary>
+	/// Handle user login - refresh UI to enable time trial button
+	/// </summary>
+	private void OnUserLoggedIn(UserData userData)
+	{
+		// Just update UI - no cache manipulation needed
+		UpdateUI();
+	}
+
+	/// <summary>
+	/// Handle user logout - refresh UI to disable time trial button
+	/// </summary>
+	private void OnUserLoggedOut()
+	{
+		// Just update UI - no cache manipulation needed
+		UpdateUI();
 	}
 
 	// ================================================================
@@ -523,33 +459,57 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public virtual async void StartTimeTrial()
 	{
-		if (_isGameActive) return;
-		
-		// Check if credits are required and handle credit spending
-		if (TimeTrialCreditCost > 0)
+		// Can only start time trial when not already in time trial
+		if (GetGameMode() == GameMode.TimeTrial) 
 		{
+			GD.Print("Time trial cancelled - already in time trial mode");
+			return;
+		}
+		
+		// Always require login first, regardless of development mode
+		if (_cachedUserManager == null || !IsInstanceValid(_cachedUserManager))
+		{
+			GD.PrintErr("Time trial cancelled - user management system not available");
+			return;
+		}
+		
+		bool isLoggedIn = _cachedUserManager.IsUserLoggedIn();
+		if (!isLoggedIn)
+		{
+			GD.Print("Time trial cancelled - user must be logged in");
+			return;
+		}
+		
+		// Reset idle timer when starting a premium feature
+		_cachedUserManager.ResetUserIdleTimer();
+		
+		// Check credits only in production mode or when explicitly required
+		bool isDevelopmentMode = Engine.IsEditorHint() || OS.IsDebugBuild();
+		if (TimeTrialCreditCost > 0 && !isDevelopmentMode)
+		{
+			// Set state to waiting for credits during async check
+			_timingSystem?.SetWaitingForCredits();
+			
 			var creditManager = CreditManager.GetInstance();
-			if (creditManager != null && GodotObject.IsInstanceValid(creditManager))
+			if (creditManager == null || !IsInstanceValid(creditManager))
 			{
-				// Reset idle timer when starting a premium feature
-				var userManager = UserManager.GetAutoload();
-				if (userManager != null && GodotObject.IsInstanceValid(userManager))
-				{
-					userManager.ResetUserIdleTimer();
-				}
-				
-				bool creditsSpent = await creditManager.CheckAndSpendCredits(TimeTrialCreditCost, "Time Trial Race");
-				if (!creditsSpent)
-				{
-					// Credits not spent - don't start the race
-					GD.Print("Time trial cancelled - credits not spent");
-					return;
-				}
+				GD.PrintErr("Time trial cancelled - credit system not available");
+				_timingSystem?.StopRacing(); // Reset to idle state
+				return;
+			}
+			
+			bool creditsSpent = await creditManager.CheckAndSpendCredits(TimeTrialCreditCost, "Time Trial Race");
+			if (!creditsSpent)
+			{
+				// Credits not spent - don't start the race
+				GD.Print("Time trial cancelled - credits not spent");
+				_timingSystem?.StopRacing(); // Reset to idle state
+				return;
 			}
 		}
 		
 		SetGameMode(GameMode.TimeTrial);
-		ResetRacingData();
+		ResetForNewRace(); // Complete reset including car physics state
 		
 		if (ShowCountdown)
 		{
@@ -557,6 +517,7 @@ namespace BarBox.Games.Racing
 		}
 		else
 		{
+			_timingSystem?.StartRacing(); // Set racing state
 			StartGame();
 		}
 	}
@@ -567,7 +528,8 @@ namespace BarBox.Games.Racing
 	public virtual void StartPractice()
 	{
 		SetGameMode(GameMode.Practice);
-		ResetRacingData();
+		ResetForNewRace(); // Complete reset including car physics state
+		_timingSystem?.StartPracticeMode(); // Set appropriate state
 		StartGame();
 		
 		// In practice mode, immediately start first "lap" for timing
@@ -586,15 +548,8 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	protected virtual void StartCountdown()
 	{
-		if (GodotObject.IsInstanceValid(_timingSystem))
-		{
-			_timingSystem.StartCountdown(CountdownDuration);
-			OnCountdownStarted();
-		}
-		else
-		{
-			GD.PrintErr("[RacingGame] Cannot start countdown - timing system not initialized");
-		}
+		_timingSystem.StartCountdown(CountdownDuration);
+		OnCountdownStarted();
 	}
 
 	/// <summary>
@@ -602,27 +557,22 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	protected virtual void HandleCountdown(float delta)
 	{
-		if (_timingSystem == null)
-		{
-			GD.PrintErr("[RacingGame] Cannot handle countdown - timing system not initialized");
-			return;
-		}
-		
-		bool countdownCompleted = _timingSystem.UpdateCountdown(delta, CountdownDuration);
-		
+		bool countdownChanged = _timingSystem.UpdateCountdown(delta, CountdownDuration);
+
 		// Check if countdown number changed
 		int countdownNumber = _timingSystem.CountdownNumber;
-		if (countdownNumber > 0)
+		switch (countdownChanged)
 		{
-			OnCountdownNumber(countdownNumber);
-		}
-		else if (!countdownCompleted)
-		{
-			OnCountdownGo();
+			case true when countdownNumber > 0:
+				OnCountdownNumber(countdownNumber);
+				break;
+			case true:
+				OnCountdownGo();
+				break;
 		}
 
 		// Check if countdown completed
-		if (countdownCompleted)
+		if (!_timingSystem.IsInCountdown)
 		{
 			EndCountdown();
 		}
@@ -633,22 +583,15 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	protected virtual void EndCountdown()
 	{
-		if (GodotObject.IsInstanceValid(_timingSystem))
-		{
-			_timingSystem.EndCountdown();
-			_timingSystem.StartRacing();
-			StartGame();
-			OnCountdownEnded();
+		_timingSystem.EndCountdown();
+		_timingSystem.StartRacing();
+		StartGame();
+		OnCountdownEnded();
 			
-			// Start first lap for all players in time trial mode
-			foreach (var player in _players)
-			{
-				_timingSystem.StartPlayerLap(player.PlayerId);
-			}
-		}
-		else
+		// Start first lap for all players in time trial mode
+		foreach (var player in _players)
 		{
-			GD.PrintErr("[RacingGame] Cannot end countdown - timing system not initialized");
+			_timingSystem.StartPlayerLap(player.PlayerId);
 		}
 	}
 
@@ -682,14 +625,7 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public virtual void StartPlayerLap(string playerId)
 	{
-		if (GodotObject.IsInstanceValid(_timingSystem))
-		{
-			_timingSystem.StartPlayerLap(playerId);
-		}
-		else
-		{
-			GD.PrintErr("[RacingGame] Cannot start player lap - timing system not initialized");
-		}
+		_timingSystem.StartPlayerLap(playerId);
 	}
 
 	/// <summary>
@@ -697,20 +633,27 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public virtual void CompletePlayerLap(string playerId, float lapTime)
 	{
-		if (GodotObject.IsInstanceValid(_timingSystem))
+		_timingSystem.CompletePlayerLap(playerId, lapTime);
+		
+		// Get current lap AFTER completing the lap
+		int currentLap = _timingSystem.GetPlayerCurrentLap(playerId);
+		
+		if (_currentGameMode == GameMode.Practice)
 		{
-			_timingSystem.CompletePlayerLap(playerId, lapTime);
-			
-			// Check if race is complete and start next lap for practice mode
-			if (_currentGameMode == GameMode.Practice || _timingSystem.GetPlayerCurrentLap(playerId) < TargetLaps)
-			{
-				// Start next lap (timing system will handle the logic)
-				_timingSystem.StartPlayerLap(playerId);
-			}
+			// Always start next lap in practice mode
+			_timingSystem.StartPlayerLap(playerId);
+			_timingSystem?.StartPracticeMode();
+		}
+		else if (currentLap >= TargetLaps)
+		{
+			// Race complete - all target laps finished
+			CompletePlayerRace(playerId);
 		}
 		else
 		{
-			GD.PrintErr("[RacingGame] Cannot complete player lap - timing system not initialized");
+			// Start next lap in time trial
+			_timingSystem.StartPlayerLap(playerId);
+			_timingSystem?.StartRacing();
 		}
 	}
 
@@ -719,19 +662,12 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	protected virtual void CompletePlayerRace(string playerId)
 	{
-		if (GodotObject.IsInstanceValid(_timingSystem))
-		{
-			_timingSystem.CompletePlayerRace(playerId, _players);
+		_timingSystem.CompletePlayerRace(playerId, _players);
 			
-			// Check if race state changed to finished
-			if (_timingSystem.CurrentRacingState == RacingTimingSystem.RacingState.Finished)
-			{
-				EndGame();
-			}
-		}
-		else
+		// Check if race state changed to finished
+		if (_timingSystem.CurrentRacingState == RacingTimingSystem.RacingState.Finished)
 		{
-			GD.PrintErr("[RacingGame] Cannot complete player race - timing system not initialized");
+			EndGame();
 		}
 	}
 
@@ -740,14 +676,7 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public virtual void OnPlayerCheckpointCrossed(string playerId, int checkpointIndex)
 	{
-		if (GodotObject.IsInstanceValid(_timingSystem))
-		{
-			_timingSystem.OnPlayerCheckpointCrossed(playerId, checkpointIndex);
-		}
-		else
-		{
-			GD.PrintErr("[RacingGame] Cannot process checkpoint crossing - timing system not initialized");
-		}
+		_timingSystem.OnPlayerCheckpointCrossed(playerId, checkpointIndex);
 	}
 
 	/// <summary>
@@ -755,21 +684,23 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	protected virtual void ResetRacingData()
 	{
-		if (GodotObject.IsInstanceValid(_timingSystem))
-		{
-			_timingSystem.ResetRacingData();
-		}
-		else
-		{
-			GD.PrintErr("[RacingGame] Cannot reset racing data - timing system not initialized");
-		}
+		_timingSystem.ResetRacingData();
+	}
+
+	/// <summary>
+	/// Complete reset for starting a new race or practice session
+	/// Ensures both timing data and car physics state are properly reset
+	/// </summary>
+	protected virtual void ResetForNewRace()
+	{
+		ResetRacingData();           // Reset timing data
+		PositionCarAtStart();        // Reset position AND physics state (calls ResetCarState)
+		_carController?.SetActive(true); // Reactivate car controller
 	}
 
 	// ================================================================
 	// CAR MANAGEMENT
 	// ================================================================
-
-
 
 	/// <summary>
 	/// Handle car movement events for visual feedback
@@ -788,7 +719,7 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void InitializeTrackSystem()
 	{
-		if (TrackScenes != null && TrackScenes.Count > 0)
+		if (TrackScenes is { Count: > 0 })
 		{
 			_currentTrackIndex = 0;
 			LoadTrack(0);
@@ -798,14 +729,15 @@ namespace BarBox.Games.Racing
 			// Look for existing TrackDefinition child
 			foreach (Node child in GetChildren())
 			{
-				if (child is RacingTrackDefinition trackDef)
-				{
-					_trackDefinition = trackDef;
-					_currentTrackIndex = 0;
-					SetupLoadedTrack();
-					return;
-				}
+				if (child is not RacingTrackDefinition trackDef)
+					continue;
+
+				_trackDefinition = trackDef;
+				_currentTrackIndex = 0;
+				SetupLoadedTrack();
+				return;
 			}
+
 			GD.PrintErr("RacingGame: No track scenes configured and no RacingTrackDefinition child node found.");
 		}
 	}
@@ -861,24 +793,20 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void SetupLoadedTrack()
 	{
-		if (_trackDefinition == null) return;
+		if (_trackDefinition == null) 
+			return;
 
 		_trackDefinition.SetupTrack();
 		_trackCurve = _trackDefinition.GetTrackCurve();
 		
 		// Initialize track validation system with track data
-		if (_trackValidationSystem != null)
-		{
-			_trackValidationSystem.Initialize(_trackDefinition, _trackCurve);
-		}
+		_trackValidationSystem.Initialize(_trackDefinition, _trackCurve);
 		
 		// Initialize camera controller with track data
-		if (_cameraController != null)
-		{
-			_cameraController.SetTrackDefinition(_trackDefinition);
-			_cameraController.PositionCameraOverTrack();
-			_cameraController.SetupScreenEdgeColliders();
-		}
+		_cameraController.SetTrackDefinition(_trackDefinition);
+		_cameraController.PositionCameraOverTrack();
+		_cameraController.SetupScreenEdgeColliders();
+
 		TargetLaps = _trackDefinition.NumberOfLaps;
 		InitializeCheckpointTracking();
 		ConnectTrackSignals();
@@ -890,7 +818,8 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void PositionCarAtStart()
 	{
-		if (_trackDefinition == null || !(_carController?.IsInitialized == true)) return;
+		if (_trackDefinition == null || _carController?.IsInitialized != true) 
+			return;
 
 		var startPoint = _trackDefinition.GetStartLinePosition();
 		var startLineDirection = _trackDefinition.GetStartLineDirection();
@@ -898,13 +827,13 @@ namespace BarBox.Games.Racing
 		if (startPoint == Vector2.Zero)
 		{
 			var viewport = GetViewport();
-			if (viewport != null)
-			{
-				var screenSize = viewport.GetVisibleRect().Size;
-				Vector2 screenCenter = screenSize / 2;
-				_carController.PositionCar(screenCenter);
-			}
-			return;
+			if (viewport == null)
+				return;
+
+			var screenSize = viewport.GetVisibleRect().Size;
+			Vector2 screenCenter = screenSize / 2;
+			_carController.PositionCar(screenCenter);
+			return; // Early return since we positioned car at center
 		}
 		
 		var carPosition = startPoint - startLineDirection * 50;
@@ -922,8 +851,6 @@ namespace BarBox.Games.Racing
 	{
 		return _trackValidationSystem?.GetDistanceToTrackCenterLine(position) ?? float.MaxValue;
 	}
-
-
 
 	// ================================================================
 	// CHECKPOINT AND TRIGGER MANAGEMENT
@@ -949,7 +876,8 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void ConnectTrackSignals()
 	{
-		if (_trackDefinition == null) return;
+		if (_trackDefinition == null || !IsInstanceValid(_trackDefinition)) 
+			return;
 
 		var startLineTrigger = _trackDefinition.StartLine;
 		if (startLineTrigger != null)
@@ -978,26 +906,26 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void DisconnectTrackSignals()
 	{
-		if (_trackDefinition == null || !GodotObject.IsInstanceValid(_trackDefinition)) return;
+		if (_trackDefinition == null || !IsInstanceValid(_trackDefinition))
+			return;
 
 		var startLineTrigger = _trackDefinition.StartLine;
-		if (startLineTrigger != null && GodotObject.IsInstanceValid(startLineTrigger))
+		if (startLineTrigger != null && IsInstanceValid(startLineTrigger))
 		{
 			startLineTrigger.StartLineCrossed -= OnStartLineTriggered;
 		}
 
 		var finishLineTrigger = _trackDefinition.FinishLine;
-		if (finishLineTrigger != null && GodotObject.IsInstanceValid(finishLineTrigger) && finishLineTrigger != startLineTrigger)
+		if (finishLineTrigger != null && IsInstanceValid(finishLineTrigger) && finishLineTrigger != startLineTrigger)
 		{
 			finishLineTrigger.StartLineCrossed -= OnFinishLineTriggered;
 		}
 
 		if (_checkpointTriggers != null)
 		{
-			for (int i = 0; i < _checkpointTriggers.Length; i++)
+			foreach (var trigger in _checkpointTriggers)
 			{
-				var trigger = _checkpointTriggers[i];
-				if (trigger != null && GodotObject.IsInstanceValid(trigger))
+				if (trigger != null && IsInstanceValid(trigger))
 				{
 					trigger.CheckpointCrossed -= OnCheckpointTriggered;
 				}
@@ -1008,19 +936,23 @@ namespace BarBox.Games.Racing
 	// Track signal handlers
 	private void OnStartLineTriggered(Node2D body)
 	{
-		if (!GodotObject.IsInstanceValid(_carController) || !_carController.IsInitialized) return;
-		if (body != _carController.GetCarBody()) return;
-		
-		var player = _carController.GetPlayer();
-		if (player == null) return;
-		var playerId = player.PlayerId ?? "player1";
-		
+		if (!IsInstanceValid(_carController) || !_carController.IsInitialized) 
+			return;
+
+		if (body != _carController.GetCarBody()) 
+			return;
+
+		BasePlayer player = _carController.GetPlayer();
+		if (player == null) 
+			return;
+
+		string playerId = player.PlayerId ?? "player1";
 		if (GetGameMode() == GameMode.TimeTrial && GetPlayerCurrentLap(playerId) > 0)
 		{
 			// Check if this should be treated as finish line crossing
-			bool shouldTreatAsFinishLine = (_checkpointTriggers.Length == 0) ? 
-				(GetPlayerCurrentLap(playerId) > 1) : 
-				(_nextCheckpointIndex >= _checkpointTriggers.Length);
+			bool shouldTreatAsFinishLine = _checkpointTriggers.Length == 0 ? 
+				GetPlayerCurrentLap(playerId) > 1 : 
+				_nextCheckpointIndex >= _checkpointTriggers.Length;
 			
 			if (shouldTreatAsFinishLine)
 			{
@@ -1038,50 +970,62 @@ namespace BarBox.Games.Racing
 
 	private void OnFinishLineTriggered(Node2D body)
 	{
-		if (!GodotObject.IsInstanceValid(_carController) || !_carController.IsInitialized) return;
-		if (body != _carController.GetCarBody()) return;
+		if (!IsInstanceValid(_carController) || !_carController.IsInitialized) 
+			return;
 		
-		var player = _carController.GetPlayer();
-		if (player == null) return;
-		var playerId = player.PlayerId ?? "player1";
+		if (body != _carController.GetCarBody()) 
+			return;
+		
+		BasePlayer player = _carController.GetPlayer();
+		if (player == null) 
+			return;
+
+		string playerId = player.PlayerId ?? "player1";
+		
+		// Set processing state during finish line handling
+		_timingSystem?.SetCrossingFinish();
 		
 		if (GetGameMode() == GameMode.TimeTrial)
 		{
-			// Complete the lap
+			// Complete the lap - let CompletePlayerLap handle all the logic
 			float lapTime = GetPlayerCurrentLapTime(playerId);
 			CompletePlayerLap(playerId, lapTime);
 			ResetCheckpoints();
+			// Do NOT duplicate lap checking here - CompletePlayerLap handles it
 		}
 		else
 		{
-			// Practice mode - just reset gap timer
+			// Practice mode - always start new lap
 			OnPlayerCheckpointCrossed(playerId, -1);
+			// Restore practice state
+			_timingSystem?.StartPracticeMode();
 		}
 	}
 
 	private void OnCheckpointTriggered(Node2D body, int checkpointIndex)
 	{
-		if (!GodotObject.IsInstanceValid(_carController) || !_carController.IsInitialized) return;
-		if (body != _carController.GetCarBody()) return;
-		
-		var player = _carController.GetPlayer();
-		if (player == null) return;
-		var playerId = player.PlayerId ?? "player1";
-		
-		if (GetGameMode() == GameMode.TimeTrial)
+		if (!IsInstanceValid(_carController) || !_carController.IsInitialized) 
+			return;
+
+		if (body != _carController.GetCarBody()) 
+			return;
+
+		BasePlayer player = _carController.GetPlayer();
+		if (player == null) 
+			return;
+
+		string playerId = player.PlayerId ?? "player1";
+		if (GetGameMode() == GameMode.TimeTrial && checkpointIndex == _nextCheckpointIndex)
 		{
-			if (checkpointIndex == _nextCheckpointIndex)
+			_checkpointsCrossed[checkpointIndex] = true;
+			_nextCheckpointIndex++;
+				
+			if (_checkpointTriggers[checkpointIndex] != null)
 			{
-				_checkpointsCrossed[checkpointIndex] = true;
-				_nextCheckpointIndex++;
-				
-				if (_checkpointTriggers[checkpointIndex] != null)
-				{
-					_checkpointTriggers[checkpointIndex].MarkAsCrossed();
-				}
-				
-				UpdateCheckpointVisuals();
+				_checkpointTriggers[checkpointIndex].MarkAsCrossed();
 			}
+				
+			UpdateCheckpointVisuals();
 		}
 		
 		OnPlayerCheckpointCrossed(playerId, checkpointIndex);
@@ -1089,7 +1033,8 @@ namespace BarBox.Games.Racing
 
 	private void ResetCheckpoints()
 	{
-		if (_checkpointsCrossed == null) return;
+		if (_checkpointsCrossed == null) 
+			return;
 		
 		for (int i = 0; i < _checkpointsCrossed.Length; i++)
 		{
@@ -1139,13 +1084,20 @@ namespace BarBox.Games.Racing
 		AddChild(_uiManager);
 
 		// Connect UI manager signals
-		_uiManager.TimeTrialRequested += () => { if (!IsGameActive()) StartTimeTrial(); };
-		_uiManager.RestartRequested += () => { EndGame(); StartPractice(); };
+		_uiManager.TimeTrialRequested += StartTimeTrial;
+		_uiManager.RestartRequested += () => { 
+			// Only call EndGame() if we're in time trial mode
+			if (GetGameMode() == GameMode.TimeTrial)
+			{
+				EndGame();
+			}
+			StartPractice(); 
+		};
 		_uiManager.TrackSwitchRequested += OnTrackSwitchRequested;
 		_uiManager.ResumeRequested += ResumeGame;
 		_uiManager.MainMenuRequested += HandleMainMenuRequest;
-		_uiManager.RaceAgainRequested += () => { EndGame(); StartTimeTrial(); };
-		_uiManager.PracticeModeRequested += () => { EndGame(); StartPractice(); };
+		_uiManager.RaceAgainRequested += OnRaceAgainRequested;
+		_uiManager.PracticeModeRequested += OnEndToPracticeModeRequested;
 	}
 
 	/// <summary>
@@ -1154,9 +1106,18 @@ namespace BarBox.Games.Racing
 	/// <param name="trackIndex">Index of track to switch to</param>
 	private void OnTrackSwitchRequested(int trackIndex)
 	{
-		if (IsGameActive() && GetGameMode() == GameController.GameMode.TimeTrial) 
+		if (IsGameActive() && GetGameMode() == GameMode.TimeTrial) 
 		{
 			return; // Don't allow track switching during time trial
+		}
+		
+		// Set track loading state to disable input
+		_timingSystem?.SetTrackLoading();
+		
+		// End current race/practice session
+		if (IsGameActive())
+		{
+			EndGame();
 		}
 		
 		_currentTrackIndex = trackIndex;
@@ -1164,7 +1125,6 @@ namespace BarBox.Games.Racing
 		_uiManager?.SetCurrentTrackIndex(trackIndex);
 		
 		// Restart practice mode with new track
-		EndGame();
 		StartPractice();
 	}
 
@@ -1175,7 +1135,7 @@ namespace BarBox.Games.Racing
 	{
 		// Return to main menu via GameHost
 		var gameHost = GameHost.GetInstance();
-		if (gameHost != null && GodotObject.IsInstanceValid(gameHost))
+		if (gameHost != null && IsInstanceValid(gameHost))
 		{
 			gameHost.ReturnToMainMenu();
 		}
@@ -1186,52 +1146,167 @@ namespace BarBox.Games.Racing
 		}
 	}
 
+	private void OnEndToPracticeModeRequested()
+	{
+		// Reset state and start practice
+		_timingSystem?.StopRacing(); // Reset to idle
+		StartPractice();
+	}
 
+	private void OnRaceAgainRequested()
+	{
+		// Reset state and start new time trial
+		_timingSystem?.StopRacing(); // Reset to idle
+		SetGameMode(GameMode.Practice); // Reset game mode so StartTimeTrial can work
+		StartTimeTrial(); // StartTimeTrial will call ResetForNewRace() which handles complete reset
+	}
 
+	/// <summary>
+	/// Show high score display
+	/// </summary>
+	public void ShowHighScores()
+	{
+		_timingSystem?.SetHighScoreDisplay();
+		
+		// Try to get LeaderboardManager - it may not be available yet
+		try
+		{
+			// Check if LeaderboardManager exists in autoload
+			var autoloadNode = GetTree().Root.GetNodeOrNull("LeaderboardManager");
+			if (autoloadNode != null)
+			{
+				// Display leaderboard UI
+				GD.Print("Showing racing game leaderboard");
+				// TODO: Implement leaderboard UI integration when available
+			}
+			else
+			{
+				ShowHighScoresFallback();
+			}
+		}
+		catch
+		{
+			ShowHighScoresFallback();
+		}
+	}
 
+	private void ShowHighScoresFallback()
+	{
+		// Fallback: show simple message
+		GD.Print("High scores feature not available");
+		// Return to previous state after brief delay
+		CreateAutoCleanupTimer(2.0f, () => {
+			if (GetGameMode() == GameMode.Practice)
+				_timingSystem?.StartPracticeMode();
+			else
+				_timingSystem?.StopRacing();
+		});
+	}
 
+	/// <summary>
+	/// Hide high score display and return to appropriate state
+	/// </summary>
+	public void HideHighScores()
+	{
+		if (GetGameMode() == GameMode.Practice)
+			_timingSystem?.StartPracticeMode();
+		else
+			_timingSystem?.StopRacing(); // Return to idle
+	}
 
+	/// <summary>
+	/// Create a timer that automatically cleans up after timeout
+	/// </summary>
+	private Timer CreateAutoCleanupTimer(float waitTime, System.Action onTimeout)
+	{
+		var timer = new Timer();
+		timer.WaitTime = waitTime;
+		timer.OneShot = true;
+		timer.Timeout += () => {
+			onTimeout?.Invoke();
+			timer.QueueFree();
+		};
+		AddChild(timer);
+		timer.Start();
+		return timer;
+	}
+
+	/// <summary>
+	/// Override pause to handle racing state properly
+	/// </summary>
+	public override void PauseGame()
+	{
+		base.PauseGame();
+		_timingSystem?.SetPaused(true);
+	}
+
+	/// <summary>
+	/// Override resume to handle racing state properly
+	/// </summary>
+	public override void ResumeGame()
+	{
+		base.ResumeGame();
+		_timingSystem?.SetPaused(false);
+	}
+	
 	private void UpdateUI()
 	{
-		if (!GodotObject.IsInstanceValid(_carController) || !_carController.IsInitialized || 
-			!GodotObject.IsInstanceValid(_uiManager)) return;
-
-		var player = _carController.GetPlayer();
-		if (player == null) return;
+		if (!IsInstanceValid(_uiManager)) 
+			return;
 		
-		var playerId = player.PlayerId ?? "player1";
+		// Always gather fresh state - no caching, no change detection
+		var state = GatherCurrentState();
+		
+		// Always update UI - let Godot handle rendering optimization
+		_uiManager.UpdateFromState(state);
+	}
+
+	/// <summary>
+	/// Gather current game state for UI updates
+	/// </summary>
+	private RacingUIState GatherCurrentState()
+	{
+		var player = _carController?.GetPlayer();
+		var playerId = player?.PlayerId ?? "player1";
 		var gameMode = GetGameMode();
+		var loggedIn = _cachedUserManager?.IsUserLoggedIn() ?? false;
+		var currentRacingState = _timingSystem?.CurrentRacingState ?? RacingTimingSystem.RacingState.Idle;
 		
-		// Prepare data for UI manager
-		float carSpeed = _carController.GetCarSpeed();
-		int currentLap = GetPlayerCurrentLap(playerId);
-		int targetLaps = TargetLaps;
+		// Determine if a formal time trial is in progress (vs practice mode)
+		bool isTimeTrialInProgress = gameMode == GameMode.TimeTrial && 
+			currentRacingState != RacingTimingSystem.RacingState.Idle &&
+			currentRacingState != RacingTimingSystem.RacingState.PracticeMode;
 		
-		// Determine time display based on game mode
-		float timeDisplay;
-		string timeLabel;
-		if (gameMode == GameController.GameMode.Practice)
+		// Check if user can start time trial based on state and affordability
+		bool canStartTimeTrial = loggedIn && 
+			!isTimeTrialInProgress && 
+			currentRacingState != RacingTimingSystem.RacingState.WaitingForCredits &&
+			currentRacingState != RacingTimingSystem.RacingState.TrackLoading &&
+			currentRacingState != RacingTimingSystem.RacingState.GameOverDeciding &&
+			currentRacingState != RacingTimingSystem.RacingState.HighScoreDisplay;
+
+		// Check if user can afford replay (simplified check for now)
+		bool isDevelopmentMode = Engine.IsEditorHint() || OS.IsDebugBuild();
+		bool canAffordReplay = loggedIn && (isDevelopmentMode || TimeTrialCreditCost == 0);
+		
+		return new RacingUIState
 		{
-			timeDisplay = GetPlayerGapTime(playerId);
-			timeLabel = "Gap";
-		}
-		else
-		{
-			timeDisplay = GetPlayerCurrentLapTime(playerId);
-			timeLabel = "Time";
-		}
-
-		// Update status labels
-		_uiManager.UpdateStatusLabels(carSpeed, gameMode, currentLap, targetLaps, timeDisplay, timeLabel);
-
-		// Update button states
-		bool isGameActive = IsGameActive();
-		bool isInCountdown = IsInCountdown();
-		bool isTimeTrial = gameMode == GameController.GameMode.TimeTrial;
-		_uiManager.UpdateButtonStates(isGameActive, isInCountdown, isTimeTrial);
-
-		// Update pause overlay
-		_uiManager.SetPauseOverlayVisible(IsGamePaused());
+			IsGamePaused = IsGamePaused(),
+			IsInCountdown = IsInCountdown(),
+			IsTimeTrialInProgress = isTimeTrialInProgress,
+			CanStartTimeTrial = canStartTimeTrial,
+			GameMode = gameMode,
+			CarSpeed = _carController?.GetCarSpeed() ?? 0f,
+			CurrentLap = GetPlayerCurrentLap(playerId),
+			TargetLaps = TargetLaps,
+			TimeDisplay = gameMode == GameMode.Practice ? 
+				GetPlayerGapTime(playerId) : GetPlayerCurrentLapTime(playerId),
+			TimeLabel = gameMode == GameMode.Practice ? "Gap" : "Time",
+			IsUserLoggedIn = loggedIn,
+			ShowGameOverOverlay = currentRacingState == RacingTimingSystem.RacingState.GameOverDeciding,
+			FinalTime = GetPlayerScore(playerId),
+			CanAffordReplay = canAffordReplay
+		};
 	}
 
 	/// <summary>
@@ -1241,18 +1316,18 @@ namespace BarBox.Games.Racing
 	{
 		base.EndGame();
 		
-		if (GetGameMode() == GameController.GameMode.TimeTrial && 
-			GodotObject.IsInstanceValid(_carController) && _carController.IsInitialized &&
-			GodotObject.IsInstanceValid(_uiManager))
-		{
-			var player = _carController.GetPlayer();
-			if (player != null)
-			{
-				var playerId = player.PlayerId ?? "player1";
-				var playerScore = GetPlayerScore(playerId);
-				_uiManager.SetGameOverOverlayVisible(true, playerScore);
-			}
-		}
+		// Show game over overlay for time trials by updating UI state
+		if (GetGameMode() != GameMode.TimeTrial)
+			return;
+
+		// Set game over state to disable input
+		_timingSystem?.SetGameOverDeciding();
+
+		// Update UI - GatherCurrentState will detect GameOverDeciding state and show overlay
+		var state = GatherCurrentState();
+		_uiManager?.UpdateFromState(state);
+		
+		_carController.SetActive(false);
 	}
 
 
@@ -1265,12 +1340,12 @@ namespace BarBox.Games.Racing
 		GD.Print("[RacingGame] DetectAndAdaptToContext() called");
 		var gameHost = GameHost.GetInstance();
 		GD.Print($"[RacingGame] GameHost instance: {gameHost != null}");
-		
-		if (gameHost != null && GodotObject.IsInstanceValid(gameHost))
+
+		if (gameHost != null && IsInstanceValid(gameHost))
 		{
 			// Production context
 			var playerSession = gameHost.GetPlayerSession("default");
-			if (playerSession != null && GodotObject.IsInstanceValid(_carController) && _carController.IsInitialized)
+			if (playerSession != null && IsInstanceValid(_carController) && _carController.IsInitialized)
 			{
 				var racingCar = _carController.RacingCar;
 				if (racingCar != null)
@@ -1280,16 +1355,13 @@ namespace BarBox.Games.Racing
 				}
 			}
 		}
-		else
+		else if (IsInstanceValid(_carController) && _carController.IsInitialized)
 		{
 			// Development context - auto-start practice mode
-			if (GodotObject.IsInstanceValid(_carController) && _carController.IsInitialized)
+			var racingCar = _carController.RacingCar;
+			if (racingCar != null)
 			{
-				var racingCar = _carController.RacingCar;
-				if (racingCar != null)
-				{
-					racingCar.PlayerId = "dev_player";
-				}
+				racingCar.PlayerId = "dev_player";
 			}
 		}
 	}
@@ -1298,14 +1370,14 @@ namespace BarBox.Games.Racing
 	// RACING DATA GETTERS
 	// ================================================================
 
-	public int GetPlayerCurrentLap(string playerId) => GodotObject.IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerCurrentLap(playerId) : 0;
-	public float GetPlayerCurrentLapTime(string playerId) => GodotObject.IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerCurrentLapTime(playerId) : 0.0f;
-	public float GetPlayerBestLapTime(string playerId) => GodotObject.IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerBestLapTime(playerId) : 0.0f;
-	public float GetPlayerGapTime(string playerId) => GodotObject.IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerGapTime(playerId) : 0.0f;
-	public List<float> GetPlayerLapTimes(string playerId) => GodotObject.IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerLapTimes(playerId) : new List<float>();
-	public RacingTimingSystem.RacingState GetRacingState() => GodotObject.IsInstanceValid(_timingSystem) ? _timingSystem.CurrentRacingState : RacingTimingSystem.RacingState.Stopped;
-	public bool IsInCountdown() => GodotObject.IsInstanceValid(_timingSystem) && _timingSystem.IsInCountdown;
-	public int GetCountdownNumber() => GodotObject.IsInstanceValid(_timingSystem) ? _timingSystem.CountdownNumber : 0;
+	public int GetPlayerCurrentLap(string playerId) => IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerCurrentLap(playerId) : 0;
+	public float GetPlayerCurrentLapTime(string playerId) => IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerCurrentLapTime(playerId) : 0.0f;
+	public float GetPlayerBestLapTime(string playerId) => IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerBestLapTime(playerId) : 0.0f;
+	public float GetPlayerGapTime(string playerId) => IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerGapTime(playerId) : 0.0f;
+	public List<float> GetPlayerLapTimes(string playerId) => IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerLapTimes(playerId) : new List<float>();
+	public RacingTimingSystem.RacingState GetRacingState() => IsInstanceValid(_timingSystem) ? _timingSystem.CurrentRacingState : RacingTimingSystem.RacingState.Idle;
+	public bool IsInCountdown() => IsInstanceValid(_timingSystem) && _timingSystem.IsInCountdown;
+	public int GetCountdownNumber() => IsInstanceValid(_timingSystem) ? _timingSystem.CountdownNumber : 0;
 	
 	// ================================================================
 	// UI INTEGRATION OVERRIDES
@@ -1320,10 +1392,9 @@ namespace BarBox.Games.Racing
 
 		// Standard "Return to Menu" button
 		buttons.Add(GameContextButton.CreateReturnToMenuButton(() => {
-			var userManager = UserManager.GetAutoload();
-			if (userManager != null && GodotObject.IsInstanceValid(userManager))
+			if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
 			{
-				userManager.ResetUserIdleTimer();
+				_cachedUserManager.ResetUserIdleTimer();
 			}
 			ReturnToMainMenu();
 		}));
@@ -1351,10 +1422,9 @@ namespace BarBox.Games.Racing
 		if (GetGameMode() == GameMode.Practice && !IsInCountdown())
 		{
 			buttons.Add(new ContextButtonData("Restart", () => {
-				var userManager = UserManager.GetAutoload();
-				if (userManager != null && GodotObject.IsInstanceValid(userManager))
+				if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
 				{
-					userManager.ResetUserIdleTimer();
+					_cachedUserManager.ResetUserIdleTimer();
 				}
 				EndGame();
 				StartPractice();
@@ -1380,13 +1450,41 @@ namespace BarBox.Games.Racing
 		return "Racing Game";
 	}
 
+	public override void _ExitTree()
+	{
+		base._ExitTree();
+
+		// Clean up signals and references
+		DisconnectTrackSignals();
+
+		if (IsInstanceValid(_carController))
+		{
+			_carController.CarMoved -= OnCarMoved;
+		}
+
+		// Disconnect timing system signals
+		if (IsInstanceValid(_timingSystem))
+		{
+			_timingSystem.LapCompleted -= OnTimingSystemLapCompleted;
+			_timingSystem.RaceCompleted -= OnTimingSystemRaceCompleted;
+			_timingSystem.CheckpointCrossed -= OnTimingSystemCheckpointCrossed;
+		}
+
+		// Disconnect user manager signals
+		if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
+		{
+			_cachedUserManager.UserLoggedIn -= OnUserLoggedIn;
+			_cachedUserManager.UserLoggedOut -= OnUserLoggedOut;
+		}
+	}
+
 	/// <summary>
 	/// Handle viewport size changes (e.g., window resize, orientation change)
 	/// </summary>
 	public override void _Notification(int what)
 	{
 		base._Notification(what);
-		
+
 		if (what == NotificationWMSizeChanged)
 		{
 			// Recalculate camera positioning and zoom when viewport changes
@@ -1395,16 +1493,5 @@ namespace BarBox.Games.Racing
 				_cameraController.OnViewportSizeChanged();
 			}
 		}
-		else if (what == NotificationExitTree)
-		{
-			// Clean up signals and references
-			DisconnectTrackSignals();
-			
-			if (_carController != null && GodotObject.IsInstanceValid(_carController))
-			{
-				_carController.CarMoved -= OnCarMoved;
-			}
-		}
 	}
-}
 }

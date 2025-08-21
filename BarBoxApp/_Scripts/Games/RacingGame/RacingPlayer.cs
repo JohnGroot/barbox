@@ -38,6 +38,7 @@ public partial class RacingPlayer : BasePlayer
 	protected override void InitializePlayer()
 	{
 		base.InitializePlayer();
+
 		SetupCarBody();
 		SetupInputManager();
 	}
@@ -74,23 +75,24 @@ public partial class RacingPlayer : BasePlayer
 	protected virtual void SetupInputManager()
 	{
 		_inputManager = InputManager.GetAutoload();
-		if (_inputManager != null && GodotObject.IsInstanceValid(_inputManager))
-		{
-			_inputManager.TouchStarted += OnTouchStarted;
-			_inputManager.TouchEnded += OnTouchEnded;
-			_inputManager.ClickStarted += OnClickStarted;
-			_inputManager.ClickEnded += OnClickEnded;
-		}
+		if (_inputManager == null || !IsInstanceValid(_inputManager))
+			return;
+
+		_inputManager.TouchStarted += OnTouchStarted;
+		_inputManager.TouchEnded += OnTouchEnded;
+		_inputManager.ClickStarted += OnClickStarted;
+		_inputManager.ClickEnded += OnClickEnded;
 	}
 
 	public override void _Process(double delta)
 	{
-		if (!IsActive()) return;
+		if (!IsActive()) 
+			return;
 
 		float deltaF = (float)delta;
 
 		// Poll for current input position
-		if (_inputManager != null && GodotObject.IsInstanceValid(_inputManager) && _hasInput)
+		if (_inputManager != null && IsInstanceValid(_inputManager) && _hasInput)
 		{
 			if (_inputManager.IsTouchActive())
 			{
@@ -205,25 +207,33 @@ public partial class RacingPlayer : BasePlayer
 	// Input event handlers
 	protected virtual void OnTouchStarted(Vector2 position, int fingerId)
 	{
-		if (!IsActive()) return;
+		if (!IsActive()) 
+			return;
+
 		_hasInput = true;
 	}
 
 	protected virtual void OnTouchEnded(Vector2 position, int fingerId)
 	{
-		if (!IsActive()) return;
+		if (!IsActive()) 
+			return;
+
 		_hasInput = false;
 	}
 
 	protected virtual void OnClickStarted(Vector2 position)
 	{
-		if (!IsActive()) return;
+		if (!IsActive())
+			return;
+
 		_hasInput = true;
 	}
 
 	protected virtual void OnClickEnded(Vector2 position)
 	{
-		if (!IsActive()) return;
+		if (!IsActive()) 
+			return;
+
 		_hasInput = false;
 	}
 
@@ -243,6 +253,25 @@ public partial class RacingPlayer : BasePlayer
 			_inputManager.ClickEnded -= OnClickEnded;
 		}
 		base._ExitTree();
+	}
+
+	/// <summary>
+	/// Reset all car physics state to initial values
+	/// Called when repositioning car to ensure clean state
+	/// </summary>
+	public void ResetCarState()
+	{
+		_velocity = Vector2.Zero;
+		_currentSpeed = 0.0f;
+		_targetPosition = Vector2.Zero;
+		_lastTargetPosition = Vector2.Zero;
+		_hasInput = false;
+		
+		// Also reset the car body's physics velocity
+		if (_carBody != null)
+		{
+			_carBody.Velocity = Vector2.Zero;
+		}
 	}
 
 	// Public accessors

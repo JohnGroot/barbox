@@ -95,6 +95,7 @@ namespace BarBox.Games.Racing
 
 	/// <summary>
 	/// Position car at a specific world position and rotation
+	/// Also resets all physics state for clean repositioning
 	/// </summary>
 	/// <param name="position">World position</param>
 	/// <param name="rotation">Car rotation in radians</param>
@@ -106,6 +107,9 @@ namespace BarBox.Games.Racing
 			carBody.GlobalPosition = position;
 			carBody.Rotation = rotation;
 		}
+		
+		// Reset all internal physics state to ensure clean positioning
+		ResetCarState();
 	}
 
 	/// <summary>
@@ -190,6 +194,74 @@ namespace BarBox.Games.Racing
 	public BasePlayer GetPlayer()
 	{
 		return this;
+	}
+
+	// ================================================================
+	// INPUT HANDLING OVERRIDES
+	// ================================================================
+
+	/// <summary>
+	/// Override touch input to check racing state
+	/// </summary>
+	protected override void OnTouchStarted(Vector2 position, int fingerId)
+	{
+		if (!IsActive() || !IsRacingInputEnabled()) 
+			return;
+		base.OnTouchStarted(position, fingerId);
+	}
+
+	/// <summary>
+	/// Override touch input to check racing state
+	/// </summary>
+	protected override void OnTouchEnded(Vector2 position, int fingerId)
+	{
+		if (!IsActive() || !IsRacingInputEnabled()) 
+			return;
+		base.OnTouchEnded(position, fingerId);
+	}
+
+	/// <summary>
+	/// Override click input to check racing state
+	/// </summary>
+	protected override void OnClickStarted(Vector2 position)
+	{
+		if (!IsActive() || !IsRacingInputEnabled())
+			return;
+		base.OnClickStarted(position);
+	}
+
+	/// <summary>
+	/// Override click input to check racing state
+	/// </summary>
+	protected override void OnClickEnded(Vector2 position)
+	{
+		if (!IsActive() || !IsRacingInputEnabled())
+			return;
+		base.OnClickEnded(position);
+	}
+
+	/// <summary>
+	/// Check if racing input should be enabled based on current racing state
+	/// </summary>
+	private bool IsRacingInputEnabled()
+	{
+		var racingGame = GetParent<RacingGame>();
+		return racingGame?.IsInputEnabled() ?? true;
+	}
+
+	/// <summary>
+	/// Override _Process to check racing state before processing input
+	/// </summary>
+	public override void _Process(double delta)
+	{
+		// Check racing state before processing any input
+		if (!IsRacingInputEnabled())
+		{
+			// Clear any existing input when state doesn't allow it
+			_hasInput = false;
+		}
+		
+		base._Process(delta);
 	}
 
 	// ================================================================

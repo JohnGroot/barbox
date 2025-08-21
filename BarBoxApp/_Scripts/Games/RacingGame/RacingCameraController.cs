@@ -248,8 +248,6 @@ namespace BarBox.Games.Racing
 		Transform2D canvasTransform = viewport.GetCanvasTransform();
 		Vector2 worldPosition = canvasTransform.AffineInverse() * screenPosition;
 		
-		// Debug output to verify coordinate accuracy
-		GD.Print($"[CameraController] Viewport transform - Screen: {screenPosition}, World: {worldPosition}");
 		
 		return worldPosition;
 	}

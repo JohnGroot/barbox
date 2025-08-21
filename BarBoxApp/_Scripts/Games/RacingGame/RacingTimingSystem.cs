@@ -23,14 +23,27 @@ namespace BarBox.Games.Racing
 	// RACING STATE AND ENUMS
 	// ================================================================
 	
-	public enum RacingState { Stopped, Countdown, Racing, Finished }
+	public enum RacingState 
+	{ 
+		Idle,                    // No active session
+		PracticeMode,           // Free practice, no credits required
+		WaitingForCredits,      // Checking affordability for time trial
+		CountdownWaiting,       // Pre-race countdown (input locked)
+		Racing,                 // Active race/practice
+		RacePaused,            // Paused during race
+		CrossingFinish,        // Processing finish line crossing
+		GameOverDeciding,      // Showing results, awaiting user choice (input locked)
+		HighScoreDisplay,      // Viewing high scores (input locked)
+		TrackLoading,          // Loading new track (input locked)
+		Finished               // Race completed (legacy state for compatibility)
+	}
 
 	// ================================================================
 	// PRIVATE FIELDS - RACING LOGIC
 	// ================================================================
 	
 	// Racing state management
-	private RacingState _racingState = RacingState.Stopped;
+	private RacingState _racingState = RacingState.Idle;
 	private bool _inCountdown = false;
 	private float _countdownTime = 0.0f;
 	private int _countdownNumber = 0;
@@ -69,7 +82,7 @@ namespace BarBox.Games.Racing
 	public void StartCountdown(float countdownDuration = 4.0f)
 	{
 		_inCountdown = true;
-		_racingState = RacingState.Countdown;
+		_racingState = RacingState.CountdownWaiting;
 		_countdownTime = 0.0f;
 		_countdownNumber = 0;
 	}
@@ -135,7 +148,8 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public void CompletePlayerLap(string playerId, float lapTime)
 	{
-		if (!_playerCurrentLap.ContainsKey(playerId)) return;
+		if (!_playerCurrentLap.ContainsKey(playerId)) 
+			return;
 		
 		int lapNumber = _playerCurrentLap[playerId];
 		_playerLapTimes[playerId].Add(lapTime);
@@ -239,11 +253,96 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
+	/// Start practice mode
+	/// </summary>
+	public void StartPracticeMode()
+	{
+		_racingState = RacingState.PracticeMode;
+	}
+
+	/// <summary>
+	/// Set state to waiting for credits
+	/// </summary>
+	public void SetWaitingForCredits()
+	{
+		_racingState = RacingState.WaitingForCredits;
+	}
+
+	/// <summary>
+	/// Set paused state
+	/// </summary>
+	public void SetPaused(bool paused)
+	{
+		if (paused)
+		{
+			_racingState = RacingState.RacePaused;
+		}
+		else
+		{
+			// Resume to appropriate state based on game mode
+			if (_currentGameMode == GameController.GameMode.Practice)
+				_racingState = RacingState.PracticeMode;
+			else
+				_racingState = RacingState.Racing;
+		}
+	}
+
+	/// <summary>
+	/// Set game over state
+	/// </summary>
+	public void SetGameOverDeciding()
+	{
+		_racingState = RacingState.GameOverDeciding;
+	}
+
+	/// <summary>
+	/// Set high score display state
+	/// </summary>
+	public void SetHighScoreDisplay()
+	{
+		_racingState = RacingState.HighScoreDisplay;
+	}
+
+	/// <summary>
+	/// Set track loading state
+	/// </summary>
+	public void SetTrackLoading()
+	{
+		_racingState = RacingState.TrackLoading;
+	}
+
+	/// <summary>
+	/// Set crossing finish state
+	/// </summary>
+	public void SetCrossingFinish()
+	{
+		_racingState = RacingState.CrossingFinish;
+	}
+
+	/// <summary>
+	/// Check if input should be enabled based on current state
+	/// </summary>
+	public bool IsInputEnabled()
+	{
+		return _racingState switch
+		{
+			RacingState.CountdownWaiting => false,
+			RacingState.GameOverDeciding => false,
+			RacingState.TrackLoading => false,
+			RacingState.WaitingForCredits => false,
+			RacingState.HighScoreDisplay => false,
+			RacingState.RacePaused => false,
+			RacingState.CrossingFinish => false,
+			_ => true
+		};
+	}
+
+	/// <summary>
 	/// Stop racing and reset state
 	/// </summary>
 	public void StopRacing()
 	{
-		_racingState = RacingState.Stopped;
+		_racingState = RacingState.Idle;
 		_inCountdown = false;
 	}
 
@@ -257,7 +356,7 @@ namespace BarBox.Games.Racing
 		_playerCurrentLapTime.Clear();
 		_playerBestLapTime.Clear();
 		_playerGapTime.Clear();
-		_racingState = RacingState.Stopped;
+		_racingState = RacingState.Idle;
 	}
 
 	// ================================================================

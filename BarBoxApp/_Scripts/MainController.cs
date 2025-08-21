@@ -43,6 +43,8 @@ public partial class MainController : Control
 		if (what == NotificationExitTree)
 		{
 			DisconnectSignals();
+			// Clear reference to prevent memory leaks
+			_onscreenKeyboard = null;
 		}
 	}
 
@@ -209,7 +211,7 @@ public partial class MainController : Control
 	/// </summary>
 	private void DismissKeyboard()
 	{
-		if (_onscreenKeyboard != null && _onscreenKeyboard.HasMethod("hide"))
+		if (GodotObject.IsInstanceValid(_onscreenKeyboard) && _onscreenKeyboard.HasMethod("hide"))
 		{
 			_onscreenKeyboard.Call("hide");
 		}
@@ -220,7 +222,7 @@ public partial class MainController : Control
 	/// </summary>
 	private void DisableKeyboardAutoShow()
 	{
-		if (_onscreenKeyboard != null)
+		if (GodotObject.IsInstanceValid(_onscreenKeyboard))
 		{
 			_onscreenKeyboard.Set("auto_show", false);
 			_onscreenKeyboard.Call("hide");
@@ -232,7 +234,7 @@ public partial class MainController : Control
 	/// </summary>
 	private void EnableKeyboardAutoShow()
 	{
-		if (_onscreenKeyboard != null)
+		if (GodotObject.IsInstanceValid(_onscreenKeyboard))
 		{
 			_onscreenKeyboard.Set("auto_show", true);
 		}

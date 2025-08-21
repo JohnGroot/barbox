@@ -70,8 +70,21 @@ func _enter_tree():
 		get_tree().get_root().size_changed.connect(size_changed)
 	_init_keyboard()
 
-#func _exit_tree():
-#    pass
+func _exit_tree():
+	# Disconnect signal to prevent memory leaks
+	if get_tree() != null and get_tree().get_root().size_changed.is_connected(size_changed):
+		get_tree().get_root().size_changed.disconnect(size_changed)
+	
+	# Free the KeyListHandler node if it exists
+	if KeyListHandler != null:
+		KeyListHandler.queue_free()
+		KeyListHandler = null
+	
+	# Clear references
+	KeyboardButton = null
+	layouts.clear()
+	keys.clear()
+	capslock_keys.clear()
 
 #func _process(delta):
 #    pass

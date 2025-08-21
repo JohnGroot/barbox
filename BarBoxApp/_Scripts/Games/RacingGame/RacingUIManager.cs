@@ -52,6 +52,9 @@ namespace BarBox.Games.Racing
 	// Control buttons
 	private Button _timeTrialButton;
 	private Button[] _trackSelectionButtons;
+
+	private Button _gameOverRestartButton;
+	private Button _gameOverPracticeButton;
 	
 	// Overlays
 	private Control _pauseOverlay;
@@ -405,25 +408,25 @@ namespace BarBox.Games.Racing
 		vbox.Alignment = BoxContainer.AlignmentMode.Center;
 		_gameOverOverlay.AddChild(vbox);
 
-		var raceCompleteLabel = new Label() { Text = "RACE COMPLETE!", HorizontalAlignment = HorizontalAlignment.Center };
+		Label raceCompleteLabel = new Label() { Text = "RACE COMPLETE!", HorizontalAlignment = HorizontalAlignment.Center };
 		vbox.AddChild(raceCompleteLabel);
 
 		_finalTimeLabel = new Label() { Text = "Final Time: 0.0s", HorizontalAlignment = HorizontalAlignment.Center };
 		vbox.AddChild(_finalTimeLabel);
 
-		var raceAgainButton = new Button() { Text = "Race Again" };
-		raceAgainButton.Pressed += () => { 
+		_gameOverRestartButton = new Button() { Text = "Race Again" };
+		_gameOverRestartButton.Pressed += () => { 
 			ResetUserIdleTimer();
 			EmitSignal(SignalName.RaceAgainRequested);
 		};
-		vbox.AddChild(raceAgainButton);
+		vbox.AddChild(_gameOverRestartButton);
 
-		var practiceButton = new Button() { Text = "Practice Mode" };
-		practiceButton.Pressed += () => { 
+		_gameOverPracticeButton = new Button() { Text = "Practice Mode" };
+		_gameOverPracticeButton.Pressed += () => { 
 			ResetUserIdleTimer();
 			EmitSignal(SignalName.PracticeModeRequested);
 		};
-		vbox.AddChild(practiceButton);
+		vbox.AddChild(_gameOverPracticeButton);
 	}
 
 	// ================================================================
@@ -468,21 +471,39 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Update button states based on game state
+	/// Update all UI elements from complete game state - replaces individual update methods
 	/// </summary>
-	/// <param name="isGameActive">Whether game is currently active</param>
+	/// <param name="state">Complete racing game UI state</param>
+	public void UpdateFromState(RacingUIState state)
+	{
+		// Update everything, every time - let Godot handle rendering optimization
+		UpdateStatusLabels(state.CarSpeed, state.GameMode, state.CurrentLap, 
+						  state.TargetLaps, state.TimeDisplay, state.TimeLabel);
+		
+		UpdateButtonStates(state.IsTimeTrialInProgress, state.CanStartTimeTrial, state.IsInCountdown, 
+						  state.GameMode is GameController.GameMode.TimeTrial, state.IsUserLoggedIn);
+
+		SetPauseOverlayVisible(state.IsGamePaused);
+		SetGameOverOverlayVisible(state.ShowGameOverOverlay, state.FinalTime, state.CanAffordReplay);
+	}
+
+	/// <summary>
+	/// Update button states based on racing state and authentication
+	/// </summary>
+	/// <param name="isTimeTrialInProgress">Whether a formal time trial race is in progress</param>
 	/// <param name="isInCountdown">Whether countdown is active</param>
 	/// <param name="isTimeTrial">Whether in time trial mode</param>
-	public void UpdateButtonStates(bool isGameActive, bool isInCountdown, bool isTimeTrial)
+	/// <param name="isUserLoggedIn">Whether user is logged in (required for time trial)</param>
+	public void UpdateButtonStates(bool isTimeTrialInProgress, bool canStartTimeTrial, bool isInCountdown, bool isTimeTrial, bool isUserLoggedIn)
 	{
-		// Update time trial button
+		// Update time trial button - disabled during time trial or when not logged in
 		if (_timeTrialButton != null)
 		{
-			_timeTrialButton.Disabled = isGameActive || isInCountdown;
+			_timeTrialButton.Disabled = !canStartTimeTrial || isTimeTrialInProgress || !isUserLoggedIn;
 		}
 
-		// Update track selection buttons
-		UpdateTrackSelectionButtons(isTimeTrial && isGameActive, isInCountdown);
+		// Update track selection buttons - disable during time trial or countdown
+		UpdateTrackSelectionButtons(isTimeTrial && isTimeTrialInProgress, isInCountdown);
 	}
 
 	/// <summary>
@@ -527,16 +548,19 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	/// <param name="visible">Whether to show the overlay</param>
 	/// <param name="finalTime">Final race time to display</param>
-	public void SetGameOverOverlayVisible(bool visible, float finalTime = 0.0f)
+	public void SetGameOverOverlayVisible(bool visible, float finalTime, bool canAffordReplay)
 	{
 		if (_gameOverOverlay != null)
 		{
 			_gameOverOverlay.Visible = visible;
-		}
-		
-		if (visible && _finalTimeLabel != null)
-		{
-			_finalTimeLabel.Text = $"Final Time: {finalTime:F2}s";
+			
+			if (visible)
+			{
+				_finalTimeLabel.Text = $"Final Time: {finalTime:F2}s";
+				
+				// Disable restart button if player can't afford replay
+				_gameOverRestartButton.Disabled = !canAffordReplay;
+			}
 		}
 	}
 
