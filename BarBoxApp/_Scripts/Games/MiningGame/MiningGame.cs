@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Godot;
 
 namespace BarBox.Games.MiningGame
@@ -75,9 +76,12 @@ namespace BarBox.Games.MiningGame
 		{
 			_gameHost = GameHost.GetInstance();
 			_userManager = UserManager.GetAutoload();
-			_locationManager = LocationManager.GetAutoload<LocationManager>();
+			_locationManager = LocationManager.GetAutoload();
 			
-			if (_gameHost != null && GodotObject.IsInstanceValid(_gameHost))
+			// Check if we're loaded as a direct scene (root scene) vs overlay
+			bool isDirectSceneLoad = GetTree().CurrentScene == this;
+			
+			if (_gameHost != null && IsInstanceValid(_gameHost))
 			{
 				_isProductionContext = true;
 				var playerSession = _gameHost.GetPlayerSession("default");
@@ -90,7 +94,13 @@ namespace BarBox.Games.MiningGame
 				SetupDevelopmentMode();
 			}
 			
-			GD.Print($"[MiningGame] Context: {(_isProductionContext ? "Production" : "Development")}");
+			// Ensure MainController exists for logout functionality when loading scene directly
+			if (isDirectSceneLoad)
+			{
+				EnsureMainControllerExists();
+			}
+			
+			// Context detected
 		}
 		
 		private void SetupDevelopmentMode()
@@ -110,7 +120,87 @@ namespace BarBox.Games.MiningGame
 				}
 			}
 			
-			GD.Print("[MiningGame] Development mode initialized");
+			// Development mode initialized
+		}
+		
+		private void EnsureMainControllerExists()
+		{
+			// Check if MainController already exists in scene tree by searching for the type
+			var mainControllers = GetTree().GetNodesInGroup("_MainController");
+			MainController existingMain = null;
+			
+			// Search through all nodes to find MainController type
+			if (mainControllers.Count == 0)
+			{
+				foreach (Node node in GetTree().GetNodesInGroup("_all"))
+				{
+					if (node is MainController)
+					{
+						existingMain = (MainController)node;
+						break;
+					}
+				}
+				
+				// If still not found, search the root children directly
+				if (existingMain == null)
+				{
+					foreach (Node child in GetTree().Root.GetChildren())
+					{
+						if (child is MainController)
+						{
+							existingMain = (MainController)child;
+							break;
+						}
+					}
+				}
+			}
+			
+			if (existingMain == null)
+			{
+				// Load Main.tscn as a background node
+				var mainScene = GD.Load<PackedScene>("res://_Scenes/Main.tscn");
+				
+				if (mainScene != null)
+				{
+					var mainInstance = mainScene.Instantiate();
+					
+					// Use CallDeferred for adding child during _Ready() to avoid scene tree setup conflicts
+					GetTree().Root.CallDeferred("add_child", mainInstance);
+					
+					// Hide the MainController UI since we only need its logout logic (also deferred)
+					if (mainInstance is CanvasItem canvasItem)
+					{
+						canvasItem.CallDeferred("hide");
+					}
+					else
+					{
+						GD.PrintErr($"MainController is not a CanvasItem: {mainInstance.GetType().Name}");
+					}
+					
+					// Ensure UIManager signal connection is established after MainController is ready
+					CallDeferred(nameof(EnsureMainControllerConnection), mainInstance);
+				}
+				else
+				{
+					GD.PrintErr("Could not load Main.tscn for MainController");
+				}
+			}
+		}
+		
+		/// <summary>
+		/// Ensures MainController is properly connected to UIManager signals after deferred loading
+		/// </summary>
+		private void EnsureMainControllerConnection(Node mainInstance)
+		{
+			if (mainInstance is MainController mainController)
+			{
+				// Force UIManager signal connection using MainController's public method
+				mainController.ForceUIManagerConnection();
+			}
+			else
+			{
+				GD.PrintErr($"Failed to cast {mainInstance?.GetType().Name} to MainController");
+			}
 		}
 		
 		private void InitializeLocationDataRegistry()
@@ -125,11 +215,9 @@ namespace BarBox.Games.MiningGame
 					if (locationData != null && !string.IsNullOrEmpty(locationData.LocationId))
 					{
 						_locationDataRegistry[locationData.LocationId] = locationData;
-						GD.Print($"[MiningGame] Registered location data for: {locationData.LocationId}");
 					}
 				}
 				
-				GD.Print($"[MiningGame] Location data registry initialized with {_locationDataRegistry.Count} locations");
 			}
 			else
 			{
@@ -155,7 +243,6 @@ namespace BarBox.Games.MiningGame
 					if (locationConfig != null)
 					{
 						Config = locationConfig;
-						GD.Print($"[MiningGame] Loaded config for location: {locationId}");
 					}
 				}
 			}
@@ -187,27 +274,45 @@ namespace BarBox.Games.MiningGame
 		
 		private void InitializeGameSession()
 		{
-			_currentUser = _userManager?.GetCurrentUser();
-			if (_currentUser == null && _isProductionContext)
+			// Validate essential components first
+			if (!GodotObject.IsInstanceValid(_state) || !GodotObject.IsInstanceValid(_engine))
 			{
-				GD.PrintErr("[MiningGame] Cannot start: No user logged in");
+				GD.PrintErr("[MiningGame] Cannot initialize session - missing essential components (state/engine)");
 				return;
 			}
 			
-			if (GodotObject.IsInstanceValid(_state))
-				_state.LoadUserData();
-				
-			if (GodotObject.IsInstanceValid(_engine))
-				_engine.StartMining();
+			// Get current user state - but don't block initialization if temporarily null
+			_currentUser = _userManager?.GetCurrentUser();
 			
-			// Enable UI LAST, after all components are ready
+			// In production context, we need a valid user to proceed with actual game functionality
+			if (_currentUser == null && _isProductionContext)
+			{
+				GD.PrintErr("[MiningGame] Cannot start: No user logged in");
+				
+				// Ensure UI shows disabled state for no-user scenario
+				if (GodotObject.IsInstanceValid(_ui))
+				{
+					_ui.SetEnabled(false);
+					_ui.UpdateAllUI(); // Show "login required" messages
+				}
+				return;
+			}
+			
+			// Load user data and start mining - data should already be loaded by OnUserLoggedIn
+			// This is a safety check for development mode or edge cases
+			if (_currentUser != null)
+			{
+				_state.LoadUserData();
+			}
+			_engine.StartMining();
+			
+			// Enable UI after all components are ready
 			if (GodotObject.IsInstanceValid(_ui))
 			{
 				_ui.SetEnabled(true);
 				_ui.UpdateAllUI(); // Force immediate UI refresh
 			}
 			
-			GD.Print($"[MiningGame] Game initialized for player: {_playerId}");
 		}
 		
 		public override void StartGame()
@@ -268,7 +373,10 @@ namespace BarBox.Games.MiningGame
 				{
 					// No user logged in, disable UI until login
 					if (GodotObject.IsInstanceValid(_ui))
+					{
 						_ui.SetEnabled(false);
+						_ui.UpdateAllUI(); // Show "login required" messages
+					}
 				}
 			}
 		}
@@ -319,14 +427,20 @@ namespace BarBox.Games.MiningGame
 				return exactMatch;
 			}
 			
-			// Log error for missing location
-			GD.PrintErr($"[MiningGame] ERROR: No location data found for '{locationId}'. Available locations: {string.Join(", ", _locationDataRegistry.Keys)}");
+			// Log debug info for missing location (fallback to default is expected)
+			if (EnableDebugMode)
+			{
+				GD.Print($"[MiningGame] No location data found for '{locationId}'. Available locations: {string.Join(", ", _locationDataRegistry.Keys)}");
+			}
 			
 			// Fall back to first available location
 			if (_locationDataRegistry.Count > 0)
 			{
 				var fallback = _locationDataRegistry.Values.First();
-				GD.PrintErr($"[MiningGame] Using fallback location '{fallback.LocationId}' instead of '{locationId}'");
+				if (EnableDebugMode)
+				{
+					GD.Print($"[MiningGame] Using fallback location '{fallback.LocationId}' instead of '{locationId}'");
+				}
 				return fallback;
 			}
 			
@@ -344,10 +458,18 @@ namespace BarBox.Games.MiningGame
 			if (locationTemplate == null || !CanExtractGems()) return;
 			
 			int amount = _state.PendingGems;
+			int maxCapacity = _state.GetMaxCapacity();
+			bool wasAtCapacity = amount >= maxCapacity;
 			GemType gemType = locationTemplate.PrimaryGemType;
 			
 			if (_state.ExtractGems())
 			{
+				// If we extracted from full capacity, reset the mining timer
+				if (wasAtCapacity && GodotObject.IsInstanceValid(_engine))
+				{
+					_engine.ResetTimerAfterExtraction();
+				}
+				
 				if (GodotObject.IsInstanceValid(_ui))
 					_ui.UpdateAllUI();
 				EmitSignal(SignalName.GemsExtracted, amount, (int)gemType);
@@ -435,11 +557,14 @@ namespace BarBox.Games.MiningGame
 			
 			try
 			{
+				// Clear any previous user state FIRST to prevent data mixing
+				if (GodotObject.IsInstanceValid(_state))
+					_state.ClearAllState();
+					
 				_currentUser = userData;
 				
-				// Load user data first
-				if (GodotObject.IsInstanceValid(_state))
-					_state.LoadUserData();
+				// User data will be loaded by InitializeGameSession() after StartGame()
+				// No need to load it here to avoid race conditions
 				
 				// Ensure game is properly reset before starting
 				if (IsGameActive())
@@ -449,11 +574,8 @@ namespace BarBox.Games.MiningGame
 				
 				StartGame();
 				
-				// Ensure game session is initialized
-				if (GodotObject.IsInstanceValid(_engine))
-				{
-					InitializeGameSession();
-				}
+				// Game session is automatically initialized via OnGameStarted() -> InitializeGameSession()
+				// No need to call InitializeGameSession() again as it would cause double initialization
 				
 				GD.Print($"[MiningGame] User logged in: {userData.UserId}");
 			}
@@ -480,8 +602,21 @@ namespace BarBox.Games.MiningGame
 					_state.SaveData();
 					
 				StopGame();
+				
+				// Clear all state to ensure no previous user data remains
+				if (GodotObject.IsInstanceValid(_state))
+					_state.ClearAllState();
+					
 				_currentUser = null;
-				GD.Print("[MiningGame] User logged out");
+				
+				// Ensure UI properly reflects no-user state
+				if (GodotObject.IsInstanceValid(_ui))
+				{
+					_ui.SetEnabled(false);
+					_ui.UpdateAllUI(); // Force UI refresh to show "login required" messages
+				}
+				
+				GD.Print("[MiningGame] User logged out and state cleared");
 			}
 			finally
 			{
@@ -528,6 +663,19 @@ namespace BarBox.Games.MiningGame
 			public override void _Process(double delta)
 			{
 				if (!_isMiningActive) return;
+				
+				// Check if we're at full capacity - if so, don't increment timer
+				if (GodotObject.IsInstanceValid(_game._state))
+				{
+					int currentGems = _game._state.PendingGems;
+					int maxCapacity = _game._state.GetMaxCapacity();
+					
+					if (currentGems >= maxCapacity)
+					{
+						// At capacity - timer should not progress
+						return;
+					}
+				}
 				
 				_miningAccumulator += delta;
 				
@@ -597,6 +745,18 @@ namespace BarBox.Games.MiningGame
 				}
 			}
 			
+			public void ResetTimerAfterExtraction()
+			{
+				// Reset timer when extracting gems from full capacity
+				_miningAccumulator = 0.0;
+				UpdateMiningInterval();
+				
+				if (_game.EnableDebugMode)
+				{
+					GD.Print("[GameEngine] Timer reset after gem extraction");
+				}
+			}
+			
 			public void TriggerImmediateMiningTick()
 			{
 				if (_isMiningActive)
@@ -616,6 +776,21 @@ namespace BarBox.Games.MiningGame
 			{
 				if (!_isMiningActive) return 0.0f;
 				return (float)(_miningInterval - _miningAccumulator);
+			}
+			
+			public double GetCurrentAccumulator()
+			{
+				return _miningAccumulator;
+			}
+			
+			public double GetCurrentInterval()
+			{
+				return _miningInterval;
+			}
+			
+			public void SetAccumulator(double value)
+			{
+				_miningAccumulator = Math.Max(0.0, Math.Min(value, _miningInterval));
 			}
 		}
 		
@@ -640,7 +815,10 @@ namespace BarBox.Games.MiningGame
 			// Game time management
 			private double _gameTime = 0.0;
 			private double _lastSaveTime = 0.0;
-			private const double AUTO_SAVE_INTERVAL = 30.0;
+			private const double AUTO_SAVE_INTERVAL = 1.0;
+			
+			// Offline progress tracking
+			private DateTime _lastSaveTimestamp = DateTime.UtcNow;
 			
 			private const string LOCATION_STATE_PREFIX = "mining_state_";
 			private const string GLOBAL_DATA_KEY = "mining_global";
@@ -727,40 +905,60 @@ namespace BarBox.Games.MiningGame
 				_cacheValid = false;
 			}
 			
-			public void LoadUserData()
+			private DateTime GetLastSaveTime()
+			{
+				return _lastSaveTimestamp;
+			}
+			
+			private void UpdateLastSaveTime()
+			{
+				_lastSaveTimestamp = DateTime.UtcNow;
+			}
+			
+			public async void LoadUserData()
 			{
 				// Get location template first
 				string currentLocationId = _game._locationManager?.CurrentLocationId ?? "default";
 				_locationTemplate = _game.GetLocationDataTemplate(currentLocationId);
 				
-				if (_game._currentUser == null)
+				string userId = _game._currentUser?.UserId;
+				if (string.IsNullOrEmpty(userId))
 				{
 					CreateDefaultState();
 					return;
 				}
 				
-				// Load location-specific runtime state
-				string locationKey = LOCATION_STATE_PREFIX + currentLocationId;
-				var savedState = LoadFromUserMeta<MiningLocationState>(locationKey);
+				var dataStore = DataStore.GetInstance();
+				if (dataStore == null)
+				{
+					GD.PrintErr("[MiningGame] DataStore not available, using default state");
+					CreateDefaultState();
+					return;
+				}
 				
-				if (savedState != null)
+				// Load location-specific runtime state using DataStore extensions
+				string locationKey = LOCATION_STATE_PREFIX + currentLocationId;
+				var savedState = await dataStore.GetGameValueAsync<MiningLocationState>(userId, locationKey);
+				
+				if (savedState != null && !string.IsNullOrEmpty(savedState.LocationId))
 				{
 					_pendingGems = savedState.PendingGems;
 					_upgradeLevels = savedState.UpgradeLevels ?? new();
 					_firstTimeBonus = savedState.FirstTimeBonus;
+					_lastSaveTimestamp = savedState.LastSaveTime;
 				}
 				else
 				{
 					CreateDefaultState();
-					SaveLocationState();
+					await SaveLocationStateAsync();
 				}
 				
-				// Load global mining data
-				_globalData = LoadFromUserMeta<MiningGlobalData>(GLOBAL_DATA_KEY);
+				// Load global mining data using DataStore extensions
+				_globalData = await dataStore.GetGameValueAsync<MiningGlobalData>(userId, GLOBAL_DATA_KEY);
 				if (_globalData == null)
 				{
 					_globalData = new MiningGlobalData();
-					SaveToUserMeta(GLOBAL_DATA_KEY, _globalData);
+					await dataStore.SetGameValueAsync(userId, GLOBAL_DATA_KEY, _globalData);
 				}
 				
 				// Process offline progress
@@ -778,9 +976,13 @@ namespace BarBox.Games.MiningGame
 				_pendingGems = 0;
 				_upgradeLevels = new Dictionary<UpgradeType, int>();
 				_firstTimeBonus = true;
+				_lastSaveTimestamp = DateTime.UtcNow;
 				
-				// First-time bonus: max out capacity
-				if (_locationTemplate != null && _firstTimeBonus)
+				// Check if we have a valid user - only give bonuses for actual users
+				bool hasValidUser = _game._currentUser != null && !string.IsNullOrEmpty(_game._currentUser.UserId);
+				
+				// First-time bonus: only for actual logged-in users, not "no user" state
+				if (_locationTemplate != null && _firstTimeBonus && hasValidUser)
 				{
 					_pendingGems = _locationTemplate.GetMaxCapacity(0, _game.Config); // Start at level 0
 					_firstTimeBonus = false;
@@ -788,43 +990,134 @@ namespace BarBox.Games.MiningGame
 				
 				_globalData = new MiningGlobalData();
 				
-				if (_game.EnableDebugMode)
+				// Debug resources: only for actual users in debug mode, not "no user" state
+				if (_game.EnableDebugMode && hasValidUser)
 				{
 					// Give some debug resources
 					_globalData.AddGems(GemType.Amethyst, 500);
 					_globalData.AddGems(GemType.Diamond, 200);
 				}
+				
+				if (_game.EnableDebugMode)
+				{
+					GD.Print($"[GameState] Default state created - User: {(hasValidUser ? _game._currentUser.UserId : "None")}, " +
+						$"StartingGems: {_pendingGems}, DebugResources: {(hasValidUser ? "Added" : "Skipped")}");
+				}
 			}
 			
-			private void SaveLocationState()
+			private async Task SaveLocationStateAsync()
 			{
-				if (_game._currentUser == null) return;
+				string userId = _game._currentUser?.UserId;
+				if (string.IsNullOrEmpty(userId)) 
+				{
+					await Task.CompletedTask;
+					return;
+				}
+				
+				var dataStore = DataStore.GetInstance();
+				if (dataStore == null) 
+				{
+					await Task.CompletedTask;
+					return;
+				}
 				
 				var state = new MiningLocationState
 				{
 					LocationId = _game._locationManager?.CurrentLocationId ?? "default",
 					PendingGems = _pendingGems,
 					UpgradeLevels = _upgradeLevels,
-					FirstTimeBonus = _firstTimeBonus
+					FirstTimeBonus = _firstTimeBonus,
+					LastSaveTime = DateTime.UtcNow
 				};
 				
 				string locationKey = LOCATION_STATE_PREFIX + state.LocationId;
-				SaveToUserMeta(locationKey, state);
+				await dataStore.SetGameValueAsync(userId, locationKey, state);
 			}
-			
-			
+
 			private void ProcessOfflineProgress()
 			{
 				if (_locationTemplate == null) return;
 				
-				// For prototyping: Simple offline progress without DateTime
-				// Just give a fixed bonus when loading
-				int offlineBonus = GetMaxCapacity() / 2; // Half capacity as offline bonus
-				_pendingGems = Math.Min(_pendingGems + offlineBonus, GetMaxCapacity());
-				
-				if (offlineBonus > 0)
+				// No offline progress calculation if this is a new save or missing timestamp
+				DateTime lastSaveTime = GetLastSaveTime();
+				if (lastSaveTime == default(DateTime)) 
 				{
-					GD.Print($"[GameState] Offline bonus: +{offlineBonus} {_locationTemplate.PrimaryGemType} gems");
+					UpdateLastSaveTime();
+					return;
+				}
+				
+				DateTime currentTime = DateTime.UtcNow;
+				double offlineSeconds = (currentTime - lastSaveTime).TotalSeconds;
+				
+				// Skip if no time passed or negative time (clock issues)
+				if (offlineSeconds <= 0) 
+				{
+					UpdateLastSaveTime();
+					return;
+				}
+				
+				// Cap offline time to reasonable limit (7 days)
+				const double maxOfflineSeconds = 7 * 24 * 3600.0;
+				offlineSeconds = Math.Min(offlineSeconds, maxOfflineSeconds);
+				
+				// Calculate how many mining ticks would have occurred
+				float miningTickTime = GetMiningTickTime();
+				if (miningTickTime <= 0) return;
+				
+				// Include current timer accumulator for accurate offline calculation
+				double totalOfflineTime = offlineSeconds;
+				if (GodotObject.IsInstanceValid(_game._engine))
+				{
+					double currentAccumulator = _game._engine.GetCurrentAccumulator();
+					totalOfflineTime += currentAccumulator; // Add progress toward next tick
+				}
+				
+				int possibleTicks = (int)(totalOfflineTime / miningTickTime);
+				if (possibleTicks <= 0) 
+				{
+					UpdateLastSaveTime();
+					return;
+				}
+				
+				// Simulate mining ticks up to capacity limit
+				int maxCapacity = GetMaxCapacity();
+				int gemsPerTick = GetGemsPerTick();
+				int offlineGems;
+				
+				// For performance: if we can fit all gems, calculate directly
+				int totalPossibleGems = possibleTicks * gemsPerTick;
+				int availableCapacity = maxCapacity - _pendingGems;
+				
+				if (totalPossibleGems <= availableCapacity)
+				{
+					// All ticks fit within capacity
+					_pendingGems += totalPossibleGems;
+					offlineGems = totalPossibleGems;
+				}
+				else
+				{
+					// Calculate how many ticks until capacity is reached
+					int ticksUntilCapacity = Math.Max(0, (availableCapacity + gemsPerTick - 1) / gemsPerTick);
+					int actualTicks = Math.Min(possibleTicks, ticksUntilCapacity);
+					
+					offlineGems = actualTicks * gemsPerTick;
+					_pendingGems = Math.Min(maxCapacity, _pendingGems + offlineGems);
+				}
+				
+				UpdateLastSaveTime();
+				
+				// Reset engine accumulator to prevent double-counting after offline processing
+				if (GodotObject.IsInstanceValid(_game._engine))
+				{
+					double remainingTime = totalOfflineTime - (possibleTicks * miningTickTime);
+					// Set accumulator to remaining partial tick time
+					_game._engine.SetAccumulator(Math.Max(0.0, remainingTime));
+				}
+				
+				if (offlineGems > 0)
+				{
+					double hours = offlineSeconds / 3600.0;
+					GD.Print($"[GameState] Offline mining: +{offlineGems} {_locationTemplate.PrimaryGemType} gems from {possibleTicks} ticks over {hours:F1} hours");
 				}
 			}
 			
@@ -942,36 +1235,45 @@ namespace BarBox.Games.MiningGame
 			
 			public MiningLocationData GetLocationData() => _locationTemplate;
 			public MiningGlobalData GetGlobalData() => _globalData;
-			
-			public void SaveData()
+
+			public void ClearAllState()
 			{
-				if (_game._currentUser == null) return;
+				// Clear all user-specific state data
+				_pendingGems = 0;
+				_upgradeLevels.Clear();
+				_globalData = null;
+				_locationTemplate = null;
+				_firstTimeBonus = true;
 				
-				SaveLocationState();
-				SaveToUserMeta(GLOBAL_DATA_KEY, _globalData);
+				// Reset calculated values cache
+				InvalidateCache();
+				
+				// Reset timestamps
+				_lastSaveTimestamp = DateTime.UtcNow;
+				
+				if (_game.EnableDebugMode)
+				{
+					GD.Print("[GameState] All state cleared - ready for new user or no-user state");
+				}
+			}
+
+			public async void SaveData()
+			{
+				string userId = _game._currentUser?.UserId;
+				if (string.IsNullOrEmpty(userId)) 
+					return;
+				
+				var dataStore = DataStore.GetInstance();
+				if (dataStore == null) 
+					return;
+				
+				await SaveLocationStateAsync();
+				await dataStore.SetGameValueAsync(userId, GLOBAL_DATA_KEY, _globalData);
 				
 				if (_game.EnableDebugMode)
 				{
 					GD.Print("[GameState] Data saved");
 				}
-			}
-			
-			private T LoadFromUserMeta<[MustBeVariant] T>(string key) where T : Resource
-			{
-				if (_game._currentUser?.HasMeta(key) == true)
-				{
-					var variant = _game._currentUser.GetMeta(key);
-					if (variant.VariantType == Variant.Type.Object)
-					{
-						return variant.As<T>();
-					}
-				}
-				return null;
-			}
-			
-			private void SaveToUserMeta<[MustBeVariant] T>(string key, T data) where T : Resource
-			{
-				_game._currentUser?.SetMeta(key, data);
 			}
 		}
 	}

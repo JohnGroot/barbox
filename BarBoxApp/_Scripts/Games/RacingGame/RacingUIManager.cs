@@ -481,7 +481,7 @@ namespace BarBox.Games.Racing
 						  state.TargetLaps, state.TimeDisplay, state.TimeLabel);
 		
 		UpdateButtonStates(state.IsTimeTrialInProgress, state.CanStartTimeTrial, state.IsInCountdown, 
-						  state.GameMode is GameController.GameMode.TimeTrial, state.IsUserLoggedIn);
+						  state.GameMode == GameController.GameMode.TimeTrial, state.IsUserLoggedIn);
 
 		SetPauseOverlayVisible(state.IsGamePaused);
 		SetGameOverOverlayVisible(state.ShowGameOverOverlay, state.FinalTime, state.CanAffordReplay);

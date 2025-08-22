@@ -1,16 +1,15 @@
 using System;
 using System.Collections.Generic;
-using Godot;
 
 namespace BarBox.Games.MiningGame
 {
-	[GlobalClass]
-	public partial class MiningLocationState : Resource
+	public class MiningLocationState
 	{
-		[Export] public string LocationId { get; set; } = "";
-		[Export] public int PendingGems { get; set; } = 0;
-		[Export] public Godot.Collections.Dictionary<UpgradeType, int> UpgradeLevelsDict { get; set; } = new();
-		[Export] public bool FirstTimeBonus { get; set; } = true;
+		public string LocationId { get; set; } = "";
+		public int PendingGems { get; set; } = 0;
+		public Dictionary<UpgradeType, int> UpgradeLevelsDict { get; set; } = new();
+		public bool FirstTimeBonus { get; set; } = true;
+		public DateTime LastSaveTime { get; set; } = DateTime.UtcNow;
 		
 		// Cache for performance optimization
 		private Dictionary<UpgradeType, int> _cachedUpgradeLevels;
@@ -33,9 +32,7 @@ namespace BarBox.Games.MiningGame
 			}
 			set
 			{
-				UpgradeLevelsDict.Clear();
-				foreach (var kvp in value)
-					UpgradeLevelsDict[kvp.Key] = kvp.Value;
+				UpgradeLevelsDict = new Dictionary<UpgradeType, int>(value);
 				_upgradeLevelsCache_Valid = false; // Invalidate cache
 			}
 		}

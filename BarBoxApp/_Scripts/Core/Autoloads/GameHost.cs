@@ -3,9 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 
 /// <summary>
-/// AutoLoad singleton for game orchestration and framework integration
-/// Provides optional services for games - always available but never required
-/// Games work perfectly without GameHost, but get enhanced features when it's present
+/// Simplified game lifecycle management for BarBox ecosystem
+/// Focuses on essential game hosting without UI management complexity
 /// </summary>
 public partial class GameHost : AutoloadBase
 {
@@ -18,39 +17,27 @@ public partial class GameHost : AutoloadBase
 
 	private Node _currentGame;
 	private string _currentGameId = string.Empty;
-	private Dictionary<string, PlayerSession> _playerSessions = new();
-	private UserManager _userManager;
+	private SessionManager _sessionManager;
 	private GameRegistry _gameRegistry;
 	private SceneManager _sceneManager;
-	private UIManager _uiManager;
+	private MainController _mainController;
 
 	protected override void OnServiceReady()
 	{
 		Instance = this;
 		
-		_userManager = GetAutoload<UserManager>();
+		_sessionManager = SessionManager.GetInstance();
 		_gameRegistry = GetAutoload<GameRegistry>();
 		_sceneManager = GetAutoload<SceneManager>();
 		
-		// Create and add UI manager
-		_uiManager = new UIManager();
-		AddChild(_uiManager);
-		
-		// Connect UI manager signals
-		_uiManager.LoginRequested += OnLoginRequested;
-		_uiManager.LogoutRequested += OnLogoutRequested;
-		_uiManager.ReturnToMenuRequested += OnReturnToMenuRequested;
-		
-		LogInfo("GameHost initialized with UIManager");
+		LogInfo("GameHost initialized");
 	}
 
 	/// <summary>
 	/// Loads a game as an overlay on the current scene
-	/// Handles optional user context and PlayerSession creation
-	/// Games handle their own credit economy internally
-	/// UserData can be null for anonymous/practice mode
+	/// Simplified game loading without session management (handled by SessionManager)
 	/// </summary>
-	public void LoadGameOverlay(string gameId, UserData userData = null)
+	public void LoadGameOverlay(string gameId)
 	{
 		// Stop any current game first
 		StopCurrentGame();
@@ -63,14 +50,18 @@ public partial class GameHost : AutoloadBase
 			return;
 		}
 
-		// Create player session
-		if (userData != null)
-		{
-			AddPlayerSession(userData.UserId, userData);
-		}
-
 		// Load game scene as overlay
 		LoadGameScene(gameId, gameData.ScenePath);
+	}
+
+	/// <summary>
+	/// Compatibility overload for old LoadGameOverlay signature
+	/// </summary>
+	public void LoadGameOverlay(string gameId, UserData userData)
+	{
+		// Just ignore the UserData parameter and call the new version
+		// Session management is now handled separately
+		LoadGameOverlay(gameId);
 	}
 
 	private void LoadGameScene(string gameId, string scenePath)
@@ -92,18 +83,16 @@ public partial class GameHost : AutoloadBase
 		_currentGame = scene.Instantiate();
 		_currentGameId = gameId;
 
-		// Hide main UI before adding game overlay
-		HideMainUI();
+		// Hide main menu UI when game starts
+		var currentScene = GetTree().CurrentScene;
+		_mainController = currentScene as MainController;
+		_mainController?.HideMainUI();
 
 		// Add as child of current scene (overlay pattern)
-		var currentScene = GetTree().CurrentScene;
 		currentScene?.AddChild(_currentGame);
 
 		// Connect game signals for optional integration
 		ConnectGameSignals(_currentGame);
-
-		// Game will set its own context in its _Ready method
-		// Don't override the context here as it would clear any buttons the game sets up
 
 		LogInfo($"Loaded {gameId} as overlay");
 	}
@@ -123,14 +112,11 @@ public partial class GameHost : AutoloadBase
 			_currentGame = null;
 		}
 
-		// Clear game context from top menu
-		ClearTopMenuContext();
-
-		// Show main UI when game is stopped
-		ShowMainUI();
+		// Show main menu UI when returning from game
+		_mainController?.ShowMainUI();
+		_mainController = null;
 
 		_currentGameId = string.Empty;
-		_playerSessions.Clear();
 	}
 
 	public void PauseGame()
@@ -155,40 +141,15 @@ public partial class GameHost : AutoloadBase
 		_sceneManager?.ReturnToMainMenu();
 	}
 
-	/// <summary>
-	/// Get the UIManager instance for games to access UI functionality
-	/// </summary>
-	public UIManager GetUIManager()
-	{
-		return _uiManager;
-	}
-
-	// PlayerSession management
-	public void AddPlayerSession(string playerId, UserData userData = null)
-	{
-		if (!_playerSessions.ContainsKey(playerId))
-		{
-			var session = new PlayerSession(playerId, userData);
-			_playerSessions[playerId] = session;
-		}
-	}
-
-	public void RemovePlayerSession(string playerId)
-	{
-		_playerSessions.Remove(playerId);
-	}
 
 	// Signal connection for optional game integration
 	private void ConnectGameSignals(Node gameNode)
 	{
-		// Connect signals using nameof for compile-time method validation
+		// Connect essential game lifecycle signals only
 		TryConnectSignal(gameNode, "GameStarted", nameof(OnGameStarted), Callable.From(OnGameStarted));
 		TryConnectSignal(gameNode, "GameEnded", nameof(OnGameEnded), Callable.From(OnGameEnded));
 		TryConnectSignal(gameNode, "GamePaused", nameof(OnGamePaused), Callable.From(OnGamePaused));
 		TryConnectSignal(gameNode, "GameResumed", nameof(OnGameResumed), Callable.From(OnGameResumed));
-		TryConnectSignal(gameNode, "ScoreChanged", nameof(OnScoreChanged), Callable.From<string, int>(OnScoreChanged));
-		TryConnectSignal(gameNode, "PlayerAdded", nameof(OnPlayerAdded), Callable.From<string>(OnPlayerAdded));
-		TryConnectSignal(gameNode, "PlayerRemoved", nameof(OnPlayerRemoved), Callable.From<string>(OnPlayerRemoved));
 	}
 
 	// Signal handlers
@@ -201,7 +162,6 @@ public partial class GameHost : AutoloadBase
 	private void OnGameEnded()
 	{
 		LogInfo($"{_currentGameId} ended");
-		SaveScores();
 		EmitSignal(SignalName.GameEnded, _currentGameId);
 	}
 
@@ -217,53 +177,69 @@ public partial class GameHost : AutoloadBase
 		EmitSignal(SignalName.GameResumed, _currentGameId);
 	}
 
-	private void OnScoreChanged(string playerId, int newScore)
-	{
-		LogInfo($"Player {playerId} score: {newScore}");
-	}
-
-	private void OnPlayerAdded(string playerId)
-	{
-		if (!_playerSessions.ContainsKey(playerId))
-		{
-			AddPlayerSession(playerId);
-		}
-	}
-
-	private void OnPlayerRemoved(string playerId)
-	{
-		RemovePlayerSession(playerId);
-	}
-
-	private void SaveScores()
-	{
-		// Optional: integrate with UserManager for global high scores
-		if (_userManager != null && !string.IsNullOrEmpty(_currentGameId))
-		{
-			LogInfo($"Could save scores for {_currentGameId}");
-		}
-	}
-
 	// Public API for games and other systems
 	public string GetCurrentGameId() => _currentGameId;
 	public Node GetCurrentGame() => _currentGame;
-	
-	public PlayerSession GetPlayerSession(string playerId) 
+
+	/// <summary>
+	/// Compatibility method - redirects to SessionManager
+	/// </summary>
+	public PlayerSession GetPlayerSession(string playerId)
 	{
-		// Support "default" lookup for single-player games
-		if (playerId == "default" && _playerSessions.Count == 1)
+		var sessionManager = SessionManager.GetInstance();
+		var userSession = sessionManager?.GetUserSession(playerId) ?? sessionManager?.GetCurrentUserSession();
+		
+		if (userSession != null)
 		{
-			return _playerSessions.Values.First();
+			// Convert UserSession to PlayerSession for compatibility
+			var userData = new UserData(userSession.UserId);
+			if (userSession.GlobalData != null)
+			{
+				userData.Credits = userSession.GlobalData.GlobalCredits;
+			}
+			return new PlayerSession(userSession.UserId, userData);
 		}
-		return _playerSessions.GetValueOrDefault(playerId);
+		
+		return null;
+	}
+
+	/// <summary>
+	/// UI management methods - connects to UIManager when available
+	/// </summary>
+	public void SetTopMenuContext(string gameTitle, ContextButtonData[] contextButtons = null)
+	{
+		var uiManager = UIManager.GetInstance();
+		if (uiManager != null)
+		{
+			uiManager.SetGameContext(gameTitle, contextButtons);
+			LogInfo($"SetTopMenuContext called for '{gameTitle}' with {contextButtons?.Length ?? 0} buttons");
+		}
+		else
+		{
+			LogInfo($"SetTopMenuContext called for '{gameTitle}' but UIManager not available (development mode)");
+		}
+	}
+
+	public void ClearTopMenuContext()
+	{
+		var uiManager = UIManager.GetInstance();
+		if (uiManager != null)
+		{
+			uiManager.ClearGameContext();
+			LogInfo("ClearTopMenuContext called - game context cleared");
+		}
+		else
+		{
+			LogInfo("ClearTopMenuContext called but UIManager not available (development mode)");
+		}
 	}
 
 	public string GetCurrentPlayerId()
 	{
-		return _playerSessions.Count == 1 ? _playerSessions.Keys.First() : "unknown";
+		var sessionManager = SessionManager.GetInstance();
+		var session = sessionManager?.GetCurrentUserSession();
+		return session?.UserId ?? "unknown";
 	}
-
-	public Dictionary<string, PlayerSession> GetAllPlayerSessions() => new Dictionary<string, PlayerSession>(_playerSessions);
 
 	/// <summary>
 	/// Static method for games to easily check if GameHost is available
@@ -370,97 +346,14 @@ public partial class GameHost : AutoloadBase
 		return "Unknown: Unable to determine build context";
 	}
 
-	/// <summary>
-	/// Hide the main UI - calls MainController if available
-	/// </summary>
-	private void HideMainUI()
-	{
-		var currentScene = GetTree().CurrentScene;
-		if (currentScene != null && currentScene.HasMethod("HideMainUI"))
-		{
-			currentScene.Call("HideMainUI");
-		}
-	}
-
-	/// <summary>
-	/// Show the main UI - calls MainController if available
-	/// </summary>
-	private void ShowMainUI()
-	{
-		var currentScene = GetTree().CurrentScene;
-		if (currentScene != null && currentScene.HasMethod("ShowMainUI"))
-		{
-			currentScene.Call("ShowMainUI");
-		}
-	}
-
-	// ============================================================================
-	// UI Manager Integration
-	// ============================================================================
-
-	/// <summary>
-	/// Set the game context in the top menu bar using simplified ContextButtonData structures
-	/// </summary>
-	public void SetTopMenuContext(string gameTitle, ContextButtonData[] contextButtons = null)
-	{
-		LogInfo($"Setting top menu context: '{gameTitle}' with {contextButtons?.Length ?? 0} buttons");
-		_uiManager?.SetGameContext(gameTitle, contextButtons);
-	}
-
-
-	/// <summary>
-	/// Clear game context and return to main menu state
-	/// </summary>
-	public void ClearTopMenuContext()
-	{
-		_uiManager?.ClearGameContext();
-	}
-
-	/// <summary>
-	/// Update user display in the top menu
-	/// </summary>
-	public void UpdateTopMenuUserDisplay()
-	{
-		_uiManager?.UpdateUserDisplay();
-	}
-
-	/// <summary>
-	/// Show or hide the top menu bar
-	/// </summary>
-	public void SetTopMenuVisible(bool visible)
-	{
-		_uiManager?.SetTopMenuVisible(visible);
-	}
-
-	// UI Manager signal handlers
-
-	private void OnLoginRequested()
-	{
-		LogInfo("Login requested from top menu");
-		// Show login modal via UIManager
-		_uiManager?.ShowLoginModal();
-	}
-
-	private void OnLogoutRequested()
-	{
-		LogInfo("Logout requested from top menu");
-		_userManager?.LogoutUser();
-	}
-
-	private void OnReturnToMenuRequested()
-	{
-		LogInfo("Return to menu requested from top menu");
-		StopCurrentGame();
-	}
-
 	protected override void OnServiceDestroyed()
 	{
-		// Disconnect UI manager signals
-		if (GodotObject.IsInstanceValid(_uiManager))
+		// Clean up current game if running
+		if (_currentGame != null)
 		{
-			_uiManager.LoginRequested -= OnLoginRequested;
-			_uiManager.LogoutRequested -= OnLogoutRequested;
-			_uiManager.ReturnToMenuRequested -= OnReturnToMenuRequested;
+			StopCurrentGame();
 		}
+		
+		Instance = null;
 	}
 }

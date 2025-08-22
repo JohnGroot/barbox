@@ -65,7 +65,7 @@ namespace BarBox.Games.Racing
 			Vector2 playableCenter = new Vector2(screenSize.X / 2, TOP_MENU_HEIGHT + (screenSize.Y - TOP_MENU_HEIGHT) / 2);
 			_trackCamera.GlobalPosition = playableCenter;
 			
-			GD.Print($"[CameraController] Camera positioned at playable center: {playableCenter}");
+			// Camera positioned at playable center
 		}
 	}
 
@@ -101,7 +101,7 @@ namespace BarBox.Games.Racing
 		Vector2 trackCenter = _trackDefinition.GetStartLinePosition(); // Use start line as reference
 		Rect2 trackBounds = GetTrackBounds();
 		
-		GD.Print($"[CameraController] Track center: {trackCenter}, Track bounds: {trackBounds}");
+		// Track center and bounds calculated
 		
 		if (trackBounds.Size == Vector2.Zero) 
 		{
@@ -133,13 +133,13 @@ namespace BarBox.Games.Racing
 			float zoom = Mathf.Clamp(Mathf.Min(scaleX, scaleY), 0.2f, 1.0f);
 			_trackCamera.Zoom = new Vector2(zoom, zoom);
 			
-			GD.Print($"[CameraController] Track bounds: {trackBounds.Size}, Playable area: {playableArea}, Calculated zoom: {zoom}");
+			// Track bounds and zoom calculated
 			
 			// Center camera in playable area
 			Vector2 playableCenter = new Vector2(viewportSize.X / 2, TOP_MENU_HEIGHT + playableArea.Y / 2);
 			_trackCamera.GlobalPosition = playableCenter;
 			
-			GD.Print($"[CameraController] Camera positioned at: {playableCenter}");
+			// Camera positioned at calculated center
 		}
 	}
 
@@ -247,7 +247,6 @@ namespace BarBox.Games.Racing
 		// This properly accounts for camera position, zoom, and all viewport transforms
 		Transform2D canvasTransform = viewport.GetCanvasTransform();
 		Vector2 worldPosition = canvasTransform.AffineInverse() * screenPosition;
-		
 		
 		return worldPosition;
 	}

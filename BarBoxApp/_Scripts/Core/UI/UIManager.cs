@@ -3,30 +3,41 @@ using Godot;
 /// <summary>
 /// UI management service for global UI components
 /// Manages top menu bar, overlays, and global UI state
-/// Instantiated by GameHost, not an autoload
+/// Now an autoload service for persistence across all scenes
 /// </summary>
-public partial class UIManager : Control
+public partial class UIManager : AutoloadBase
 {
 	[Signal] public delegate void LoginRequestedEventHandler();
 	[Signal] public delegate void LogoutRequestedEventHandler();
 	[Signal] public delegate void ReturnToMenuRequestedEventHandler();
 
+	public static UIManager Instance { get; private set; }
+
+	public static UIManager GetInstance()
+	{
+		return GetAutoload<UIManager>();
+	}
+
 	private CanvasLayer _topMenuLayer;
 	private CanvasLayer _modalLayer;
 	private TopMenuBar _topMenuBar;
 	private LoginModal _loginModal;
-	private UserManager _userManager;
+	private SessionManager _sessionManager;
 	
 	// Context tracking
 	private string _currentGameTitle = "BarBox Arcade";
 	private ContextButtonData[] _currentContextButtons = null;
 
-	public override void _Ready()
+	protected override void OnServiceReady()
 	{
-		SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-		
-		// Get service references
-		_userManager = UserManager.GetAutoload();
+		Instance = this;
+		// Minimal setup only - actual initialization happens in OnServiceInitialize
+	}
+
+	protected override void OnServiceInitialize()
+	{
+		// Get service references - now guaranteed to be initialized
+		_sessionManager = SessionManager.GetInstance();
 		
 		// Create top menu layer
 		_topMenuLayer = new CanvasLayer();
@@ -54,24 +65,26 @@ public partial class UIManager : Control
 		// Connect login modal signals
 		_loginModal.ModalClosed += OnLoginModalClosed;
 		
-		// Connect to user manager signals
-		if (_userManager != null)
+		// Connect to session manager signals
+		if (_sessionManager != null)
 		{
-			_userManager.UserLoggedIn += OnUserLoggedIn;
-			_userManager.UserLoggedOut += OnUserLoggedOut;
-			_userManager.UserDataUpdated += OnUserDataUpdated;
+			_sessionManager.UserLoggedIn += OnUserLoggedIn;
+			_sessionManager.UserLoggedOut += OnUserLoggedOut;
 		}
 
 		// Initialize with current user state
 		UpdateUserDisplay();
 		
-		GD.Print("[UIManager] Initialized with top menu bar and login modal on separate layers");
+		// Apply any context that was set before initialization
+		RefreshTopMenuContext();
+		
+		LogInfo("UIManager initialized with top menu bar and login modal");
 	}
 
-	public override void _ExitTree()
+	protected override void OnServiceDestroyed()
 	{
 		DisconnectSignals();
-		base._ExitTree();
+		Instance = null;
 	}
 
 	private void DisconnectSignals()
@@ -88,11 +101,10 @@ public partial class UIManager : Control
 			_loginModal.ModalClosed -= OnLoginModalClosed;
 		}
 
-		if (GodotObject.IsInstanceValid(_userManager))
+		if (GodotObject.IsInstanceValid(_sessionManager))
 		{
-			_userManager.UserLoggedIn -= OnUserLoggedIn;
-			_userManager.UserLoggedOut -= OnUserLoggedOut;
-			_userManager.UserDataUpdated -= OnUserDataUpdated;
+			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
+			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
 		}
 	}
 
@@ -104,9 +116,17 @@ public partial class UIManager : Control
 		_currentGameTitle = gameTitle ?? "BarBox Arcade";
 		_currentContextButtons = contextButtons;
 		
-		RefreshTopMenuContext();
+		// If not yet initialized, the context will be applied when OnServiceInitialize runs
+		if (_topMenuBar != null)
+		{
+			RefreshTopMenuContext();
+		}
+		else
+		{
+			// Game context queued (UI not ready)
+		}
 		
-		GD.Print($"[UIManager] Game context set: '{_currentGameTitle}' with {contextButtons?.Length ?? 0} buttons");
+		// Game context set
 	}
 
 
@@ -124,7 +144,7 @@ public partial class UIManager : Control
 			_topMenuBar.ClearContextButtons();
 		}
 		
-		GD.Print("[UIManager] Game context cleared, returned to main menu state");
+		// Game context cleared, returned to main menu state
 	}
 
 	/// <summary>
@@ -158,7 +178,7 @@ public partial class UIManager : Control
 		{
 			// Trigger UI update for games implementing IGameUIIntegration
 			RefreshTopMenuContext();
-			GD.Print($"[UIManager] Context button states updated for '{_currentGameTitle}'");
+			// Context button states updated
 		}
 	}
 
@@ -167,7 +187,19 @@ public partial class UIManager : Control
 	/// </summary>
 	public void UpdateUserDisplay()
 	{
-		var currentUser = _userManager?.GetCurrentUser();
+		UserData currentUser = null;
+		
+		// Get current user from SessionManager
+		var session = _sessionManager?.GetCurrentUserSession();
+		if (session != null)
+		{
+			currentUser = new UserData(session.UserId);
+			if (session.GlobalData != null)
+			{
+				currentUser.Credits = session.GlobalData.GlobalCredits;
+			}
+		}
+		
 		if (_topMenuBar != null)
 		{
 			_topMenuBar.UpdateUserInfo(currentUser);
@@ -237,17 +269,12 @@ public partial class UIManager : Control
 		EmitSignal(SignalName.ReturnToMenuRequested);
 	}
 
-	private void OnUserLoggedIn(UserData userData)
+	private void OnUserLoggedIn(string userId)
 	{
 		UpdateUserDisplay();
 	}
 
-	private void OnUserLoggedOut()
-	{
-		UpdateUserDisplay();
-	}
-
-	private void OnUserDataUpdated(UserData userData)
+	private void OnUserLoggedOut(string userId)
 	{
 		UpdateUserDisplay();
 	}
@@ -255,6 +282,6 @@ public partial class UIManager : Control
 	private void OnLoginModalClosed()
 	{
 		// Modal was closed, no additional action needed
-		GD.Print("[UIManager] Login modal closed");
+		// Login modal closed
 	}
 }

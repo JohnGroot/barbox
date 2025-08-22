@@ -262,7 +262,7 @@ public partial class CarromGame : GameController
 		// Enable trails globally based on debug setting
 		CarromPiece.SetTrailsEnabled(EnableTrails);
 		
-		GD.Print($"[CarromGame] Trail system initialized - Enabled: {EnableTrails}");
+		// Trail system initialized
 	}
 	
 	/// <summary>
@@ -298,7 +298,7 @@ public partial class CarromGame : GameController
 			}
 		}
 		
-		GD.Print("[CarromGame] All piece trails cleared");
+		// All piece trails cleared
 	}
 	
 	/// <summary>
@@ -314,7 +314,7 @@ public partial class CarromGame : GameController
 		_gameStateMachine.SettlementCompleted += OnSettlementCompleted;
 		_gameStateMachine.InputAvailabilityChanged += OnInputAvailabilityChanged;
 		
-		GD.Print("[CarromGame] Game state machine initialized");
+		// Game state machine initialized
 	}
 	
 	/// <summary>
@@ -334,7 +334,7 @@ public partial class CarromGame : GameController
 		// Initialize state machine with pieces and mode manager
 		_gameStateMachine.Initialize(pieces, _currentModeManager);
 		
-		GD.Print($"[CarromGame] State machine setup complete for {_carromGameMode} mode with {pieces.Count} pieces");
+		// State machine setup complete
 	}
 
 	/// <summary>
@@ -471,7 +471,7 @@ public partial class CarromGame : GameController
 	/// <summary>
 	/// Start competitive mode (full carrom rules)
 	/// </summary>
-	public virtual async void StartCompetitiveMode(int playerCount = 2)
+	public virtual void StartCompetitiveMode(int playerCount = 2)
 	{
 		if (_isGameActive) 
 			return;
@@ -490,11 +490,11 @@ public partial class CarromGame : GameController
 		ResetGame();
 		StartGame();
 		
-		// Delegate to competitive mode manager
-		bool success = await _competitiveModeManager.StartCompetitiveMode();
+		// Delegate to competitive mode manager (now tracks globally instead of spending credits)
+		bool success = _competitiveModeManager.StartCompetitiveMode();
 		if (!success)
 		{
-			// Credits not spent or other failure
+			// Failed to setup competitive mode
 			return;
 		}
 
@@ -531,7 +531,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void ExecutePracticeReset()
 	{
-		GD.Print("[CarromGame] Executing practice reset");
+		// Executing practice reset
 		
 		try
 		{
@@ -539,7 +539,7 @@ public partial class CarromGame : GameController
 			
 			// State machine will handle transitions automatically
 			
-			GD.Print("[CarromGame] Practice reset completed successfully");
+			// Practice reset completed successfully
 		}
 		catch (System.Exception ex)
 		{
@@ -670,33 +670,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void LogGameState(string context)
 	{
-		GD.Print($"[CarromGame] === GAME STATE: {context} ===");
-		GD.Print($"Game State: {_gameStateMachine?.GetCurrentStateName() ?? "Unknown"}");
-		GD.Print($"Game Mode: {_carromGameMode}");
-		GD.Print($"State Machine: {_gameStateMachine?.GetStateDebugInfo() ?? "Not initialized"}");
-		
-		var striker = _currentModeManager?.GetStriker();
-		if (striker != null && GodotObject.IsInstanceValid(striker))
-		{
-			GD.Print($"Striker - Visible: {striker.Visible}, Freeze: {striker.Freeze}, Position: {striker.GlobalPosition}, Stopped: {striker.IsStopped()}");
-		}
-		else
-		{
-			GD.Print("Striker: Invalid or null");
-		}
-		
-		GD.Print($"All Pieces Stopped: {AreAllPiecesStopped()}");
-		
-		if (_inputController != null)
-		{
-			GD.Print($"Input - Enabled: {_inputController.IsInputEnabled()}, GameState: {_inputController.GetGameStateStatus()}, HasGameState: {_inputController.HasGameState()}");
-		}
-		else
-		{
-			GD.Print("Input Controller: null");
-		}
-		
-		GD.Print($"=== END GAME STATE ===");
+		// Debug state logging removed for production
 	}
 	
 	/// <summary>
@@ -769,7 +743,7 @@ public partial class CarromGame : GameController
 		if (_currentModeManager is CarromModeManagerBase modeManager)
 		{
 			modeManager.MarkRecentRestoration(piece);
-			GD.Print($"[CarromGame] MarkRecentRestoration: Marked {piece.Type} as recently restored in settlement context");
+			// Marked piece as recently restored in settlement context
 		}
 		else
 		{
@@ -902,7 +876,7 @@ public partial class CarromGame : GameController
 				bool tweenSucceeded = ValidateStrikerRestoration(striker, globalBaselinePosition);
 				if (tweenSucceeded)
 				{
-					GD.Print($"[CarromGame] Striker tween to baseline completed successfully");
+					// Striker tween to baseline completed
 				}
 				else
 				{
@@ -949,7 +923,7 @@ public partial class CarromGame : GameController
 			return;
 		}
 
-		GD.Print($"[PENALTY TWEEN] Starting tween animation for {penaltyPieces.Count} penalty pieces");
+		// Starting penalty pieces tween animation
 
 		// Stop any existing penalty tween with proper cleanup
 		if (_penaltyPiecesTween != null && _penaltyPiecesTween.IsValid())
@@ -995,7 +969,7 @@ public partial class CarromGame : GameController
 			// Get target position from metadata
 			var targetPosition = piece.GetMeta("tween_target_position", Vector2.Zero).AsVector2();
 			
-			GD.Print($"[PENALTY TWEEN] Queuing animation for {piece.Type} piece {i + 1}/{penaltyPieces.Count}");
+			// Queuing penalty piece animation
 
 			// First, reveal the piece (restore visual properties from pocket state)
 			_penaltyPiecesTween.TweenCallback(Callable.From(() => RevealPieceForAnimation(piece)));
@@ -1026,7 +1000,7 @@ public partial class CarromGame : GameController
 		piece.Scale = Vector2.One;
 		piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f);
 		
-		GD.Print($"[PENALTY TWEEN] Revealed {piece.Type} piece for animation");
+		// Revealed penalty piece for animation
 	}
 
 	/// <summary>
@@ -1034,7 +1008,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnAllPenaltyPiecesTweenCompleted()
 	{
-		GD.Print("[PENALTY TWEEN] All penalty pieces tween animation completed");
+		// All penalty pieces tween animation completed
 		
 		// Clear the competitive mode manager's tween list
 		if (_competitiveModeManager is CarromCompetitiveModeManager competitiveModeManager)
@@ -1508,7 +1482,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnGameStateChanged(CarromGameStateMachine.GameState oldState, CarromGameStateMachine.GameState newState)
 	{
-		GD.Print($"[CarromGame] Game state changed: {oldState} → {newState}");
+		// Game state changed
 		
 		// Update score display with current state
 		if (_scoreDisplay != null)
@@ -1573,7 +1547,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnPenaltyPiecesTweenCompleted()
 	{
-		GD.Print("[PENALTY TWEEN] Penalty pieces tween completed, proceeding to camera transition");
+		// Penalty pieces tween completed, proceeding to camera transition
 		
 		// Start cinematic camera transition to the new player's perspective
 		var newCurrentPlayer = _competitiveModeManager?.GetCurrentPlayer();
@@ -1599,7 +1573,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnInputAvailabilityChanged(bool canAcceptInput)
 	{
-		GD.Print($"[CarromGame] Input availability changed: {canAcceptInput}");
+		// Input availability changed
 		
 		// Update score display visual state
 		if (_scoreDisplay != null && GodotObject.IsInstanceValid(_scoreDisplay))
@@ -1628,7 +1602,7 @@ public partial class CarromGame : GameController
 		bool validationPassed = ValidateInputControllerSynchronization();
 		if (validationPassed)
 		{
-			GD.Print("[CarromGame] OnPracticeModeSetupComplete: Validation passed - starting game");
+			// Practice mode setup complete - validation passed
 		}
 		else
 		{
@@ -1642,7 +1616,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private bool ValidateInputControllerSynchronization()
 	{
-		GD.Print("[CarromGame] ValidateInputControllerSynchronization: Starting validation");
+		// Starting input controller validation
 		
 		// Check input controller exists and is valid
 		if (_inputController == null || !GodotObject.IsInstanceValid(_inputController))
@@ -1683,10 +1657,10 @@ public partial class CarromGame : GameController
 		// Check that input is in a valid state
 		if (!_inputController.IsInputEnabled())
 		{
-			GD.Print("[CarromGame] Input currently disabled - this may be normal during setup");
+			// Input currently disabled - this may be normal during setup
 		}
 		
-		GD.Print("[CarromGame] ValidateInputControllerSynchronization: All validations passed");
+		// Input controller validation: All validations passed
 		return true;
 	}
 	
@@ -1695,25 +1669,25 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void RecoverInputControllerSynchronization()
 	{
-		GD.Print("[CarromGame] RecoverInputControllerSynchronization: Starting recovery");
+		// Starting input controller recovery
 		
 		// Re-establish game state reference
 		if (_inputController != null && _gameStateMachine != null)
 		{
 			_inputController.SetGameState(_gameStateMachine);
-			GD.Print("[CarromGame] Recovery: Re-established game state reference");
+			// Recovery: Re-established game state reference
 		}
 		
 		// Update striker reference
 		UpdateInputControllerStriker();
-		GD.Print("[CarromGame] Recovery: Updated striker reference");
+		// Recovery: Updated striker reference
 		
 		// Re-validate after recovery
 		bool recoverySuccessful = ValidateInputControllerSynchronization();
 		
 		if (recoverySuccessful)
 		{
-			GD.Print("[CarromGame] Recovery successful - starting game");
+			// Recovery successful - starting game
 			// State machine handles game start automatically
 		}
 		else
@@ -1732,7 +1706,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	public void DEBUG_ForceEnableInput()
 	{
-		GD.Print("[CarromGame] DEBUG_ForceEnableInput: Force enabling input for debugging");
+		// DEBUG: Force enabling input for debugging
 		
 		// State machine handles transitions automatically
 		
@@ -1740,13 +1714,13 @@ public partial class CarromGame : GameController
 		if (_inputController != null)
 		{
 			// This assumes SetInputState method exists - may need to adjust based on actual InputController API
-			GD.Print("[CarromGame] DEBUG: Attempting to force input controller to enabled state");
+			// DEBUG: Attempting to force input controller to enabled state
 			
 			// Re-establish all references
 			_inputController.SetGameState(_gameStateMachine);
 			UpdateInputControllerStriker();
 			
-			GD.Print("[CarromGame] DEBUG: Re-established input controller references");
+			// DEBUG: Re-established input controller references
 		}
 		
 		// Log current state for debugging
@@ -1883,7 +1857,7 @@ public partial class CarromGame : GameController
 			var (currentRound, maxRounds) = _competitiveModeManager.GetRoundInfo();
 			_scoreDisplay.UpdateRound(currentRound, maxRounds);
 			
-			GD.Print($"[CarromGame] Round {roundNumber} completed, updated UI");
+			// Round completed, updated UI
 		}
 	}
 	
@@ -1892,7 +1866,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnMaxRoundsReached(string winnerId)
 	{
-		GD.Print($"[CarromGame] Tournament ended - max rounds reached, winner: {winnerId}");
+		// Tournament ended - max rounds reached
 		
 		// Handle tournament end - winner determined by points
 		EndGame();

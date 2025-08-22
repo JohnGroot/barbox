@@ -12,18 +12,47 @@ public partial class MainController : Control
 	private GameRegistry _gameRegistry;
 	private SceneManager _sceneManager;
 	private GameHost _gameHost;
+	private UIManager _uiManager;
 	private Node _onscreenKeyboard;
 	
 	public override void _Ready()
 	{
-		GD.Print("[MainController] _Ready() starting");
+		// MainController _Ready() starting
 		
+		// Get SceneManager reference to check if services are ready
+		_sceneManager = SceneManager.GetAutoload();
+		if (_sceneManager == null)
+		{
+			GD.PrintErr("[MainController] CRITICAL: SceneManager not available");
+			return;
+		}
+		
+		// Check if services are already initialized
+		if (_sceneManager.AreServicesReady())
+		{
+			// Services already ready, initializing UI
+			InitializeUI();
+		}
+		else
+		{
+			// Waiting for services to be ready
+			_sceneManager.AllServicesReady += InitializeUI;
+		}
+	}
+
+	/// <summary>
+	/// Initialize UI components after services are guaranteed ready
+	/// </summary>
+	private void InitializeUI()
+	{
+		// Services ready, initializing UI
+		
+		// Now safe to get service references
 		_userManager = UserManager.GetAutoload();
 		_gameRegistry = GameRegistry.GetAutoload();
-		_sceneManager = SceneManager.GetAutoload();
 		_gameHost = GameHost.Instance;
 		
-		GD.Print($"[MainController] Services loaded - UserManager: {_userManager != null}, GameRegistry: {_gameRegistry != null}");
+		// Services loaded and initialized
 		
 		// Get reference to onscreen keyboard
 		_onscreenKeyboard = GetNode<Node>("OnscreenKeyboard");
@@ -31,11 +60,19 @@ public partial class MainController : Control
 		// Enable keyboard for main menu (disabled by default in scene)
 		EnableKeyboardAutoShow();
 		
+		// Get UIManager reference - it's now an autoload service
+		_uiManager = UIManager.GetInstance();
+		
+		if (_uiManager != null)
+		{
+			_uiManager.LogoutRequested += OnLogoutRequested;
+		}
+		
 		ConnectSignals();
 		SetupUI();
 		UpdateUI();
 		
-		GD.Print("[MainController] _Ready() completed");
+		// UI initialization completed
 	}
 
 	public override void _Notification(int what)
@@ -43,8 +80,22 @@ public partial class MainController : Control
 		if (what == NotificationExitTree)
 		{
 			DisconnectSignals();
-			// Clear reference to prevent memory leaks
+			
+			// Disconnect from SceneManager signal
+			if (GodotObject.IsInstanceValid(_sceneManager))
+			{
+				_sceneManager.AllServicesReady -= InitializeUI;
+			}
+			
+			// Disconnect from UIManager (it's an autoload now, don't QueueFree)
+			if (GodotObject.IsInstanceValid(_uiManager))
+			{
+				_uiManager.LogoutRequested -= OnLogoutRequested;
+			}
+			
+			// Clear references to prevent memory leaks
 			_onscreenKeyboard = null;
+			_uiManager = null;
 		}
 	}
 
@@ -68,9 +119,10 @@ public partial class MainController : Control
 		}
 	}
 
+
 	private void SetupUI()
 	{
-		GD.Print("[MainController] SetupUI() starting");
+		// SetupUI() starting
 		
 		// Always show game selection panel - login is handled by UIManager modal
 		if (GameSelectionPanel != null)
@@ -79,7 +131,7 @@ public partial class MainController : Control
 		// Always populate game list, regardless of login status
 		PopulateGameList();
 		
-		GD.Print("[MainController] SetupUI() completed");
+		// SetupUI() completed
 	}
 
 	private void PopulateGameList()
@@ -138,7 +190,7 @@ public partial class MainController : Control
 	private void ShowInsufficientCreditsMessage()
 	{
 		// Show popup or notification about insufficient credits
-		GD.Print("Insufficient credits!");
+		// Insufficient credits
 	}
 
 	private void UpdateUI()
@@ -173,6 +225,63 @@ public partial class MainController : Control
 	private void OnUserDataUpdated(UserData userData)
 	{
 		UpdateUI();
+	}
+
+	private async void OnLogoutRequested()
+	{
+		// Logout requested
+		
+		// Handle logout request from UIManager
+		if (_userManager != null)
+		{
+			// UserManager exists, calling LogoutUserAsync()
+			await _userManager.LogoutUserAsync();
+			// LogoutUserAsync() completed
+		}
+		else
+		{
+			GD.PrintErr("[MainController DEBUG] _userManager is NULL, cannot logout");
+		}
+		
+		// UI will be updated via UserLoggedOut signal - no need for immediate UpdateUI()
+		// The signal-driven update ensures proper timing after logout completion
+	}
+
+	/// <summary>
+	/// Force signal connection to UIManager - used when MainController is loaded dynamically
+	/// </summary>
+	public void ForceUIManagerConnection()
+	{
+		
+		if (_uiManager != null)
+		{
+			// Disconnect any existing connection first
+			if (_uiManager.IsConnected(UIManager.SignalName.LogoutRequested, new Callable(this, nameof(OnLogoutRequested))))
+			{
+				_uiManager.LogoutRequested -= OnLogoutRequested;
+			}
+			
+			// Reconnect to ensure signal works
+			_uiManager.LogoutRequested += OnLogoutRequested;
+		}
+		else
+		{
+			// Try to get UIManager reference if not available
+			_uiManager = UIManager.GetInstance();
+			
+			if (_uiManager != null)
+			{
+				_uiManager.LogoutRequested += OnLogoutRequested;
+			}
+		}
+		
+		// Ensure UserManager reference is available for logout functionality
+		if (_userManager == null)
+		{
+			// UserManager is null, obtaining reference
+			_userManager = UserManager.GetAutoload();
+			// UserManager reference obtained
+		}
 	}
 
 

@@ -55,6 +55,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	private int _competitiveCreditCost = 1;
 	private int _playerCount = 2; // Can be 2 or 4 players
 	
+	// Global analytics tracking
+	private SessionManager _sessionManager;
+	
 	// UI Dependencies
 	private CarromScoreDisplay _scoreDisplay;
 
@@ -72,6 +75,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		_redPieceTemplate = redTemplate;
 		_strikerTemplate = strikerTemplate;
 		_competitiveCreditCost = creditCost;
+		
+		// Get session manager for global data tracking
+		_sessionManager = SessionManager.GetInstance();
 	}
 	
 	/// <summary>
@@ -378,28 +384,24 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	// ================================================================
 
 	/// <summary>
-	/// Start competitive mode with credit checking
+	/// Start competitive mode with global credit tracking
+	/// NEW PATTERN: Tracks global competitive games played instead of table credits
 	/// </summary>
-	public async Task<bool> StartCompetitiveMode()
+	public bool StartCompetitiveMode()
 	{
-		// Check credits for competitive mode
+		// Track global competitive games for new data pattern
 		if (_competitiveCreditCost > 0)
 		{
-			var creditManager = CreditManager.GetInstance();
-			if (creditManager != null && IsInstanceValid(creditManager))
+			// Reset user idle timer
+			var userManager = UserManager.GetAutoload();
+			if (userManager != null && IsInstanceValid(userManager))
 			{
-				var userManager = UserManager.GetAutoload();
-				if (userManager != null && IsInstanceValid(userManager))
-				{
-					userManager.ResetUserIdleTimer();
-				}
-				
-				bool creditsSpent = await creditManager.CheckAndSpendCredits(_competitiveCreditCost, "Competitive Carrom");
-				if (!creditsSpent)
-				{
-					return false;
-				}
+				userManager.ResetUserIdleTimer();
 			}
+			
+			// NEW PATTERN: Track global competitive games played instead of spending table credits
+			// This allows for unlimited competitive play while tracking usage analytics
+			TrackGlobalCompetitiveGame();
 		}
 
 		// Setup competitive mode
@@ -1278,5 +1280,27 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	{
 		// Show floating text for queen covered
 		_scoreDisplay?.ShowFloatingText(playerId, "Queen Covered! 👑✓", Colors.Gold);
+	}
+	
+	/// <summary>
+	/// Track global competitive game for analytics (NEW PATTERN)
+	/// Replaces table credit spending with persistent global tracking
+	/// </summary>
+	private void TrackGlobalCompetitiveGame()
+	{
+		if (_sessionManager == null) return;
+		
+		var userSession = _sessionManager.GetCurrentUserSession();
+		if (userSession?.GlobalData != null)
+		{
+			// Increment competitive games played in global data
+			userSession.GlobalData.IncrementCompetitiveGames("carrom");
+			
+			GD.Print($"[CarromCompetitive] Tracked competitive game globally - Total carrom games: {userSession.GlobalData.GetCompetitiveGamesPlayed("carrom")}");
+		}
+		else
+		{
+			GD.Print("[CarromCompetitive] No global data available to track competitive game");
+		}
 	}
 }

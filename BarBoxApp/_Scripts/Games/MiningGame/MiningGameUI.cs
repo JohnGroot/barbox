@@ -293,21 +293,59 @@ namespace BarBox.Games.MiningGame
 			// Handle state messages
 			if (!enabled)
 			{
-				// Set disabled state messages
+				// Clear all progress and gem displays to show no data
 				if (_progressLabel != null)
 					_progressLabel.Text = "Please log in to start mining";
 				if (_gemsReadyLabel != null)
 					_gemsReadyLabel.Text = "Gems ready: Login required";
+				if (_capacityLabel != null)
+					_capacityLabel.Text = "Capacity: Login required";
 				if (_globalGemsLabel != null)
 					_globalGemsLabel.Text = "Please log in to view inventory";
+				
+				// Clear progress bar
+				if (_miningProgressBar != null)
+					_miningProgressBar.Value = 0;
+					
+				// Clear button text to default state
+				if (_extractButton != null)
+					_extractButton.Text = "Extract Gems";
+				if (_purchaseCreditButton != null)
+					_purchaseCreditButton.Text = $"Purchase Credit ({_config.CreditCost} gems)";
+					
+				// Hide/clear credit timers
+				ClearCreditTimersDisplay();
+			}
+		}
+
+		private void ClearCreditTimersDisplay()
+		{
+			// Hide all timer labels
+			foreach (var label in _cachedTimerLabels)
+			{
+				if (GodotObject.IsInstanceValid(label))
+					label.Visible = false;
+			}
+			
+			// Show "login required" message instead of timers
+			if (_noTimersLabel == null)
+			{
+				_noTimersLabel = new Label();
+				_noTimersLabel.Text = "  Login required to view timers";
+				_noTimersLabel.AddThemeColorOverride("font_color", Colors.Gray);
+				_creditTimersContainer.AddChild(_noTimersLabel);
+			}
+			else
+			{
+				_noTimersLabel.Text = "  Login required to view timers";
+				_noTimersLabel.Visible = true;
 			}
 		}
 		
 		public void UpdateAllUI()
 		{
-			if (!_isEnabled) 
-				return;
-			
+			// Always update UI components regardless of enabled state
+			// Individual components should handle missing data and disabled state gracefully
 			UpdateMiningProgress();
 			UpdateActionsButtons();
 			UpdateUpgrades();
@@ -318,7 +356,17 @@ namespace BarBox.Games.MiningGame
 		{
 			var locationTemplate = _game?.GetLocationData();
 			if (locationTemplate == null || _game == null)
+			{
+				// Show disabled state when no data available
+				if (!_isEnabled)
+				{
+					_miningProgressBar.Value = 0;
+					_progressLabel.Text = "Please log in to start mining";
+					_gemsReadyLabel.Text = "Gems ready: Login required";
+					_capacityLabel.Text = "Capacity: Login required";
+				}
 				return;
+			}
 			
 			// Update progress bar
 			float progress = _game.GetMiningProgress();
@@ -404,7 +452,16 @@ namespace BarBox.Games.MiningGame
 		public void UpdateGlobalInventory()
 		{
 			var globalData = _game?.GetGlobalData();
-			if (globalData == null) return;
+			if (globalData == null) 
+			{
+				// Show disabled state when no data available
+				if (!_isEnabled)
+				{
+					_globalGemsLabel.Text = "Please log in to view inventory";
+					ClearCreditTimersDisplay();
+				}
+				return;
+			}
 			
 			// Update gem inventory
 			var inventoryLines = new List<string>();

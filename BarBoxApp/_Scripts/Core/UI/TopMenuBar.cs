@@ -43,7 +43,7 @@ public partial class TopMenuBar : Control
 		SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopWide);
 		// Start with base height, will expand when context buttons are added
 		SetSize(new Vector2(0, BASE_HEIGHT));
-		GD.Print($"[TopMenuBar] Layout setup - Size: {Size}, Position: {Position}");
+		// Layout setup completed
 	}
 
 	private void CreateUI()
@@ -132,7 +132,7 @@ public partial class TopMenuBar : Control
 		_contextButtonContainer.AddThemeConstantOverride("separation", 15);
 		_contextSection.AddChild(_contextButtonContainer);
 
-		GD.Print("[TopMenuBar] Expandable UI created successfully");
+		// Expandable UI created successfully
 	}
 
 	/// <summary>
@@ -156,7 +156,7 @@ public partial class TopMenuBar : Control
 		if (_gameStatusLabel != null)
 		{
 			_gameStatusLabel.Text = statusText ?? "";
-			GD.Print($"[TopMenuBar] Center status set: '{statusText}'");
+			// Center status set
 		}
 	}
 
@@ -171,7 +171,7 @@ public partial class TopMenuBar : Control
 		
 		if (hasButtons && _contextButtonContainer != null)
 		{
-			GD.Print($"[TopMenuBar] Setting {buttonData.Length} context buttons");
+			// Setting context buttons
 			
 			foreach (var data in buttonData)
 			{
@@ -189,7 +189,7 @@ public partial class TopMenuBar : Control
 		// Update TopMenuBar height dynamically
 		SetSize(new Vector2(0, hasButtons ? EXPANDED_HEIGHT : BASE_HEIGHT));
 		
-		GD.Print($"[TopMenuBar] Context section visibility: {hasButtons}, Height: {(hasButtons ? EXPANDED_HEIGHT : BASE_HEIGHT)}");
+		// Context section visibility updated
 	}
 
 	/// <summary>
@@ -247,7 +247,7 @@ public partial class TopMenuBar : Control
 			};
 		}
 
-		GD.Print($"[TopMenuBar] Created context button: '{data.GetDisplayText()}' (Enabled: {data.Enabled})");
+		// Created context button
 		return button;
 	}
 

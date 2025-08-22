@@ -105,7 +105,7 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 			TrackDirection.Enabled = true;
 		}
 
-		GD.Print($"RacingTrackDefinition '{TrackName}': Track setup complete with {TrackLine.GetPointCount()} points, width {TrackLine.Width}");
+		// Track setup complete
 	}
 
 	public Curve2D GetTrackCurve()

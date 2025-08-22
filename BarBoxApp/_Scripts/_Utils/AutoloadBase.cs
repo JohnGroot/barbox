@@ -15,23 +15,56 @@ public abstract partial class AutoloadBase : Node
 	/// </summary>
 	protected virtual string ServiceName => GetType().Name;
 
+	private bool _isInitialized = false;
+
 	/// <summary>
-	/// Called during _Ready() to perform service-specific initialization
+	/// Called during _Ready() to perform service-specific setup (minimal initialization only)
 	/// Override this instead of _Ready() in derived classes
 	/// </summary>
 	protected abstract void OnServiceReady();
+
+	/// <summary>
+	/// Called explicitly by SceneManager to perform full service initialization
+	/// Override this for services that need explicit initialization order
+	/// </summary>
+	protected virtual void OnServiceInitialize()
+	{
+		// Default implementation does nothing - override in derived classes
+	}
 
 	public override void _Ready()
 	{
 		// Automatic group registration using service name
 		AddToGroup(ServiceName);
 		
-		// Log service initialization
-		LogInfo($"{ServiceName} autoload initialized");
+		// Log service construction
+		LogInfo($"{ServiceName} autoload constructed");
 		
-		// Call derived class initialization
+		// Call derived class setup (minimal only)
 		OnServiceReady();
 	}
+
+	/// <summary>
+	/// Explicitly initialize the service - called by SceneManager in dependency order
+	/// </summary>
+	public void Initialize()
+	{
+		if (_isInitialized)
+		{
+			LogWarning($"{ServiceName} already initialized, skipping");
+			return;
+		}
+
+		LogInfo($"{ServiceName} initializing...");
+		OnServiceInitialize();
+		_isInitialized = true;
+		LogInfo($"{ServiceName} initialized");
+	}
+
+	/// <summary>
+	/// Check if this service has been explicitly initialized
+	/// </summary>
+	public bool IsInitialized => _isInitialized;
 
 	/// <summary>
 	/// Generic service discovery method for finding other autoloads

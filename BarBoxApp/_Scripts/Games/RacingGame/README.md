@@ -31,7 +31,7 @@ RacingGame (GameController)
 
 ### Service Integration Points
 - **InputManager** (Autoload): Touch/mouse input handling
-- **CreditManager** (Service): Credit verification and spending
+- **SessionManager** (Service): Credit verification, spending, and user session management
 - **UserManager** (Autoload): Session management and idle timers
 - **GameHost** (Service): Platform integration and menu navigation
 
@@ -419,7 +419,8 @@ public virtual async void StartTimeTrial()
 {
     if (TimeTrialCreditCost > 0)
     {
-        bool creditsSpent = await creditManager.CheckAndSpendCredits(TimeTrialCreditCost, "Time Trial Race");
+        var currentSession = sessionManager.GetCurrentUserSession();
+        bool creditsSpent = await sessionManager.CheckAndSpendGlobalCreditsAsync(currentSession.UserId, TimeTrialCreditCost, "Time Trial Race");
         if (!creditsSpent) return;
     }
     SetGameMode(GameMode.TimeTrial);

@@ -115,6 +115,7 @@ public partial class RacingGame : GameController
 	
 	// Cached service references
 	private UserManager _cachedUserManager;
+	private SessionManager _sessionManager;
 
 	// ================================================================
 	// PRIVATE FIELDS - VISUAL FEEDBACK SYSTEM
@@ -133,7 +134,7 @@ public partial class RacingGame : GameController
 
 	public override void _Ready()
 	{
-		GD.Print("[RacingGame] _Ready() starting");
+		// _Ready() starting
 		GameId = "racing_game";
 		SetGameMode(GameMode.Practice); // Start in practice mode
 
@@ -160,10 +161,13 @@ public partial class RacingGame : GameController
 			_cachedUserManager.UserLoggedOut += OnUserLoggedOut;
 		}
 		
+		// Get SessionManager for global high score tracking
+		_sessionManager = SessionManager.GetInstance();
+		
 		// Ensure UI gets initial update after setup completes
 		CallDeferred(MethodName.UpdateUI);
 		
-		GD.Print("[RacingGame] _Ready() completed");
+		// _Ready() completed
 	}
 
 	protected override void InitializeGame()
@@ -187,7 +191,7 @@ public partial class RacingGame : GameController
 		_timingSystem.RaceCompleted += OnTimingSystemRaceCompleted;
 		_timingSystem.CheckpointCrossed += OnTimingSystemCheckpointCrossed;
 		
-		GD.Print("[RacingGame] RacingTimingSystem initialized successfully");
+		// RacingTimingSystem initialized successfully
 	}
 
 	/// <summary>
@@ -208,7 +212,7 @@ public partial class RacingGame : GameController
 		
 		AddChild(_trackValidationSystem);
 		
-		GD.Print("[RacingGame] RacingTrackValidationSystem initialized successfully");
+		// RacingTrackValidationSystem initialized successfully
 	}
 
 	/// <summary>
@@ -222,7 +226,7 @@ public partial class RacingGame : GameController
 
 		_cameraController.Initialize();
 	
-		GD.Print("[RacingGame] RacingCameraController initialized");
+		// RacingCameraController initialized
 	}
 
 	/// <summary>
@@ -264,7 +268,7 @@ public partial class RacingGame : GameController
 		// Initialize visual feedback renderer
 		SetupVisualRenderer();
 		
-		GD.Print("[RacingGame] RacingCarController initialized successfully");
+		// RacingCarController initialized successfully
 	}
 
 	/// <summary>
@@ -276,7 +280,7 @@ public partial class RacingGame : GameController
 		_visualRenderer.Initialize(_carController);
 		AddChild(_visualRenderer);
 
-		GD.Print("[RacingGame] RacingVisualFeedbackRenderer initialized successfully");
+		// RacingVisualFeedbackRenderer initialized successfully
 	}
 
 	/// <summary>
@@ -412,10 +416,13 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Handle race completion - centralized signal processing
+	/// Handle race completion - centralized signal processing and global high score tracking
 	/// </summary>
 	private void OnTimingSystemRaceCompleted(string playerId, float totalTime)
 	{
+		// Save global high score if this is a new record
+		SaveGlobalHighScore(playerId, totalTime);
+		
 		// End the game when race is completed
 		EndGame();
 		
@@ -430,6 +437,42 @@ public partial class RacingGame : GameController
 	{
 		// Emit signal for external integrations (GameHost) at high level
 		EmitSignal(SignalName.CheckpointCrossed, playerId, checkpointIndex, gapTime);
+	}
+
+	/// <summary>
+	/// Save global high score for racing game using DataStore extensions
+	/// Tracks best times globally with proper async error handling
+	/// </summary>
+	private async void SaveGlobalHighScore(string playerId, float totalTime)
+	{
+		if (string.IsNullOrEmpty(playerId) || totalTime <= 0.0f) return;
+		
+		var dataStore = DataStore.GetInstance();
+		if (dataStore == null)
+		{
+			GD.PrintErr("[RacingGame] DataStore not available for saving high score");
+			return;
+		}
+		
+		// Create key for this specific track and lap configuration
+		string scoreKey = $"racing_{_currentTrackIndex}_{_targetLaps}laps";
+		int newTime = Mathf.RoundToInt(totalTime * 1000); // Store as milliseconds for precision
+		
+		// Use DataStore extension method to save high score (lower time is better)
+		bool savedNewHighScore = await dataStore.SaveHighScoreAsync(playerId, scoreKey, newTime, higherIsBetter: false);
+		
+		if (savedNewHighScore)
+		{
+			// Get the previous score for logging
+			int previousScore = await dataStore.GetHighScoreAsync(playerId, scoreKey, int.MaxValue);
+			// New global high score achieved
+		}
+		else
+		{
+			// Get current record for comparison
+			int currentBestTime = await dataStore.GetHighScoreAsync(playerId, scoreKey, int.MaxValue);
+			// Race completed
+		}
 	}
 
 	/// <summary>
@@ -462,7 +505,7 @@ public partial class RacingGame : GameController
 		// Can only start time trial when not already in time trial
 		if (GetGameMode() == GameMode.TimeTrial) 
 		{
-			GD.Print("Time trial cancelled - already in time trial mode");
+			// Time trial cancelled - already in time trial mode
 			return;
 		}
 		
@@ -476,7 +519,7 @@ public partial class RacingGame : GameController
 		bool isLoggedIn = _cachedUserManager.IsUserLoggedIn();
 		if (!isLoggedIn)
 		{
-			GD.Print("Time trial cancelled - user must be logged in");
+			// Time trial cancelled - user must be logged in
 			return;
 		}
 		
@@ -490,19 +533,26 @@ public partial class RacingGame : GameController
 			// Set state to waiting for credits during async check
 			_timingSystem?.SetWaitingForCredits();
 			
-			var creditManager = CreditManager.GetInstance();
-			if (creditManager == null || !IsInstanceValid(creditManager))
+			if (_sessionManager == null || !IsInstanceValid(_sessionManager))
 			{
-				GD.PrintErr("Time trial cancelled - credit system not available");
+				GD.PrintErr("Time trial cancelled - session system not available");
 				_timingSystem?.StopRacing(); // Reset to idle state
 				return;
 			}
 			
-			bool creditsSpent = await creditManager.CheckAndSpendCredits(TimeTrialCreditCost, "Time Trial Race");
+			var currentSession = _sessionManager.GetCurrentUserSession();
+			if (currentSession == null)
+			{
+				GD.PrintErr("Time trial cancelled - no active user session");
+				_timingSystem?.StopRacing(); // Reset to idle state
+				return;
+			}
+			
+			bool creditsSpent = await _sessionManager.CheckAndSpendGlobalCreditsAsync(currentSession.UserId, TimeTrialCreditCost, "Time Trial Race");
 			if (!creditsSpent)
 			{
 				// Credits not spent - don't start the race
-				GD.Print("Time trial cancelled - credits not spent");
+				// Time trial cancelled - credits not spent
 				_timingSystem?.StopRacing(); // Reset to idle state
 				return;
 			}
@@ -776,7 +826,7 @@ public partial class RacingGame : GameController
 				var screenSize = viewport.GetVisibleRect().Size;
 				Vector2 screenCenter = screenSize / 2;
 				_trackDefinition.GlobalPosition = screenCenter;
-				GD.Print($"[RacingGame] Track positioned at screen center (like original): {screenCenter}");
+				// Track positioned at screen center
 			}
 			
 			SetupLoadedTrack();
@@ -1162,38 +1212,85 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Show high score display
+	/// Show high score display (NEW PATTERN: Global high scores)
 	/// </summary>
 	public void ShowHighScores()
 	{
 		_timingSystem?.SetHighScoreDisplay();
 		
-		// Try to get LeaderboardManager - it may not be available yet
-		try
-		{
-			// Check if LeaderboardManager exists in autoload
-			var autoloadNode = GetTree().Root.GetNodeOrNull("LeaderboardManager");
-			if (autoloadNode != null)
-			{
-				// Display leaderboard UI
-				GD.Print("Showing racing game leaderboard");
-				// TODO: Implement leaderboard UI integration when available
-			}
-			else
-			{
-				ShowHighScoresFallback();
-			}
-		}
-		catch
+		// Show global high scores from SessionManager
+		ShowGlobalHighScores();
+	}
+
+	/// <summary>
+	/// Show global high scores using DataStore extensions
+	/// </summary>
+	private async void ShowGlobalHighScores()
+	{
+		var player = _carController?.GetPlayer();
+		var playerId = player?.PlayerId ?? "player1";
+		
+		var dataStore = DataStore.GetInstance();
+		if (dataStore == null)
 		{
 			ShowHighScoresFallback();
+			return;
 		}
+		
+		// Get global data to extract racing scores
+		var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+		if (!globalDataResult.IsSuccess)
+		{
+			ShowHighScoresFallback();
+			return;
+		}
+		
+		// Build high score display from global data
+		var highScores = new System.Text.StringBuilder("🏁 RACING HIGH SCORES 🏁\n\n");
+		
+		// Filter racing high scores
+		var racingScores = globalDataResult.Value.GlobalHighScores
+			.Where(kvp => kvp.Key.StartsWith("racing_"))
+			.OrderBy(kvp => kvp.Value) // Lower times are better
+			.Take(10); // Top 10
+		
+		if (racingScores.Any())
+		{
+			foreach (var score in racingScores)
+			{
+				// Parse the key to get track and lap info
+				var parts = score.Key.Split('_');
+				if (parts.Length >= 3)
+				{
+					string trackInfo = parts.Length > 1 ? $"Track {parts[1]}" : "Track ?";
+					string lapInfo = parts.Length > 2 ? parts[2].Replace("laps", " laps") : "? laps";
+					float timeInSeconds = score.Value / 1000.0f;
+					
+					highScores.AppendLine($"{trackInfo} - {lapInfo}: {timeInSeconds:F3}s");
+				}
+			}
+		}
+		else
+		{
+			highScores.AppendLine("No high scores yet!");
+			highScores.AppendLine("Complete some races to set records.");
+		}
+		
+		// Global high scores displayed
+		
+		// Return to previous state after brief delay
+		CreateAutoCleanupTimer(5.0f, () => {
+			if (GetGameMode() == GameMode.Practice)
+				_timingSystem?.StartPracticeMode();
+			else
+				_timingSystem?.StopRacing();
+		});
 	}
 
 	private void ShowHighScoresFallback()
 	{
 		// Fallback: show simple message
-		GD.Print("High scores feature not available");
+		// High scores feature not available - please log in
 		// Return to previous state after brief delay
 		CreateAutoCleanupTimer(2.0f, () => {
 			if (GetGameMode() == GameMode.Practice)
@@ -1337,9 +1434,9 @@ public partial class RacingGame : GameController
 
 	private void DetectAndAdaptToContext()
 	{
-		GD.Print("[RacingGame] DetectAndAdaptToContext() called");
+		// Context detection initiated
 		var gameHost = GameHost.GetInstance();
-		GD.Print($"[RacingGame] GameHost instance: {gameHost != null}");
+		// Context detection completed
 
 		if (gameHost != null && IsInstanceValid(gameHost))
 		{

@@ -1,23 +1,20 @@
-using Godot;
-
 namespace BarBox.Games.MiningGame
 {
 	/// <summary>
-	/// Resource for tracking credit purchase timers in the mining game.
+	/// Data class for tracking credit purchase timers in the mining game.
 	/// Each timer represents a credit that was purchased and needs to recharge before another can be bought.
 	/// </summary>
-	[GlobalClass]
-	public partial class CreditPurchaseTimer : Resource
+	public class CreditPurchaseTimer
 	{
 		/// <summary>
 		/// Game time when the credit was purchased.
 		/// </summary>
-		[Export] public double PurchaseGameTime { get; set; }
+		public double PurchaseGameTime { get; set; }
 		
 		/// <summary>
 		/// Game time when the credit will be fully recharged and available for purchase again.
 		/// </summary>
-		[Export] public double RechargeGameTime { get; set; }
+		public double RechargeGameTime { get; set; }
 		
 		/// <summary>
 		/// Checks if the credit has finished recharging and is available for purchase.

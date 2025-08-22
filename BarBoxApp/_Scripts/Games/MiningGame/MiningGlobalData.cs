@@ -1,15 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Godot;
 
 namespace BarBox.Games.MiningGame
 {
-	[GlobalClass]
-	public partial class MiningGlobalData : Resource
+	public class MiningGlobalData
 	{
-		[Export] public Godot.Collections.Dictionary<GemType, int> GlobalGemInventory { get; set; } = new();
-		[Export] public Godot.Collections.Array<CreditPurchaseTimer> CreditTimers { get; set; } = new();
+		public Dictionary<GemType, int> GlobalGemInventory { get; set; } = new();
+		public List<CreditPurchaseTimer> CreditTimers { get; set; } = new();
 
 		public void AddGems(GemType gemType, int amount)
 		{
@@ -43,13 +41,7 @@ namespace BarBox.Games.MiningGame
 		
 		public void CleanupExpiredTimers(double currentGameTime)
 		{
-			var activeTimers = new Godot.Collections.Array<CreditPurchaseTimer>();
-			foreach (var timer in CreditTimers)
-			{
-				if (!timer.IsRecharged(currentGameTime))
-					activeTimers.Add(timer);
-			}
-			CreditTimers = activeTimers;
+			CreditTimers = CreditTimers.Where(t => !t.IsRecharged(currentGameTime)).ToList();
 		}
 	}
 }

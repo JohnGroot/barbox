@@ -35,7 +35,7 @@ public partial class LoginModal : Control
 		// Start hidden
 		Visible = false;
 		
-		GD.Print("[LoginModal] Created and ready");
+		// LoginModal created and ready
 	}
 
 	private void SetupModalLayout()
@@ -200,7 +200,7 @@ public partial class LoginModal : Control
 		}
 		
 		ClearForm();
-		GD.Print("[LoginModal] Modal shown");
+		// Modal shown
 	}
 
 	/// <summary>
@@ -211,7 +211,7 @@ public partial class LoginModal : Control
 		Visible = false;
 		ClearForm();
 		EmitSignal(SignalName.ModalClosed);
-		GD.Print("[LoginModal] Modal hidden");
+		// Modal hidden
 	}
 
 	private void ClearForm()
@@ -255,7 +255,6 @@ public partial class LoginModal : Control
 		// Development context: allow empty PIN for debug account
 		if (GameHost.IsDevelopmentContext() && !string.IsNullOrEmpty(userId) && string.IsNullOrEmpty(pin))
 		{
-			GD.Print($"Development mode: Attempting debug login for user '{userId}'");
 			bool debugLoginSuccess = _userManager.LoginUserDevelopment(userId);
 			if (debugLoginSuccess)
 			{

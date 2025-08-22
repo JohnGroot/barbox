@@ -883,7 +883,6 @@ public partial class CarromBoard : Node2D
 		DrawTriangleTip(arcStartPoint, startTangent, false);
 		DrawTriangleTip(arcEndPoint, endTangent, false);
 	}
-	
 
 	/// <summary>
 	/// Get baseline position for a player using dimension-aware calculations
