@@ -10,6 +10,13 @@ namespace BarBox.Games.MiningGame
 	public partial class MiningGame : GameController
 	{
 		// ================================================================
+		// CONSTANTS
+		// ================================================================
+		
+		private const int DEBUG_STARTING_CREDITS = 5;
+		private const int CREDITS_PER_PURCHASE = 1;
+		
+		// ================================================================
 		// SIGNALS - External integration only
 		// ================================================================
 		
@@ -116,7 +123,7 @@ namespace BarBox.Games.MiningGame
 				// Give debug user some starting gems for testing
 				if (_currentUser != null)
 				{
-					_userManager.AddCredits(5);
+					_userManager.AddCredits(DEBUG_STARTING_CREDITS);
 				}
 			}
 			
@@ -272,7 +279,7 @@ namespace BarBox.Games.MiningGame
 		// GAME LIFECYCLE
 		// ================================================================
 		
-		private void InitializeGameSession()
+		private async void InitializeGameSession()
 		{
 			// Validate essential components first
 			if (!GodotObject.IsInstanceValid(_state) || !GodotObject.IsInstanceValid(_engine))
@@ -298,12 +305,13 @@ namespace BarBox.Games.MiningGame
 				return;
 			}
 			
-			// Load user data and start mining - data should already be loaded by OnUserLoggedIn
-			// This is a safety check for development mode or edge cases
+			// Load user data first, then start mining after data is ready
 			if (_currentUser != null)
 			{
-				_state.LoadUserData();
+				await _state.LoadUserDataAsync();
 			}
+			
+			// Start mining only after user data (including partial progress) is fully loaded
 			_engine.StartMining();
 			
 			// Enable UI after all components are ready
@@ -340,7 +348,7 @@ namespace BarBox.Games.MiningGame
 				_engine.StopMining();
 				
 			if (GodotObject.IsInstanceValid(_state))
-				_state.SaveData();
+				_state.SaveDataAsync(); // Fire-and-forget
 				
 			if (GodotObject.IsInstanceValid(_ui))
 				_ui.SetEnabled(false);
@@ -464,11 +472,6 @@ namespace BarBox.Games.MiningGame
 			
 			if (_state.ExtractGems())
 			{
-				// If we extracted from full capacity, reset the mining timer
-				if (wasAtCapacity && GodotObject.IsInstanceValid(_engine))
-				{
-					_engine.ResetTimerAfterExtraction();
-				}
 				
 				if (GodotObject.IsInstanceValid(_ui))
 					_ui.UpdateAllUI();
@@ -505,31 +508,7 @@ namespace BarBox.Games.MiningGame
 				// Handle immediate upgrade effects with unified approach
 				if (GodotObject.IsInstanceValid(_engine))
 				{
-					switch (upgradeType)
-					{
-						case UpgradeType.MiningSpeed:
-							// Speed changed - just update the mining interval without triggering tick
-							_engine.UpdateMiningInterval();
-							break;
-							
-						case UpgradeType.Capacity:
-							// Capacity increased - resume mining if we were at max capacity before
-							var currentGems = _state.PendingGems;
-							var locationTemplate = _state.GetLocationData();
-							var oldMaxCapacity = currentLevel > 0 ? 
-								locationTemplate?.GetMaxCapacity(currentLevel - 1, Config) ?? Config.BaseCapacity : 
-								Config.BaseCapacity;
-							
-							// Only trigger tick if we were previously at max capacity (mining was stopped)
-							if (currentGems >= oldMaxCapacity && currentGems < _state.GetMaxCapacity())
-							{
-								// Resume mining without adding extra gems - just reset the timer
-								_engine.ResumeMining();
-							}
-							break;
-							
-						// MiningAmount and CreditCharges don't need immediate effects
-					}
+					// Timestamp-based system handles upgrade effects automatically
 				}
 			}
 		}
@@ -599,7 +578,7 @@ namespace BarBox.Games.MiningGame
 			{
 				// Save current data before stopping game
 				if (GodotObject.IsInstanceValid(_state))
-					_state.SaveData();
+					_state.SaveDataAsync(); // Fire-and-forget
 					
 				StopGame();
 				
@@ -633,7 +612,7 @@ namespace BarBox.Games.MiningGame
 					_engine.StopMining();
 					
 				if (GodotObject.IsInstanceValid(_state))
-					_state.SaveData();
+					_state.SaveDataAsync(); // Fire-and-forget
 				
 				if (_userManager != null && GodotObject.IsInstanceValid(_userManager))
 				{
@@ -650,8 +629,6 @@ namespace BarBox.Games.MiningGame
 		public partial class GameEngine : Node
 		{
 			private MiningGame _game;
-			private double _miningAccumulator = 0.0;
-			private double _miningInterval;
 			private bool _isMiningActive = false;
 			
 			public GameEngine(MiningGame game)
@@ -662,54 +639,20 @@ namespace BarBox.Games.MiningGame
 			
 			public override void _Process(double delta)
 			{
-				if (!_isMiningActive) return;
+				if (!_isMiningActive || _game == null || !GodotObject.IsInstanceValid(_game._state)) return;
 				
-				// Check if we're at full capacity - if so, don't increment timer
-				if (GodotObject.IsInstanceValid(_game._state))
+				_game._state.ProcessReadyMiningTicks();
+				
+				// Update UI if needed
+				if (_game != null && GodotObject.IsInstanceValid(_game._ui))
 				{
-					int currentGems = _game._state.PendingGems;
-					int maxCapacity = _game._state.GetMaxCapacity();
-					
-					if (currentGems >= maxCapacity)
-					{
-						// At capacity - timer should not progress
-						return;
-					}
-				}
-				
-				_miningAccumulator += delta;
-				
-				if (_miningAccumulator >= _miningInterval)
-				{
-					ProcessMiningTick();
-					_miningAccumulator = 0.0;
-					UpdateMiningInterval(); // Refresh in case upgrades changed it
+					_game._ui.UpdateMiningProgress();
 				}
 			}
 			
-			private void ProcessMiningTick()
-			{
-				if (GodotObject.IsInstanceValid(_game._state))
-					_game._state.ProcessMiningTick();
-					
-				if (GodotObject.IsInstanceValid(_game._ui))
-					_game._ui.UpdateMiningProgress();
-					
-				if (_game.EnableDebugMode)
-				{
-					var state = _game._state;
-					if (state != null && GodotObject.IsInstanceValid(state))
-					{
-						GD.Print($"[GameEngine] Mining tick: +{state.GetGemsPerTick()} gems, " +
-								$"Total: {state.PendingGems}/{state.GetMaxCapacity()}");
-					}
-				}
-			}
 			
 			public void StartMining()
 			{
-				UpdateMiningInterval();
-				_miningAccumulator = 0.0;
 				_isMiningActive = true;
 				GD.Print("[GameEngine] Mining started");
 			}
@@ -720,78 +663,32 @@ namespace BarBox.Games.MiningGame
 				GD.Print("[GameEngine] Mining stopped");
 			}
 			
-			public void UpdateMiningInterval()
-			{
-				_miningInterval = _game._state?.GetMiningTickTime() ?? 7200.0;
-				
-				if (_game.EnableDebugMode)
-				{
-					GD.Print($"[GameEngine] Mining interval updated: {_miningInterval:F1} seconds");
-				}
-			}
-			
-			public void ResumeMining()
-			{
-				if (_isMiningActive)
-				{
-					// Reset the accumulator to restart the mining interval
-					_miningAccumulator = 0.0;
-					UpdateMiningInterval(); // Update interval in case upgrades changed it
-					
-					if (_game.EnableDebugMode)
-					{
-						GD.Print("[GameEngine] Mining resumed with reset timer");
-					}
-				}
-			}
-			
-			public void ResetTimerAfterExtraction()
-			{
-				// Reset timer when extracting gems from full capacity
-				_miningAccumulator = 0.0;
-				UpdateMiningInterval();
-				
-				if (_game.EnableDebugMode)
-				{
-					GD.Print("[GameEngine] Timer reset after gem extraction");
-				}
-			}
 			
 			public void TriggerImmediateMiningTick()
 			{
-				if (_isMiningActive)
+				if (_isMiningActive && _game != null && GodotObject.IsInstanceValid(_game._state))
 				{
-					ProcessMiningTick();
-					_miningAccumulator = 0.0; // Reset for next interval
+					_game._state.ProcessReadyMiningTicks();
 				}
 			}
 			
 			public float GetMiningProgress()
 			{
-				if (!_isMiningActive || _miningInterval <= 0) return 0.0f;
-				return (float)(_miningAccumulator / _miningInterval);
+				if (!_isMiningActive || _game == null || !GodotObject.IsInstanceValid(_game._state)) return 0.0f;
+				
+				var (_, progress) = _game._state.CalculateMiningProgress();
+				return progress;
 			}
 			
 			public float GetTimeUntilNextTick()
 			{
-				if (!_isMiningActive) return 0.0f;
-				return (float)(_miningInterval - _miningAccumulator);
+				if (!_isMiningActive || _game == null || !GodotObject.IsInstanceValid(_game._state)) return 0.0f;
+				
+				var (_, progress) = _game._state.CalculateMiningProgress();
+				var miningTickTime = _game._state.GetMiningTickTime();
+				return (float)((1.0f - progress) * miningTickTime);
 			}
 			
-			public double GetCurrentAccumulator()
-			{
-				return _miningAccumulator;
-			}
-			
-			public double GetCurrentInterval()
-			{
-				return _miningInterval;
-			}
-			
-			public void SetAccumulator(double value)
-			{
-				_miningAccumulator = Math.Max(0.0, Math.Min(value, _miningInterval));
-			}
 		}
 		
 		public partial class GameState : Node
@@ -804,6 +701,7 @@ namespace BarBox.Games.MiningGame
 			private int _pendingGems = 0;
 			private Dictionary<UpgradeType, int> _upgradeLevels = new();
 			private bool _firstTimeBonus = true;
+			private DateTime _lastMiningTickTime = DateTime.UtcNow;
 			
 			// Cached calculated values
 			private int _cachedMaxCapacity;
@@ -815,10 +713,9 @@ namespace BarBox.Games.MiningGame
 			// Game time management
 			private double _gameTime = 0.0;
 			private double _lastSaveTime = 0.0;
-			private const double AUTO_SAVE_INTERVAL = 1.0;
+			private const double AUTO_SAVE_INTERVAL = 30.0;
+			private const double SECONDS_PER_HOUR = 3600.0;
 			
-			// Offline progress tracking
-			private DateTime _lastSaveTimestamp = DateTime.UtcNow;
 			
 			private const string LOCATION_STATE_PREFIX = "mining_state_";
 			private const string GLOBAL_DATA_KEY = "mining_global";
@@ -836,7 +733,7 @@ namespace BarBox.Games.MiningGame
 				// Auto-save every 30 seconds (replaces save timer)
 				if (_gameTime - _lastSaveTime >= AUTO_SAVE_INTERVAL)
 				{
-					SaveData();
+					_ = SaveDataAsync(); // Fire-and-forget
 					_lastSaveTime = _gameTime;
 					
 					if (_game.EnableDebugMode)
@@ -905,17 +802,89 @@ namespace BarBox.Games.MiningGame
 				_cacheValid = false;
 			}
 			
-			private DateTime GetLastSaveTime()
+			// ================================================================
+			// Unified timestamp-based mining calculator
+			// ================================================================
+			
+			/// <summary>
+			/// Calculates mining progress using timestamps - works for both online and offline!
+			/// </summary>
+			/// <returns>Tuple of (ticksReady, progressToNextTick)</returns>
+			public (int ticksReady, float progressToNextTick) CalculateMiningProgress()
 			{
-				return _lastSaveTimestamp;
+				// Initialize timestamp if not set (first run)
+				if (_lastMiningTickTime == default(DateTime))
+				{
+					_lastMiningTickTime = DateTime.UtcNow;
+					return (0, 0.0f);
+				}
+				
+				var elapsed = (DateTime.UtcNow - _lastMiningTickTime).TotalSeconds;
+				
+				// Handle negative time (clock went backward) - treat as no progress
+				if (elapsed < 0)
+				{
+					_lastMiningTickTime = DateTime.UtcNow;
+					return (0, 0.0f);
+				}
+				
+				var miningInterval = GetMiningTickTime();
+				if (miningInterval <= 0) return (0, 0.0f);
+				
+				var ticksReady = (int)(elapsed / miningInterval);
+				var progressToNextTick = (float)((elapsed % miningInterval) / miningInterval);
+				
+				return (ticksReady, progressToNextTick);
 			}
 			
-			private void UpdateLastSaveTime()
+			/// <summary>
+			/// Process ready mining ticks and update timestamp
+			/// </summary>
+			public void ProcessReadyMiningTicks()
 			{
-				_lastSaveTimestamp = DateTime.UtcNow;
+				var (ticksReady, _) = CalculateMiningProgress();
+				
+				if (ticksReady <= 0) return;
+				
+				var maxCapacity = GetMaxCapacity();
+				var gemsPerTick = GetGemsPerTick();
+				
+				// Calculate how many ticks we can actually process (capacity limit)
+				var availableCapacity = maxCapacity - _pendingGems;
+				// Use float division to prevent truncation errors
+				var maxPossibleTicks = (int)((float)availableCapacity / Math.Max(1.0f, gemsPerTick));
+				var actualTicks = Math.Min(ticksReady, maxPossibleTicks);
+				
+				if (actualTicks > 0)
+				{
+					_pendingGems += actualTicks * gemsPerTick;
+					
+					// Update timestamp by the number of ticks we processed
+					var miningInterval = GetMiningTickTime();
+					_lastMiningTickTime = _lastMiningTickTime.AddSeconds(actualTicks * miningInterval);
+					
+					if (_game.EnableDebugMode)
+					{
+						GD.Print($"[GameState] Processed {actualTicks} mining ticks: +{actualTicks * gemsPerTick} gems, Total: {_pendingGems}/{maxCapacity}");
+					}
+				}
 			}
 			
-			public async void LoadUserData()
+			/// <summary>
+			/// Reset mining timestamp (called when extracting at capacity or starting fresh)
+			/// </summary>
+			public void ResetMiningTimer()
+			{
+				_lastMiningTickTime = DateTime.UtcNow;
+				
+				if (_game.EnableDebugMode)
+				{
+					GD.Print("[GameState] Mining timer reset to current time");
+				}
+			}
+			
+			
+			public async Task LoadUserDataAsync()
 			{
 				// Get location template first
 				string currentLocationId = _game._locationManager?.CurrentLocationId ?? "default";
@@ -936,33 +905,59 @@ namespace BarBox.Games.MiningGame
 					return;
 				}
 				
-				// Load location-specific runtime state using DataStore extensions
-				string locationKey = LOCATION_STATE_PREFIX + currentLocationId;
-				var savedState = await dataStore.GetGameValueAsync<MiningLocationState>(userId, locationKey);
-				
-				if (savedState != null && !string.IsNullOrEmpty(savedState.LocationId))
+				try
 				{
-					_pendingGems = savedState.PendingGems;
-					_upgradeLevels = savedState.UpgradeLevels ?? new();
-					_firstTimeBonus = savedState.FirstTimeBonus;
-					_lastSaveTimestamp = savedState.LastSaveTime;
+					// Load location-specific runtime state using DataStore extensions
+					string locationKey = LOCATION_STATE_PREFIX + currentLocationId;
+					var savedState = await dataStore.GetGameValueAsync<MiningLocationState>(userId, locationKey);
+					
+					if (savedState != null && !string.IsNullOrEmpty(savedState.LocationId))
+					{
+						_pendingGems = savedState.PendingGems;
+						// Use property to ensure proper cache management in MiningLocationState
+						var loadedUpgrades = savedState.UpgradeLevels ?? new();
+						_upgradeLevels = new Dictionary<UpgradeType, int>(loadedUpgrades);
+						_firstTimeBonus = savedState.FirstTimeBonus;
+						
+						_lastMiningTickTime = savedState.LastMiningTickTime;
+					}
+					else
+					{
+						CreateDefaultState();
+						try
+						{
+							await SaveLocationStateAsync();
+						}
+						catch (System.Exception ex)
+						{
+							GD.PrintErr($"[MiningGame] Failed to save initial location state: {ex.Message}");
+						}
+					}
+					
+					// Load global mining data using DataStore extensions
+					_globalData = await dataStore.GetGameValueAsync<MiningGlobalData>(userId, GLOBAL_DATA_KEY);
+					if (_globalData == null)
+					{
+						_globalData = new MiningGlobalData();
+						try
+						{
+							await dataStore.SetGameValueAsync(userId, GLOBAL_DATA_KEY, _globalData);
+						}
+						catch (System.Exception ex)
+						{
+							GD.PrintErr($"[MiningGame] Failed to save initial global data: {ex.Message}");
+						}
+					}
 				}
-				else
+				catch (System.Exception ex)
 				{
+					GD.PrintErr($"[MiningGame] Failed to load user data: {ex.Message}");
+					GD.PrintErr("Falling back to default state");
 					CreateDefaultState();
-					await SaveLocationStateAsync();
 				}
 				
-				// Load global mining data using DataStore extensions
-				_globalData = await dataStore.GetGameValueAsync<MiningGlobalData>(userId, GLOBAL_DATA_KEY);
-				if (_globalData == null)
-				{
-					_globalData = new MiningGlobalData();
-					await dataStore.SetGameValueAsync(userId, GLOBAL_DATA_KEY, _globalData);
-				}
-				
-				// Process offline progress
-				ProcessOfflineProgress();
+				// Process any mining ticks that are ready (handles offline progress automatically)
+				ProcessReadyMiningTicks();
 				
 				// Cleanup expired credit timers
 				_globalData.CleanupExpiredTimers(_gameTime);
@@ -976,7 +971,6 @@ namespace BarBox.Games.MiningGame
 				_pendingGems = 0;
 				_upgradeLevels = new Dictionary<UpgradeType, int>();
 				_firstTimeBonus = true;
-				_lastSaveTimestamp = DateTime.UtcNow;
 				
 				// Check if we have a valid user - only give bonuses for actual users
 				bool hasValidUser = _game._currentUser != null && !string.IsNullOrEmpty(_game._currentUser.UserId);
@@ -1027,117 +1021,23 @@ namespace BarBox.Games.MiningGame
 					PendingGems = _pendingGems,
 					UpgradeLevels = _upgradeLevels,
 					FirstTimeBonus = _firstTimeBonus,
-					LastSaveTime = DateTime.UtcNow
+					LastSaveTime = DateTime.UtcNow,
+					LastMiningTickTime = _lastMiningTickTime,
+					PartialProgress = 0.0f // Legacy field for migration
 				};
 				
 				string locationKey = LOCATION_STATE_PREFIX + state.LocationId;
-				await dataStore.SetGameValueAsync(userId, locationKey, state);
+				try
+				{
+					await dataStore.SetGameValueAsync(userId, locationKey, state);
+				}
+				catch (System.Exception ex)
+				{
+					GD.PrintErr($"[MiningGame] Failed to save location state: {ex.Message}");
+					throw; // Re-throw to let caller handle
+				}
 			}
 
-			private void ProcessOfflineProgress()
-			{
-				if (_locationTemplate == null) return;
-				
-				// No offline progress calculation if this is a new save or missing timestamp
-				DateTime lastSaveTime = GetLastSaveTime();
-				if (lastSaveTime == default(DateTime)) 
-				{
-					UpdateLastSaveTime();
-					return;
-				}
-				
-				DateTime currentTime = DateTime.UtcNow;
-				double offlineSeconds = (currentTime - lastSaveTime).TotalSeconds;
-				
-				// Skip if no time passed or negative time (clock issues)
-				if (offlineSeconds <= 0) 
-				{
-					UpdateLastSaveTime();
-					return;
-				}
-				
-				// Cap offline time to reasonable limit (7 days)
-				const double maxOfflineSeconds = 7 * 24 * 3600.0;
-				offlineSeconds = Math.Min(offlineSeconds, maxOfflineSeconds);
-				
-				// Calculate how many mining ticks would have occurred
-				float miningTickTime = GetMiningTickTime();
-				if (miningTickTime <= 0) return;
-				
-				// Include current timer accumulator for accurate offline calculation
-				double totalOfflineTime = offlineSeconds;
-				if (GodotObject.IsInstanceValid(_game._engine))
-				{
-					double currentAccumulator = _game._engine.GetCurrentAccumulator();
-					totalOfflineTime += currentAccumulator; // Add progress toward next tick
-				}
-				
-				int possibleTicks = (int)(totalOfflineTime / miningTickTime);
-				if (possibleTicks <= 0) 
-				{
-					UpdateLastSaveTime();
-					return;
-				}
-				
-				// Simulate mining ticks up to capacity limit
-				int maxCapacity = GetMaxCapacity();
-				int gemsPerTick = GetGemsPerTick();
-				int offlineGems;
-				
-				// For performance: if we can fit all gems, calculate directly
-				int totalPossibleGems = possibleTicks * gemsPerTick;
-				int availableCapacity = maxCapacity - _pendingGems;
-				
-				if (totalPossibleGems <= availableCapacity)
-				{
-					// All ticks fit within capacity
-					_pendingGems += totalPossibleGems;
-					offlineGems = totalPossibleGems;
-				}
-				else
-				{
-					// Calculate how many ticks until capacity is reached
-					int ticksUntilCapacity = Math.Max(0, (availableCapacity + gemsPerTick - 1) / gemsPerTick);
-					int actualTicks = Math.Min(possibleTicks, ticksUntilCapacity);
-					
-					offlineGems = actualTicks * gemsPerTick;
-					_pendingGems = Math.Min(maxCapacity, _pendingGems + offlineGems);
-				}
-				
-				UpdateLastSaveTime();
-				
-				// Reset engine accumulator to prevent double-counting after offline processing
-				if (GodotObject.IsInstanceValid(_game._engine))
-				{
-					double remainingTime = totalOfflineTime - (possibleTicks * miningTickTime);
-					// Set accumulator to remaining partial tick time
-					_game._engine.SetAccumulator(Math.Max(0.0, remainingTime));
-				}
-				
-				if (offlineGems > 0)
-				{
-					double hours = offlineSeconds / 3600.0;
-					GD.Print($"[GameState] Offline mining: +{offlineGems} {_locationTemplate.PrimaryGemType} gems from {possibleTicks} ticks over {hours:F1} hours");
-				}
-			}
-			
-			public void ProcessMiningTick()
-			{
-				int maxCapacity = GetMaxCapacity();
-				if (_pendingGems >= maxCapacity)
-				{
-					GD.Print("[GameState] Mining tick skipped - at max capacity");
-					return;
-				}
-				
-				int gemsToAdd = Math.Min(
-					GetGemsPerTick(),
-					maxCapacity - _pendingGems
-				);
-				
-				_pendingGems += gemsToAdd;
-			}
-			
 			public bool CanExtractGems() => IsExtractionReady;
 			
 			public bool CanPurchaseCredit()
@@ -1187,7 +1087,11 @@ namespace BarBox.Games.MiningGame
 				
 				_globalData.AddGems(_locationTemplate.PrimaryGemType, _pendingGems);
 				_pendingGems = 0;
-				SaveData();
+				
+				// Reset mining timer when extracting (often at capacity)
+				ResetMiningTimer();
+				
+				_ = SaveDataAsync(); // Fire-and-forget
 				return true;
 			}
 			
@@ -1205,17 +1109,17 @@ namespace BarBox.Games.MiningGame
 				var timer = new CreditPurchaseTimer
 				{
 					PurchaseGameTime = _gameTime,
-					RechargeGameTime = _gameTime + (_game.Config.CreditRechargeHours * 3600.0)
+					RechargeGameTime = _gameTime + (_game.Config.CreditRechargeHours * SECONDS_PER_HOUR)
 				};
 				_globalData.CreditTimers.Add(timer);
 				
 				// Actually add credit to user account
 				if (_game._currentUser != null)
 				{
-					_game._userManager?.AddCredits(1);
+					_game._userManager?.AddCredits(CREDITS_PER_PURCHASE);
 				}
 				
-				SaveData();
+				_ = SaveDataAsync(); // Fire-and-forget
 				return true;
 			}
 			
@@ -1229,7 +1133,7 @@ namespace BarBox.Games.MiningGame
 				_globalData.SpendGems(cost);
 				SetUpgradeLevel(upgradeType, currentLevel + 1);
 				
-				SaveData();
+				_ = SaveDataAsync(); // Fire-and-forget
 				return true;
 			}
 			
@@ -1249,7 +1153,6 @@ namespace BarBox.Games.MiningGame
 				InvalidateCache();
 				
 				// Reset timestamps
-				_lastSaveTimestamp = DateTime.UtcNow;
 				
 				if (_game.EnableDebugMode)
 				{
@@ -1257,7 +1160,7 @@ namespace BarBox.Games.MiningGame
 				}
 			}
 
-			public async void SaveData()
+			public async Task SaveDataAsync()
 			{
 				string userId = _game._currentUser?.UserId;
 				if (string.IsNullOrEmpty(userId)) 
@@ -1267,12 +1170,19 @@ namespace BarBox.Games.MiningGame
 				if (dataStore == null) 
 					return;
 				
-				await SaveLocationStateAsync();
-				await dataStore.SetGameValueAsync(userId, GLOBAL_DATA_KEY, _globalData);
-				
-				if (_game.EnableDebugMode)
+				try
 				{
-					GD.Print("[GameState] Data saved");
+					await SaveLocationStateAsync();
+					await dataStore.SetGameValueAsync(userId, GLOBAL_DATA_KEY, _globalData);
+					
+					if (_game.EnableDebugMode)
+					{
+						GD.Print("[GameState] Data saved");
+					}
+				}
+				catch (System.Exception ex)
+				{
+					GD.PrintErr($"[MiningGame] Failed to save data: {ex.Message}");
 				}
 			}
 		}

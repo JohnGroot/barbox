@@ -10,6 +10,10 @@ namespace BarBox.Games.MiningGame
 		public Dictionary<UpgradeType, int> UpgradeLevelsDict { get; set; } = new();
 		public bool FirstTimeBonus { get; set; } = true;
 		public DateTime LastSaveTime { get; set; } = DateTime.UtcNow;
+		public DateTime LastMiningTickTime { get; set; } = DateTime.UtcNow; // Timestamp when last mining tick occurred
+		
+		// Legacy field for migration - will be removed after migration
+		public float PartialProgress { get; set; } = 0.0f;
 		
 		// Cache for performance optimization
 		private Dictionary<UpgradeType, int> _cachedUpgradeLevels;
