@@ -1293,10 +1293,10 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		var userSession = _sessionManager.GetCurrentUserSession();
 		if (userSession?.GlobalData != null)
 		{
-			// Increment competitive games played in global data
-			userSession.GlobalData.IncrementCompetitiveGames("carrom");
+			// Carrom competitive games are tracked via wins/losses in CarromGameContext
+			var totalCarromGames = userSession.GlobalData.Carrom.GlobalWins + userSession.GlobalData.Carrom.GlobalLosses;
 			
-			GD.Print($"[CarromCompetitive] Tracked competitive game globally - Total carrom games: {userSession.GlobalData.GetCompetitiveGamesPlayed("carrom")}");
+			GD.Print($"[CarromCompetitive] Tracking competitive game globally - Total carrom games: {totalCarromGames}");
 		}
 		else
 		{

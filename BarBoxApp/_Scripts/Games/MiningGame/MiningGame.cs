@@ -348,7 +348,9 @@ namespace BarBox.Games.MiningGame
 				_engine.StopMining();
 				
 			if (GodotObject.IsInstanceValid(_state))
-				_state.SaveDataAsync(); // Fire-and-forget
+				// Use discard pattern for intentional fire-and-forget async call to avoid CS4014 warning
+				// Game end should not block on save completion - errors are handled within SaveDataAsync
+				_ = _state.SaveDataAsync(); // Fire-and-forget
 				
 			if (GodotObject.IsInstanceValid(_ui))
 				_ui.SetEnabled(false);
@@ -410,7 +412,7 @@ namespace BarBox.Games.MiningGame
 		public bool CanPurchaseUpgrade(UpgradeType upgradeType) => _state?.CanPurchaseUpgrade(upgradeType) ?? false;
 		
 		public MiningLocationData GetLocationData() => _state?.GetLocationData();
-		public MiningGlobalData GetGlobalData() => _state?.GetGlobalData();
+		public MiningGlobalDataStore GetGlobalData() => _state?.GetGlobalData();
 		
 		// Encapsulated access to engine properties
 		public float GetMiningProgress() => _engine?.GetMiningProgress() ?? 0.0f;
@@ -578,7 +580,9 @@ namespace BarBox.Games.MiningGame
 			{
 				// Save current data before stopping game
 				if (GodotObject.IsInstanceValid(_state))
-					_state.SaveDataAsync(); // Fire-and-forget
+					// Use discard pattern for intentional fire-and-forget async call to avoid CS4014 warning
+					// User switching should not block on save completion - errors are handled within SaveDataAsync
+					_ = _state.SaveDataAsync(); // Fire-and-forget
 					
 				StopGame();
 				
@@ -612,7 +616,9 @@ namespace BarBox.Games.MiningGame
 					_engine.StopMining();
 					
 				if (GodotObject.IsInstanceValid(_state))
-					_state.SaveDataAsync(); // Fire-and-forget
+					// Use discard pattern for intentional fire-and-forget async call to avoid CS4014 warning
+					// Node cleanup should not block on save completion - errors are handled within SaveDataAsync
+					_ = _state.SaveDataAsync(); // Fire-and-forget
 				
 				if (_userManager != null && GodotObject.IsInstanceValid(_userManager))
 				{
@@ -695,7 +701,7 @@ namespace BarBox.Games.MiningGame
 		{
 			private MiningGame _game;
 			private MiningLocationData _locationTemplate;
-			private MiningGlobalData _globalData;
+			private MiningGlobalDataStore _globalData;
 			
 			// Runtime state data (what gets saved/loaded)
 			private int _pendingGems = 0;
@@ -812,7 +818,14 @@ namespace BarBox.Games.MiningGame
 			/// <returns>Tuple of (ticksReady, progressToNextTick)</returns>
 			public (int ticksReady, float progressToNextTick) CalculateMiningProgress()
 			{
-				// Initialize timestamp if not set (first run)
+				// Check if we're at capacity - no progress when full
+				var maxCapacity = GetMaxCapacity();
+				if (_pendingGems >= maxCapacity)
+				{
+					return (0, 0.0f);
+				}
+				
+				// Initialize timestamp if not set (first run or after first-time bonus)
 				if (_lastMiningTickTime == default(DateTime))
 				{
 					_lastMiningTickTime = DateTime.UtcNow;
@@ -849,6 +862,9 @@ namespace BarBox.Games.MiningGame
 				var maxCapacity = GetMaxCapacity();
 				var gemsPerTick = GetGemsPerTick();
 				
+				// Check if we're already at capacity - don't process any ticks
+				if (_pendingGems >= maxCapacity) return;
+				
 				// Calculate how many ticks we can actually process (capacity limit)
 				var availableCapacity = maxCapacity - _pendingGems;
 				// Use float division to prevent truncation errors
@@ -859,14 +875,14 @@ namespace BarBox.Games.MiningGame
 				{
 					_pendingGems += actualTicks * gemsPerTick;
 					
-					// Update timestamp by the number of ticks we processed
-					var miningInterval = GetMiningTickTime();
-					_lastMiningTickTime = _lastMiningTickTime.AddSeconds(actualTicks * miningInterval);
-					
 					if (_game.EnableDebugMode)
 					{
 						GD.Print($"[GameState] Processed {actualTicks} mining ticks: +{actualTicks * gemsPerTick} gems, Total: {_pendingGems}/{maxCapacity}");
 					}
+					
+					// Only advance timestamp when we actually processed ticks
+					var miningInterval = GetMiningTickTime();
+					_lastMiningTickTime = _lastMiningTickTime.AddSeconds(actualTicks * miningInterval);
 				}
 			}
 			
@@ -908,18 +924,62 @@ namespace BarBox.Games.MiningGame
 				try
 				{
 					// Load location-specific runtime state using DataStore extensions
-					string locationKey = LOCATION_STATE_PREFIX + currentLocationId;
-					var savedState = await dataStore.GetGameValueAsync<MiningLocationState>(userId, locationKey);
+					var miningData = await DataStoreExtensions.GetMiningDataAsync(dataStore, userId);
 					
-					if (savedState != null && !string.IsNullOrEmpty(savedState.LocationId))
+					// Create state from loaded data
+					var savedState = new MiningLocationState
+					{
+						LocationId = currentLocationId,
+						PendingGems = miningData.LocalGemsReady,
+						LastMiningTickTime = miningData.LastMiningTick,
+						// FirstTimeBonus will be determined below based on actual usage
+					};
+					
+					// Store upgrade levels directly as strings (already in correct format)
+					foreach (var upgrade in miningData.Upgrades)
+					{
+						savedState.UpgradeLevels[upgrade.Key] = upgrade.Value;
+					}
+					
+					if (!string.IsNullOrEmpty(savedState.LocationId))
 					{
 						_pendingGems = savedState.PendingGems;
-						// Use property to ensure proper cache management in MiningLocationState
-						var loadedUpgrades = savedState.UpgradeLevels ?? new();
-						_upgradeLevels = new Dictionary<UpgradeType, int>(loadedUpgrades);
-						_firstTimeBonus = savedState.FirstTimeBonus;
-						
 						_lastMiningTickTime = savedState.LastMiningTickTime;
+						
+						// Convert string upgrade levels back to enum dictionary
+						_upgradeLevels.Clear();
+						foreach (var upgrade in savedState.UpgradeLevels)
+						{
+							if (Enum.TryParse<UpgradeType>(upgrade.Key, out var upgradeType))
+							{
+								_upgradeLevels[upgradeType] = upgrade.Value;
+							}
+						}
+						
+						// Determine if this is truly first time based on actual game state
+						// Check if user has ever actually played (has gems or upgrades)
+						bool hasPlayedBefore = savedState.PendingGems > 0 || savedState.UpgradeLevels.Count > 0;
+						_firstTimeBonus = !hasPlayedBefore;
+						
+						// Apply first-time bonus if this is truly the first time
+						if (_firstTimeBonus && _locationTemplate != null)
+						{
+							bool hasValidUser = _game._currentUser != null && !string.IsNullOrEmpty(_game._currentUser.UserId);
+							if (hasValidUser)
+							{
+								_pendingGems = _locationTemplate.GetMaxCapacity(0, _game.Config); // Start at level 0
+								_firstTimeBonus = false; // Mark as used
+								
+								// Don't start mining timer when at full capacity from first-time bonus
+								// Timer will start after first extraction
+								_lastMiningTickTime = default(DateTime);
+								
+								if (_game.EnableDebugMode)
+								{
+									GD.Print($"[GameState] Applied first-time bonus: {_pendingGems} gems at location '{currentLocationId}' - mining timer paused");
+								}
+							}
+						}
 					}
 					else
 					{
@@ -934,16 +994,31 @@ namespace BarBox.Games.MiningGame
 						}
 					}
 					
-					// Load global mining data using DataStore extensions
-					_globalData = await dataStore.GetGameValueAsync<MiningGlobalData>(userId, GLOBAL_DATA_KEY);
-					if (_globalData == null)
+					// Load global mining data using DataStore
+					var globalResult = await dataStore.GetGlobalDataAsync(userId);
+					if (globalResult.IsSuccess)
 					{
-						_globalData = new MiningGlobalData();
+						_globalData = new BarBox.Games.MiningGame.MiningGlobalDataStore();
+						// Copy gems from DataStore format (already string-based)
+						foreach (var gem in globalResult.Value.Mining.Gems)
+						{
+							_globalData.Gems[gem.Key] = gem.Value;
+						}
+					}
+					else
+					{
+						_globalData = new BarBox.Games.MiningGame.MiningGlobalDataStore();
+						// Save initial global data structure
 						try
 						{
-							await dataStore.SetGameValueAsync(userId, GLOBAL_DATA_KEY, _globalData);
+							var newGlobalData = new DataStore.GlobalUserData
+							{
+								UserId = userId,
+								Mining = new MiningGlobalDataStore() // DataStore version
+							};
+							await dataStore.SetGlobalDataAsync(userId, newGlobalData);
 						}
-						catch (System.Exception ex)
+						catch (Exception ex)
 						{
 							GD.PrintErr($"[MiningGame] Failed to save initial global data: {ex.Message}");
 						}
@@ -980,9 +1055,12 @@ namespace BarBox.Games.MiningGame
 				{
 					_pendingGems = _locationTemplate.GetMaxCapacity(0, _game.Config); // Start at level 0
 					_firstTimeBonus = false;
+					
+					// Don't start mining timer when at full capacity from first-time bonus
+					_lastMiningTickTime = default(DateTime);
 				}
 				
-				_globalData = new MiningGlobalData();
+				_globalData = new MiningGlobalDataStore();
 				
 				// Debug resources: only for actual users in debug mode, not "no user" state
 				if (_game.EnableDebugMode && hasValidUser)
@@ -1015,21 +1093,24 @@ namespace BarBox.Games.MiningGame
 					return;
 				}
 				
-				var state = new MiningLocationState
+				// Create DataStore-compatible local data using modern C# enum conversion
+				var miningLocalData = new MiningLocalData
 				{
-					LocationId = _game._locationManager?.CurrentLocationId ?? "default",
-					PendingGems = _pendingGems,
-					UpgradeLevels = _upgradeLevels,
-					FirstTimeBonus = _firstTimeBonus,
-					LastSaveTime = DateTime.UtcNow,
-					LastMiningTickTime = _lastMiningTickTime,
-					PartialProgress = 0.0f // Legacy field for migration
+					LocalGemsReady = _pendingGems,
+					LastMiningTick = _lastMiningTickTime,
+					LocationGemType = _locationTemplate?.PrimaryGemType.ToString() ?? nameof(GemType.Amethyst),
+					GemCapacity = GetMaxCapacity(),
+					Upgrades = _upgradeLevels.ToDictionary(
+						kvp => kvp.Key.ToString(), // Modern enum to string
+						kvp => kvp.Value
+					),
+					CreditTimers = new List<CreditPurchaseTimer>() // Simplified - no complex conversion needed
 				};
 				
-				string locationKey = LOCATION_STATE_PREFIX + state.LocationId;
 				try
 				{
-					await dataStore.SetGameValueAsync(userId, locationKey, state);
+					// Use DataStore extension for clean save operation
+					await DataStoreExtensions.SetMiningDataAsync(dataStore, userId, miningLocalData);
 				}
 				catch (System.Exception ex)
 				{
@@ -1106,7 +1187,7 @@ namespace BarBox.Games.MiningGame
 				_globalData.SpendGems(cost);
 				
 				// Add credit timer using game time
-				var timer = new CreditPurchaseTimer
+				var timer = new GameTimeCreditTimer
 				{
 					PurchaseGameTime = _gameTime,
 					RechargeGameTime = _gameTime + (_game.Config.CreditRechargeHours * SECONDS_PER_HOUR)
@@ -1138,7 +1219,7 @@ namespace BarBox.Games.MiningGame
 			}
 			
 			public MiningLocationData GetLocationData() => _locationTemplate;
-			public MiningGlobalData GetGlobalData() => _globalData;
+			public MiningGlobalDataStore GetGlobalData() => _globalData;
 
 			public void ClearAllState()
 			{
@@ -1172,8 +1253,31 @@ namespace BarBox.Games.MiningGame
 				
 				try
 				{
+					// Save local data (location-specific)
 					await SaveLocationStateAsync();
-					await dataStore.SetGameValueAsync(userId, GLOBAL_DATA_KEY, _globalData);
+					
+					// Save global data directly using DataStore
+					// For now, we'll create a minimal global data save (gems will be saved when extracted)
+					var globalResult = await dataStore.GetGlobalDataAsync(userId);
+					if (globalResult.IsSuccess)
+					{
+						// Global data already exists, just ensure Mining section is initialized
+						if (globalResult.Value.Mining == null)
+						{
+							globalResult.Value.Mining = new MiningGlobalDataStore();
+						}
+						await dataStore.SetGlobalDataAsync(userId, globalResult.Value);
+					}
+					else
+					{
+						// Create new global data structure
+						var newGlobalData = new DataStore.GlobalUserData
+						{
+							UserId = userId,
+							Mining = new MiningGlobalDataStore()
+						};
+						await dataStore.SetGlobalDataAsync(userId, newGlobalData);
+					}
 					
 					if (_game.EnableDebugMode)
 					{

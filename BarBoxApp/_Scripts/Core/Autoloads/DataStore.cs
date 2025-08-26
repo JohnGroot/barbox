@@ -47,47 +47,25 @@ public partial class DataStore : AutoloadBase
 	/// <summary>
 	/// Global user data structure (cross-location)
 	/// </summary>
-	public class GlobalUserData
+	public partial class GlobalUserData
 	{
 		public string UserId { get; init; } = string.Empty;
 		public int GlobalCredits { get; set; }
-		public Dictionary<string, int> GlobalInventory { get; set; } = new();
-		public Dictionary<string, int> GlobalHighScores { get; set; } = new();
-		public Dictionary<string, int> CompetitiveGamesPlayed { get; set; } = new();
 		public DateTime LastSyncAt { get; init; } = DateTime.UtcNow;
 		
-		/// <summary>
-		/// Increment competitive games played for a specific game type
-		/// </summary>
-		public void IncrementCompetitiveGames(string gameType)
-		{
-			if (string.IsNullOrEmpty(gameType)) return;
-			
-			CompetitiveGamesPlayed.TryGetValue(gameType, out int currentCount);
-			CompetitiveGamesPlayed[gameType] = currentCount + 1;
-		}
-		
-		/// <summary>
-		/// Get competitive games played for a specific game type
-		/// </summary>
-		public int GetCompetitiveGamesPlayed(string gameType)
-		{
-			if (string.IsNullOrEmpty(gameType)) return 0;
-			
-			CompetitiveGamesPlayed.TryGetValue(gameType, out int count);
-			return count;
-		}
+		// Game-specific properties added via partial class extensions in game directories
 	}
 
 	/// <summary>
 	/// Local user data structure (machine-specific)
 	/// </summary>
-	public class LocalUserData
+	public partial class LocalUserData
 	{
 		public string UserId { get; init; } = string.Empty;
 		public string LocationId { get; set; } = string.Empty;
 		public DateTime LastLoginTime { get; set; } = DateTime.UtcNow;
-		public Dictionary<string, string> GameState { get; init; } = new();
+		
+		// Game-specific properties added via partial class extensions in game directories
 	}
 
 	/// <summary>
@@ -279,13 +257,10 @@ public partial class DataStore : AutoloadBase
 				backend = new LocalFileBackend();
 				break;
 		}
-		
+
 		// Initialize the backend if not already initialized
-		if (backend != null)
-		{
-			await backend.InitializeAsync(_locationId, _apiBaseUrl);
-		}
-		
+		await backend.InitializeAsync(_locationId, _apiBaseUrl);
+
 		return backend;
 	}
 
@@ -322,3 +297,12 @@ public partial class DataStore : AutoloadBase
 		Instance = null;
 	}
 }
+
+/// <summary>
+/// Game data types are now defined in their respective game directories:
+/// - MiningGame: _Scripts/Games/MiningGame/Data/
+/// - RacingGame: _Scripts/Games/RacingGame/Data/ 
+/// - CarromGame: _Scripts/Games/CarromGame/Data/
+/// 
+/// Each game extends GlobalUserData and LocalUserData via partial class extensions.
+/// </summary>

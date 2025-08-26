@@ -467,7 +467,8 @@ namespace BarBox.Games.MiningGame
 			var inventoryLines = new List<string>();
 			foreach (GemType gemType in Enum.GetValues<GemType>())
 			{
-				if (globalData.GlobalGemInventory.TryGetValue(gemType, out int amount) && amount > 0)
+				int amount = globalData.GetGems(gemType);
+			if (amount > 0)
 				{
 					var gemColor = _locationData?.GetGemColor(gemType) ?? Colors.Gray;
 					inventoryLines.Add($"  {gemType}: {amount}");
@@ -492,7 +493,7 @@ namespace BarBox.Games.MiningGame
 			Modulate = Colors.White;
 		}
 		
-		private void UpdateCreditTimers(MiningGlobalData globalData)
+		private void UpdateCreditTimers(MiningGlobalDataStore globalData)
 		{
 			var activeTimers = globalData.CreditTimers
 				.Where(timer => !timer.IsRecharged(_game.GetStateTime()))

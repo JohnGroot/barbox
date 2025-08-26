@@ -1,6 +1,7 @@
 using Godot;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace BarBox.Games.Racing;
 
@@ -395,7 +396,7 @@ public partial class RacingGame : GameController
 	// ================================================================
 
 	/// <summary>
-	/// Handle lap completion - centralized signal processing
+	/// Handle lap completion - centralized signal processing and data saving
 	/// </summary>
 	private void OnTimingSystemLapCompleted(string playerId, int lapNumber, float lapTime)
 	{
@@ -410,6 +411,9 @@ public partial class RacingGame : GameController
 			float totalTime = _timingSystem.CalculatePlayerScore(playerId, _currentGameMode);
 			UpdateScore(playerId, totalTime);
 		}
+		
+		// Save best lap time if this is a new record
+		SaveBestLapTime(playerId, lapTime);
 		
 		// Emit signal for external integrations (GameHost) at high level
 		EmitSignal(SignalName.LapCompleted, playerId, lapNumber, lapTime);
@@ -440,8 +444,8 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Save global high score for racing game using DataStore extensions
-	/// Tracks best times globally with proper async error handling
+	/// Save global high score for racing game using direct DataStore integration
+	/// Tracks best times globally with modern C# patterns and fire-and-forget saves
 	/// </summary>
 	private async void SaveGlobalHighScore(string playerId, float totalTime)
 	{
@@ -454,25 +458,97 @@ public partial class RacingGame : GameController
 			return;
 		}
 		
-		// Create key for this specific track and lap configuration
-		string scoreKey = $"racing_{_currentTrackIndex}_{_targetLaps}laps";
-		int newTime = Mathf.RoundToInt(totalTime * 1000); // Store as milliseconds for precision
-		
-		// Use DataStore extension method to save high score (lower time is better)
-		bool savedNewHighScore = await dataStore.SaveHighScoreAsync(playerId, scoreKey, newTime, higherIsBetter: false);
-		
-		if (savedNewHighScore)
+		// Fire-and-forget save with proper error handling
+		await Task.Run(async () =>
 		{
-			// Get the previous score for logging
-			int previousScore = await dataStore.GetHighScoreAsync(playerId, scoreKey, int.MaxValue);
-			// New global high score achieved
-		}
-		else
+			try
+			{
+				var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+				if (!globalDataResult.IsSuccess)
+				{
+					GD.PrintErr($"[RacingGame] Failed to get global data: {globalDataResult.Error}");
+					return;
+				}
+				
+				var globalData = globalDataResult.Value;
+				
+				// Create key using modern C# enum conversion
+				string trackKey = $"track_{_currentTrackIndex}_{_targetLaps}laps";
+				
+				// Check if this is a new best time
+				bool isNewBest = !globalData.Racing.BestRaceTimes.ContainsKey(trackKey) ||
+								globalData.Racing.BestRaceTimes[trackKey] > totalTime;
+				
+				if (isNewBest)
+				{
+					// Update best race time
+					globalData.Racing.BestRaceTimes[trackKey] = totalTime;
+					globalData.Racing.TotalRaces++;
+					
+					// Save updated data
+					var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
+					if (saveResult.IsSuccess)
+					{
+						GD.Print($"[RacingGame] New best time saved: {totalTime:F3}s for {trackKey}");
+					}
+					else
+					{
+						GD.PrintErr($"[RacingGame] Failed to save high score: {saveResult.Error}");
+					}
+				}
+			}
+			catch (System.Exception ex)
+			{
+				GD.PrintErr($"[RacingGame] Exception saving high score: {ex.Message}");
+			}
+		});
+	}
+
+	/// <summary>
+	/// Save best lap time for racing game using direct DataStore integration
+	/// </summary>
+	private async void SaveBestLapTime(string playerId, float lapTime)
+	{
+		if (string.IsNullOrEmpty(playerId) || lapTime <= 0.0f) return;
+		
+		var dataStore = DataStore.GetInstance();
+		if (dataStore == null) return;
+		
+		// Fire-and-forget save with proper error handling
+		await Task.Run(async () =>
 		{
-			// Get current record for comparison
-			int currentBestTime = await dataStore.GetHighScoreAsync(playerId, scoreKey, int.MaxValue);
-			// Race completed
-		}
+			try
+			{
+				var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+				if (!globalDataResult.IsSuccess) return;
+				
+				var globalData = globalDataResult.Value;
+				
+				// Create key using modern C# pattern
+				string trackKey = $"track_{_currentTrackIndex}";
+				
+				// Check if this is a new best lap time
+				bool isNewBest = !globalData.Racing.BestLapTimes.ContainsKey(trackKey) ||
+								globalData.Racing.BestLapTimes[trackKey] > lapTime;
+				
+				if (isNewBest)
+				{
+					// Update best lap time
+					globalData.Racing.BestLapTimes[trackKey] = lapTime;
+					
+					// Save updated data
+					var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
+					if (saveResult.IsSuccess)
+					{
+						GD.Print($"[RacingGame] New best lap time saved: {lapTime:F3}s for {trackKey}");
+					}
+				}
+			}
+			catch (System.Exception ex)
+			{
+				GD.PrintErr($"[RacingGame] Exception saving lap time: {ex.Message}");
+			}
+		});
 	}
 
 	/// <summary>
@@ -1223,7 +1299,7 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Show global high scores using DataStore extensions
+	/// Show global high scores using direct DataStore integration
 	/// </summary>
 	private async void ShowGlobalHighScores()
 	{
@@ -1237,46 +1313,65 @@ public partial class RacingGame : GameController
 			return;
 		}
 		
-		// Get global data to extract racing scores
-		var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-		if (!globalDataResult.IsSuccess)
+		try
 		{
-			ShowHighScoresFallback();
-			return;
-		}
-		
-		// Build high score display from global data
-		var highScores = new System.Text.StringBuilder("🏁 RACING HIGH SCORES 🏁\n\n");
-		
-		// Filter racing high scores
-		var racingScores = globalDataResult.Value.GlobalHighScores
-			.Where(kvp => kvp.Key.StartsWith("racing_"))
-			.OrderBy(kvp => kvp.Value) // Lower times are better
-			.Take(10); // Top 10
-		
-		if (racingScores.Any())
-		{
-			foreach (var score in racingScores)
+			// Get global data to extract racing scores
+			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+			if (!globalDataResult.IsSuccess)
 			{
-				// Parse the key to get track and lap info
-				var parts = score.Key.Split('_');
-				if (parts.Length >= 3)
+				ShowHighScoresFallback();
+				return;
+			}
+			
+			// Build high score display from global data
+			var highScores = new System.Text.StringBuilder("🏁 RACING HIGH SCORES 🏁\n\n");
+			
+			// Get racing best times from typed properties
+			var racingData = globalDataResult.Value.Racing;
+			var allBestTimes = new List<(string track, float time, string type)>();
+			
+			// Add best lap times
+			foreach (var lapTime in racingData.BestLapTimes)
+			{
+				allBestTimes.Add((lapTime.Key, lapTime.Value, "Best Lap"));
+			}
+			
+			// Add best race times
+			foreach (var raceTime in racingData.BestRaceTimes)
+			{
+				allBestTimes.Add((raceTime.Key, raceTime.Value, "Best Race"));
+			}
+			
+			var racingScores = allBestTimes
+				.OrderBy(x => x.time) // Lower times are better
+				.Take(10); // Top 10
+			
+			if (racingScores.Any())
+			{
+				foreach (var score in racingScores)
 				{
-					string trackInfo = parts.Length > 1 ? $"Track {parts[1]}" : "Track ?";
-					string lapInfo = parts.Length > 2 ? parts[2].Replace("laps", " laps") : "? laps";
-					float timeInSeconds = score.Value / 1000.0f;
-					
-					highScores.AppendLine($"{trackInfo} - {lapInfo}: {timeInSeconds:F3}s");
+					highScores.AppendLine($"{score.track} - {score.type}: {score.time:F3}s");
+				}
+				
+				// Add total races completed
+				if (racingData.TotalRaces > 0)
+				{
+					highScores.AppendLine($"\nTotal Races Completed: {racingData.TotalRaces}");
 				}
 			}
+			else
+			{
+				highScores.AppendLine("No high scores yet!");
+				highScores.AppendLine("Complete some races to set records.");
+			}
+			
+			GD.Print(highScores.ToString());
 		}
-		else
+		catch (System.Exception ex)
 		{
-			highScores.AppendLine("No high scores yet!");
-			highScores.AppendLine("Complete some races to set records.");
+			GD.PrintErr($"[RacingGame] Exception showing high scores: {ex.Message}");
+			ShowHighScoresFallback();
 		}
-		
-		// Global high scores displayed
 		
 		// Return to previous state after brief delay
 		CreateAutoCleanupTimer(5.0f, () => {
@@ -1289,8 +1384,8 @@ public partial class RacingGame : GameController
 
 	private void ShowHighScoresFallback()
 	{
-		// Fallback: show simple message
-		// High scores feature not available - please log in
+		GD.Print("🏁 RACING HIGH SCORES 🏁\n\nHigh scores feature not available - DataStore service unavailable.");
+		
 		// Return to previous state after brief delay
 		CreateAutoCleanupTimer(2.0f, () => {
 			if (GetGameMode() == GameMode.Practice)

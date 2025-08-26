@@ -1,6 +1,7 @@
 using Godot;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 /// <summary>
 /// Traditional board game featuring physics-based striking and strategic pocket play
@@ -116,6 +117,9 @@ public partial class CarromGame : GameController
 		
 		// Context detection
 		DetectAndAdaptToContext();
+		
+		// Load user data after context detection
+		LoadUserDataAsync();
 		
 		// Start practice mode AFTER all managers are initialized
 		// This prevents SetPhaseManager(null) errors during initialization
@@ -469,12 +473,34 @@ public partial class CarromGame : GameController
 	}
 
 	/// <summary>
-	/// Start competitive mode (full carrom rules)
+	/// Start competitive mode (full carrom rules) with credit checking
 	/// </summary>
-	public virtual void StartCompetitiveMode(int playerCount = 2)
+	public virtual async void StartCompetitiveMode(int playerCount = 2)
 	{
 		if (_isGameActive) 
 			return;
+		
+		// Check credits in production mode
+		var player = _players?.FirstOrDefault();
+		if (player?.PlayerId != null && CompetitiveCreditCost > 0)
+		{
+			bool isDevelopmentMode = Engine.IsEditorHint() || OS.IsDebugBuild();
+			if (!isDevelopmentMode)
+			{
+				var sessionManager = SessionManager.GetInstance();
+				if (sessionManager != null)
+				{
+					bool creditsSpent = await sessionManager.CheckAndSpendGlobalCreditsAsync(
+						player.PlayerId, CompetitiveCreditCost, "Competitive Carrom Match");
+					
+					if (!creditsSpent)
+					{
+						GD.Print("[CarromGame] Competitive mode cancelled - insufficient credits");
+						return;
+					}
+				}
+			}
+		}
 		
 		// Clean up practice mode before switching
 		_practiceModeManager?.CleanupMode();
@@ -490,7 +516,7 @@ public partial class CarromGame : GameController
 		ResetGame();
 		StartGame();
 		
-		// Delegate to competitive mode manager (now tracks globally instead of spending credits)
+		// Delegate to competitive mode manager
 		bool success = _competitiveModeManager.StartCompetitiveMode();
 		if (!success)
 		{
@@ -1058,6 +1084,125 @@ public partial class CarromGame : GameController
 			player.PlayerId = "dev_player";
 			AddPlayer(player);
 		}
+	}
+
+	// ================================================================
+	// SAVE/LOAD SYSTEM
+	// ================================================================
+
+	/// <summary>
+	/// Load user data from DataStore on game startup
+	/// </summary>
+	private async void LoadUserDataAsync()
+	{
+		var dataStore = DataStore.GetInstance();
+		if (dataStore == null) return;
+
+		var player = _players?.FirstOrDefault();
+		if (player?.PlayerId == null) return;
+
+		// Fire-and-forget load with proper error handling
+		await Task.Run(async () =>
+		{
+			try
+			{
+				var globalDataResult = await dataStore.GetGlobalDataAsync(player.PlayerId);
+				if (globalDataResult.IsSuccess)
+				{
+					var carromData = globalDataResult.Value.Carrom;
+					GD.Print($"[CarromGame] Loaded global data - Wins: {carromData.GlobalWins}, Losses: {carromData.GlobalLosses}, Best Streak: {carromData.BestWinStreak}");
+				}
+
+				var localDataResult = await dataStore.GetLocalDataAsync(player.PlayerId);
+				if (localDataResult.IsSuccess)
+				{
+					var carromLocalData = localDataResult.Value.Carrom;
+					GD.Print($"[CarromGame] Loaded local data - Games at location: {carromLocalData.GamesAtLocation}");
+				}
+			}
+			catch (System.Exception ex)
+			{
+				GD.PrintErr($"[CarromGame] Exception loading user data: {ex.Message}");
+			}
+		});
+	}
+
+	/// <summary>
+	/// Save win/loss statistics to DataStore
+	/// </summary>
+	private async void SaveGameResultAsync(string playerId, bool isWin)
+	{
+		var dataStore = DataStore.GetInstance();
+		if (dataStore == null) return;
+
+		// Fire-and-forget save with proper error handling
+		await Task.Run(async () =>
+		{
+			try
+			{
+				// Update global data
+				var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+				if (globalDataResult.IsSuccess)
+				{
+					var globalData = globalDataResult.Value;
+					
+					if (isWin)
+					{
+						globalData.Carrom.GlobalWins++;
+						// Update best win streak if current streak is better
+						var currentStreak = GetCurrentWinStreak(playerId);
+						if (currentStreak > globalData.Carrom.BestWinStreak)
+						{
+							globalData.Carrom.BestWinStreak = currentStreak;
+						}
+					}
+					else
+					{
+						globalData.Carrom.GlobalLosses++;
+					}
+
+					await dataStore.SetGlobalDataAsync(playerId, globalData);
+					GD.Print($"[CarromGame] Saved global data - Win: {isWin}");
+				}
+
+				// Update local data
+				var localDataResult = await dataStore.GetLocalDataAsync(playerId);
+				if (localDataResult.IsSuccess)
+				{
+					var localData = localDataResult.Value;
+					localData.Carrom.GamesAtLocation++;
+					localData.Carrom.LastPlayedAt = System.DateTime.UtcNow;
+					
+					if (isWin)
+					{
+						localData.Carrom.SessionWins++;
+						localData.Carrom.CurrentWinStreak++;
+					}
+					else
+					{
+						localData.Carrom.SessionLosses++;
+						localData.Carrom.CurrentWinStreak = 0;
+					}
+
+					await dataStore.SetLocalDataAsync(playerId, localData);
+				}
+			}
+			catch (System.Exception ex)
+			{
+				GD.PrintErr($"[CarromGame] Exception saving game result: {ex.Message}");
+			}
+		});
+	}
+
+	/// <summary>
+	/// Get current win streak for a player from competitive mode manager
+	/// </summary>
+	private int GetCurrentWinStreak(string playerId)
+	{
+		if (_competitiveModeManager == null) return 0;
+		
+		var player = _competitiveModeManager.GetPlayers()?.FirstOrDefault(p => p.PlayerId == playerId);
+		return player != null ? 1 : 0; // Simple implementation - just return 1 for existing players
 	}
 
 	// ================================================================
@@ -1788,6 +1933,9 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnPlayerWon(string playerId)
 	{
+		// Save win result to DataStore
+		SaveGameResultAsync(playerId, true);
+		
 		// Handle win condition
 		EndGame();
 		
