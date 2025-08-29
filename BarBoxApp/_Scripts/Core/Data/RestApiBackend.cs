@@ -2,6 +2,7 @@ using Godot;
 using System;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 /// <summary>
@@ -29,6 +30,8 @@ public class RestApiBackend : IDataStoreBackend
 	private string _apiBaseUrl;
 	private string _apiHost;
 	private int _apiPort;
+	private CancellationTokenSource _connectionCancellation;
+	private CancellationTokenSource _requestCancellation;
 
 	public Task<bool> InitializeAsync(string locationId, string apiBaseUrl = null)
 	{
@@ -424,12 +427,26 @@ public class RestApiBackend : IDataStoreBackend
 			return false;
 		}
 
+		// Cancel any previous connection attempt
+		_connectionCancellation?.Cancel();
+		_connectionCancellation = new CancellationTokenSource();
+		var cancellationToken = _connectionCancellation.Token;
+		
 		// Wait for connection to be established
 		var attempts = 0;
-		while (_httpClient.GetStatus() == HttpClient.Status.Connecting && attempts < MAX_RETRY_ATTEMPTS)
+		while (_httpClient.GetStatus() == HttpClient.Status.Connecting && 
+			   attempts < MAX_RETRY_ATTEMPTS && 
+			   !cancellationToken.IsCancellationRequested)
 		{
-			await Task.Delay(CONNECTION_POLL_DELAY_MS);
+			await AutoloadBase.StaticDelayAsync(CONNECTION_POLL_DELAY_MS / 1000.0f);
 			attempts++;
+		}
+		
+		// Check if cancelled
+		if (cancellationToken.IsCancellationRequested)
+		{
+			GD.Print($"Connection attempt to {_apiHost}:{_apiPort} was cancelled");
+			return false;
 		}
 
 		if (_httpClient.GetStatus() != HttpClient.Status.Connected)
@@ -455,10 +472,34 @@ public class RestApiBackend : IDataStoreBackend
 			return (false, "");
 		}
 
-		// Poll for response
-		while (_httpClient.GetStatus() == HttpClient.Status.Requesting)
+		// Cancel any previous request polling
+		_requestCancellation?.Cancel();
+		_requestCancellation = new CancellationTokenSource();
+		var requestCancellationToken = _requestCancellation.Token;
+		
+		// Poll for response with timeout and cancellation
+		var pollAttempts = 0;
+		const int MAX_POLL_ATTEMPTS = 5000; // 50 seconds timeout (10ms * 5000)
+		
+		while (_httpClient.GetStatus() == HttpClient.Status.Requesting && 
+			   pollAttempts < MAX_POLL_ATTEMPTS && 
+			   !requestCancellationToken.IsCancellationRequested)
 		{
-			await Task.Delay(POLLING_DELAY_MS);
+			await AutoloadBase.StaticDelayAsync(POLLING_DELAY_MS / 1000.0f);
+			pollAttempts++;
+		}
+		
+		// Check if cancelled or timed out
+		if (requestCancellationToken.IsCancellationRequested)
+		{
+			GD.Print($"Request to {path} was cancelled");
+			return (false, "");
+		}
+		
+		if (pollAttempts >= MAX_POLL_ATTEMPTS)
+		{
+			GD.PrintErr($"Request to {path} timed out after {MAX_POLL_ATTEMPTS * POLLING_DELAY_MS}ms");
+			return (false, "");
 		}
 
 		if (_httpClient.GetStatus() != HttpClient.Status.Body && _httpClient.GetStatus() != HttpClient.Status.Connected)
@@ -488,6 +529,15 @@ public class RestApiBackend : IDataStoreBackend
 
 	public void Dispose()
 	{
+		// Cancel any ongoing operations
+		_connectionCancellation?.Cancel();
+		_requestCancellation?.Cancel();
+		
+		// Dispose cancellation tokens
+		_connectionCancellation?.Dispose();
+		_requestCancellation?.Dispose();
+		
+		// Clean up HTTP client
 		_httpClient?.Close();
 		_httpClient = null;
 	}

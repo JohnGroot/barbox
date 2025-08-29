@@ -84,6 +84,7 @@ public partial class DataStore : AutoloadBase
 	private string _locationId;
 	private string _storageMode;
 	private string _apiBaseUrl;
+	private bool _isInitializing = false;
 
 	protected override void OnServiceReady()
 	{
@@ -91,17 +92,48 @@ public partial class DataStore : AutoloadBase
 		// Minimal setup only - actual initialization happens in OnServiceInitialize
 	}
 
-	protected override async void OnServiceInitialize()
+	protected override void OnServiceInitialize()
 	{
-		// Initialize location and API settings
+		// Initialize location and API settings synchronously
 		_locationId = InitializeLocationId();
 		_apiBaseUrl = GetApiBaseUrl();
 		_storageMode = GetStorageMode();
 		
-		// Create appropriate backend based on storage mode
-		_backend = await CreateBackendAsync();
+		// Create placeholder local backend for immediate availability
+		_backend = new LocalFileBackend();
 		
-		LogInfo($"DataStore initialized for location '{_locationId}' using {_backend.GetType().Name}");
+		// Defer async backend initialization to prevent race conditions
+		_isInitializing = true;
+		CallDeferred(MethodName.CompleteAsyncInitialization);
+	}
+	
+	/// <summary>
+	/// Complete backend initialization asynchronously after service is marked ready
+	/// </summary>
+	private async void CompleteAsyncInitialization()
+	{
+		try
+		{
+			// Check if initialization was cancelled
+			if (!_isInitializing) return;
+			
+			var backend = await CreateBackendAsync();
+			
+			// Check again after await in case of cancellation
+			if (!_isInitializing) return;
+			
+			_backend = backend; // Atomic replacement
+			LogInfo($"DataStore initialized for location '{_locationId}' using {_backend.GetType().Name}");
+		}
+		catch (System.Exception ex)
+		{
+			LogError($"Async backend initialization failed: {ex.Message}");
+			// Keep local backend as fallback
+		}
+		finally
+		{
+			_isInitializing = false;
+		}
 	}
 
 	/// <summary>
@@ -289,6 +321,9 @@ public partial class DataStore : AutoloadBase
 
 	protected override void OnServiceDestroyed()
 	{
+		// Cancel any pending async initialization
+		_isInitializing = false;
+		
 		if (_backend is RestApiBackend restBackend)
 		{
 			restBackend.Dispose();

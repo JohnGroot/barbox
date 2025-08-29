@@ -146,6 +146,44 @@ public abstract partial class AutoloadBase : Node
 	}
 
 	/// <summary>
+	/// Frame-aware delay using Godot's timer system instead of Task.Delay()
+	/// This ensures timing respects game pause states and frame drops
+	/// Use this instead of Task.Delay() for Godot-aware timing
+	/// </summary>
+	/// <param name="seconds">Delay duration in seconds</param>
+	/// <returns>Task that completes after the specified delay</returns>
+	protected async System.Threading.Tasks.Task DelayAsync(float seconds)
+	{
+		if (seconds <= 0.0f) return;
+		
+		var timer = GetTree().CreateTimer(seconds);
+		await ToSignal(timer, SceneTreeTimer.SignalName.Timeout);
+	}
+
+	/// <summary>
+	/// Static frame-aware delay for non-Node classes using Godot's timer system
+	/// This ensures timing respects game pause states and frame drops
+	/// Use this instead of Task.Delay() for Godot-aware timing in utility classes
+	/// </summary>
+	/// <param name="seconds">Delay duration in seconds</param>
+	/// <returns>Task that completes after the specified delay</returns>
+	public static async System.Threading.Tasks.Task StaticDelayAsync(float seconds)
+	{
+		if (seconds <= 0.0f) return;
+		
+		var mainLoop = Engine.GetMainLoop();
+		if (mainLoop is not SceneTree tree)
+		{
+			// Fallback to Task.Delay if no scene tree available
+			await System.Threading.Tasks.Task.Delay((int)(seconds * 1000));
+			return;
+		}
+		
+		var timer = tree.CreateTimer(seconds);
+		await tree.ToSignal(timer, SceneTreeTimer.SignalName.Timeout);
+	}
+
+	/// <summary>
 	/// Cleanup method called when the service is being destroyed
 	/// Override this for service-specific cleanup
 	/// </summary>

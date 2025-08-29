@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://c8vylp72vcaag" path="res://_Scripts/Games/MiningGame/MiningGame.cs" id="1_3w5hw"]
 [ext_resource type="Resource" uid="uid://b1i5oh72e5nmu" path="res://_Resources/Games/MiningGame/Configs/MiningConfig.tres" id="2_d4bfs"]
-[ext_resource type="Script" uid="uid://bqwnmt386s6js" path="res://_Scripts/Games/MiningGame/Data/MiningLocationData.cs" id="3_fhfuh"]
+[ext_resource type="Script" uid="uid://dmjgptbjrwt7i" path="res://_Scripts/Games/MiningGame/Data/MiningLocationData.cs" id="3_fhfuh"]
 [ext_resource type="Resource" uid="uid://deveej7cv2cru" path="res://_Resources/Games/MiningGame/Configs/DefaultLocation.tres" id="4_ji104"]
 [ext_resource type="Script" uid="uid://n45o2pf6tupm" path="res://_Scripts/Games/MiningGame/MiningGameUI.cs" id="5_ji104"]
 

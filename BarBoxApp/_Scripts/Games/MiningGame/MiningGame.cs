@@ -281,46 +281,63 @@ namespace BarBox.Games.MiningGame
 		
 		private async void InitializeGameSession()
 		{
-			// Validate essential components first
-			if (!GodotObject.IsInstanceValid(_state) || !GodotObject.IsInstanceValid(_engine))
+			try
 			{
-				GD.PrintErr("[MiningGame] Cannot initialize session - missing essential components (state/engine)");
-				return;
-			}
-			
-			// Get current user state - but don't block initialization if temporarily null
-			_currentUser = _userManager?.GetCurrentUser();
-			
-			// In production context, we need a valid user to proceed with actual game functionality
-			if (_currentUser == null && _isProductionContext)
-			{
-				GD.PrintErr("[MiningGame] Cannot start: No user logged in");
+				// Validate essential components first
+				if (!GodotObject.IsInstanceValid(_state) || !GodotObject.IsInstanceValid(_engine))
+				{
+					GD.PrintErr("[MiningGame] Cannot initialize session - missing essential components (state/engine)");
+					return;
+				}
 				
-				// Ensure UI shows disabled state for no-user scenario
+				// Get current user state - but don't block initialization if temporarily null
+				_currentUser = _userManager?.GetCurrentUser();
+				
+				// In production context, we need a valid user to proceed with actual game functionality
+				if (_currentUser == null && _isProductionContext)
+				{
+					GD.PrintErr("[MiningGame] Cannot start: No user logged in");
+					
+					// Ensure UI shows disabled state for no-user scenario
+					if (GodotObject.IsInstanceValid(_ui))
+					{
+						_ui.SetEnabled(false);
+						_ui.UpdateAllUI(); // Show "login required" messages
+					}
+					return;
+				}
+				
+				// Load user data first, then start mining after data is ready
+				if (_currentUser != null)
+				{
+					await _state.LoadUserDataAsync();
+					
+					// Check if components are still valid after await
+					if (!GodotObject.IsInstanceValid(this) || !GodotObject.IsInstanceValid(_engine))
+						return;
+				}
+				
+				// Start mining only after user data (including partial progress) is fully loaded
+				_engine.StartMining();
+				
+				// Enable UI after all components are ready
+				if (GodotObject.IsInstanceValid(_ui))
+				{
+					_ui.SetEnabled(true);
+					_ui.UpdateAllUI(); // Force immediate UI refresh
+				}
+			}
+			catch (System.Exception ex)
+			{
+				GD.PrintErr($"[MiningGame] Error during session initialization: {ex.Message}");
+				
+				// Ensure UI shows error state
 				if (GodotObject.IsInstanceValid(_ui))
 				{
 					_ui.SetEnabled(false);
-					_ui.UpdateAllUI(); // Show "login required" messages
+					_ui.UpdateAllUI(); // Show error state
 				}
-				return;
 			}
-			
-			// Load user data first, then start mining after data is ready
-			if (_currentUser != null)
-			{
-				await _state.LoadUserDataAsync();
-			}
-			
-			// Start mining only after user data (including partial progress) is fully loaded
-			_engine.StartMining();
-			
-			// Enable UI after all components are ready
-			if (GodotObject.IsInstanceValid(_ui))
-			{
-				_ui.SetEnabled(true);
-				_ui.UpdateAllUI(); // Force immediate UI refresh
-			}
-			
 		}
 		
 		public override void StartGame()
@@ -520,6 +537,14 @@ namespace BarBox.Games.MiningGame
 		{
 			if (GodotObject.IsInstanceValid(_ui))
 				_ui.UpdateAllUI();
+		}
+		
+		/// <summary>
+		/// Thread-safe logging method for async errors
+		/// </summary>
+		private void LogAsyncError(string message)
+		{
+			GD.PrintErr($"[MiningGame] {message}");
 		}
 		
 		// ================================================================
@@ -887,7 +912,7 @@ namespace BarBox.Games.MiningGame
 			}
 			
 			/// <summary>
-			/// Reset mining timestamp (called when extracting at capacity or starting fresh)
+			/// Reset mining timestamp (called when starting fresh cycle - e.g. when mining was paused at capacity)
 			/// </summary>
 			public void ResetMiningTimer()
 			{
@@ -990,7 +1015,8 @@ namespace BarBox.Games.MiningGame
 						}
 						catch (System.Exception ex)
 						{
-							GD.PrintErr($"[MiningGame] Failed to save initial location state: {ex.Message}");
+							// Thread-safe error logging via CallDeferred to main game class
+							_game.CallDeferred(MiningGame.MethodName.LogAsyncError, $"Failed to save initial location state: {ex.Message}");
 						}
 					}
 					
@@ -1020,14 +1046,16 @@ namespace BarBox.Games.MiningGame
 						}
 						catch (Exception ex)
 						{
-							GD.PrintErr($"[MiningGame] Failed to save initial global data: {ex.Message}");
+							// Thread-safe error logging via CallDeferred to main game class
+							_game.CallDeferred(MiningGame.MethodName.LogAsyncError, $"Failed to save initial global data: {ex.Message}");
 						}
 					}
 				}
 				catch (System.Exception ex)
 				{
-					GD.PrintErr($"[MiningGame] Failed to load user data: {ex.Message}");
-					GD.PrintErr("Falling back to default state");
+					// Thread-safe error logging via CallDeferred to main game class
+					_game.CallDeferred(MiningGame.MethodName.LogAsyncError, $"Failed to load user data: {ex.Message}");
+					_game.CallDeferred(MiningGame.MethodName.LogAsyncError, "Falling back to default state");
 					CreateDefaultState();
 				}
 				
@@ -1082,14 +1110,12 @@ namespace BarBox.Games.MiningGame
 				string userId = _game._currentUser?.UserId;
 				if (string.IsNullOrEmpty(userId)) 
 				{
-					await Task.CompletedTask;
 					return;
 				}
 				
 				var dataStore = DataStore.GetInstance();
 				if (dataStore == null) 
 				{
-					await Task.CompletedTask;
 					return;
 				}
 				
@@ -1114,7 +1140,8 @@ namespace BarBox.Games.MiningGame
 				}
 				catch (System.Exception ex)
 				{
-					GD.PrintErr($"[MiningGame] Failed to save location state: {ex.Message}");
+					// Thread-safe error logging via CallDeferred to main game class
+					_game.CallDeferred(MiningGame.MethodName.LogAsyncError, $"Failed to save location state: {ex.Message}");
 					throw; // Re-throw to let caller handle
 				}
 			}
@@ -1166,11 +1193,20 @@ namespace BarBox.Games.MiningGame
 			{
 				if (!CanExtractGems() || _locationTemplate == null) return false;
 				
+				// Check if mining was paused (at capacity) BEFORE extraction
+				var maxCapacity = GetMaxCapacity();
+				bool wasAtCapacity = _pendingGems >= maxCapacity;
+				
 				_globalData.AddGems(_locationTemplate.PrimaryGemType, _pendingGems);
 				_pendingGems = 0;
 				
-				// Reset mining timer when extracting (often at capacity)
-				ResetMiningTimer();
+				// Only reset timer if mining was paused at capacity
+				// If mining was actively progressing, preserve the timer progress
+				if (wasAtCapacity)
+				{
+					ResetMiningTimer(); // Start fresh cycle since mining was paused
+				}
+				// else: keep current timer progress for continuous mining
 				
 				_ = SaveDataAsync(); // Fire-and-forget
 				return true;
@@ -1286,7 +1322,8 @@ namespace BarBox.Games.MiningGame
 				}
 				catch (System.Exception ex)
 				{
-					GD.PrintErr($"[MiningGame] Failed to save data: {ex.Message}");
+					// Thread-safe error logging via CallDeferred to main game class
+					_game.CallDeferred(MiningGame.MethodName.LogAsyncError, $"Failed to save data: {ex.Message}");
 				}
 			}
 		}

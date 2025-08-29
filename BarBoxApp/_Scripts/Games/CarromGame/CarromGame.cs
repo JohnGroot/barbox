@@ -493,6 +493,10 @@ public partial class CarromGame : GameController
 					bool creditsSpent = await sessionManager.CheckAndSpendGlobalCreditsAsync(
 						player.PlayerId, CompetitiveCreditCost, "Competitive Carrom Match");
 					
+					// Check if game is still valid after await
+					if (!IsInstanceValid(this))
+						return;
+					
 					if (!creditsSpent)
 					{
 						GD.Print("[CarromGame] Competitive mode cancelled - insufficient credits");
@@ -1102,29 +1106,29 @@ public partial class CarromGame : GameController
 		if (player?.PlayerId == null) return;
 
 		// Fire-and-forget load with proper error handling
-		await Task.Run(async () =>
+		try
 		{
-			try
+			var globalDataResult = await dataStore.GetGlobalDataAsync(player.PlayerId);
+			if (globalDataResult.IsSuccess)
 			{
-				var globalDataResult = await dataStore.GetGlobalDataAsync(player.PlayerId);
-				if (globalDataResult.IsSuccess)
-				{
-					var carromData = globalDataResult.Value.Carrom;
-					GD.Print($"[CarromGame] Loaded global data - Wins: {carromData.GlobalWins}, Losses: {carromData.GlobalLosses}, Best Streak: {carromData.BestWinStreak}");
-				}
+				var carromData = globalDataResult.Value.Carrom;
+				// Thread-safe logging via CallDeferred
+				CallDeferred(MethodName.LogLoadedData, $"Loaded global data - Wins: {carromData.GlobalWins}, Losses: {carromData.GlobalLosses}, Best Streak: {carromData.BestWinStreak}");
+			}
 
-				var localDataResult = await dataStore.GetLocalDataAsync(player.PlayerId);
-				if (localDataResult.IsSuccess)
-				{
-					var carromLocalData = localDataResult.Value.Carrom;
-					GD.Print($"[CarromGame] Loaded local data - Games at location: {carromLocalData.GamesAtLocation}");
-				}
-			}
-			catch (System.Exception ex)
+			var localDataResult = await dataStore.GetLocalDataAsync(player.PlayerId);
+			if (localDataResult.IsSuccess)
 			{
-				GD.PrintErr($"[CarromGame] Exception loading user data: {ex.Message}");
+				var carromLocalData = localDataResult.Value.Carrom;
+				// Thread-safe logging via CallDeferred
+				CallDeferred(MethodName.LogLoadedData, $"Loaded local data - Games at location: {carromLocalData.GamesAtLocation}");
 			}
-		});
+		}
+		catch (System.Exception ex)
+		{
+			// Thread-safe error logging via CallDeferred
+			CallDeferred(MethodName.LogAsyncError, $"Exception loading user data: {ex.Message}");
+		}
 	}
 
 	/// <summary>
@@ -1136,62 +1140,61 @@ public partial class CarromGame : GameController
 		if (dataStore == null) return;
 
 		// Fire-and-forget save with proper error handling
-		await Task.Run(async () =>
+		try
 		{
-			try
+			// Update global data
+			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+			if (globalDataResult.IsSuccess)
 			{
-				// Update global data
-				var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-				if (globalDataResult.IsSuccess)
+				var globalData = globalDataResult.Value;
+				
+				if (isWin)
 				{
-					var globalData = globalDataResult.Value;
-					
-					if (isWin)
+					globalData.Carrom.GlobalWins++;
+					// Update best win streak if current streak is better
+					var currentStreak = GetCurrentWinStreak(playerId);
+					if (currentStreak > globalData.Carrom.BestWinStreak)
 					{
-						globalData.Carrom.GlobalWins++;
-						// Update best win streak if current streak is better
-						var currentStreak = GetCurrentWinStreak(playerId);
-						if (currentStreak > globalData.Carrom.BestWinStreak)
-						{
-							globalData.Carrom.BestWinStreak = currentStreak;
-						}
+						globalData.Carrom.BestWinStreak = currentStreak;
 					}
-					else
-					{
-						globalData.Carrom.GlobalLosses++;
-					}
-
-					await dataStore.SetGlobalDataAsync(playerId, globalData);
-					GD.Print($"[CarromGame] Saved global data - Win: {isWin}");
+				}
+				else
+				{
+					globalData.Carrom.GlobalLosses++;
 				}
 
-				// Update local data
-				var localDataResult = await dataStore.GetLocalDataAsync(playerId);
-				if (localDataResult.IsSuccess)
-				{
-					var localData = localDataResult.Value;
-					localData.Carrom.GamesAtLocation++;
-					localData.Carrom.LastPlayedAt = System.DateTime.UtcNow;
-					
-					if (isWin)
-					{
-						localData.Carrom.SessionWins++;
-						localData.Carrom.CurrentWinStreak++;
-					}
-					else
-					{
-						localData.Carrom.SessionLosses++;
-						localData.Carrom.CurrentWinStreak = 0;
-					}
+				await dataStore.SetGlobalDataAsync(playerId, globalData);
+				// Thread-safe logging via CallDeferred
+				CallDeferred(MethodName.LogSavedData, $"Saved global data - Win: {isWin}");
+			}
 
-					await dataStore.SetLocalDataAsync(playerId, localData);
-				}
-			}
-			catch (System.Exception ex)
+			// Update local data
+			var localDataResult = await dataStore.GetLocalDataAsync(playerId);
+			if (localDataResult.IsSuccess)
 			{
-				GD.PrintErr($"[CarromGame] Exception saving game result: {ex.Message}");
+				var localData = localDataResult.Value;
+				localData.Carrom.GamesAtLocation++;
+				localData.Carrom.LastPlayedAt = System.DateTime.UtcNow;
+				
+				if (isWin)
+				{
+					localData.Carrom.SessionWins++;
+					localData.Carrom.CurrentWinStreak++;
+				}
+				else
+				{
+					localData.Carrom.SessionLosses++;
+					localData.Carrom.CurrentWinStreak = 0;
+				}
+
+				await dataStore.SetLocalDataAsync(playerId, localData);
 			}
-		});
+		}
+		catch (System.Exception ex)
+		{
+			// Thread-safe error logging via CallDeferred
+			CallDeferred(MethodName.LogAsyncError, $"Exception saving game result: {ex.Message}");
+		}
 	}
 
 	/// <summary>
@@ -1203,6 +1206,30 @@ public partial class CarromGame : GameController
 		
 		var player = _competitiveModeManager.GetPlayers()?.FirstOrDefault(p => p.PlayerId == playerId);
 		return player != null ? 1 : 0; // Simple implementation - just return 1 for existing players
+	}
+	
+	/// <summary>
+	/// Thread-safe logging method for loaded data
+	/// </summary>
+	private void LogLoadedData(string message)
+	{
+		GD.Print($"[CarromGame] {message}");
+	}
+	
+	/// <summary>
+	/// Thread-safe logging method for saved data
+	/// </summary>
+	private void LogSavedData(string message)
+	{
+		GD.Print($"[CarromGame] {message}");
+	}
+	
+	/// <summary>
+	/// Thread-safe logging method for async errors
+	/// </summary>
+	private void LogAsyncError(string message)
+	{
+		GD.PrintErr($"[CarromGame] {message}");
 	}
 
 	// ================================================================

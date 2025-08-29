@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="MiningLocationData" load_steps=2 format=3 uid="uid://deveej7cv2cru"]
 
-[ext_resource type="Script" uid="uid://bqwnmt386s6js" path="res://_Scripts/Games/MiningGame/Data/MiningLocationData.cs" id="1_location"]
+[ext_resource type="Script" uid="uid://dmjgptbjrwt7i" path="res://_Scripts/Games/MiningGame/Data/MiningLocationData.cs" id="1_location"]
 
 [resource]
 script = ExtResource("1_location")

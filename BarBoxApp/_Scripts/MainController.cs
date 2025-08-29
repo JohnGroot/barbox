@@ -229,22 +229,29 @@ public partial class MainController : Control
 
 	private async void OnLogoutRequested()
 	{
-		// Logout requested
-		
-		// Handle logout request from UIManager
-		if (_userManager != null)
+		try
 		{
-			// UserManager exists, calling LogoutUserAsync()
-			await _userManager.LogoutUserAsync();
-			// LogoutUserAsync() completed
+			// Logout requested
+			
+			// Handle logout request from UIManager
+			if (_userManager != null)
+			{
+				// UserManager exists, calling LogoutUserAsync()
+				await _userManager.LogoutUserAsync();
+				// LogoutUserAsync() completed
+			}
+			else
+			{
+				GD.PrintErr("[MainController DEBUG] _userManager is NULL, cannot logout");
+			}
+			
+			// UI will be updated via UserLoggedOut signal - no need for immediate UpdateUI()
+			// The signal-driven update ensures proper timing after logout completion
 		}
-		else
+		catch (System.Exception ex)
 		{
-			GD.PrintErr("[MainController DEBUG] _userManager is NULL, cannot logout");
+			GD.PrintErr($"[MainController] Error during logout: {ex.Message}");
 		}
-		
-		// UI will be updated via UserLoggedOut signal - no need for immediate UpdateUI()
-		// The signal-driven update ensures proper timing after logout completion
 	}
 
 	/// <summary>

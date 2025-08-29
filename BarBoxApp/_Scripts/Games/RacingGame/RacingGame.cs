@@ -413,7 +413,7 @@ public partial class RacingGame : GameController
 		}
 		
 		// Save best lap time if this is a new record
-		SaveBestLapTime(playerId, lapTime);
+		_ = SaveBestLapTime(playerId, lapTime);
 		
 		// Emit signal for external integrations (GameHost) at high level
 		EmitSignal(SignalName.LapCompleted, playerId, lapNumber, lapTime);
@@ -425,7 +425,7 @@ public partial class RacingGame : GameController
 	private void OnTimingSystemRaceCompleted(string playerId, float totalTime)
 	{
 		// Save global high score if this is a new record
-		SaveGlobalHighScore(playerId, totalTime);
+		_ = SaveGlobalHighScore(playerId, totalTime);
 		
 		// End the game when race is completed
 		EndGame();
@@ -447,9 +447,10 @@ public partial class RacingGame : GameController
 	/// Save global high score for racing game using direct DataStore integration
 	/// Tracks best times globally with modern C# patterns and fire-and-forget saves
 	/// </summary>
-	private async void SaveGlobalHighScore(string playerId, float totalTime)
+	private async Task SaveGlobalHighScore(string playerId, float totalTime)
 	{
-		if (string.IsNullOrEmpty(playerId) || totalTime <= 0.0f) return;
+		if (string.IsNullOrEmpty(playerId) || totalTime <= 0.0f) 
+			return;
 		
 		var dataStore = DataStore.GetInstance();
 		if (dataStore == null)
@@ -459,55 +460,87 @@ public partial class RacingGame : GameController
 		}
 		
 		// Fire-and-forget save with proper error handling
-		await Task.Run(async () =>
+		try
 		{
-			try
+			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+			if (!globalDataResult.IsSuccess)
 			{
-				var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-				if (!globalDataResult.IsSuccess)
+				GD.PrintErr($"[RacingGame] Failed to get global data: {globalDataResult.Error}");
+				return;
+			}
+			
+			var globalData = globalDataResult.Value;
+			
+			// Create key using modern C# enum conversion
+			string trackKey = $"track_{_currentTrackIndex}_{_targetLaps}laps";
+			
+			// Check if this is a new best time
+			bool isNewBest = !globalData.Racing.BestRaceTimes.ContainsKey(trackKey) ||
+							globalData.Racing.BestRaceTimes[trackKey] > totalTime;
+			
+			if (isNewBest)
+			{
+				// Update best race time
+				globalData.Racing.BestRaceTimes[trackKey] = totalTime;
+				globalData.Racing.TotalRaces++;
+				
+				// Save updated data
+				var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
+				if (saveResult.IsSuccess)
 				{
-					GD.PrintErr($"[RacingGame] Failed to get global data: {globalDataResult.Error}");
-					return;
+					// Thread-safe logging via CallDeferred
+					CallDeferred(MethodName.LogHighScoreSaved, totalTime, trackKey);
 				}
-				
-				var globalData = globalDataResult.Value;
-				
-				// Create key using modern C# enum conversion
-				string trackKey = $"track_{_currentTrackIndex}_{_targetLaps}laps";
-				
-				// Check if this is a new best time
-				bool isNewBest = !globalData.Racing.BestRaceTimes.ContainsKey(trackKey) ||
-								globalData.Racing.BestRaceTimes[trackKey] > totalTime;
-				
-				if (isNewBest)
+				else
 				{
-					// Update best race time
-					globalData.Racing.BestRaceTimes[trackKey] = totalTime;
-					globalData.Racing.TotalRaces++;
-					
-					// Save updated data
-					var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
-					if (saveResult.IsSuccess)
-					{
-						GD.Print($"[RacingGame] New best time saved: {totalTime:F3}s for {trackKey}");
-					}
-					else
-					{
-						GD.PrintErr($"[RacingGame] Failed to save high score: {saveResult.Error}");
-					}
+					// Thread-safe error logging via CallDeferred
+					CallDeferred(MethodName.LogHighScoreError, saveResult.Error);
 				}
 			}
-			catch (System.Exception ex)
-			{
-				GD.PrintErr($"[RacingGame] Exception saving high score: {ex.Message}");
-			}
-		});
+		}
+		catch (System.Exception ex)
+		{
+			// Thread-safe error logging via CallDeferred
+			CallDeferred(MethodName.LogAsyncError, $"Exception saving high score: {ex.Message}");
+		}
+	}
+	
+	/// <summary>
+	/// Thread-safe logging method for high score saves
+	/// </summary>
+	private void LogHighScoreSaved(float totalTime, string trackKey)
+	{
+		GD.Print($"[RacingGame] New best time saved: {totalTime:F3}s for {trackKey}");
+	}
+	
+	/// <summary>
+	/// Thread-safe logging method for high score errors
+	/// </summary>
+	private void LogHighScoreError(string error)
+	{
+		GD.PrintErr($"[RacingGame] Failed to save high score: {error}");
+	}
+	
+	/// <summary>
+	/// Thread-safe logging method for best lap saves
+	/// </summary>
+	private void LogBestLapSaved(float lapTime, string trackKey)
+	{
+		GD.Print($"[RacingGame] New best lap time saved: {lapTime:F3}s for {trackKey}");
+	}
+	
+	/// <summary>
+	/// Thread-safe logging method for async errors
+	/// </summary>
+	private void LogAsyncError(string message)
+	{
+		GD.PrintErr($"[RacingGame] {message}");
 	}
 
 	/// <summary>
 	/// Save best lap time for racing game using direct DataStore integration
 	/// </summary>
-	private async void SaveBestLapTime(string playerId, float lapTime)
+	private async Task SaveBestLapTime(string playerId, float lapTime)
 	{
 		if (string.IsNullOrEmpty(playerId) || lapTime <= 0.0f) return;
 		
@@ -515,40 +548,39 @@ public partial class RacingGame : GameController
 		if (dataStore == null) return;
 		
 		// Fire-and-forget save with proper error handling
-		await Task.Run(async () =>
+		try
 		{
-			try
+			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+			if (!globalDataResult.IsSuccess) return;
+			
+			var globalData = globalDataResult.Value;
+			
+			// Create key using modern C# pattern
+			string trackKey = $"track_{_currentTrackIndex}";
+			
+			// Check if this is a new best lap time
+			bool isNewBest = !globalData.Racing.BestLapTimes.ContainsKey(trackKey) ||
+							globalData.Racing.BestLapTimes[trackKey] > lapTime;
+			
+			if (isNewBest)
 			{
-				var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-				if (!globalDataResult.IsSuccess) return;
+				// Update best lap time
+				globalData.Racing.BestLapTimes[trackKey] = lapTime;
 				
-				var globalData = globalDataResult.Value;
-				
-				// Create key using modern C# pattern
-				string trackKey = $"track_{_currentTrackIndex}";
-				
-				// Check if this is a new best lap time
-				bool isNewBest = !globalData.Racing.BestLapTimes.ContainsKey(trackKey) ||
-								globalData.Racing.BestLapTimes[trackKey] > lapTime;
-				
-				if (isNewBest)
+				// Save updated data
+				var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
+				if (saveResult.IsSuccess)
 				{
-					// Update best lap time
-					globalData.Racing.BestLapTimes[trackKey] = lapTime;
-					
-					// Save updated data
-					var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
-					if (saveResult.IsSuccess)
-					{
-						GD.Print($"[RacingGame] New best lap time saved: {lapTime:F3}s for {trackKey}");
-					}
+					// Thread-safe logging via CallDeferred
+					CallDeferred(MethodName.LogBestLapSaved, lapTime, trackKey);
 				}
 			}
-			catch (System.Exception ex)
-			{
-				GD.PrintErr($"[RacingGame] Exception saving lap time: {ex.Message}");
-			}
-		});
+		}
+		catch (System.Exception ex)
+		{
+			// Thread-safe error logging via CallDeferred
+			CallDeferred(MethodName.LogAsyncError, $"Exception saving lap time: {ex.Message}");
+		}
 	}
 
 	/// <summary>
@@ -1317,6 +1349,11 @@ public partial class RacingGame : GameController
 		{
 			// Get global data to extract racing scores
 			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+			
+			// Check if object is still valid after await
+			if (!IsInstanceValid(this))
+				return;
+				
 			if (!globalDataResult.IsSuccess)
 			{
 				ShowHighScoresFallback();
