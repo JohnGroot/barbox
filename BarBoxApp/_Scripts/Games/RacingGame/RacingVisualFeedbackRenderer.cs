@@ -48,7 +48,7 @@ namespace BarBox.Games.Racing
 	private bool _cachedValuesValid = false;
 
 	// Dependencies
-	private RacingCarController _carController;
+	private RacingCar _carController;
 
 	// Direct target position override (for arc positioning fix)
 	private Vector2 _directTargetOverride = Vector2.Zero;
@@ -67,7 +67,7 @@ namespace BarBox.Games.Racing
 	/// Initialize the visual feedback renderer with car controller dependency
 	/// </summary>
 	/// <param name="carController">Car controller for position and state data</param>
-	public void Initialize(RacingCarController carController)
+	public void Initialize(RacingCar carController)
 	{
 		_carController = carController;
 		ResetVisualState();
@@ -202,7 +202,7 @@ namespace BarBox.Games.Racing
 		// Convert car rotation to directional vectors using rotation matrix
 		var carForward = new Vector2(Mathf.Sin(carBody.Rotation), -Mathf.Cos(carBody.Rotation));
 		var carRight = new Vector2(carForward.Y, -carForward.X);
-		var carSize = _carController.RacingCar.CarSize;
+		var carSize = _carController.CarSize;
 		var halfLength = carSize.Y * 0.5f;
 		var halfWidth = carSize.X * 0.5f;
 		var backOffset = carRight * -halfWidth * 0.75f - carForward * halfLength * 1.5f;
@@ -294,7 +294,7 @@ namespace BarBox.Games.Racing
 		// Calculate car front position using original offset logic
 		var carForward = new Vector2(Mathf.Sin(carBody.Rotation), -Mathf.Cos(carBody.Rotation));
 		var carRight = new Vector2(carForward.Y, -carForward.X);
-		var carSize = _carController.RacingCar.CarSize;
+		var carSize = _carController.CarSize;
 		var halfLength = carSize.Y * 0.5f;
 		var halfWidth = carSize.X * 0.5f;
 		var frontOffset = carRight * -halfWidth * 0.75f + carForward * halfLength * 0.25f;
@@ -303,7 +303,7 @@ namespace BarBox.Games.Racing
 		// Clamp target to max input distance
 		var directionToTarget = (targetPosition - carBody.GlobalPosition);
 		var distanceToTarget = directionToTarget.Length();
-		var clampedTarget = carBody.GlobalPosition + directionToTarget.Normalized() * Mathf.Min(distanceToTarget, _carController.RacingCar.MaxInputDistance);
+		var clampedTarget = carBody.GlobalPosition + directionToTarget.Normalized() * Mathf.Min(distanceToTarget, _carController.MaxInputDistance);
 		
 		var inputLineColor = hasInput ? InputLineActiveColor : 
 			(_carController.GetCarSpeed() > 1.0f ? InputLineInactiveColor : InputLineInactiveColor * new Color(1, 1, 1, 0.3f));
@@ -336,7 +336,7 @@ namespace BarBox.Games.Racing
 		var carBody = _carController.GetCarBody();
 		var directionToTarget = (targetPosition - carBody.GlobalPosition);
 		var distanceToTarget = directionToTarget.Length();
-		var clampedTarget = carBody.GlobalPosition + directionToTarget.Normalized() * Mathf.Min(distanceToTarget, _carController.RacingCar.MaxInputDistance);
+		var clampedTarget = carBody.GlobalPosition + directionToTarget.Normalized() * Mathf.Min(distanceToTarget, _carController.MaxInputDistance);
 		
 		// Draw circle at clamped target position
 		if (clampedTarget != Vector2.Zero)
@@ -354,7 +354,7 @@ namespace BarBox.Games.Racing
 			
 			// Speed-based arc width (thickness) - restored missing feature
 			var baseWidth = 3.0f;
-			var speedMultiplier = Mathf.Clamp(_cachedCurrentSpeed / _carController.RacingCar.MaxSpeed, 0.3f, 1.5f);
+			var speedMultiplier = Mathf.Clamp(_cachedCurrentSpeed / _carController.MaxSpeed, 0.3f, 1.5f);
 			var arcWidth = baseWidth * speedMultiplier;
 			
 			if (_cachedArcSweepAngle > 0.1f)
@@ -470,7 +470,7 @@ namespace BarBox.Games.Racing
 		_cachedCurrentSpeed = _carController.GetCarSpeed();
 		
 		// Cache arc sweep angle based on speed (0 to Pi radians = 0 to 180 degrees)
-		var normalizedSpeed = Mathf.Clamp(_cachedCurrentSpeed / _carController.RacingCar.MaxSpeed, 0.0f, 1.0f);
+		var normalizedSpeed = Mathf.Clamp(_cachedCurrentSpeed / _carController.MaxSpeed, 0.0f, 1.0f);
 		_cachedArcSweepAngle = Mathf.Lerp(0.0f, Mathf.Pi, normalizedSpeed);
 		
 		_cachedValuesValid = true;
@@ -484,7 +484,7 @@ namespace BarBox.Games.Racing
 	/// Update car controller dependency
 	/// </summary>
 	/// <param name="carController">New car controller reference</param>
-	public void UpdateCarController(RacingCarController carController)
+	public void UpdateCarController(RacingCar carController)
 	{
 		_carController = carController;
 		_cachedValuesValid = false; // Invalidate cache when controller changes

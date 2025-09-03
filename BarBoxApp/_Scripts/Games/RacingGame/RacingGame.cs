@@ -99,7 +99,7 @@ public partial class RacingGame : GameController
 	private RacingCameraController _cameraController;
 	
 	// Racing car controller
-	private RacingCarController _carController;
+	private RacingCar _racingCar;
 
 	// ================================================================
 	// PRIVATE FIELDS - TRACK AND WORLD SYSTEMS
@@ -248,27 +248,27 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void SetupCarController()
 	{
-		_carController = new RacingCarController();
+		_racingCar = new RacingCar();
 
 		// Set default car settings
-		_carController.MaxSpeed = 1800.0f;
-		_carController.MinSpeed = 100.0f;
-		_carController.MaxInputDistance = 500.0f;
-		_carController.AccelerationRate = 300.0f;
-		_carController.DecelerationRate = 600.0f;
-		_carController.RotationLerpSpeed = 5.0f;
-		_carController.CarSize = new Vector2(40, 80);
+		_racingCar.MaxSpeed = 1800.0f;
+		_racingCar.MinSpeed = 100.0f;
+		_racingCar.MaxInputDistance = 500.0f;
+		_racingCar.AccelerationRate = 300.0f;
+		_racingCar.DecelerationRate = 600.0f;
+		_racingCar.RotationLerpSpeed = 5.0f;
+		_racingCar.CarSize = new Vector2(40, 80);
 		
-		AddChild(_carController);
+		AddChild(_racingCar);
 
 		// Initialize with validated dependencies
-		_carController.Initialize(_cameraController, _trackValidationSystem);
+		_racingCar.Initialize(_cameraController, _trackValidationSystem);
 
 		// Connect car movement events for visual feedback
-		_carController.CarMoved += OnCarMoved;
+		_racingCar.CarMoved += OnCarMoved;
 		
 		// Add player to game controller
-		var player = _carController.GetPlayer();
+		var player = _racingCar.GetPlayer();
 		if (player != null)
 		{
 			AddPlayer(player);
@@ -291,7 +291,7 @@ public partial class RacingGame : GameController
 	private void SetupVisualRenderer()
 	{
 		_visualRenderer = new RacingVisualFeedbackRenderer();
-		_visualRenderer.Initialize(_carController);
+		_visualRenderer.Initialize(_racingCar);
 		AddChild(_visualRenderer);
 
 		// RacingVisualFeedbackRenderer initialized successfully
@@ -376,13 +376,13 @@ public partial class RacingGame : GameController
 	{
 		base.UpdateGame(delta);
 
-		if (!IsInstanceValid(_carController) || !_carController.IsInitialized)
+		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized)
 			return;
 
 		// Update track validation and penalties
 		if (IsInstanceValid(_trackValidationSystem))
 		{
-			_trackValidationSystem.UpdateOffTrackPenalties(_carController.GetCarPosition(), delta);
+			_trackValidationSystem.UpdateOffTrackPenalties(_racingCar.GetCarPosition(), delta);
 		}
 			
 		// Update visual feedback renderer
@@ -401,7 +401,7 @@ public partial class RacingGame : GameController
 			return;
 
 		_visualRenderer.ShouldRender = IsGameActive() && !IsGamePaused() && 
-		                               IsInstanceValid(_carController) && _carController.IsInitialized;
+		                               IsInstanceValid(_racingCar) && _racingCar.IsInitialized;
 	}
 
 	// ================================================================
@@ -863,7 +863,7 @@ public partial class RacingGame : GameController
 	{
 		ResetRacingData();           // Reset timing data
 		PositionCarAtStart();        // Reset position AND physics state (calls ResetCarState)
-		_carController?.SetActive(true); // Reactivate car controller
+		_racingCar?.SetActive(true); // Reactivate racing car
 	}
 
 	// ================================================================
@@ -1020,7 +1020,7 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void PositionCarAtStart()
 	{
-		if (_trackDefinition == null || _carController?.IsInitialized != true) 
+		if (_trackDefinition == null || _racingCar?.IsInitialized != true) 
 			return;
 
 		var startPoint = _trackDefinition.GetStartLinePosition();
@@ -1034,13 +1034,13 @@ public partial class RacingGame : GameController
 
 			var screenSize = viewport.GetVisibleRect().Size;
 			Vector2 screenCenter = screenSize / 2;
-			_carController.PositionCar(screenCenter);
+			_racingCar.PositionCar(screenCenter);
 			return; // Early return since we positioned car at center
 		}
 		
 		var carPosition = startPoint - startLineDirection * 50;
 		var carRotation = startLineDirection.Angle() + Mathf.Pi / 2;
-		_carController.PositionCar(carPosition, carRotation);
+		_racingCar.PositionCar(carPosition, carRotation);
 	}
 
 	// Track utility methods - delegates to track validation system
@@ -1138,13 +1138,13 @@ public partial class RacingGame : GameController
 	// Track signal handlers
 	private void OnStartLineTriggered(Node2D body)
 	{
-		if (!IsInstanceValid(_carController) || !_carController.IsInitialized) 
+		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized) 
 			return;
 
-		if (body != _carController.GetCarBody()) 
+		if (body != _racingCar.GetCarBody()) 
 			return;
 
-		BasePlayer player = _carController.GetPlayer();
+		BasePlayer player = _racingCar.GetPlayer();
 		if (player == null) 
 			return;
 
@@ -1172,13 +1172,13 @@ public partial class RacingGame : GameController
 
 	private void OnFinishLineTriggered(Node2D body)
 	{
-		if (!IsInstanceValid(_carController) || !_carController.IsInitialized) 
+		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized) 
 			return;
 		
-		if (body != _carController.GetCarBody()) 
+		if (body != _racingCar.GetCarBody()) 
 			return;
 		
-		BasePlayer player = _carController.GetPlayer();
+		BasePlayer player = _racingCar.GetPlayer();
 		if (player == null) 
 			return;
 
@@ -1206,13 +1206,13 @@ public partial class RacingGame : GameController
 
 	private void OnCheckpointTriggered(Node2D body, int checkpointIndex)
 	{
-		if (!IsInstanceValid(_carController) || !_carController.IsInitialized) 
+		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized) 
 			return;
 
-		if (body != _carController.GetCarBody()) 
+		if (body != _racingCar.GetCarBody()) 
 			return;
 
-		BasePlayer player = _carController.GetPlayer();
+		BasePlayer player = _racingCar.GetPlayer();
 		if (player == null) 
 			return;
 
@@ -1370,7 +1370,7 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void OnTracksLeaderboardRequested()
 	{
-		var player = _carController?.GetPlayer();
+		var player = _racingCar?.GetPlayer();
 		var playerId = player?.PlayerId ?? "player1";
 		var trackMetadata = GatherTrackMetadata();
 		
@@ -1428,7 +1428,7 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private async void ShowGlobalHighScores()
 	{
-		var player = _carController?.GetPlayer();
+		var player = _racingCar?.GetPlayer();
 		var playerId = player?.PlayerId ?? "player1";
 		
 		var dataStore = DataStore.GetInstance();
@@ -1671,7 +1671,7 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private RacingUIState GatherCurrentState()
 	{
-		var player = _carController?.GetPlayer();
+		var player = _racingCar?.GetPlayer();
 		var playerId = player?.PlayerId ?? "player1";
 		var gameMode = GetGameMode();
 		var loggedIn = _cachedUserManager?.IsUserLoggedIn() ?? false;
@@ -1708,7 +1708,7 @@ public partial class RacingGame : GameController
 			IsTimeTrialInProgress = isTimeTrialInProgress,
 			CanStartTimeTrial = canStartTimeTrial,
 			GameMode = gameMode,
-			CarSpeed = _carController?.GetCarSpeed() ?? 0f,
+			CarSpeed = _racingCar?.GetCarSpeed() ?? 0f,
 			CurrentLap = GetPlayerCurrentLap(playerId),
 			TargetLaps = TargetLaps,
 			TimeDisplay = gameMode == GameMode.Practice ? 
@@ -1745,7 +1745,7 @@ public partial class RacingGame : GameController
 		var state = GatherCurrentState();
 		_uiManager?.UpdateFromState(state);
 		
-		_carController.SetActive(false);
+		_racingCar.SetActive(false);
 	}
 
 
@@ -1763,24 +1763,16 @@ public partial class RacingGame : GameController
 		{
 			// Production context
 			var playerSession = gameHost.GetPlayerSession("default");
-			if (playerSession != null && IsInstanceValid(_carController) && _carController.IsInitialized)
+			if (playerSession != null && IsInstanceValid(_racingCar) && _racingCar.IsInitialized)
 			{
-				var racingCar = _carController.RacingCar;
-				if (racingCar != null)
-				{
-					racingCar.PlayerId = playerSession.PlayerId;
-					_carController.SetUserData(playerSession.UserData);
-				}
+				_racingCar.PlayerId = playerSession.PlayerId;
+				_racingCar.SetUserData(playerSession.UserData);
 			}
 		}
-		else if (IsInstanceValid(_carController) && _carController.IsInitialized)
+		else if (IsInstanceValid(_racingCar) && _racingCar.IsInitialized)
 		{
 			// Development context - auto-start practice mode
-			var racingCar = _carController.RacingCar;
-			if (racingCar != null)
-			{
-				racingCar.PlayerId = "dev_player";
-			}
+			_racingCar.PlayerId = "dev_player";
 		}
 	}
 
@@ -1875,9 +1867,9 @@ public partial class RacingGame : GameController
 		// Clean up signals and references
 		DisconnectTrackSignals();
 
-		if (IsInstanceValid(_carController))
+		if (IsInstanceValid(_racingCar))
 		{
-			_carController.CarMoved -= OnCarMoved;
+			_racingCar.CarMoved -= OnCarMoved;
 		}
 
 		// Disconnect timing system signals
