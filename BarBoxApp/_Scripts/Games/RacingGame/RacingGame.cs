@@ -31,6 +31,12 @@ public class RacingUIState
 	public bool ShowGameOverOverlay { get; set; }
 	public float FinalTime { get; set; }
 	public bool CanAffordReplay { get; set; }
+	
+	// Tracks & Leaderboard overlay
+	public bool ShowTracksLeaderboardOverlay { get; set; }
+	public bool CanShowTracksLeaderboard { get; set; }
+	public Dictionary<string, RacingUIManager.TrackMetadata> TrackMetadata { get; set; } = new();
+	public string CurrentTrackId { get; set; } = "";
 }
 
 /// <summary>
@@ -106,6 +112,10 @@ public partial class RacingGame : GameController
 	private bool[] _checkpointsCrossed;
 	private int _nextCheckpointIndex = 0;
 	private int _currentTrackIndex = 0;
+	
+	// Track ID management for stable data storage
+	private Dictionary<int, string> _trackIndexToIdMap = new();
+	private string _currentTrackId = "unknown_track";
 
 	// ================================================================
 	// PRIVATE Fields - UI SYSTEM
@@ -167,6 +177,9 @@ public partial class RacingGame : GameController
 		
 		// Ensure UI gets initial update after setup completes
 		CallDeferred(MethodName.UpdateUI);
+		
+		// Initialize tracks & leaderboard system
+		CallDeferred(MethodName.InitializeTracksLeaderboardSystem);
 		
 		// _Ready() completed
 	}
@@ -471,25 +484,23 @@ public partial class RacingGame : GameController
 			
 			var globalData = globalDataResult.Value;
 			
-			// Create key using modern C# enum conversion
-			string trackKey = $"track_{_currentTrackIndex}_{_targetLaps}laps";
+			// Use new stable track ID system
+			float currentBestTime = globalData.Racing.GetBestRaceTime(_currentTrackId, _targetLaps);
 			
-			// Check if this is a new best time
-			bool isNewBest = !globalData.Racing.BestRaceTimes.ContainsKey(trackKey) ||
-							globalData.Racing.BestRaceTimes[trackKey] > totalTime;
+			// Check if this is a new best time (0 means no time recorded)
+			bool isNewBest = currentBestTime == 0f || currentBestTime > totalTime;
 			
 			if (isNewBest)
 			{
-				// Update best race time
-				globalData.Racing.BestRaceTimes[trackKey] = totalTime;
-				globalData.Racing.TotalRaces++;
+				// Save using new key format and update counters
+				globalData.Racing.SetBestRaceTime(_currentTrackId, _targetLaps, totalTime);
 				
 				// Save updated data
 				var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
 				if (saveResult.IsSuccess)
 				{
 					// Thread-safe logging via CallDeferred
-					CallDeferred(MethodName.LogHighScoreSaved, totalTime, trackKey);
+					CallDeferred(MethodName.LogHighScoreSaved, totalTime, $"{_currentTrackId}_{_targetLaps}laps");
 				}
 				else
 				{
@@ -555,24 +566,23 @@ public partial class RacingGame : GameController
 			
 			var globalData = globalDataResult.Value;
 			
-			// Create key using modern C# pattern
-			string trackKey = $"track_{_currentTrackIndex}";
+			// Use new stable track ID system
+			float currentBestLapTime = globalData.Racing.GetBestLapTime(_currentTrackId);
 			
-			// Check if this is a new best lap time
-			bool isNewBest = !globalData.Racing.BestLapTimes.ContainsKey(trackKey) ||
-							globalData.Racing.BestLapTimes[trackKey] > lapTime;
+			// Check if this is a new best lap time (0 means no time recorded)
+			bool isNewBest = currentBestLapTime == 0f || currentBestLapTime > lapTime;
 			
 			if (isNewBest)
 			{
-				// Update best lap time
-				globalData.Racing.BestLapTimes[trackKey] = lapTime;
+				// Save using new key format
+				globalData.Racing.SetBestLapTime(_currentTrackId, lapTime);
 				
 				// Save updated data
 				var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
 				if (saveResult.IsSuccess)
 				{
 					// Thread-safe logging via CallDeferred
-					CallDeferred(MethodName.LogBestLapSaved, lapTime, trackKey);
+					CallDeferred(MethodName.LogBestLapSaved, lapTime, $"{_currentTrackId}_bestlap");
 				}
 			}
 		}
@@ -873,10 +883,35 @@ public partial class RacingGame : GameController
 	// ================================================================
 
 	/// <summary>
-	/// Initialize track system
+	/// Initialize track ID mappings for stable data storage
+	/// </summary>
+	private void InitializeTrackIdMappings()
+	{
+		_trackIndexToIdMap.Clear();
+		
+		if (TrackScenes == null || TrackScenes.Count == 0) 
+			return;
+
+		// Generate stable track IDs for all tracks
+		for (int i = 0; i < TrackScenes.Count; i++)
+		{
+			var trackScene = TrackScenes[i];
+			if (trackScene?.ResourcePath != null)
+			{
+				var trackId = RacingGlobalDataStore.GenerateTrackId(trackScene);
+				_trackIndexToIdMap[i] = trackId;
+			}
+		}
+	}
+
+	/// <summary>
+	/// Initialize track system with track ID mapping
 	/// </summary>
 	private void InitializeTrackSystem()
 	{
+		// Initialize track ID mappings for all available tracks
+		InitializeTrackIdMappings();
+		
 		if (TrackScenes is { Count: > 0 })
 		{
 			_currentTrackIndex = 0;
@@ -892,6 +927,11 @@ public partial class RacingGame : GameController
 
 				_trackDefinition = trackDef;
 				_currentTrackIndex = 0;
+				
+				// Generate track ID from track name for direct child tracks
+				_currentTrackId = RacingGlobalDataStore.GenerateTrackIdFromName(trackDef.TrackName);
+				_trackIndexToIdMap[0] = _currentTrackId;
+				
 				SetupLoadedTrack();
 				return;
 			}
@@ -926,6 +966,10 @@ public partial class RacingGame : GameController
 		{
 			_trackDefinition = trackDef;
 			AddChild(_trackDefinition);
+			
+			// Update current track ID
+			_currentTrackIndex = trackIndex;
+			_currentTrackId = _trackIndexToIdMap.GetValueOrDefault(trackIndex, "unknown_track");
 			
 			// Position track at screen center like original working implementation
 			var viewport = GetViewport();
@@ -1256,6 +1300,8 @@ public partial class RacingGame : GameController
 		_uiManager.MainMenuRequested += HandleMainMenuRequest;
 		_uiManager.RaceAgainRequested += OnRaceAgainRequested;
 		_uiManager.PracticeModeRequested += OnEndToPracticeModeRequested;
+		_uiManager.TracksLeaderboardRequested += OnTracksLeaderboardRequested;
+		_uiManager.TrackLoadFromOverlayRequested += OnTrackLoadFromOverlayRequested;
 	}
 
 	/// <summary>
@@ -1317,6 +1363,53 @@ public partial class RacingGame : GameController
 		_timingSystem?.StopRacing(); // Reset to idle
 		SetGameMode(GameMode.Practice); // Reset game mode so StartTimeTrial can work
 		StartTimeTrial(); // StartTimeTrial will call ResetForNewRace() which handles complete reset
+	}
+
+	/// <summary>
+	/// Handle tracks leaderboard request from UI manager
+	/// </summary>
+	private void OnTracksLeaderboardRequested()
+	{
+		var player = _carController?.GetPlayer();
+		var playerId = player?.PlayerId ?? "player1";
+		var trackMetadata = GatherTrackMetadata();
+		
+		_uiManager?.UpdateTrackMetadataWithLeaderboard(trackMetadata, _currentTrackId, playerId);
+	}
+
+	/// <summary>
+	/// Handle track load request from tracks & leaderboard overlay
+	/// </summary>
+	/// <param name="trackId">Track ID to load</param>
+	private void OnTrackLoadFromOverlayRequested(string trackId)
+	{
+		// Convert track ID to index using the mapping
+		var trackIndex = -1;
+		foreach (var kvp in _trackIndexToIdMap)
+		{
+			if (kvp.Value == trackId)
+			{
+				trackIndex = kvp.Key;
+				break;
+			}
+		}
+		
+		if (trackIndex >= 0)
+		{
+			// Use existing track switching logic
+			OnTrackSwitchRequested(trackIndex);
+		}
+	}
+
+	/// <summary>
+	/// Initialize tracks & leaderboard system after UI setup
+	/// </summary>
+	private void InitializeTracksLeaderboardSystem()
+	{
+		if (_uiManager == null) return;
+		
+		var trackMetadata = GatherTrackMetadata();
+		_uiManager.InitializeTracksLeaderboard(trackMetadata, _currentTrackId);
 	}
 
 	/// <summary>
@@ -1491,6 +1584,89 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
+	/// Gather track metadata for UI updates
+	/// </summary>
+	private Dictionary<string, RacingUIManager.TrackMetadata> GatherTrackMetadata()
+	{
+		var metadata = new Dictionary<string, RacingUIManager.TrackMetadata>();
+		
+		if (TrackScenes == null || TrackScenes.Count == 0)
+			return metadata;
+
+		// Build basic metadata from track scenes
+		for (int i = 0; i < TrackScenes.Count; i++)
+		{
+			var trackScene = TrackScenes[i];
+			if (trackScene?.ResourcePath == null)
+				continue;
+				
+			var trackId = _trackIndexToIdMap.GetValueOrDefault(i, RacingGlobalDataStore.GenerateTrackId(trackScene));
+			var trackName = GetTrackName(trackScene, i);
+			var defaultLaps = GetTrackDefaultLaps(trackScene);
+			
+			metadata[trackId] = new RacingUIManager.TrackMetadata
+			{
+				TrackId = trackId,
+				TrackName = trackName,
+				DefaultLaps = defaultLaps,
+				Scene = trackScene,
+				Index = i,
+				IsCurrentTrack = trackId == _currentTrackId
+			};
+		}
+		
+		return metadata;
+	}
+
+	/// <summary>
+	/// Get track name from scene or use fallback
+	/// </summary>
+	private string GetTrackName(PackedScene trackScene, int index)
+	{
+		try
+		{
+			var tempInstance = trackScene.Instantiate();
+			if (tempInstance is RacingTrackDefinition trackDef)
+			{
+				var name = trackDef.TrackName;
+				tempInstance.QueueFree();
+				return !string.IsNullOrEmpty(name) ? name : $"Track {index + 1}";
+			}
+			tempInstance.QueueFree();
+		}
+		catch (System.Exception)
+		{
+			// Fallback if instantiation fails
+		}
+		
+		return $"Track {index + 1}";
+	}
+
+	/// <summary>
+	/// Get track default laps from scene or use fallback
+	/// </summary>
+	private int GetTrackDefaultLaps(PackedScene trackScene)
+	{
+		try
+		{
+			var tempInstance = trackScene.Instantiate();
+			if (tempInstance is RacingTrackDefinition trackDef)
+			{
+				var laps = trackDef.NumberOfLaps;
+				tempInstance.QueueFree();
+				return laps > 0 ? laps : 3;
+			}
+			tempInstance.QueueFree();
+		}
+		catch (System.Exception)
+		{
+			// Fallback if instantiation fails
+		}
+		
+		return 3; // Default laps
+	}
+
+	/// <summary>
 	/// Gather current game state for UI updates
 	/// </summary>
 	private RacingUIState GatherCurrentState()
@@ -1518,6 +1694,13 @@ public partial class RacingGame : GameController
 		bool isDevelopmentMode = Engine.IsEditorHint() || OS.IsDebugBuild();
 		bool canAffordReplay = loggedIn && (isDevelopmentMode || TimeTrialCreditCost == 0);
 		
+		// Check if tracks & leaderboard can be shown (not during races or countdown)
+		bool canShowTracksLeaderboard = !isTimeTrialInProgress &&
+			currentRacingState != RacingTimingSystem.RacingState.WaitingForCredits &&
+			currentRacingState != RacingTimingSystem.RacingState.TrackLoading &&
+			currentRacingState != RacingTimingSystem.RacingState.GameOverDeciding &&
+			!IsInCountdown();
+		
 		return new RacingUIState
 		{
 			IsGamePaused = IsGamePaused(),
@@ -1534,7 +1717,13 @@ public partial class RacingGame : GameController
 			IsUserLoggedIn = loggedIn,
 			ShowGameOverOverlay = currentRacingState == RacingTimingSystem.RacingState.GameOverDeciding,
 			FinalTime = GetPlayerScore(playerId),
-			CanAffordReplay = canAffordReplay
+			CanAffordReplay = canAffordReplay,
+			
+			// Tracks & Leaderboard overlay state
+			ShowTracksLeaderboardOverlay = _uiManager?.IsTracksLeaderboardVisible ?? false,
+			CanShowTracksLeaderboard = canShowTracksLeaderboard,
+			TrackMetadata = GatherTrackMetadata(),
+			CurrentTrackId = _currentTrackId
 		};
 	}
 

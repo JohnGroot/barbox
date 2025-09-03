@@ -1,6 +1,8 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace BarBox.Games.Racing
 {
@@ -22,6 +24,8 @@ namespace BarBox.Games.Racing
 	[Signal] public delegate void MainMenuRequestedEventHandler();
 	[Signal] public delegate void RaceAgainRequestedEventHandler();
 	[Signal] public delegate void PracticeModeRequestedEventHandler();
+	[Signal] public delegate void TracksLeaderboardRequestedEventHandler();
+	[Signal] public delegate void TrackLoadFromOverlayRequestedEventHandler(string trackId);
 
 	// ================================================================
 	// EXPORT PROPERTIES
@@ -51,7 +55,7 @@ namespace BarBox.Games.Racing
 	
 	// Control buttons
 	private Button _timeTrialButton;
-	private Button[] _trackSelectionButtons;
+	private Button _tracksLeaderboardButton;
 
 	private Button _gameOverRestartButton;
 	private Button _gameOverPracticeButton;
@@ -66,6 +70,354 @@ namespace BarBox.Games.Racing
 	// Track selection data
 	private List<PackedScene> _trackScenes;
 	private int _currentTrackIndex = 0;
+	
+	// Tracks & Leaderboard overlay data
+	private TracksLeaderboardOverlay _tracksLeaderboardOverlay;
+	private Dictionary<string, TrackMetadata> _trackMetadataCache = new();
+
+	// ================================================================
+	// NESTED CLASSES FOR TRACK & LEADERBOARD MANAGEMENT
+	// ================================================================
+
+	/// <summary>
+	/// Track metadata for display and leaderboard organization
+	/// </summary>
+	public class TrackMetadata
+	{
+		public string TrackId { get; set; } = "";
+		public string TrackName { get; set; } = "";
+		public int DefaultLaps { get; set; } = 3;
+		public PackedScene Scene { get; set; }
+		public int Index { get; set; } = -1;
+		public float BestLapTime { get; set; } = 0f;
+		public float BestRaceTime { get; set; } = 0f;
+		public bool HasPlayerScores { get; set; } = false;
+		public bool IsCurrentTrack { get; set; } = false;
+	}
+
+	/// <summary>
+	/// Individual leaderboard entry for display
+	/// </summary>
+	public class LeaderboardEntry
+	{
+		public string TrackId { get; set; } = "";
+		public string TrackName { get; set; } = "";
+		public float Time { get; set; } = 0f;
+		public string Type { get; set; } = ""; // "Best Lap" or "Best Race"
+		public int Laps { get; set; } = 0;
+		public bool IsCurrentPlayer { get; set; } = false;
+		public DateTime SetDate { get; set; } = DateTime.UtcNow;
+
+		public string FormattedTime => Time > 0f ? $"{Time:F3}s" : "No time";
+		public string CategoryDisplay => Type == "Best Lap" ? "Best Lap" : $"Best Race ({Laps} laps)";
+	}
+
+	/// <summary>
+	/// Manages the tracks & leaderboard overlay UI
+	/// </summary>
+	private class TracksLeaderboardOverlay
+	{
+		// Overlay components
+		public Control OverlayRoot { get; private set; }
+		public Control TrackListPanel { get; private set; }
+		public Control LeaderboardPanel { get; private set; }
+		public VBoxContainer TrackButtonContainer { get; private set; }
+		public VBoxContainer LeaderboardContainer { get; private set; }
+		public Label TrackNameLabel { get; private set; }
+		public Button LoadTrackButton { get; private set; }
+		public Button CloseButton { get; private set; }
+		public TabContainer LeaderboardTabs { get; private set; }
+		
+		// State
+		public string SelectedTrackId { get; set; } = "";
+		public bool IsVisible => OverlayRoot?.Visible ?? false;
+		
+		// Track button references
+		private List<Button> _trackButtons = new();
+		private Dictionary<string, Button> _trackButtonMap = new();
+
+		/// <summary>
+		/// Create the tracks & leaderboard overlay UI structure
+		/// </summary>
+		public void CreateOverlay(CanvasLayer uiLayer)
+		{
+			// Root overlay with semi-transparent background
+			OverlayRoot = new Control();
+			OverlayRoot.AnchorLeft = 0;
+			OverlayRoot.AnchorTop = 0;
+			OverlayRoot.AnchorRight = 1;
+			OverlayRoot.AnchorBottom = 1;
+			OverlayRoot.Visible = false;
+			uiLayer.AddChild(OverlayRoot);
+
+			// Semi-transparent background
+			var background = new ColorRect();
+			background.AnchorLeft = 0;
+			background.AnchorTop = 0;
+			background.AnchorRight = 1;
+			background.AnchorBottom = 1;
+			background.Color = new Color(0, 0, 0, 0.7f);
+			OverlayRoot.AddChild(background);
+
+			// Main content panel (80% of screen)
+			var mainPanel = new Panel();
+			mainPanel.AnchorLeft = 0.1f;
+			mainPanel.AnchorTop = 0.3f;
+			mainPanel.AnchorRight = 0.9f;
+			mainPanel.AnchorBottom = 0.7f;
+			OverlayRoot.AddChild(mainPanel);
+
+			CreateOverlayContent(mainPanel);
+		}
+
+		private void CreateOverlayContent(Control parent)
+		{
+			var vbox = new VBoxContainer();
+			vbox.AnchorLeft = 0;
+			vbox.AnchorTop = 0;
+			vbox.AnchorRight = 1;
+			vbox.AnchorBottom = 1;
+			parent.AddChild(vbox);
+
+			// Header with title and close button
+			CreateHeader(vbox);
+
+			// Main content with two panels
+			CreateMainContent(vbox);
+		}
+
+		private void CreateHeader(Container parent)
+		{
+			var header = new HBoxContainer();
+			parent.AddChild(header);
+
+			var titleLabel = new Label();
+			titleLabel.Text = "Tracks & Leaderboard";
+			titleLabel.AddThemeFontSizeOverride("font_size", 24);
+			titleLabel.AddThemeColorOverride("font_color", Colors.White);
+			titleLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			header.AddChild(titleLabel);
+
+			CloseButton = new Button();
+			CloseButton.Text = "✕";
+			CloseButton.AddThemeFontSizeOverride("font_size", 20);
+			header.AddChild(CloseButton);
+		}
+
+		private void CreateMainContent(Container parent)
+		{
+			var hbox = new HBoxContainer();
+			hbox.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+			parent.AddChild(hbox);
+
+			// Left panel: Track list (30% width)
+			CreateTrackListPanel(hbox);
+
+			// Separator
+			var separator = new VSeparator();
+			hbox.AddChild(separator);
+
+			// Right panel: Leaderboard (70% width)
+			CreateLeaderboardPanel(hbox);
+		}
+
+		private void CreateTrackListPanel(Container parent)
+		{
+			TrackListPanel = new Panel();
+			TrackListPanel.CustomMinimumSize = new Vector2(250, 0);
+			TrackListPanel.SizeFlagsHorizontal = Control.SizeFlags.Fill;
+			parent.AddChild(TrackListPanel);
+
+			var vbox = new VBoxContainer();
+			vbox.AnchorLeft = 0;
+			vbox.AnchorTop = 0;
+			vbox.AnchorRight = 1;
+			vbox.AnchorBottom = 1;
+			TrackListPanel.AddChild(vbox);
+
+			var trackListTitle = new Label();
+			trackListTitle.Text = "Select Track";
+			trackListTitle.AddThemeFontSizeOverride("font_size", 18);
+			trackListTitle.AddThemeColorOverride("font_color", Colors.White);
+			trackListTitle.HorizontalAlignment = HorizontalAlignment.Center;
+			vbox.AddChild(trackListTitle);
+
+			// Scrollable track list
+			var scrollContainer = new ScrollContainer();
+			scrollContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+			vbox.AddChild(scrollContainer);
+
+			TrackButtonContainer = new VBoxContainer();
+			scrollContainer.AddChild(TrackButtonContainer);
+		}
+
+		private void CreateLeaderboardPanel(Container parent)
+		{
+			LeaderboardPanel = new Panel();
+			LeaderboardPanel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			parent.AddChild(LeaderboardPanel);
+
+			var vbox = new VBoxContainer();
+			vbox.AnchorLeft = 0;
+			vbox.AnchorTop = 0;
+			vbox.AnchorRight = 1;
+			vbox.AnchorBottom = 1;
+			LeaderboardPanel.AddChild(vbox);
+
+			// Track name and load button
+			CreateLeaderboardHeader(vbox);
+
+			// Tabbed leaderboard (Best Laps / Best Races)
+			CreateLeaderboardTabs(vbox);
+		}
+
+		private void CreateLeaderboardHeader(Container parent)
+		{
+			var header = new HBoxContainer();
+			parent.AddChild(header);
+
+			TrackNameLabel = new Label();
+			TrackNameLabel.Text = "Select a track";
+			TrackNameLabel.AddThemeFontSizeOverride("font_size", 20);
+			TrackNameLabel.AddThemeColorOverride("font_color", Colors.White);
+			TrackNameLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			header.AddChild(TrackNameLabel);
+
+			LoadTrackButton = new Button();
+			LoadTrackButton.Text = "Load Track";
+			LoadTrackButton.Disabled = true;
+			header.AddChild(LoadTrackButton);
+		}
+
+		private void CreateLeaderboardTabs(Container parent)
+		{
+			LeaderboardTabs = new TabContainer();
+			LeaderboardTabs.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+			parent.AddChild(LeaderboardTabs);
+
+			// Best Laps tab
+			var lapTimesScroll = new ScrollContainer();
+			lapTimesScroll.Name = "Best Laps";
+			LeaderboardTabs.AddChild(lapTimesScroll);
+
+			var lapTimesContainer = new VBoxContainer();
+			lapTimesContainer.Name = "LapTimesContainer";
+			lapTimesScroll.AddChild(lapTimesContainer);
+
+			// Best Races tab
+			var raceTimesScroll = new ScrollContainer();
+			raceTimesScroll.Name = "Best Races";
+			LeaderboardTabs.AddChild(raceTimesScroll);
+
+			var raceTimesContainer = new VBoxContainer();
+			raceTimesContainer.Name = "RaceTimesContainer";
+			raceTimesScroll.AddChild(raceTimesContainer);
+		}
+
+		public void AddTrackButton(string trackId, string trackName, bool isCurrent, bool hasScores)
+		{
+			var trackButton = new Button();
+			trackButton.Text = trackName;
+			trackButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			
+			// Style button based on state
+			if (isCurrent)
+			{
+				trackButton.AddThemeColorOverride("font_color", Colors.Yellow);
+				trackButton.Text += " (Current)";
+			}
+			else if (hasScores)
+			{
+				trackButton.AddThemeColorOverride("font_color", Colors.LightBlue);
+			}
+			
+			// Store reference
+			_trackButtons.Add(trackButton);
+			_trackButtonMap[trackId] = trackButton;
+			TrackButtonContainer.AddChild(trackButton);
+		}
+
+		public Button GetTrackButton(string trackId)
+		{
+			return _trackButtonMap.GetValueOrDefault(trackId);
+		}
+
+		public void ClearTrackButtons()
+		{
+			foreach (var button in _trackButtons)
+			{
+				button?.QueueFree();
+			}
+			_trackButtons.Clear();
+			_trackButtonMap.Clear();
+		}
+
+		public void UpdateSelectedTrack(string trackId, string trackName, bool canLoad)
+		{
+			SelectedTrackId = trackId;
+			TrackNameLabel.Text = trackName;
+			LoadTrackButton.Disabled = !canLoad;
+		}
+
+		public void UpdateLeaderboard(List<LeaderboardEntry> lapTimes, List<LeaderboardEntry> raceTimes)
+		{
+			UpdateLeaderboardTab("LapTimesContainer", lapTimes);
+			UpdateLeaderboardTab("RaceTimesContainer", raceTimes);
+		}
+
+		private void UpdateLeaderboardTab(string containerName, List<LeaderboardEntry> entries)
+		{
+			var container = LeaderboardTabs.FindChild(containerName, true, false) as VBoxContainer;
+			if (container == null) return;
+
+			// Clear existing entries
+			foreach (Node child in container.GetChildren())
+			{
+				child.QueueFree();
+			}
+
+			if (entries.Count == 0)
+			{
+				var noDataLabel = new Label();
+				noDataLabel.Text = "No times recorded for this track";
+				noDataLabel.HorizontalAlignment = HorizontalAlignment.Center;
+				noDataLabel.AddThemeColorOverride("font_color", Colors.Gray);
+				container.AddChild(noDataLabel);
+				return;
+			}
+
+			// Add entries
+			for (int i = 0; i < entries.Count && i < 10; i++) // Top 10
+			{
+				var entry = entries[i];
+				var entryLabel = new Label();
+				entryLabel.Text = $"{i + 1}. {entry.FormattedTime} - {entry.CategoryDisplay}";
+				
+				if (entry.IsCurrentPlayer)
+				{
+					entryLabel.AddThemeColorOverride("font_color", Colors.Yellow);
+				}
+				else
+				{
+					entryLabel.AddThemeColorOverride("font_color", Colors.White);
+				}
+				
+				container.AddChild(entryLabel);
+			}
+		}
+
+		public void ShowOverlay()
+		{
+			if (OverlayRoot != null)
+				OverlayRoot.Visible = true;
+		}
+
+		public void HideOverlay()
+		{
+			if (OverlayRoot != null)
+				OverlayRoot.Visible = false;
+		}
+	}
 
 	// ================================================================
 	// PUBLIC PROPERTIES
@@ -177,11 +529,11 @@ namespace BarBox.Games.Racing
 		// Restart button
 		SetupRestartButton(bottomBar);
 
-		// Track selection buttons
-		if (_trackScenes != null && _trackScenes.Count > 1)
+		// Tracks & Leaderboard button
+		if (_trackScenes != null && _trackScenes.Count > 0)
 		{
 			bottomBar.AddChild(new VSeparator());
-			SetupTrackSelectionButtons(bottomBar);
+			SetupTracksLeaderboardButton(bottomBar);
 		}
 	}
 
@@ -218,50 +570,17 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Setup track selection buttons
+	/// Setup tracks & leaderboard button
 	/// </summary>
 	/// <param name="parent">Parent container</param>
-	private void SetupTrackSelectionButtons(Container parent)
+	private void SetupTracksLeaderboardButton(Container parent)
 	{
-		if (_trackScenes == null || _trackScenes.Count <= 1) return;
-
-		_trackSelectionButtons = new Button[_trackScenes.Count];
-
-		for (int i = 0; i < _trackScenes.Count; i++)
-		{
-			var trackIndex = i; // Capture loop variable
-			var trackButton = new Button();
-			
-			// Get track name from the scene
-			var trackScene = _trackScenes[i];
-			if (trackScene != null)
-			{
-				var tempInstance = trackScene.Instantiate();
-				if (tempInstance is RacingTrackDefinition trackDef)
-				{
-					trackButton.Text = trackDef.TrackName;
-					tempInstance.QueueFree();
-				}
-				else
-				{
-					trackButton.Text = $"Track {i + 1}";
-					tempInstance.QueueFree();
-				}
-			}
-			else
-			{
-				trackButton.Text = $"Track {i + 1}";
-			}
-
-			trackButton.Pressed += () => {
-				ResetUserIdleTimer();
-				EmitSignal(SignalName.TrackSwitchRequested, trackIndex);
-			};
-			_trackSelectionButtons[i] = trackButton;
-			parent.AddChild(trackButton);
-		}
-
-		UpdateTrackSelectionButtons(false, false);
+		_tracksLeaderboardButton = new Button() { Text = "Tracks & Leaderboard" };
+		_tracksLeaderboardButton.Pressed += () => {
+			ResetUserIdleTimer();
+			ShowTracksLeaderboard();
+		};
+		parent.AddChild(_tracksLeaderboardButton);
 	}
 
 	/// <summary>
@@ -503,28 +822,21 @@ namespace BarBox.Games.Racing
 		}
 
 		// Update track selection buttons - disable during time trial or countdown
-		UpdateTrackSelectionButtons(isTimeTrial && isTimeTrialInProgress, isInCountdown);
+		UpdateTracksLeaderboardButton(isTimeTrial && isTimeTrialInProgress, isInCountdown);
 	}
 
 	/// <summary>
-	/// Update track selection button states
+	/// Update tracks & leaderboard button state
 	/// </summary>
 	/// <param name="isActiveTimeTrial">Whether time trial is active</param>
 	/// <param name="isInCountdown">Whether countdown is active</param>
-	public void UpdateTrackSelectionButtons(bool isActiveTimeTrial, bool isInCountdown)
+	public void UpdateTracksLeaderboardButton(bool isActiveTimeTrial, bool isInCountdown)
 	{
-		if (_trackSelectionButtons == null) return;
-
-		// Allow track switching in practice mode, but not during time trial or countdown
-		bool shouldDisableAll = isActiveTimeTrial || isInCountdown;
-
-		for (int i = 0; i < _trackSelectionButtons.Length; i++)
-		{
-			if (_trackSelectionButtons[i] != null)
-			{
-				_trackSelectionButtons[i].Disabled = (i == _currentTrackIndex) || shouldDisableAll;
-			}
-		}
+		if (_tracksLeaderboardButton == null) return;
+		
+		// Disable during active time trial or countdown
+		bool shouldDisable = isActiveTimeTrial || isInCountdown;
+		_tracksLeaderboardButton.Disabled = shouldDisable;
 	}
 
 	// ================================================================
@@ -599,7 +911,7 @@ namespace BarBox.Games.Racing
 	public void SetCurrentTrackIndex(int trackIndex)
 	{
 		_currentTrackIndex = trackIndex;
-		UpdateTrackSelectionButtons(false, false);
+		UpdateTracksLeaderboardButton(false, false);
 	}
 
 	/// <summary>
@@ -677,6 +989,369 @@ namespace BarBox.Games.Racing
 			userManager.ResetUserIdleTimer();
 		}
 	}
+
+	// ================================================================
+	// TRACKS & LEADERBOARD MANAGEMENT
+	// ================================================================
+
+	/// <summary>
+	/// Initialize tracks & leaderboard overlay
+	/// </summary>
+	/// <param name="trackMetadata">Track metadata for display</param>
+	/// <param name="currentTrackId">Currently loaded track ID</param>
+	public void InitializeTracksLeaderboard(Dictionary<string, TrackMetadata> trackMetadata, string currentTrackId)
+	{
+		// Create overlay if it doesn't exist
+		if (_tracksLeaderboardOverlay == null)
+		{
+			_tracksLeaderboardOverlay = new TracksLeaderboardOverlay();
+			_tracksLeaderboardOverlay.CreateOverlay(_uiLayer);
+			
+			// Connect signals
+			_tracksLeaderboardOverlay.CloseButton.Pressed += HideTracksLeaderboard;
+			_tracksLeaderboardOverlay.LoadTrackButton.Pressed += OnLoadTrackFromOverlay;
+		}
+
+		// Update track metadata cache and populate track list
+		_trackMetadataCache = trackMetadata;
+		PopulateTrackList(currentTrackId);
+	}
+
+	/// <summary>
+	/// Show the tracks & leaderboard overlay
+	/// </summary>
+	public void ShowTracksLeaderboard()
+	{
+		if (_tracksLeaderboardOverlay == null)
+			return;
+
+		// Reset idle timer when opening premium UI
+		ResetUserIdleTimer();
+		
+		_tracksLeaderboardOverlay.ShowOverlay();
+		EmitSignal(SignalName.TracksLeaderboardRequested);
+	}
+
+	/// <summary>
+	/// Hide the tracks & leaderboard overlay
+	/// </summary>
+	public void HideTracksLeaderboard()
+	{
+		_tracksLeaderboardOverlay?.HideOverlay();
+	}
+
+	/// <summary>
+	/// Update track metadata and refresh overlay if visible
+	/// </summary>
+	public void UpdateTrackMetadata(Dictionary<string, TrackMetadata> trackMetadata, string currentTrackId)
+	{
+		_trackMetadataCache = trackMetadata;
+		
+		if (_tracksLeaderboardOverlay?.IsVisible == true)
+		{
+			PopulateTrackList(currentTrackId);
+			
+			// Refresh leaderboard for currently selected track
+			if (!string.IsNullOrEmpty(_tracksLeaderboardOverlay.SelectedTrackId))
+			{
+				UpdateLeaderboardForTrack(_tracksLeaderboardOverlay.SelectedTrackId);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Populate track list in the overlay
+	/// </summary>
+	private void PopulateTrackList(string currentTrackId)
+	{
+		if (_tracksLeaderboardOverlay == null)
+			return;
+
+		// Clear existing buttons
+		_tracksLeaderboardOverlay.ClearTrackButtons();
+
+		// Add track buttons
+		foreach (var track in _trackMetadataCache.Values.OrderBy(t => t.Index))
+		{
+			bool isCurrent = track.TrackId == currentTrackId;
+			_tracksLeaderboardOverlay.AddTrackButton(track.TrackId, track.TrackName, isCurrent, track.HasPlayerScores);
+			
+			// Connect button signal
+			var button = _tracksLeaderboardOverlay.GetTrackButton(track.TrackId);
+			if (button != null)
+			{
+				var trackId = track.TrackId; // Capture for closure
+				button.Pressed += () => OnTrackSelected(trackId);
+			}
+		}
+
+		// Select first track or current track by default
+		if (_trackMetadataCache.Count > 0)
+		{
+			var defaultTrack = _trackMetadataCache.Values.FirstOrDefault(t => t.TrackId == currentTrackId) ?? 
+							   _trackMetadataCache.Values.OrderBy(t => t.Index).First();
+			OnTrackSelected(defaultTrack.TrackId);
+		}
+	}
+
+	/// <summary>
+	/// Handle track selection in overlay
+	/// </summary>
+	private void OnTrackSelected(string trackId)
+	{
+		if (!_trackMetadataCache.TryGetValue(trackId, out var track))
+			return;
+
+		bool canLoad = !track.IsCurrentTrack;
+		_tracksLeaderboardOverlay?.UpdateSelectedTrack(trackId, track.TrackName, canLoad);
+		UpdateLeaderboardForTrack(trackId);
+	}
+
+	/// <summary>
+	/// Handle load track request from overlay
+	/// </summary>
+	private void OnLoadTrackFromOverlay()
+	{
+		if (_tracksLeaderboardOverlay == null || string.IsNullOrEmpty(_tracksLeaderboardOverlay.SelectedTrackId))
+			return;
+
+		ResetUserIdleTimer();
+		EmitSignal(SignalName.TrackLoadFromOverlayRequested, _tracksLeaderboardOverlay.SelectedTrackId);
+		HideTracksLeaderboard();
+	}
+
+	/// <summary>
+	/// Update leaderboard display for a specific track with DataStore integration
+	/// </summary>
+	private void UpdateLeaderboardForTrack(string trackId)
+	{
+		if (_tracksLeaderboardOverlay == null || !_trackMetadataCache.TryGetValue(trackId, out var track))
+			return;
+
+		// Load leaderboard data asynchronously
+		LoadLeaderboardDataAsync(trackId);
+	}
+
+	/// <summary>
+	/// Load leaderboard data from DataStore for a specific track
+	/// </summary>
+	private async void LoadLeaderboardDataAsync(string trackId)
+	{
+		try
+		{
+			// Get current player ID (this logic should be provided by the game)
+			var playerId = GetCurrentPlayerId();
+			
+			var dataStore = DataStore.GetInstance();
+			if (dataStore == null)
+			{
+				UpdateLeaderboardFallback(trackId);
+				return;
+			}
+
+			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+			
+			// Check if overlay is still valid after await
+			if (_tracksLeaderboardOverlay == null || !IsInstanceValid(this))
+				return;
+				
+			if (!globalDataResult.IsSuccess)
+			{
+				UpdateLeaderboardFallback(trackId);
+				return;
+			}
+			
+			var racingData = globalDataResult.Value.Racing;
+			var lapEntries = new List<LeaderboardEntry>();
+			var raceEntries = new List<LeaderboardEntry>();
+			
+			// Extract track-specific times using both new and legacy key formats
+			ExtractTrackLeaderboardEntries(racingData, trackId, playerId, lapEntries, raceEntries);
+			
+			// Update UI on main thread
+			var callable = Callable.From(() => UpdateLeaderboardUI(trackId, lapEntries, raceEntries));
+			callable.CallDeferred();
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[RacingUIManager] Exception loading leaderboard: {ex.Message}");
+			var fallbackCallable = Callable.From(() => UpdateLeaderboardFallback(trackId));
+			fallbackCallable.CallDeferred();
+		}
+	}
+
+	/// <summary>
+	/// Extract leaderboard entries for a specific track from racing data
+	/// </summary>
+	private void ExtractTrackLeaderboardEntries(RacingGlobalDataStore racingData, string trackId, string currentPlayerId, 
+		List<LeaderboardEntry> lapEntries, List<LeaderboardEntry> raceEntries)
+	{
+		if (!_trackMetadataCache.TryGetValue(trackId, out var track))
+			return;
+
+		// Get best lap time using new key format
+		float bestLapTime = racingData.GetBestLapTime(trackId);
+		
+		if (bestLapTime > 0f)
+		{
+			lapEntries.Add(new LeaderboardEntry
+			{
+				TrackId = trackId,
+				TrackName = track.TrackName,
+				Time = bestLapTime,
+				Type = "Best Lap",
+				IsCurrentPlayer = true
+			});
+		}
+
+		// Get best race times for different lap counts
+		for (int laps = 1; laps <= 10; laps++) // Support up to 10 lap races
+		{
+			float bestRaceTime = racingData.GetBestRaceTime(trackId, laps);
+			
+			if (bestRaceTime > 0f)
+			{
+				raceEntries.Add(new LeaderboardEntry
+				{
+					TrackId = trackId,
+					TrackName = track.TrackName,
+					Time = bestRaceTime,
+					Type = "Best Race",
+					Laps = laps,
+					IsCurrentPlayer = true
+				});
+			}
+		}
+
+		// Sort entries by time (fastest first)
+		lapEntries.Sort((a, b) => a.Time.CompareTo(b.Time));
+		raceEntries.Sort((a, b) => a.Time.CompareTo(b.Time));
+	}
+
+	/// <summary>
+	/// Update leaderboard UI on main thread
+	/// </summary>
+	private void UpdateLeaderboardUI(string trackId, List<LeaderboardEntry> lapEntries, List<LeaderboardEntry> raceEntries)
+	{
+		// Only update if this track is still selected
+		if (_tracksLeaderboardOverlay?.SelectedTrackId == trackId)
+		{
+			_tracksLeaderboardOverlay.UpdateLeaderboard(lapEntries, raceEntries);
+		}
+	}
+
+	/// <summary>
+	/// Fallback leaderboard update when DataStore is unavailable
+	/// </summary>
+	private void UpdateLeaderboardFallback(string trackId)
+	{
+		if (_tracksLeaderboardOverlay?.SelectedTrackId != trackId)
+			return;
+
+		var emptyLapEntries = new List<LeaderboardEntry>();
+		var emptyRaceEntries = new List<LeaderboardEntry>();
+		
+		_tracksLeaderboardOverlay.UpdateLeaderboard(emptyLapEntries, emptyRaceEntries);
+	}
+
+	/// <summary>
+	/// Get current player ID (this should be set by the game during initialization)
+	/// </summary>
+	private string _currentPlayerId = "player1";
+	
+	public void SetCurrentPlayerId(string playerId)
+	{
+		_currentPlayerId = playerId;
+	}
+	
+	private string GetCurrentPlayerId()
+	{
+		return _currentPlayerId;
+	}
+
+	/// <summary>
+	/// Enhanced track metadata update with DataStore-powered leaderboard data
+	/// </summary>
+	public async void UpdateTrackMetadataWithLeaderboard(Dictionary<string, TrackMetadata> baseTrackMetadata, string currentTrackId, string playerId)
+	{
+		_currentPlayerId = playerId;
+		
+		// Get enhanced metadata with leaderboard data
+		var enhancedMetadata = await EnhanceTrackMetadataWithScores(baseTrackMetadata, playerId);
+		
+		// Update cache and UI
+		_trackMetadataCache = enhancedMetadata;
+		
+		if (_tracksLeaderboardOverlay?.IsVisible == true)
+		{
+			PopulateTrackList(currentTrackId);
+			
+			// Refresh leaderboard for currently selected track
+			if (!string.IsNullOrEmpty(_tracksLeaderboardOverlay.SelectedTrackId))
+			{
+				UpdateLeaderboardForTrack(_tracksLeaderboardOverlay.SelectedTrackId);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Enhance track metadata with player's best scores from DataStore
+	/// </summary>
+	private async Task<Dictionary<string, TrackMetadata>> EnhanceTrackMetadataWithScores(Dictionary<string, TrackMetadata> baseMetadata, string playerId)
+	{
+		var enhancedMetadata = new Dictionary<string, TrackMetadata>();
+		
+		// Copy base metadata
+		foreach (var kvp in baseMetadata)
+		{
+			enhancedMetadata[kvp.Key] = new TrackMetadata
+			{
+				TrackId = kvp.Value.TrackId,
+				TrackName = kvp.Value.TrackName,
+				DefaultLaps = kvp.Value.DefaultLaps,
+				Scene = kvp.Value.Scene,
+				Index = kvp.Value.Index,
+				IsCurrentTrack = kvp.Value.IsCurrentTrack
+			};
+		}
+
+		try
+		{
+			var dataStore = DataStore.GetInstance();
+			if (dataStore == null)
+				return enhancedMetadata;
+
+			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+			if (!globalDataResult.IsSuccess)
+				return enhancedMetadata;
+
+			var racingData = globalDataResult.Value.Racing;
+			
+			// Enhance each track with score data
+			foreach (var track in enhancedMetadata.Values)
+			{
+				// Get best lap time
+				track.BestLapTime = racingData.GetBestLapTime(track.TrackId);
+				
+				// Get best race time (use default laps)
+				track.BestRaceTime = racingData.GetBestRaceTime(track.TrackId, track.DefaultLaps);
+				
+				// Mark if player has scores
+				track.HasPlayerScores = track.BestLapTime > 0f || track.BestRaceTime > 0f;
+			}
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[RacingUIManager] Exception enhancing track metadata: {ex.Message}");
+		}
+
+		return enhancedMetadata;
+	}
+
+	/// <summary>
+	/// Check if tracks & leaderboard overlay is visible
+	/// </summary>
+	public bool IsTracksLeaderboardVisible => _tracksLeaderboardOverlay?.IsVisible ?? false;
 
 	/// <summary>
 	/// Update UI settings from external configuration
