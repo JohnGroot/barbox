@@ -74,4 +74,14 @@ public static class TweenConstants
 	public const float MediumDuration = 0.3f;
 	public const float SlowDuration = 0.5f;
 	public const float VerySlowDuration = 1.0f;
+	
+	// Track-specific properties for racing game editor
+	public static readonly NodePath Width = new("width");
+	public static readonly NodePath BankingAngle = new("banking_angle");
+	public static readonly NodePath TrackPoints = new("track_points");
+	public static readonly NodePath ControlPointIn = new("control_point_in");
+	public static readonly NodePath ControlPointOut = new("control_point_out");
+	public static readonly NodePath MaterialType = new("material_type");
+	public static readonly NodePath TangentIn = new("tangent_in");
+	public static readonly NodePath TangentOut = new("tangent_out");
 }

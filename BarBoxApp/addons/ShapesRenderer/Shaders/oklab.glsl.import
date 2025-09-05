@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dhpxim3kdyi55"
+path="res://.godot/imported/oklab.glsl-164dcf06bc440b5576744d9474368ac5.res"
+
+[deps]
+
+source_file="res://addons/ShapesRenderer/Shaders/oklab.glsl"
+dest_files=["res://.godot/imported/oklab.glsl-164dcf06bc440b5576744d9474368ac5.res"]
+
+[params]
+
