@@ -1,0 +1,24 @@
+[gd_scene load_steps=6 format=3 uid="uid://dg6t2lspq4j8h"]
+
+[ext_resource type="Script" uid="uid://c8vylp72vcaag" path="res://_Games/MiningGame/Scripts/MiningGame.cs" id="1_3w5hw"]
+[ext_resource type="Resource" uid="uid://b1i5oh72e5nmu" path="res://_Games/MiningGame/Resources/Configs/MiningConfig.tres" id="2_d4bfs"]
+[ext_resource type="Script" uid="uid://dmjgptbjrwt7i" path="res://_Games/MiningGame/Scripts/Data/MiningLocationData.cs" id="3_fhfuh"]
+[ext_resource type="Resource" uid="uid://deveej7cv2cru" path="res://_Games/MiningGame/Resources/Configs/DefaultLocation.tres" id="4_ji104"]
+[ext_resource type="Script" path="res://_Games/MiningGame/Scripts/Visual/MiningGameUI.cs" id="5_ji104"]
+
+[node name="MiningGame" type="Node2D"]
+script = ExtResource("1_3w5hw")
+Config = ExtResource("2_d4bfs")
+UIPath = NodePath("MiningGameUI")
+LocationDataResources = Array[ExtResource("3_fhfuh")]([ExtResource("4_ji104")])
+GameId = "mining_game"
+CanPause = false
+metadata/_custom_type_script = "uid://c8vylp72vcaag"
+
+[node name="MiningGameUI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("5_ji104")
+metadata/_custom_type_script = "uid://n45o2pf6tupm"

@@ -1,0 +1,37 @@
+[gd_scene load_steps=9 format=3 uid="uid://bxrmj1t8vqp6k"]
+
+[ext_resource type="Script" uid="uid://bo1ute767cjbn" path="res://_Games/CarromGame/Scripts/CarromGame.cs" id="1_0jy4h"]
+[ext_resource type="PackedScene" uid="uid://dadysaqeaqd5s" path="res://_Games/CarromGame/Scenes/Pieces/WhitePiece.tscn" id="2_1b4uc"]
+[ext_resource type="Script" path="res://_Games/CarromGame/Scripts/Visual/CarromBoard.cs" id="2_mm0sl"]
+[ext_resource type="Resource" uid="uid://dqa1j8i4cv7rx" path="res://_Games/CarromGame/Resources/CarromPhysicsConfig.tres" id="2_pw2n5"]
+[ext_resource type="Script" path="res://_Games/CarromGame/Scripts/Visual/CarromInputController.cs" id="3_1r7uy"]
+[ext_resource type="PackedScene" uid="uid://cho5hrg36wicx" path="res://_Games/CarromGame/Scenes/Pieces/BlackPiece.tscn" id="3_pw2n5"]
+[ext_resource type="PackedScene" uid="uid://bo1b586t33mi3" path="res://_Games/CarromGame/Scenes/Pieces/RedPiece.tscn" id="4_oio5e"]
+[ext_resource type="PackedScene" uid="uid://wdhuqwk1aqo8" path="res://_Games/CarromGame/Scenes/Pieces/StrikerPiece.tscn" id="5_yqxup"]
+
+[node name="CarromGame" type="Node2D"]
+script = ExtResource("1_0jy4h")
+PhysicsConfig = ExtResource("2_pw2n5")
+MaxVelocityLimit = 4000.0
+MaxAngularVelocity = 100.0
+VelocityAlertThreshold = 4000.0
+AimLineLength = 150.0
+PowerBarWidth = 80.0
+EnableTrails = true
+WhitePieceTemplate = ExtResource("2_1b4uc")
+BlackPieceTemplate = ExtResource("3_pw2n5")
+RedPieceTemplate = ExtResource("4_oio5e")
+StrikerTemplate = ExtResource("5_yqxup")
+GameId = "carrom_game"
+
+[node name="CarromBoard" type="Node2D" parent="."]
+script = ExtResource("2_mm0sl")
+EdgeColor = Color(0.647059, 0.270588, 0, 1)
+UseCurvedBorders = true
+PhysicsConfig = ExtResource("2_pw2n5")
+
+[node name="CarromInputController" type="Node2D" parent="."]
+script = ExtResource("3_1r7uy")
+
+[node name="GameCamera" type="Camera2D" parent="."]
+ignore_rotation = false

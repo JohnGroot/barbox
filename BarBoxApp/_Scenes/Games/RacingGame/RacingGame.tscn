@@ -1,9 +1,0 @@
-[gd_scene load_steps=4 format=3 uid="uid://bk8h5n2qp3m7x"]
-
-[ext_resource type="Script" uid="uid://dgm3rxt5i1tlc" path="res://_Scripts/Games/RacingGame/RacingGame.cs" id="1_x9h8c"]
-[ext_resource type="PackedScene" uid="uid://3nr7t27bpq56" path="res://_Scenes/Games/RacingGame/_Tracks/GoCartTrack.tscn" id="2_csopi"]
-[ext_resource type="PackedScene" uid="uid://byl7ua2lcaynm" path="res://_Scenes/Games/RacingGame/_Tracks/OvalTrack.tscn" id="2_didut"]
-
-[node name="RacingGame" type="Node2D"]
-script = ExtResource("1_x9h8c")
-TrackScenes = Array[PackedScene]([ExtResource("2_didut"), ExtResource("2_csopi")])

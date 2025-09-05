@@ -1,0 +1,48 @@
+[gd_resource type="Resource" script_class="CarromPhysicsConfig" load_steps=2 format=3 uid="uid://dqa1j8i4cv7rx"]
+
+[ext_resource type="Script" uid="uid://dkfvhygsky5l7" path="res://_Games/CarromGame/Scripts/Logic/CarromPhysicsConfig.cs" id="1_y0unv"]
+
+[resource]
+script = ExtResource("1_y0unv")
+PieceStopThreshold = 20.0
+StopConfirmationTime = 0.2
+StopHysteresisFactor = 1.2
+LinearDamping = 0.5
+AngularDamping = 2.0
+DefaultMass = 1.0
+StrikerMass = 2.2
+PieceFriction = 0.02
+PieceBounce = 0.95
+CollisionSafetyMargin = 0.98
+DefaultPieceRadius = 12.0
+StrikerRadius = 15.0
+MaxContactsReported = 10
+ContactMonitor = true
+MinStrikePower = 100.0
+MaxStrikePower = 3500.0
+MaxStrikeAngle = 90.0
+PocketInfluenceZoneMultiplier = 1.8
+PocketHoleZoneMultiplier = 0.75
+PocketSlowCaptureSpeedRatio = 0.4
+PocketMaxCaptureSpeedRatio = 0.55
+PocketBounceOutSpeedRatio = 0.55
+PocketSpeedCaptureChance = 0.9
+PocketRadialForceStrength = 40.0
+PocketFrictionMultiplier = 2.5
+PocketMaxApproachAngle = 100.0
+InitialFrictionCoefficient = 0.35
+FinalFrictionCoefficient = 0.5
+PowderTransitionDistance = 300.0
+GravityConstant = 900.0
+EnablePowderEffectFriction = true
+MinimumMovementValidation = 50.0
+AngularTorqueScale = 50.0
+BoardFriction = 0.02
+BoardBounce = 0.95
+PocketInnerMultiplier = 0.8
+PocketHighlightMultiplier = 0.9
+CompletelyStillTimeout = 2.0
+StationaryPieceTimeout = 5.0
+AbsoluteTimeout = 10.0
+UltimateTimeout = 15.0
+metadata/_custom_type_script = "uid://dkfvhygsky5l7"
