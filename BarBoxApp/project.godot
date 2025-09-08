@@ -38,10 +38,6 @@ window/stretch/mode="canvas_items"
 
 project/assembly_name="BarBox"
 
-[editor_plugins]
-
-enabled=PackedStringArray("res://addons/ShapesRenderer/plugin.cfg")
-
 [rendering]
 
 environment/defaults/default_clear_color=Color(0, 0, 0, 1)
