@@ -176,7 +176,8 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public void UpdateTireTrails()
 	{
-		if (!(_carController?.IsInitialized == true)) return;
+		if (_carController?.IsInitialized != true) 
+			return;
 
 		var currentTime = Time.GetTicksMsec();
 		
@@ -198,18 +199,9 @@ namespace BarBox.Games.Racing
 		// Invalidate cached values when car moves significantly (for visual consistency)
 		_cachedValuesValid = false;
 		
-		// Calculate tire positions based on car orientation using original offset logic
-		// Convert car rotation to directional vectors using rotation matrix
-		var carForward = new Vector2(Mathf.Sin(carBody.Rotation), -Mathf.Cos(carBody.Rotation));
-		var carRight = new Vector2(carForward.Y, -carForward.X);
-		var carSize = _carController.CarSize;
-		var halfLength = carSize.Y * 0.5f;
-		var halfWidth = carSize.X * 0.5f;
-		var backOffset = carRight * -halfWidth * 0.75f - carForward * halfLength * 1.5f;
-		var carBackPosition = carPosition + backOffset;
-		var tireOffset = halfWidth * 0.625f;
-		var leftTirePosition = carBackPosition - carRight * tireOffset;
-		var rightTirePosition = carBackPosition + carRight * tireOffset;
+		// Use cached tire positions from car controller for performance
+		var leftTirePosition = _carController.LeftTirePosition;
+		var rightTirePosition = _carController.RightTirePosition;
 		
 		// Add trail points for both tires
 		AddTrailPoint(_leftTireTrail, leftTirePosition, currentTime);
@@ -291,19 +283,9 @@ namespace BarBox.Games.Racing
 		
 		if (carBody == null || targetPosition == Vector2.Zero) return;
 		
-		// Calculate car front position using original offset logic
-		var carForward = new Vector2(Mathf.Sin(carBody.Rotation), -Mathf.Cos(carBody.Rotation));
-		var carRight = new Vector2(carForward.Y, -carForward.X);
-		var carSize = _carController.CarSize;
-		var halfLength = carSize.Y * 0.5f;
-		var halfWidth = carSize.X * 0.5f;
-		var frontOffset = carRight * -halfWidth * 0.75f + carForward * halfLength * 0.25f;
-		var carFrontPosition = carBody.GlobalPosition + frontOffset;
-		
-		// Clamp target to max input distance
-		var directionToTarget = (targetPosition - carBody.GlobalPosition);
-		var distanceToTarget = directionToTarget.Length();
-		var clampedTarget = carBody.GlobalPosition + directionToTarget.Normalized() * Mathf.Min(distanceToTarget, _carController.MaxInputDistance);
+		// Use cached positions from car controller for performance
+		var carFrontPosition = _carController.CarFrontPosition;
+		var clampedTarget = _carController.ClampedTargetPosition;
 		
 		var inputLineColor = hasInput ? InputLineActiveColor : 
 			(_carController.GetCarSpeed() > 1.0f ? InputLineInactiveColor : InputLineInactiveColor * new Color(1, 1, 1, 0.3f));
@@ -333,10 +315,8 @@ namespace BarBox.Games.Racing
 		
 		if (targetPosition == Vector2.Zero || (!hasInput && _carController.GetCarSpeed() < 1.0f)) return;
 
-		var carBody = _carController.GetCarBody();
-		var directionToTarget = (targetPosition - carBody.GlobalPosition);
-		var distanceToTarget = directionToTarget.Length();
-		var clampedTarget = carBody.GlobalPosition + directionToTarget.Normalized() * Mathf.Min(distanceToTarget, _carController.MaxInputDistance);
+		// Use cached clamped target position from car controller for performance
+		var clampedTarget = _carController.ClampedTargetPosition;
 		
 		// Draw circle at clamped target position
 		if (clampedTarget != Vector2.Zero)

@@ -28,6 +28,12 @@ namespace BarBox.Games.Racing
 		[Export] public float DecelerationRate { get; set; } = 600.0f;
 		[Export] public float RotationLerpSpeed { get; set; } = 5.0f;
 
+		[ExportCategory("Headlight Settings")]
+		[Export] public bool HeadlightEnabled { get; set; } = true;
+		[Export] public float HeadlightRange { get; set; } = 200.0f;
+		[Export] public float HeadlightWidth { get; set; } = 47.0f;
+		[Export] public Color HeadlightColor { get; set; } = new Color(1.0f, 1.0f, 0.8f, 0.27f);
+
 		[ExportCategory("Input Settings")]
 		[Export] public float MaxInputDistance { get; set; } = 300.0f;
 
@@ -46,6 +52,7 @@ namespace BarBox.Games.Racing
 		protected CharacterBody2D _carBody;
 		protected CollisionShape2D _carCollision;
 		protected ColorRect _carVisual;
+		protected Polygon2D _headlightCone;
 
 		// ================================================================
 		// CAR PHYSICS STATE
@@ -56,6 +63,24 @@ namespace BarBox.Games.Racing
 		protected Vector2 _velocity = Vector2.Zero;
 		protected float _currentSpeed = 0.0f;
 		protected bool _hasInput = false;
+
+		// ================================================================
+		// CACHED POSITION DATA
+		// ================================================================
+		
+		// Cached directional vectors for performance
+		protected Vector2 _cachedCarForward = Vector2.Zero;
+		protected Vector2 _cachedCarRight = Vector2.Zero;
+		
+		// Cached position data for visual feedback and components
+		protected Vector2 _cachedCarFrontPosition = Vector2.Zero;
+		protected Vector2 _cachedCarBackPosition = Vector2.Zero;
+		protected Vector2 _cachedLeftTirePosition = Vector2.Zero;
+		protected Vector2 _cachedRightTirePosition = Vector2.Zero;
+		protected Vector2 _cachedClampedTargetPosition = Vector2.Zero;
+		
+		// Cache invalidation flag
+		protected bool _positionCacheDirty = true;
 
 		// ================================================================
 		// INPUT MANAGEMENT
@@ -155,6 +180,41 @@ namespace BarBox.Games.Racing
 
 			// Position car at player position
 			_carBody.GlobalPosition = GlobalPosition;
+			
+			// Setup headlight cone
+			SetupHeadlightCone();
+		}
+
+		/// <summary>
+		/// Setup the car's headlight cone visual
+		/// </summary>
+		protected virtual void SetupHeadlightCone()
+		{
+			if (!HeadlightEnabled) return;
+
+			_headlightCone = new Polygon2D();
+			_carBody.AddChild(_headlightCone);
+
+			// Create triangle cone shape pointing forward using cached car front position
+			var halfWidth = Mathf.DegToRad(HeadlightWidth * 0.5f);
+			var range = HeadlightRange;
+
+			// Use cached front position offset for consistent positioning with visual feedback
+			var carFrontOffset = CarRight * -CarSize.X * 0.375f + CarForward * CarSize.Y * 0.25f;
+			
+			// Triangle vertices: start at front center of car, cone extends forward
+			var vertices = new Vector2[]
+			{
+				carFrontOffset, // Start at front center of car (using cached calculation)
+				carFrontOffset + new Vector2(-range * Mathf.Sin(halfWidth), -range * Mathf.Cos(halfWidth)), // Left edge
+				carFrontOffset + new Vector2(range * Mathf.Sin(halfWidth), -range * Mathf.Cos(halfWidth))   // Right edge
+			};
+
+			_headlightCone.Polygon = vertices;
+			_headlightCone.Color = HeadlightColor;
+			
+			// Position at origin since vertices already include proper offset
+			_headlightCone.Position = Vector2.Zero;
 		}
 
 		// ================================================================
@@ -297,9 +357,68 @@ namespace BarBox.Games.Racing
 			_carBody.Velocity = _velocity;
 			_carBody.MoveAndSlide();
 
+			// Invalidate position cache since car has moved/rotated
+			InvalidatePositionCache();
+
 			// Emit movement signals
 			EmitSignal(SignalName.CarMoved, _carBody.GlobalPosition, _velocity);
 			EmitSignal(SignalName.CarRotated, _carBody.Rotation);
+		}
+
+		// ================================================================
+		// POSITION CACHE MANAGEMENT
+		// ================================================================
+
+		/// <summary>
+		/// Update cached position data for performance optimization
+		/// Only recalculates when cache is marked dirty
+		/// </summary>
+		protected virtual void UpdatePositionCache()
+		{
+			if (!_positionCacheDirty || _carBody == null) return;
+
+			// Cache directional vectors based on car rotation
+			_cachedCarForward = new Vector2(Mathf.Sin(_carBody.Rotation), -Mathf.Cos(_carBody.Rotation));
+			_cachedCarRight = new Vector2(_cachedCarForward.Y, -_cachedCarForward.X);
+
+			// Cache car size components for repeated calculations
+			var halfLength = CarSize.Y * 0.5f;
+			var halfWidth = CarSize.X * 0.5f;
+			var carPosition = _carBody.GlobalPosition;
+
+			// Cache front position (used by headlights and visual feedback)
+			var frontOffset = _cachedCarRight * -halfWidth * 0.75f + _cachedCarForward * halfLength * 0.25f;
+			_cachedCarFrontPosition = carPosition + frontOffset;
+
+			// Cache back position and tire positions (used by visual feedback)
+			var backOffset = _cachedCarRight * -halfWidth * 0.75f - _cachedCarForward * halfLength * 1.5f;
+			_cachedCarBackPosition = carPosition + backOffset;
+			
+			var tireOffset = halfWidth * 0.625f;
+			_cachedLeftTirePosition = _cachedCarBackPosition - _cachedCarRight * tireOffset;
+			_cachedRightTirePosition = _cachedCarBackPosition + _cachedCarRight * tireOffset;
+
+			// Cache clamped target position for input visualization
+			if (_targetPosition != Vector2.Zero)
+			{
+				var directionToTarget = (_targetPosition - carPosition);
+				var distanceToTarget = directionToTarget.Length();
+				_cachedClampedTargetPosition = carPosition + directionToTarget.Normalized() * Mathf.Min(distanceToTarget, MaxInputDistance);
+			}
+			else
+			{
+				_cachedClampedTargetPosition = Vector2.Zero;
+			}
+
+			_positionCacheDirty = false;
+		}
+
+		/// <summary>
+		/// Mark position cache as dirty to force recalculation on next update
+		/// </summary>
+		protected virtual void InvalidatePositionCache()
+		{
+			_positionCacheDirty = true;
 		}
 
 		// ================================================================
@@ -405,6 +524,9 @@ namespace BarBox.Games.Racing
 			
 			// Reset all internal physics state to ensure clean positioning
 			ResetCarState();
+			
+			// Invalidate position cache since car position/rotation changed
+			InvalidatePositionCache();
 		}
 
 		/// <summary>
@@ -492,7 +614,50 @@ namespace BarBox.Games.Racing
 		public float GetCurrentSpeed() => _currentSpeed;
 		public bool HasInput() => _hasInput;
 		public Vector2 GetTargetPosition() => _targetPosition;
-		public void SetTargetPosition(Vector2 target) => _targetPosition = target;
+		public void SetTargetPosition(Vector2 target) { 
+			_targetPosition = target;
+			InvalidatePositionCache(); // Target position affects clamped target calculation
+		}
+
+		// Cached position accessors (automatically updates cache if dirty)
+		public Vector2 CarForward { get { UpdatePositionCache(); return _cachedCarForward; } }
+		public Vector2 CarRight { get { UpdatePositionCache(); return _cachedCarRight; } }
+		public Vector2 CarFrontPosition { get { UpdatePositionCache(); return _cachedCarFrontPosition; } }
+		public Vector2 CarBackPosition { get { UpdatePositionCache(); return _cachedCarBackPosition; } }
+		public Vector2 LeftTirePosition { get { UpdatePositionCache(); return _cachedLeftTirePosition; } }
+		public Vector2 RightTirePosition { get { UpdatePositionCache(); return _cachedRightTirePosition; } }
+		public Vector2 ClampedTargetPosition { get { UpdatePositionCache(); return _cachedClampedTargetPosition; } }
+
+		/// <summary>
+		/// Update headlight configuration at runtime
+		/// </summary>
+		public void UpdateHeadlightSettings(bool enabled, float range, float width, Color color)
+		{
+			HeadlightEnabled = enabled;
+			HeadlightRange = range;
+			HeadlightWidth = width;
+			HeadlightColor = color;
+			
+			// Update existing headlight if it exists
+			if (_headlightCone != null && GodotObject.IsInstanceValid(_headlightCone))
+			{
+				_headlightCone.Visible = enabled;
+				if (enabled)
+				{
+					// Recalculate cone shape with new parameters using cached positions
+					var halfWidth = Mathf.DegToRad(width * 0.5f);
+					var carFrontOffset = CarRight * -CarSize.X * 0.375f + CarForward * CarSize.Y * 0.25f;
+					var vertices = new Vector2[]
+					{
+						carFrontOffset, // Start at front center of car (using cached calculation)
+						carFrontOffset + new Vector2(-range * Mathf.Sin(halfWidth), -range * Mathf.Cos(halfWidth)), // Left edge
+						carFrontOffset + new Vector2(range * Mathf.Sin(halfWidth), -range * Mathf.Cos(halfWidth))   // Right edge
+					};
+					_headlightCone.Polygon = vertices;
+					_headlightCone.Color = color;
+				}
+			}
+		}
 
 		// ================================================================
 		// CLEANUP
