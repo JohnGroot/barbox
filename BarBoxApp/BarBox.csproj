@@ -8,8 +8,6 @@
       <None Include="**/*.tscn"/>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="_Resources\Games\MiningGame\Configs\LocationA.tres" />
-    <Content Include="_Resources\Games\MiningGame\Configs\MiningConfig.tres" />
     <Content Include="_Scripts\Games\MiningGame\MiningGameDesign.md" />
   </ItemGroup>
   <ItemGroup>

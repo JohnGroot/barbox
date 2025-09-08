@@ -164,7 +164,7 @@ public partial class Shapes: CompositorEffect {
 				idxBuffer, 0, (uint)ids.Length
 			);
 
-			var shaderFile = GD.Load<RDShaderFile>("res://_Shaders/draw_test.glsl");
+			var shaderFile = GD.Load<RDShaderFile>("res://addons/ShapesRenderer/Shaders/polyline.glsl");
 			var spv = shaderFile.GetSpirV();
 			var shader = instance.renderingDevice.ShaderCreateFromSpirV(spv);
 

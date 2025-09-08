@@ -162,7 +162,7 @@ void main() {
 
 #version 450
 
-#include "oklab.glsl"
+#include "oklab.gdshaderinc"
 layout(location = 0) in noperspective vec2 texcoord;
 layout(location = 1) in vec4 color_A;
 layout(location = 2) in vec4 color_B;
