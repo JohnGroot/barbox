@@ -26,7 +26,7 @@ namespace BarBox.Games.Racing
 
 		/// <summary>
 		/// Generate stable track ID from scene resource path.
-		/// Converts "res://_Scenes/Games/RacingGame/Tracks/GoCartTrack.tscn" → "gocart_track"
+		/// Converts "res://_Games/RacingGame/Scenes/_Tracks/GoCartTrack.tscn" → "gocart_track"
 		/// </summary>
 		public static string GenerateTrackId(PackedScene trackScene)
 		{

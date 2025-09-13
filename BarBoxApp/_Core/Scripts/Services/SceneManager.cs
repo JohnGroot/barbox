@@ -109,7 +109,7 @@ public partial class SceneManager : AutoloadBase
 		GameRegistry.GetAutoload()?.SetCurrentGame(string.Empty);
 		
 		// Return to main menu
-		ChangeScene("res://_Scenes/Main.tscn");
+		ChangeScene("res://_Core/Scenes/Main.tscn");
 	}
 
 	public string GetCurrentScenePath()

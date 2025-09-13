@@ -165,7 +165,7 @@ namespace BarBox.Games.MiningGame
 			if (existingMain == null)
 			{
 				// Load Main.tscn as a background node
-				var mainScene = GD.Load<PackedScene>("res://_Scenes/Main.tscn");
+				var mainScene = GD.Load<PackedScene>("res://_Core/Scenes/Main.tscn");
 				
 				if (mainScene != null)
 				{

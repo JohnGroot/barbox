@@ -69,11 +69,6 @@ public partial class Shapes: CompositorEffect {
 		// Circle = 1,
 	}
 
-	static readonly string[] SHADER_PATHS = new [] {
-		"res://_Shaders/draw_test.glsl",
-		"res://_Shaders/draw_test.glsl"
-	};
-
 	static Rid MakePipeline(RenderingDevice rd, long vertexFormat, Rid shader, Rid framebuffer) {
 		var framebufferFmt = rd.FramebufferGetFormat(framebuffer);
 		return rd.RenderPipelineCreate(
