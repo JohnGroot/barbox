@@ -2,6 +2,7 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using BarBox.Games.Carrom;
 
 /// <summary>
 /// Manages competitive mode functionality for Carrom game
