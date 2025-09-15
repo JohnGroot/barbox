@@ -8,9 +8,6 @@
       <None Include="**/*.tscn"/>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="_Scripts\Games\MiningGame\MiningGameDesign.md" />
-  </ItemGroup>
-  <ItemGroup>
     <Folder Include="addons\" />
   </ItemGroup>
 </Project>

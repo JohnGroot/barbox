@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://bqkgdvfutgdsd"]
 
-[ext_resource type="Script" uid="uid://boyeuot3nu0dq" path="res://_Core/Scripts/MainController.cs" id="1_1x2qy"]
+[ext_resource type="Script" uid="uid://cfepb214u0x42" path="res://_Core/Scripts/MainController.cs" id="1_1x2qy"]
 [ext_resource type="Script" uid="uid://chadnu3h7vnwl" path="res://addons/onscreenkeyboard/onscreen_keyboard.gd" id="2_keyboard"]
 
 [node name="Main" type="Control" node_paths=PackedStringArray("GameSelectionPanel", "GameList", "UserInfoLabel")]
