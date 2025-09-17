@@ -26,6 +26,7 @@ InputManager="*res://_Core/Scripts/Autoloads/InputManager.cs"
 UIManager="*res://_Core/Scripts/UI/UIManager.cs"
 UserManager="*res://_Core/Scripts/Autoloads/UserManager.cs"
 LocationManager="*res://_Core/Scripts/Autoloads/LocationManager.cs"
+PaymentService="*res://_Core/Scripts/Autoloads/PaymentService.cs"
 
 [display]
 

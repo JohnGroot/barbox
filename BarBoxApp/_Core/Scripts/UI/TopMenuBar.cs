@@ -9,6 +9,7 @@ public partial class TopMenuBar : Control
 {
 	[Signal] public delegate void LoginRequestedEventHandler();
 	[Signal] public delegate void LogoutRequestedEventHandler();
+	[Signal] public delegate void BuyCreditsRequestedEventHandler();
 	[Signal] public delegate void ReturnToMenuRequestedEventHandler();
 
 	private const float BASE_HEIGHT = 100.0f;
@@ -24,6 +25,7 @@ public partial class TopMenuBar : Control
 	private HBoxContainer _userInfoContainer;
 	private Label _userInfoLabel;
 	private Button _loginButton;
+	private Button _buyCreditsButton;
 	private Button _logoutButton;
 	
 	// Context button section
@@ -111,6 +113,13 @@ public partial class TopMenuBar : Control
 		ApplyStandardButtonStyle(_loginButton);
 		_loginButton.Pressed += OnLoginPressed;
 		_userInfoContainer.AddChild(_loginButton);
+
+		// Buy Credits button
+		_buyCreditsButton = new Button();
+		_buyCreditsButton.Text = "Buy Credits";
+		ApplyStandardButtonStyle(_buyCreditsButton);
+		_buyCreditsButton.Pressed += OnBuyCreditsPressed;
+		_userInfoContainer.AddChild(_buyCreditsButton);
 
 		// Logout button
 		_logoutButton = new Button();
@@ -275,6 +284,11 @@ public partial class TopMenuBar : Control
 			_loginButton.Visible = !isLoggedIn;
 		}
 
+		if (_buyCreditsButton != null)
+		{
+			_buyCreditsButton.Visible = isLoggedIn;
+		}
+
 		if (_logoutButton != null)
 		{
 			_logoutButton.Visible = isLoggedIn;
@@ -367,6 +381,11 @@ public partial class TopMenuBar : Control
 		EmitSignal(SignalName.LoginRequested);
 	}
 
+	private void OnBuyCreditsPressed()
+	{
+		EmitSignal(SignalName.BuyCreditsRequested);
+	}
+
 	private void OnLogoutPressed()
 	{
 		EmitSignal(SignalName.LogoutRequested);
@@ -378,6 +397,10 @@ public partial class TopMenuBar : Control
 		if (GodotObject.IsInstanceValid(_loginButton))
 		{
 			_loginButton.Pressed -= OnLoginPressed;
+		}
+		if (GodotObject.IsInstanceValid(_buyCreditsButton))
+		{
+			_buyCreditsButton.Pressed -= OnBuyCreditsPressed;
 		}
 		if (GodotObject.IsInstanceValid(_logoutButton))
 		{

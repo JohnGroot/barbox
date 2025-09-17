@@ -32,6 +32,7 @@ public partial class SceneManager : AutoloadBase
 
 		// Phase 2: Services that depend on DataStore
 		InitializeService("SessionManager", () => SessionManager.GetInstance()?.Initialize());
+		InitializeService("PaymentService", () => PaymentService.GetInstance()?.Initialize());
 		InitializeService("LocationManager", () => LocationManager.GetAutoload()?.Initialize());
 
 		// Phase 3: Game Services

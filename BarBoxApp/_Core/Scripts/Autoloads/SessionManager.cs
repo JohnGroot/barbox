@@ -218,6 +218,12 @@ public partial class SessionManager : AutoloadBase
 		var addResult = await _dataStore.AddGlobalCreditsAsync(userId, amount, reason);
 		if (addResult.IsSuccess)
 		{
+			// Update cached session data
+			if (_activeSessions.TryGetValue(userId, out var session) && session.GlobalData != null)
+			{
+				session.GlobalData.GlobalCredits += amount;
+			}
+
 			EmitSignal(SignalName.CreditsEarned, userId, amount, reason);
 		}
 

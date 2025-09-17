@@ -22,6 +22,7 @@ public partial class UIManager : AutoloadBase
 	private CanvasLayer _modalLayer;
 	private TopMenuBar _topMenuBar;
 	private LoginModal _loginModal;
+	private BuyCreditsModal _buyCreditsModal;
 	private SessionManager _sessionManager;
 	
 	// Context tracking
@@ -56,20 +57,30 @@ public partial class UIManager : AutoloadBase
 		// Create login modal
 		_loginModal = new LoginModal();
 		_modalLayer.AddChild(_loginModal);
+
+		// Create buy credits modal
+		_buyCreditsModal = new BuyCreditsModal();
+		_modalLayer.AddChild(_buyCreditsModal);
 		
 		// Connect signals
 		_topMenuBar.LoginRequested += OnLoginRequested;
 		_topMenuBar.LogoutRequested += OnLogoutRequested;
+		_topMenuBar.BuyCreditsRequested += OnBuyCreditsRequested;
 		_topMenuBar.ReturnToMenuRequested += OnReturnToMenuRequested;
-		
+
 		// Connect login modal signals
 		_loginModal.ModalClosed += OnLoginModalClosed;
+
+		// Connect buy credits modal signals
+		_buyCreditsModal.ModalClosed += OnBuyCreditsModalClosed;
+		_buyCreditsModal.CreditsAcquired += OnCreditsAcquired;
 		
 		// Connect to session manager signals
 		if (_sessionManager != null)
 		{
 			_sessionManager.UserLoggedIn += OnUserLoggedIn;
 			_sessionManager.UserLoggedOut += OnUserLoggedOut;
+			_sessionManager.CreditsEarned += OnCreditsEarned;
 		}
 
 		// Initialize with current user state
@@ -93,6 +104,7 @@ public partial class UIManager : AutoloadBase
 		{
 			_topMenuBar.LoginRequested -= OnLoginRequested;
 			_topMenuBar.LogoutRequested -= OnLogoutRequested;
+			_topMenuBar.BuyCreditsRequested -= OnBuyCreditsRequested;
 			_topMenuBar.ReturnToMenuRequested -= OnReturnToMenuRequested;
 		}
 		
@@ -101,10 +113,17 @@ public partial class UIManager : AutoloadBase
 			_loginModal.ModalClosed -= OnLoginModalClosed;
 		}
 
+		if (GodotObject.IsInstanceValid(_buyCreditsModal))
+		{
+			_buyCreditsModal.ModalClosed -= OnBuyCreditsModalClosed;
+			_buyCreditsModal.CreditsAcquired -= OnCreditsAcquired;
+		}
+
 		if (GodotObject.IsInstanceValid(_sessionManager))
 		{
 			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
 			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
+			_sessionManager.CreditsEarned -= OnCreditsEarned;
 		}
 	}
 
@@ -240,6 +259,28 @@ public partial class UIManager : AutoloadBase
 	}
 
 	/// <summary>
+	/// Show the buy credits modal
+	/// </summary>
+	public void ShowBuyCreditsModal()
+	{
+		if (_buyCreditsModal != null)
+		{
+			_buyCreditsModal.ShowModal();
+		}
+	}
+
+	/// <summary>
+	/// Hide the buy credits modal
+	/// </summary>
+	public void HideBuyCreditsModal()
+	{
+		if (_buyCreditsModal != null)
+		{
+			_buyCreditsModal.HideModal();
+		}
+	}
+
+	/// <summary>
 	/// Set game status text to display in the top menu bar center section
 	/// Status is shown when no context buttons are present
 	/// </summary>
@@ -257,6 +298,12 @@ public partial class UIManager : AutoloadBase
 	{
 		// Show login modal directly instead of emitting signal
 		ShowLoginModal();
+	}
+
+	private void OnBuyCreditsRequested()
+	{
+		// Show buy credits modal directly
+		ShowBuyCreditsModal();
 	}
 
 	private void OnLogoutRequested()
@@ -283,5 +330,23 @@ public partial class UIManager : AutoloadBase
 	{
 		// Modal was closed, no additional action needed
 		// Login modal closed
+	}
+
+	private void OnBuyCreditsModalClosed()
+	{
+		// Modal was closed, no additional action needed
+		// Buy credits modal closed
+	}
+
+	private void OnCreditsAcquired(string userId, int amount)
+	{
+		// Credits were successfully purchased, update user display
+		UpdateUserDisplay();
+	}
+
+	private void OnCreditsEarned(string userId, int amount, string reason)
+	{
+		// Credits were earned (from any source), update user display
+		UpdateUserDisplay();
 	}
 }
