@@ -234,6 +234,42 @@ public partial class GameHost : AutoloadBase
 		}
 	}
 
+	/// <summary>
+	/// Sets the help content for the current game
+	/// Passes through to UIManager for centralized help system management
+	/// </summary>
+	public void SetGameHelpContent(HelpContentData helpContent)
+	{
+		var uiManager = UIManager.GetInstance();
+		if (uiManager != null)
+		{
+			uiManager.SetGameHelpContent(helpContent);
+			LogInfo($"Game help content set: {helpContent.Title}");
+		}
+		else
+		{
+			LogInfo("SetGameHelpContent called but UIManager not available (development mode)");
+		}
+	}
+
+	/// <summary>
+	/// Shows or hides the game help button
+	/// Passes through to UIManager for centralized help system management
+	/// </summary>
+	public void ShowGameHelp(bool show)
+	{
+		var uiManager = UIManager.GetInstance();
+		if (uiManager != null)
+		{
+			uiManager.ShowHelpButton(show);
+			LogInfo($"Game help button visibility set: {show}");
+		}
+		else
+		{
+			LogInfo("ShowGameHelp called but UIManager not available (development mode)");
+		}
+	}
+
 	public string GetCurrentPlayerId()
 	{
 		var sessionManager = SessionManager.GetInstance();

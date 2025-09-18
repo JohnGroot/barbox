@@ -30,6 +30,7 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	protected Timer _gameTimer;
 	private GameHost _gameHost;
 
+
 	public override void _Ready()
 	{
 		_gameMetadata = GameRegistry.GetAutoload()?.GetGameData(GameId);
@@ -57,91 +58,101 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	{
 	}
 
+	/// <summary>
+	/// Override this method to provide help content for your game
+	/// This content will be displayed in the help menu overlay
+	/// </summary>
+	protected virtual HelpContentData GetHelpContent()
+	{
+		return new HelpContentData("Game Help")
+			.AddSection("🎮 Basic Controls", "Touch or click to interact with the game.");
+	}
+
 	protected virtual void SetupGameTimer()
 	{
-		if (TimeLimit > 0)
-		{
-			_gameTimer = new Timer();
-			_gameTimer.WaitTime = TimeLimit;
-			_gameTimer.OneShot = true;
-			_gameTimer.Timeout += OnTimeUp;
-			AddChild(_gameTimer);
-		}
+		if (TimeLimit <= 0)
+			return;
+
+		_gameTimer = new Timer();
+		_gameTimer.WaitTime = TimeLimit;
+		_gameTimer.OneShot = true;
+		_gameTimer.Timeout += OnTimeUp;
+		AddChild(_gameTimer);
 	}
 
 	public virtual void StartGame()
 	{
-		if (!_isGameActive)
+		if (_isGameActive)
+			return;
+
+		_isGameActive = true;
+		_isGamePaused = false;
+		_gameTime = 0.0f;
+		_playerScores.Clear();
+			
+		// Initialize scores for all players
+		foreach (var player in _players)
 		{
-			_isGameActive = true;
-			_isGamePaused = false;
-			_gameTime = 0.0f;
-			_playerScores.Clear();
-			
-			// Initialize scores for all players
-			foreach (var player in _players)
-			{
-				_playerScores[player.PlayerId] = 0.0f;
-			}
-			
-			if (_gameTimer != null)
-			{
-				_gameTimer.Start();
-			}
-			
-			OnGameStarted();
-			EmitSignal(SignalName.GameStarted);
+			_playerScores[player.PlayerId] = 0.0f;
 		}
+			
+		if (_gameTimer != null)
+		{
+			_gameTimer.Start();
+		}
+			
+		OnGameStarted();
+		EmitSignal(SignalName.GameStarted);
 	}
 
 	public virtual void EndGame()
 	{
-		if (_isGameActive)
+		if (!_isGameActive)
+			return;
+
+		_isGameActive = false;
+		_isGamePaused = false;
+			
+		if (_gameTimer != null)
 		{
-			_isGameActive = false;
-			_isGamePaused = false;
-			
-			if (_gameTimer != null)
-			{
-				_gameTimer.Stop();
-			}
-			
-			SaveScores();
-			OnGameEnded();
-			EmitSignal(SignalName.GameEnded);
+			_gameTimer.Stop();
 		}
+			
+		SaveScores();
+		OnGameEnded();
+		EmitSignal(SignalName.GameEnded);
 	}
 
 	public virtual void PauseGame()
 	{
-		if (_isGameActive && CanPause && !_isGamePaused)
+		if (!_isGameActive || !CanPause || _isGamePaused)
+			return;
+
+		_isGamePaused = true;
+			
+		if (_gameTimer != null)
 		{
-			_isGamePaused = true;
-			
-			if (_gameTimer != null)
-			{
-				_gameTimer.Paused = true;
-			}
-			
-			OnGamePaused();
-			EmitSignal(SignalName.GamePaused);
+			_gameTimer.Paused = true;
 		}
+			
+		OnGamePaused();
+		EmitSignal(SignalName.GamePaused);
 	}
 
 	public virtual void ResumeGame()
 	{
-		if (_isGameActive && _isGamePaused)
+		if (!_isGameActive || !_isGamePaused)
+			return;
+
+		_isGamePaused = false;
+			
+		if (_gameTimer != null)
 		{
-			_isGamePaused = false;
-			
-			if (_gameTimer != null)
-			{
-				_gameTimer.Paused = false;
-			}
-			
-			OnGameResumed();
-			EmitSignal(SignalName.GameResumed);
+			_gameTimer.Paused = false;
 		}
+			
+		OnGameResumed();
+		EmitSignal(SignalName.GameResumed);
 	}
 
 	protected virtual void OnGameStarted()
@@ -167,30 +178,30 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 
 	public virtual void UpdateScore(string playerId, float score)
 	{
-		if (_playerScores.ContainsKey(playerId))
-		{
-			_playerScores[playerId] = score;
-			EmitSignal(SignalName.ScoreChanged, playerId, score);
-		}
+		if (!_playerScores.ContainsKey(playerId))
+			return;
+
+		_playerScores[playerId] = score;
+		EmitSignal(SignalName.ScoreChanged, playerId, score);
 	}
 
 	public virtual void AddScore(string playerId, float points)
 	{
-		if (_isGameActive && _playerScores.ContainsKey(playerId))
-		{
-			_playerScores[playerId] += points;
-			EmitSignal(SignalName.ScoreChanged, playerId, _playerScores[playerId]);
-		}
+		if (!_isGameActive || !_playerScores.ContainsKey(playerId))
+			return;
+
+		_playerScores[playerId] += points;
+		EmitSignal(SignalName.ScoreChanged, playerId, _playerScores[playerId]);
 	}
 
 	public virtual void AddPlayer(BasePlayer player)
 	{
-		if (!_players.Contains(player))
-		{
-			_players.Add(player);
-			_playerScores[player.PlayerId] = 0.0f;
-			EmitSignal(SignalName.PlayerAdded, player.PlayerId);
-		}
+		if (_players.Contains(player))
+			return;
+
+		_players.Add(player);
+		_playerScores[player.PlayerId] = 0.0f;
+		EmitSignal(SignalName.PlayerAdded, player.PlayerId);
 	}
 
 	public virtual void RemovePlayer(BasePlayer player)
@@ -249,13 +260,16 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 			var contextButtons = GetContextButtons();
 			_gameHost.SetTopMenuContext(GetGameTitle(), contextButtons);
 			OnUIContextSetup();
-			
+
 			GD.Print($"[GameController] UI context set up for '{GetGameTitle()}' with {contextButtons?.Length ?? 0} buttons");
 		}
 		else
 		{
 			GD.Print("[GameController] GameHost not available - UI integration skipped (development mode)");
 		}
+
+		// Set up help content through GameHost (when available)
+		SetupGameHelp();
 	}
 
 	/// <summary>
@@ -269,6 +283,9 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 			OnUIContextTeardown();
 			GD.Print("[GameController] UI context cleaned up");
 		}
+
+		// Clean up help content
+		CleanupGameHelp();
 	}
 
 	public override void _ExitTree()
@@ -365,11 +382,11 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	/// </summary>
 	protected void RefreshUI()
 	{
-		if (_gameHost != null)
-		{
-			var contextButtons = GetContextButtons();
-			_gameHost.SetTopMenuContext(GetGameTitle(), contextButtons);
-		}
+		if (_gameHost == null)
+			return;
+
+		var contextButtons = GetContextButtons();
+		_gameHost.SetTopMenuContext(GetGameTitle(), contextButtons);
 	}
 
 	/// <summary>
@@ -378,5 +395,65 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	protected virtual void ReturnToMainMenu()
 	{
 		_gameHost?.ReturnToMainMenu();
+	}
+
+	// ============================================================================
+	// Help System Integration
+	// ============================================================================
+
+	/// <summary>
+	/// Sets up help content through the GameHost/UIManager system
+	/// </summary>
+	private void SetupGameHelp()
+	{
+		if (_gameHost != null)
+		{
+			// Set help content through GameHost (production context)
+			var helpContent = GetHelpContent();
+			_gameHost.SetGameHelpContent(helpContent);
+			_gameHost.ShowGameHelp(true);
+
+			GD.Print($"[GameController] Game help content set: {helpContent.Title}");
+		}
+		else
+		{
+			// Development context - UIManager might still be available
+			var uiManager = UIManager.GetInstance();
+			if (uiManager != null)
+			{
+				var helpContent = GetHelpContent();
+				uiManager.SetGameHelpContent(helpContent);
+				uiManager.ShowHelpButton(true);
+
+				GD.Print($"[GameController] Game help content set via UIManager: {helpContent.Title}");
+			}
+			else
+			{
+				GD.Print("[GameController] Help system not available (no GameHost or UIManager)");
+			}
+		}
+	}
+
+	/// <summary>
+	/// Cleans up help content when game ends
+	/// </summary>
+	private void CleanupGameHelp()
+	{
+		if (_gameHost != null)
+		{
+			// Hide help button through GameHost
+			_gameHost.ShowGameHelp(false);
+			GD.Print("[GameController] Game help button hidden via GameHost");
+		}
+		else
+		{
+			// Development context cleanup
+			var uiManager = UIManager.GetInstance();
+			if (uiManager != null)
+			{
+				uiManager.ShowHelpButton(false);
+				GD.Print("[GameController] Game help button hidden via UIManager");
+			}
+		}
 	}
 }

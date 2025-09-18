@@ -64,25 +64,41 @@ public partial class TopMenuBar : Control
 		
 		AddChild(_backgroundPanel);
 
+		// Add top padding with margin container
+		var paddingContainer = new MarginContainer();
+		paddingContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+		paddingContainer.AddThemeConstantOverride("margin_top", 10); // Add 10px top padding
+		AddChild(paddingContainer);
+
 		// Main vertical container (expandable)
 		_mainContainer = new VBoxContainer();
 		_mainContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-		AddChild(_mainContainer);
+		paddingContainer.AddChild(_mainContainer);
 
 		// Top section (platform UI) - 100px height
 		_topSection = new HBoxContainer();
 		_topSection.CustomMinimumSize = new Vector2(0, BASE_HEIGHT);
 		_topSection.AddThemeConstantOverride("separation", 15);
+		_topSection.Alignment = BoxContainer.AlignmentMode.Center; // Center all items vertically
 		_mainContainer.AddChild(_topSection);
 
-		// Left section: Game title
+		// Left section: Game title with wrapping container
+		var gameTitleContainer = new Control();
+		gameTitleContainer.CustomMinimumSize = new Vector2(200, 0);
+		gameTitleContainer.SizeFlagsHorizontal = Control.SizeFlags.Fill;
+		gameTitleContainer.SizeFlagsStretchRatio = 0.3f; // Take 30% of available space
+		gameTitleContainer.ClipContents = true; // Prevent overflow
+
 		_gameTitleLabel = new Label();
 		_gameTitleLabel.Text = "BarBox Arcade";
 		_gameTitleLabel.VerticalAlignment = VerticalAlignment.Center;
 		_gameTitleLabel.AddThemeColorOverride("font_color", Colors.White);
 		_gameTitleLabel.AddThemeFontSizeOverride("font_size", 24);
-		_gameTitleLabel.CustomMinimumSize = new Vector2(200, 0);
-		_topSection.AddChild(_gameTitleLabel);
+		_gameTitleLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		_gameTitleLabel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		gameTitleContainer.AddChild(_gameTitleLabel);
+		_topSection.AddChild(gameTitleContainer);
 
 		// Center section: Available for platform-level information
 		_gameStatusLabel = new Label();
@@ -269,14 +285,7 @@ public partial class TopMenuBar : Control
 		
 		if (_userInfoLabel != null)
 		{
-			if (isLoggedIn)
-			{
-				_userInfoLabel.Text = $"{userData.UserId} | {userData.Credits} credits";
-			}
-			else
-			{
-				_userInfoLabel.Text = "Not logged in";
-			}
+			_userInfoLabel.Text = isLoggedIn ? $"{userData.UserId}\n{userData.Credits} Credits" : "Not logged in";
 		}
 
 		if (_loginButton != null)

@@ -411,7 +411,7 @@ namespace BarBox.Games.MiningGame
 		public override void OnUIContextTeardown()
 		{
 			base.OnUIContextTeardown();
-			
+
 			// Disconnect event handlers when UI context is torn down
 			if (_userManager != null && GodotObject.IsInstanceValid(_userManager))
 			{
@@ -419,7 +419,40 @@ namespace BarBox.Games.MiningGame
 				_userManager.UserLoggedOut -= OnUserLoggedOut;
 			}
 		}
-		
+
+		/// <summary>
+		/// Provides comprehensive help content for the Mining Game
+		/// Explains all game mechanics, upgrades, and progression systems
+		/// </summary>
+		protected override HelpContentData GetHelpContent()
+		{
+			var locationData = GetLocationData();
+			var gemTypeName = locationData?.PrimaryGemType.ToString() ?? "Crystal";
+
+			return new HelpContentData("MINING HOW-TO")
+				.AddSection("⛏️ WELCOME TO THE MINES ⛏️",
+					"• Gems accumulate automatically even while not playing!",
+					$"• This location mines {gemTypeName} gems",
+					"• Each machine has a capacity limit - extract gems regularly!")
+
+				.AddSection("💎 EXTRACTING GEMS 💎",
+					"• Gems are stored locally on each machine until you extract them:",
+					"• Extracting clears out space in the mining capacity so you can Mine more Gems",
+					"• Extracted Gems can be used at any BarBox location")
+
+				.AddSection("😮‍💨 USING GEMS 🤑",
+					"• Trade your extracted gems for credits OR upgrade this machine's mine",
+					"• Buying a credit uses a Charge that has to regenerate so you can spend more gems on a credit",
+					"• Credits cost the same gem type as the machine produces")
+
+				.AddSection("⬆️ FOUR UPGRADE TYPES ⬆️",
+					"• All upgrades are applied to the current machine you're on. Upgrade the mines at all your favorite spots!",
+					"• 💼 Capacity - Increases maximum mined gem storage on this machine",
+					"• ⚡ Mining Amount - Increases gems produced per 2-hour cycle",
+					"• 🚀 Mining Speed - Decreases time between mining cycles",
+					"• 🎫 Credit Charges - Increases the number of credits that can be bought at a time");
+		}
+
 		// ================================================================
 		// PUBLIC API - Called directly by UI (no signals)
 		// ================================================================
