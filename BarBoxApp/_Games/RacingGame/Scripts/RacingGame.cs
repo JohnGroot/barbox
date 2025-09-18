@@ -457,6 +457,27 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
+	/// Provides comprehensive help content for the Racing Game
+	/// Explains controls, game modes, track mastery, and scoring systems
+	/// </summary>
+	protected override HelpContentData GetHelpContent()
+	{
+		return new HelpContentData("RACING HOW-TO")
+			.AddSection("🏁 BUCKLE UP 🚘",
+				"• Touch and drag to steer your car around the track",
+				"• The car will always move towards your finger's position",
+				"• The closer your finger is to the car the slower it will go",
+				"• Complete laps as fast as possible by crossing all checkpoints in order",
+				"• If you go off the track you'll get Slowed Down",
+				"• Practice mode runs continuously - Time Trial races against the clock!")
+
+			.AddSection("🏎️ GAME MODES 🏎️",
+				"• Practice Mode - FREE continuous racing to learn tracks and improve lap times",
+				"• Time Trial - PREMIUM timed races that cost credits but save your official high scores",
+				"• Switch between tracks to explore different challenges!");
+	}
+
+	/// <summary>
 	/// Save global high score for racing game using direct DataStore integration
 	/// Tracks best times globally with modern C# patterns and fire-and-forget saves
 	/// </summary>
