@@ -27,10 +27,6 @@ public partial class CarromPlayer : BasePlayer
 	private bool _pocketedQueenThisTurn = false;
 	private bool _needsQueenCovering = false;
 	
-	// Tournament scoring (ICF Official Rules)
-	[Export] public int TournamentPoints { get; set; } = 0;
-	[Export] public int GamesWon { get; set; } = 0;
-	[Export] public int GamesPlayed { get; set; } = 0;
 
 	protected override void InitializePlayer()
 	{
@@ -54,8 +50,6 @@ public partial class CarromPlayer : BasePlayer
 		// Reset queen covering state
 		_pocketedQueenThisTurn = false;
 		_needsQueenCovering = false;
-		
-		// Note: Tournament points are NOT reset - they accumulate across games
 	}
 
 	/// <summary>
@@ -319,97 +313,4 @@ public partial class CarromPlayer : BasePlayer
 	public bool NeedsQueenCovering() => _needsQueenCovering;
 	public bool PocketedQueenThisTurn() => _pocketedQueenThisTurn;
 	
-	/// <summary>
-	/// Calculate tournament points for winning a game
-	/// ICF OFFICIAL RULES: 1 point per opponent piece remaining + queen covering bonus
-	/// </summary>
-	public virtual int CalculateTournamentPoints(List<CarromPlayer> allPlayers)
-	{
-		if (allPlayers == null)
-		{
-			GD.PrintErr($"[CarromPlayer] Cannot calculate tournament points - allPlayers list is null");
-			return 0;
-		}
-
-		if (allPlayers.Count == 0)
-		{
-			GD.PrintErr($"[CarromPlayer] Cannot calculate tournament points - allPlayers list is empty");
-			return 0;
-		}
-
-		int points = 0;
-		
-		// Count opponent pieces remaining (1 point each)
-		foreach (var opponent in allPlayers)
-		{
-			if (opponent == null || !GodotObject.IsInstanceValid(opponent))
-			{
-				GD.PrintErr($"[CarromPlayer] Skipping null or invalid opponent in tournament points calculation");
-				continue;
-			}
-
-			if (opponent.PlayerId == PlayerId || opponent.AssignedPieceType == AssignedPieceType)
-				continue; // Skip self and team members
-				
-			int opponentPiecesRemaining = opponent.GetRequiredPieces() - opponent.PiecesPocketed;
-			points += opponentPiecesRemaining;
-		}
-		
-		// Queen covering bonus: +5 points if total under 24
-		if (HasQueen && QueenCovered && points < 24)
-		{
-			points += 5;
-		}
-		
-		return points;
-	}
-	
-	/// <summary>
-	/// Award tournament points and update tournament statistics
-	/// </summary>
-	public virtual void AwardTournamentPoints(int points)
-	{
-		TournamentPoints += points;
-		GamesWon++;
-		GamesPlayed++;
-		
-		GD.Print($"[Tournament] {PlayerId} awarded {points} points (Total: {TournamentPoints})");
-		EmitSignal(SignalName.ScoreUpdated, TournamentPoints);
-	}
-	
-	/// <summary>
-	/// Record a game loss (no points awarded)
-	/// </summary>
-	public virtual void RecordGameLoss()
-	{
-		GamesPlayed++;
-		// No points awarded for losing
-	}
-	
-	/// <summary>
-	/// Reset tournament statistics (new tournament)
-	/// </summary>
-	public virtual void ResetTournamentStats()
-	{
-		TournamentPoints = 0;
-		GamesWon = 0;
-		GamesPlayed = 0;
-	}
-	
-	/// <summary>
-	/// Get tournament win percentage
-	/// </summary>
-	public virtual float GetWinPercentage()
-	{
-		if (GamesPlayed == 0) return 0.0f;
-		return (float)GamesWon / GamesPlayed;
-	}
-	
-	/// <summary>
-	/// Check if player has won the tournament (typically 29 points)
-	/// </summary>
-	public virtual bool HasWonTournament(int targetPoints = 29)
-	{
-		return TournamentPoints >= targetPoints;
-	}
 }

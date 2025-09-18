@@ -26,7 +26,6 @@ public partial class CarromGame : GameController
 	[Export] public bool ShowPracticeMode { get; set; } = true;
 	[Export] public int CompetitiveCreditCost { get; set; } = 1;
 	[Export] public float TurnTimeLimit { get; set; } = 30.0f;
-	[Export] public int MaxRounds { get; set; } = 50;
 	[Export] public CarromPhysicsConfig PhysicsConfig { get; set; }
 	
 
@@ -74,7 +73,7 @@ public partial class CarromGame : GameController
 	
 	// Game state
 	private bool _waitingForPiecesToStop = false;
-	
+
 	// Animation components
 	private Tween _strikerTween;
 	private Tween _penaltyPiecesTween;
@@ -111,7 +110,7 @@ public partial class CarromGame : GameController
 		
 		// Initialize UI components
 		InitializeScoreDisplay();
-		
+
 		// Call base which triggers InitializeGame()
 		base._Ready();
 		
@@ -349,7 +348,7 @@ public partial class CarromGame : GameController
 		_scoreDisplay = new CarromScoreDisplay();
 		AddChild(_scoreDisplay);
 		_scoreDisplay.SetVisible(false); // Hidden by default, shown in competitive mode
-		
+
 		// Connect to Pass Turn signal for manual turn advancement
 		_scoreDisplay.PassTurnRequested += OnPassTurnRequested;
 	}
@@ -403,8 +402,6 @@ public partial class CarromGame : GameController
 		_competitiveModeManager.PlayerWon += OnPlayerWon;
 		_competitiveModeManager.FoulCommitted += OnFoulCommitted;
 		_competitiveModeManager.CompetitiveModeSetupComplete += OnCompetitiveModeSetupComplete;
-		_competitiveModeManager.RoundCompleted += OnRoundCompleted;
-		_competitiveModeManager.MaxRoundsReached += OnMaxRoundsReached;
 		
 		// Piece factory signals
 		_pieceFactory.PieceCreated += OnPieceCreated;
@@ -430,6 +427,39 @@ public partial class CarromGame : GameController
 	private CarromPiece GetStriker()
 	{
 		return _currentModeManager?.GetStriker();
+	}
+
+	/// <summary>
+	/// Provides comprehensive help content for the Carrom Game
+	/// Explains traditional Carrom rules with ICF scoring, gameplay mechanics, and competitive modes
+	/// </summary>
+	protected override HelpContentData GetHelpContent()
+	{
+		return new HelpContentData("CARROM HOW-TO - Traditional Rules with ICF Scoring")
+			.AddSection("🎯 WELCOME TO CARROM 🎯",
+				"• Pocket all your assigned pieces (⚪ White or ⚫ Black) to win the game",
+				"• Use the striker to hit pieces into corner pockets",
+				"• The red piece (👑 Queen) is worth 3 points and must be 'covered' by your piece",
+				"• Practice Mode lets you play freely - Competitive Mode follows official ICF rules!")
+
+			.AddSection("🎱 HOW TO PLAY 🎱",
+				"• Drag DOWN from the striker to aim, then release to shoot",
+				"• Drag LEFT or RIGHT on the Striker to reposition it on the baseline",
+				"• Pocket your color pieces while avoiding opponent pieces and fouls",
+				"• Valid shots require hitting your own pieces first or pocketing any piece")
+
+			.AddSection("⚠️ RULES & FOULS ⚠️",
+				"• CONTINUE TURN: Pocket your piece(s) legally = shoot again!",
+				"• FOUL CONDITIONS: Striker pocketed, opponent piece hit first, or leaves the board",
+				"• FOUL PENALTY: Lose your turn + return one of your pocketed pieces to center",
+				"• QUEEN COVERING: Must pocket your own piece immediately after Queen in same turn",
+				"• BREAKING RULE: 3 attempts maximum to disturb pieces, then turn passes")
+
+			.AddSection("🏆 COMPETITIVE MODES 🏆",
+				"• 2-Player Singles: Each player owns one color (White vs Black pieces)",
+				"• 4-Player Doubles: Teams of 2, partners sit opposite (White team vs Black team)",
+				"• WIN CONDITION: Pocket all 9 of your pieces + cover Queen if pocketed",
+				"• Queen worth 3 points when properly covered");
 	}
 	
 	/// <summary>
@@ -509,9 +539,8 @@ public partial class CarromGame : GameController
 		// Clean up practice mode before switching
 		_practiceModeManager?.CleanupMode();
 		
-		// Configure player count and max rounds
+		// Configure player count
 		_competitiveModeManager?.SetPlayerCount(playerCount);
-		_competitiveModeManager?.SetMaxRounds(MaxRounds);
 		
 		// Set current mode manager to competitive
 		_currentModeManager = _competitiveModeManager;
@@ -591,7 +620,7 @@ public partial class CarromGame : GameController
 		if (striker != null)
 		{
 			striker.ApplyStrike(force);
-			
+
 			// Record shot in competitive mode for statistics
 			if (_carromGameMode == CarromGameMode.Competitive && _competitiveModeManager != null)
 			{
@@ -656,13 +685,13 @@ public partial class CarromGame : GameController
 
 
 	/// <summary>
-	/// Get point value for a piece type
+	/// Get point value for a piece type (Official ICF Rules)
 	/// </summary>
 	private float GetPieceValue(PieceType type)
 	{
 		return type switch
 		{
-			PieceType.Red => 10.0f,  // Queen is worth more
+			PieceType.Red => 3.0f,  // Queen worth 3 points per ICF rules
 			PieceType.White => 1.0f,
 			PieceType.Black => 1.0f,
 			_ => 0.0f
@@ -1527,87 +1556,7 @@ public partial class CarromGame : GameController
 		};
 	}
 	
-	/// <summary>
-	/// Show tournament win screen when max rounds are reached
-	/// </summary>
-	private void ShowTournamentWinScreen(string winnerId)
-	{
-		if (_competitiveModeManager == null) return;
-
-		var players = _competitiveModeManager.GetPlayers();
-		var winner = players.FirstOrDefault(p => p.PlayerId == winnerId);
-		if (winner == null) return;
-
-		var (currentRound, maxRounds) = _competitiveModeManager.GetRoundInfo();
-		var tournamentMessage = new System.Text.StringBuilder($"🏆 TOURNAMENT COMPLETE 🏆\n\n");
-		tournamentMessage.AppendLine($"WINNER: {winner.PlayerId.ToUpper()}");
-		tournamentMessage.AppendLine($"Tournament ended after {maxRounds} rounds");
-		tournamentMessage.AppendLine();
-
-		// Final tournament standings
-		tournamentMessage.AppendLine("=== FINAL TOURNAMENT STANDINGS ===");
-		var sortedPlayers = players.OrderByDescending(p => p.TournamentPoints).ToList();
-		for (int i = 0; i < sortedPlayers.Count; i++)
-		{
-			var player = sortedPlayers[i];
-			string position = (i + 1) switch
-			{
-				1 => "1st",
-				2 => "2nd", 
-				3 => "3rd",
-				4 => "4th",
-				_ => $"{i + 1}th"
-			};
-			
-			tournamentMessage.AppendLine($"{position}: {player.PlayerId} - {player.TournamentPoints} points");
-		}
-
-		tournamentMessage.AppendLine();
-		tournamentMessage.Append("Returning to Practice Mode in 5 seconds...");
-
-		// Show the tournament complete dialog
-		ShowTournamentDialog(tournamentMessage.ToString());
-	}
 	
-	/// <summary>
-	/// Display tournament complete dialog
-	/// </summary>
-	private void ShowTournamentDialog(string message)
-	{
-		var dialog = new AcceptDialog();
-		dialog.Title = "🏆 TOURNAMENT COMPLETE 🏆";
-		dialog.DialogText = message;
-		dialog.Size = new Vector2I(500, 400);
-		
-		// Center the dialog
-		var viewport = GetViewport();
-		if (viewport != null)
-		{
-			var screenSize = viewport.GetVisibleRect().Size;
-			dialog.Position = new Vector2I(
-				(int)(screenSize.X / 2 - 250), 
-				(int)(screenSize.Y / 2 - 200)
-			);
-		}
-
-		// Add dialog to scene tree and show
-		GetTree().CurrentScene.AddChild(dialog);
-		dialog.PopupCentered();
-		
-		// Auto-remove dialog when closed
-		dialog.Confirmed += () => dialog.QueueFree();
-		dialog.Canceled += () => dialog.QueueFree();
-		
-		// Add return to practice button
-		dialog.AddButton("Return to Practice Now", false, "practice");
-		dialog.CustomAction += (action) => {
-			if (action.ToString() == "practice")
-			{
-				dialog.QueueFree();
-				StartPracticeMode();
-			}
-		};
-	}
 
 	/// <summary>
 	/// Override to provide carrom game title
@@ -2007,10 +1956,6 @@ public partial class CarromGame : GameController
 				_scoreDisplay.AddPlayer(player.PlayerId, player.AssignedPieceType);
 			}
 			
-			// Update round info
-			var (currentRound, maxRounds) = _competitiveModeManager.GetRoundInfo();
-			_scoreDisplay.UpdateRound(currentRound, maxRounds);
-			
 			// Set current player
 			var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
 			if (currentPlayer != null)
@@ -2022,32 +1967,6 @@ public partial class CarromGame : GameController
 		// State machine handles game start automatically
 	}
 	
-	/// <summary>
-	/// Handle round completion
-	/// </summary>
-	private void OnRoundCompleted(int roundNumber)
-	{
-		if (_scoreDisplay != null && _competitiveModeManager != null)
-		{
-			var (currentRound, maxRounds) = _competitiveModeManager.GetRoundInfo();
-			_scoreDisplay.UpdateRound(currentRound, maxRounds);
-			
-			// Round completed, updated UI
-		}
-	}
-	
-	/// <summary>
-	/// Handle max rounds reached
-	/// </summary>
-	private void OnMaxRoundsReached(string winnerId)
-	{
-		// Tournament ended - max rounds reached
-		
-		// Handle tournament end - winner determined by points
-		EndGame();
-		ShowTournamentWinScreen(winnerId);
-		RefreshUI();
-	}
 
 	/// <summary>
 	/// Handle piece creation from factory (mode managers handle tracking)
@@ -2101,8 +2020,6 @@ public partial class CarromGame : GameController
 			_competitiveModeManager.PlayerWon -= OnPlayerWon;
 			_competitiveModeManager.FoulCommitted -= OnFoulCommitted;
 			_competitiveModeManager.CompetitiveModeSetupComplete -= OnCompetitiveModeSetupComplete;
-			_competitiveModeManager.RoundCompleted -= OnRoundCompleted;
-			_competitiveModeManager.MaxRoundsReached -= OnMaxRoundsReached;
 		}
 		
 		// Piece factory signals
@@ -2153,7 +2070,7 @@ public partial class CarromGame : GameController
 		// Clean up animation components
 		_strikerTween?.Kill();
 		_penaltyPiecesTween?.Kill();
-			
+
 		// Clean up manager signals
 		DisconnectManagerSignals();
 	}

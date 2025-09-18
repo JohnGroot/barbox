@@ -20,18 +20,11 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	[Signal] public delegate void PlayerWonEventHandler(string playerId);
 	[Signal] public delegate void FoulCommittedEventHandler(string playerId);
 	[Signal] public delegate void CompetitiveModeSetupCompleteEventHandler();
-	[Signal] public delegate void RoundCompletedEventHandler(int roundNumber);
-	[Signal] public delegate void MaxRoundsReachedEventHandler(string winnerId);
 
 	// Competitive mode state
 	private List<CarromPiece> _competitivePieces = new List<CarromPiece>();
 	private int _currentPlayerIndex = 0;
 	private List<CarromPlayer> _players = new List<CarromPlayer>();
-	
-	// Round tracking
-	private int _currentRound = 1;
-	private int _maxRounds = 50; // Default 50 rounds as per specification
-	private Dictionary<string, int> _tournamentPoints = new Dictionary<string, int>();
 	
 	// Turn state tracking
 	private bool _validPocketThisStroke = false;
@@ -369,9 +362,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		// Check win condition after valid pocketing
 		if (validPocket && CheckWinCondition(playerId))
 		{
-			// Award tournament points to winner
-			AwardTournamentPointsToWinner(currentPlayer);
-			
 			EmitSignal(SignalName.PlayerWon, playerId);
 		}
 
@@ -560,21 +550,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		}
 	}
 	
-	/// <summary>
-	/// Set the maximum number of rounds for this tournament
-	/// </summary>
-	public void SetMaxRounds(int maxRounds)
-	{
-		_maxRounds = maxRounds > 0 ? maxRounds : 50; // Default to 50 if invalid
-	}
-	
-	/// <summary>
-	/// Get current round information
-	/// </summary>
-	public (int current, int max) GetRoundInfo()
-	{
-		return (_currentRound, _maxRounds);
-	}
 
 	/// <summary>
 	/// Setup players for competitive mode with proper piece type assignments
@@ -670,23 +645,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		
 		// Step 2: Switch to next player index
 		_currentPlayerIndex = (_currentPlayerIndex + 1) % _players.Count;
-		
-		// Check for round completion - when we cycle back to first player
-		if (_currentPlayerIndex == 0)
-		{
-			_currentRound++;
-			EmitSignal(SignalName.RoundCompleted, _currentRound);
-			GD.Print($"[CarromCompetitive] Round {_currentRound - 1} completed, starting round {_currentRound}");
-			
-			// Check if max rounds reached
-			if (_currentRound > _maxRounds)
-			{
-				string winnerId = DetermineWinnerByPoints();
-				EmitSignal(SignalName.MaxRoundsReached, winnerId);
-				GD.Print($"[CarromCompetitive] Max rounds ({_maxRounds}) reached, tournament won by {winnerId}");
-				return; // End the game, don't continue with turn setup
-			}
-		}
 
 		// Step 3: Start new turn for next player
 		var nextPlayer = GetCurrentPlayer();
@@ -737,16 +695,12 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	{
 		_players.Clear();
 		_currentPlayerIndex = 0;
-		
+
 		// Reset breaking turn state
 		_isBreakingTurn = true;
 		_breakingAttempts = 0;
 		_piecesDisturbedInBreaking = false;
-		
-		// Reset round tracking
-		_currentRound = 1;
-		_tournamentPoints.Clear();
-		
+
 		// Sync input controller with reset player
 		_inputController?.SetCurrentPlayer(_currentPlayerIndex);
 	}
@@ -833,158 +787,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		return false;
 	}
 	
-	/// <summary>
-	/// Award tournament points to the winning player according to ICF rules
-	/// </summary>
-	private void AwardTournamentPointsToWinner(CarromPlayer winner)
-	{
-		if (winner == null) return;
-		
-		// Calculate tournament points based on opponent pieces remaining
-		int tournamentPoints = winner.CalculateTournamentPoints(_players);
-		
-		// Award points to winner
-		winner.AwardTournamentPoints(tournamentPoints);
-		
-		// Record losses for other players
-		foreach (var player in _players)
-		{
-			if (player.PlayerId != winner.PlayerId)
-			{
-				player.RecordGameLoss();
-			}
-		}
-		
-		GD.Print($"[Tournament] Game complete - {winner.PlayerId} awarded {tournamentPoints} points");
-		
-		// Check if winner has won the tournament
-		if (winner.HasWonTournament())
-		{
-			GD.Print($"[Tournament] {winner.PlayerId} has won the tournament with {winner.TournamentPoints} points!");
-			// Could emit a TournamentWon signal here if needed
-		}
-	}
-	
-	/// <summary>
-	/// Get current tournament standings sorted by points
-	/// </summary>
-	public List<CarromPlayer> GetTournamentStandings()
-	{
-		return _players.OrderByDescending(p => p.TournamentPoints)
-					  .ThenByDescending(p => p.GetWinPercentage())
-					  .ToList();
-	}
-	
-	/// <summary>
-	/// Get tournament summary for display
-	/// </summary>
-	public string GetTournamentSummary()
-	{
-		var standings = GetTournamentStandings();
-		var summary = new System.Text.StringBuilder("=== TOURNAMENT STANDINGS ===\n\n");
-		
-		for (int i = 0; i < standings.Count; i++)
-		{
-			var player = standings[i];
-			string position = (i + 1) switch
-			{
-				1 => "1st",
-				2 => "2nd",
-				3 => "3rd",
-				4 => "4th",
-				_ => $"{i + 1}th"
-			};
-			
-			summary.AppendLine($"{position}: {player.PlayerId}");
-			summary.AppendLine($"   Points: {player.TournamentPoints}");
-			summary.AppendLine($"   Games: {player.GamesWon}/{player.GamesPlayed}");
-			summary.AppendLine($"   Win Rate: {player.GetWinPercentage():P1}");
-			summary.AppendLine(); // Empty line between players
-		}
-		
-		return summary.ToString();
-	}
-	
-	/// <summary>
-	/// Reset tournament for all players
-	/// </summary>
-	public void ResetTournament()
-	{
-		foreach (var player in _players)
-		{
-			player.ResetTournamentStats();
-		}
-		GD.Print("[Tournament] Tournament statistics reset for all players");
-	}
-	
-	/// <summary>
-	/// Determine winner based on current scores when max rounds are reached
-	/// Uses tournament points system per ICF rules
-	/// </summary>
-	private string DetermineWinnerByPoints()
-	{
-		if (_players.Count == 0)
-		{
-			return "unknown";
-		}
-		
-		// Calculate current tournament points for each player
-		// Tournament points = opponent's remaining pieces (max 12 per round)
-		// Queen adds 3 points if covered and player wins
-		var playerScores = new Dictionary<string, int>();
-		
-		foreach (var player in _players)
-		{
-			int tournamentPoints = player.TournamentPoints;
-			
-			// Add current round points (pieces pocketed)
-			int currentRoundPoints = CalculateCurrentRoundPoints(player);
-			
-			playerScores[player.PlayerId] = tournamentPoints + currentRoundPoints;
-		}
-		
-		// Find player with highest score
-		var winner = playerScores.Aggregate((l, r) => l.Value > r.Value ? l : r);
-		
-		GD.Print($"[Tournament] Final scores when max rounds reached:");
-		foreach (var score in playerScores)
-		{
-			GD.Print($"  {score.Key}: {score.Value} points");
-		}
-		
-		return winner.Key;
-	}
-	
-	/// <summary>
-	/// Calculate tournament points for current round based on ICF rules
-	/// </summary>
-	private int CalculateCurrentRoundPoints(CarromPlayer player)
-	{
-		// Tournament points = opponent's remaining pieces
-		int opponentRemainingPieces = 0;
-		
-		foreach (var opponent in _players)
-		{
-			if (opponent.PlayerId != player.PlayerId)
-			{
-				// Count remaining pieces (9 total - pocketed)
-				opponentRemainingPieces += Mathf.Max(0, 9 - opponent.PiecesPocketed);
-			}
-		}
-		
-		// Add queen points if player has queen covered
-		int queenPoints = 0;
-		if (player.HasQueen && player.QueenCovered)
-		{
-			// Queen is worth 3 points, but only up to 21 total points per ICF rules
-			queenPoints = 3;
-		}
-		
-		// Maximum 12 points per board per ICF rules
-		int totalPoints = Mathf.Min(12, opponentRemainingPieces + queenPoints);
-		
-		return totalPoints;
-	}
 	
 	/// <summary>
 	/// Get all players
