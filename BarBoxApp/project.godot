@@ -43,6 +43,10 @@ project/assembly_name="BarBox"
 
 enabled=PackedStringArray("res://addons/ShapesRenderer/plugin.cfg")
 
+[gui]
+
+theme/custom="uid://dnh0aewyhafqs"
+
 [rendering]
 
 environment/defaults/default_clear_color=Color(0, 0, 0, 1)
