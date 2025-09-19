@@ -125,49 +125,34 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	}
 	
 	/// <summary>
-	/// Handle competitive mode settlement - check turn continuation before switching players
+	/// Handle competitive mode settlement - pure data processing only
+	/// State machine controls all state transitions and striker restoration
 	/// </summary>
 	protected override void ExecuteModeSpecificSettlement()
 	{
-		// Settlement only handles game rule validation and piece management
-		// Turn advancement is now explicit through manual pass turn only
-		
+		// Pure data processing - no state control, just game rule evaluation
+
 		// Get current player for settlement logic
 		var currentPlayer = GetCurrentPlayer();
 		string currentPlayerId = currentPlayer?.PlayerId ?? "unknown";
-		
+
 		// Check if current player should continue their turn based on game rules
 		bool shouldContinue = ShouldContinueTurn(currentPlayerId);
-		
+
 		if (shouldContinue)
 		{
 			GD.Print($"[CarromCompetitive] {currentPlayerId} continues turn after successful pocketing");
-			
-			// Restore striker and transition state machine back to Ready for continued turn
-			var carromGame = GetParent<CarromGame>();
-			if (carromGame != null)
-			{
-				carromGame.RestoreStrikerToBaseline();
-				// Transition state machine to Ready to re-enable input
-				carromGame.ForceGameStateToReady();
-			}
-			else
-			{
-				// Fallback to local striker restoration
-				EnsureStrikerRestored();
-				PositionStrikerAtBaseline();
-			}
+			// State machine will automatically transition to Ready and re-enable input
+			// No need for manual state control here
 		}
 		else
 		{
-			// Emit TurnReadyForPass signal to trigger pass turn button display
-			// This shows the button without actually switching players yet
-			// Striker restoration will happen AFTER pass turn is pressed
+			// Emit TurnReadyForPass signal for external UI handling
+			// State machine controls timing, mode manager just provides data
 			EmitSignal(SignalName.TurnReadyForPass, currentPlayerId, _currentPlayerIndex + 1);
 		}
-		
-		// Reset stroke flags for next stroke AFTER all settlement processing is complete
-		// This ensures flags are available throughout the entire settlement process
+
+		// Reset stroke flags for next stroke
 		_validPocketThisStroke = false;
 		_foulThisStroke = false;
 	}

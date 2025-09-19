@@ -155,9 +155,9 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 				
 			case GameState.Strike:
 				// Strike executed, transition immediately to Physics monitoring
-				CallDeferred(MethodName.TransitionToPhysics);
+				TransitionTo(GameState.Physics);
 				break;
-				
+
 			case GameState.Physics:
 				// Begin monitoring pieces for settlement
 				SetPhysicsProcess(true);
@@ -165,10 +165,10 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 				_lastSettlementCheckTime = Time.GetUnixTimeFromSystem();
 				_physicsFramesSinceEnter = 0;
 				break;
-				
+
 			case GameState.Settlement:
 				// Process settlement immediately and synchronously
-				CallDeferred(MethodName.ProcessSettlement);
+				ProcessSettlement();
 				break;
 		}
 	}
@@ -273,38 +273,36 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 	// SETTLEMENT PROCESSING
 	// ================================================================
 	
-	/// <summary>
-	/// Deferred method to transition from Strike to Physics
-	/// </summary>
-	private void TransitionToPhysics()
-	{
-		TransitionTo(GameState.Physics);
-	}
 
 	/// <summary>
 	/// Process settlement immediately and synchronously
+	/// State machine controls the flow and determines next state
 	/// </summary>
 	private void ProcessSettlement()
 	{
 		try
 		{
-			// Execute mode-specific settlement logic
+			// Execute mode-specific settlement logic synchronously
 			if (_modeManager != null)
 			{
 				_modeManager.ProcessSettlement();
 			}
-			
-			// Emit settlement completed signal
+
+			// Emit settlement completed signal for external listeners
 			EmitSignal(SignalName.SettlementCompleted);
+
+			// Always transition back to Ready state after settlement
+			// Mode managers will handle their internal logic but won't control state transitions
+			TransitionTo(GameState.Ready);
 		}
 		catch (System.Exception ex)
 		{
 			GD.PrintErr($"[CarromGameStateMachine] Settlement processing failed: {ex.Message}");
 			GD.PrintErr($"[CarromGameStateMachine] Stack trace: {ex.StackTrace}");
-			
-			// Allow settlement to complete normally instead of forcing Ready state
-			// The settlement completed signal should still be emitted to continue normal flow
+
+			// Still emit settlement completed and return to Ready state for recovery
 			EmitSignal(SignalName.SettlementCompleted);
+			TransitionTo(GameState.Ready);
 		}
 	}
 

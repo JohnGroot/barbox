@@ -273,14 +273,39 @@ public partial class CarromInputController : Node2D
 	}
 
 	/// <summary>
-	/// Set the game state interface - replaces phase manager dependency
+	/// Set the game state interface and connect to state change signals
+	/// Makes input controller purely reactive to state machine
 	/// </summary>
 	public void SetGameState(ICarromGameState gameState)
 	{
+		// Disconnect from previous state machine if any
+		if (_gameState != null && _gameState is CarromGameStateMachine oldStateMachine)
+		{
+			if (GodotObject.IsInstanceValid(oldStateMachine))
+			{
+				oldStateMachine.InputAvailabilityChanged -= OnInputAvailabilityChanged;
+			}
+		}
+
 		_gameState = gameState;
-		
+
+		// Connect to new state machine signals for reactive updates
+		if (_gameState is CarromGameStateMachine stateMachine && GodotObject.IsInstanceValid(stateMachine))
+		{
+			stateMachine.InputAvailabilityChanged += OnInputAvailabilityChanged;
+		}
+
 		// Update initial input blocked state
 		_isInputBlocked = !(_gameState?.CanAcceptInput ?? false);
+		RequestVisualUpdate();
+	}
+
+	/// <summary>
+	/// React to input availability changes from state machine
+	/// </summary>
+	private void OnInputAvailabilityChanged(bool canAcceptInput)
+	{
+		_isInputBlocked = !canAcceptInput;
 		RequestVisualUpdate();
 	}
 
@@ -749,20 +774,13 @@ public partial class CarromInputController : Node2D
 	}
 	
 	/// <summary>
-	/// Check if input can be accepted - simplified to single source of truth
+	/// Check if input can be accepted - now purely reactive via _isInputBlocked
 	/// </summary>
 	private bool CanAcceptInput()
 	{
-		bool canAccept = _gameState?.CanAcceptInput ?? false;
-		
-		// Update visual blocked state
-		if (_isInputBlocked != !canAccept)
-		{
-			_isInputBlocked = !canAccept;
-			RequestVisualUpdate();
-		}
-		
-		return canAccept;
+		// Input availability is now managed reactively via OnInputAvailabilityChanged
+		// No polling needed - just check the reactive state
+		return !_isInputBlocked;
 	}
 
 	/// <summary>
@@ -1537,7 +1555,14 @@ public partial class CarromInputController : Node2D
 	{
 		if (_isDisposed) return;
 		
-		// Disconnect from game state if connected
+		// Disconnect from game state signals if connected
+		if (_gameState != null && _gameState is CarromGameStateMachine stateMachine)
+		{
+			if (GodotObject.IsInstanceValid(stateMachine))
+			{
+				stateMachine.InputAvailabilityChanged -= OnInputAvailabilityChanged;
+			}
+		}
 		_gameState = null;
 		
 		// Clear all cached data to prevent memory leaks

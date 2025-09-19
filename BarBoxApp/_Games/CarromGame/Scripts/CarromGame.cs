@@ -71,8 +71,7 @@ public partial class CarromGame : GameController
 	// UI Components
 	private CarromScoreDisplay _scoreDisplay;
 	
-	// Game state
-	private bool _waitingForPiecesToStop = false;
+	// Game state is now managed entirely by CarromGameStateMachine
 
 	// Animation components
 	private Tween _strikerTween;
@@ -562,12 +561,12 @@ public partial class CarromGame : GameController
 	}
 
 	/// <summary>
-	/// Reset game state - simplified without PhaseManager
+	/// Reset game state - state machine handles all state management
 	/// </summary>
 	private void ResetGame()
 	{
-		_waitingForPiecesToStop = false;
 		// Game state machine will handle state resets automatically
+		// No manual state flags needed
 	}
 	
 	/// <summary>
@@ -1621,37 +1620,13 @@ public partial class CarromGame : GameController
 	
 	/// <summary>
 	/// Handle settlement completion from state machine
-	/// Only enable input if the current player should continue their turn
+	/// State machine automatically transitions to Ready, no manual control needed
 	/// </summary>
 	private void OnSettlementCompleted()
 	{
-		// Check if we're in competitive mode and should wait for manual turn pass
-		if (_carromGameMode == CarromGameMode.Competitive && _competitiveModeManager != null)
-		{
-			var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
-			if (currentPlayer != null)
-			{
-				// Only enable input if the current player should continue their turn
-				bool shouldContinue = _competitiveModeManager.ShouldContinueTurn(currentPlayer.PlayerId);
-				if (shouldContinue)
-				{
-					// Continue turn - enable input immediately  
-					_gameStateMachine?.ForceToReady();
-				}
-				// If shouldContinue is false, don't enable input - wait for manual turn pass
-				// The TurnReadyForPass signal will be emitted by ExecuteModeSpecificSettlement()
-			}
-			else
-			{
-				// Fallback: enable input if no current player found
-				_gameStateMachine?.ForceToReady();
-			}
-		}
-		else
-		{
-			// Practice mode or fallback: always enable input
-			_gameStateMachine?.ForceToReady();
-		}
+		// Settlement completed - state machine has already transitioned to Ready automatically
+		// Mode managers have processed their logic, UI can react to state changes
+		// No manual state control needed here
 	}
 	
 	/// <summary>

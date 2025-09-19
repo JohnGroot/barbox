@@ -32,17 +32,8 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	protected CarromPiece _striker;
 	protected bool _isActive = false;
 	
-	// Settlement state (now synchronous)
-	private bool _isSettling = false; // Flag to prevent concurrent settlements
-	// Retry mechanisms removed - no longer needed with brute force state machine
-	
-	// Settlement loop detection and debugging
-	private int _settlementLoopCount = 0; // Track consecutive settlement attempts
-	private double _lastSettlementTime = 0.0; // Track timing between settlements
-	private const int MAX_SETTLEMENT_LOOPS = 5; // Maximum consecutive settlements before intervention
-	private const double MIN_SETTLEMENT_INTERVAL = 0.5; // Minimum time between settlements (500ms)
-	
-	// Settlement context system removed - no longer needed with brute force state machine approach
+	// Settlement state management is now handled entirely by CarromGameStateMachine
+	// Mode managers no longer control settlement timing or concurrency
 	
 	// Memory management tracking
 	private List<Timer> _activeTimers = new List<Timer>();
@@ -298,45 +289,18 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		EmitSignal(SignalName.ModeSetupComplete);
 	}
 	
-	/// <summary>
-	/// Handle pieces settled with immediate synchronous settlement
-	/// </summary>
-	public void OnPiecesSettled()
-	{
-		// Prevent concurrent settlements
-		if (_isSettling)
-		{
-			return;
-		}
-		
-		
-		// Execute settlement immediately - no timer delays
-		_isSettling = true;
-		try
-		{
-			ExecuteSettlement();
-		}
-		finally
-		{
-			_isSettling = false;
-		}
-	}
+	// OnPiecesSettled method removed - settlement is now controlled by CarromGameStateMachine
+	// State machine calls ProcessSettlement() directly when pieces are stopped
 	
 	/// <summary>
 	/// Process settlement immediately and synchronously (implements ICarromModeManager)
-	/// Replaces complex async settlement with simple immediate processing
+	/// Pure data processing - no state control, just execute mode-specific logic
 	/// </summary>
 	public virtual void ProcessSettlement()
 	{
-		try
-		{
-			// Execute mode-specific settlement immediately
-			ExecuteModeSpecificSettlement();
-		}
-		catch (System.Exception ex)
-		{
-			GD.PrintErr($"[{GetType().Name}] ProcessSettlement failed: {ex.Message}");
-		}
+		// Simply execute mode-specific settlement logic
+		// State machine controls all timing and transitions
+		ExecuteModeSpecificSettlement();
 	}
 	
 	/// <summary>
@@ -462,28 +426,8 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		// Settlement is now immediate and synchronous
 	}
 	
-	/// <summary>
-	/// Execute settlement operations - SIMPLIFIED to eliminate race conditions
-	/// CRITICAL FIX: Removed complex async logic that was causing timing issues
-	/// </summary>
-	private void ExecuteSettlement()
-	{
-		// SIMPLIFIED: Direct, synchronous settlement without complex timing logic
-		try
-		{
-			// Execute mode-specific settlement immediately
-			ExecuteModeSpecificSettlement();
-			
-			// Reset loop counters since we're eliminating the problematic loop detection
-			_settlementLoopCount = 0;
-			_lastSettlementTime = Time.GetUnixTimeFromSystem();
-		}
-		catch (System.Exception ex)
-		{
-			GD.PrintErr($"[{GetType().Name}] Settlement execution failed: {ex.Message}");
-			// Continue execution to prevent game locks
-		}
-	}
+	// ExecuteSettlement method removed - settlement execution is now controlled by CarromGameStateMachine
+	// Mode managers only implement ExecuteModeSpecificSettlement() for their specific logic
 
 	// ================================================================
 	// PRIVATE HELPER METHODS
@@ -655,8 +599,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	/// </summary>
 	private void ForcePhaseTransitionToBreakLoop()
 	{
-		// Clear all settlement state
-		_settlementLoopCount = 0;
+		// Clear all settlement state (no longer needed with state machine control)
 		
 		// Force striker restoration if needed
 		if (IsStrikerValid() && (!_striker.Visible || _striker.Freeze))
