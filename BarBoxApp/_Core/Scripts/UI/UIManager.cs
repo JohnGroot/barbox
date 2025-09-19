@@ -227,20 +227,12 @@ public partial class UIManager : AutoloadBase
 	{
 		UserData currentUser = null;
 		
-		// Get current user from SessionManager
+		// Get current user session from SessionManager
 		var session = _sessionManager?.GetCurrentUserSession();
-		if (session != null)
-		{
-			currentUser = new UserData(session.UserId);
-			if (session.GlobalData != null)
-			{
-				currentUser.Credits = session.GlobalData.GlobalCredits;
-			}
-		}
-		
+
 		if (_topMenuBar != null)
 		{
-			_topMenuBar.UpdateUserInfo(currentUser);
+			_topMenuBar.UpdateUserInfo(session);
 		}
 	}
 

@@ -277,15 +277,26 @@ public partial class TopMenuBar : Control
 	}
 
 	/// <summary>
-	/// Update user information display
+	/// Update user information display using session system
 	/// </summary>
-	public void UpdateUserInfo(UserData userData)
+	public void UpdateUserInfo(UserSession session)
 	{
-		bool isLoggedIn = userData != null;
-		
+		bool isLoggedIn = session != null;
+
 		if (_userInfoLabel != null)
 		{
-			_userInfoLabel.Text = isLoggedIn ? $"{userData.UserId}\n{userData.Credits} Credits" : "Not logged in";
+			if (isLoggedIn && session.GlobalData != null)
+			{
+				string displayName = !string.IsNullOrEmpty(session.GlobalData.UserName)
+					? session.GlobalData.UserName
+					: session.PhoneNumber; // Fallback to phone number
+
+				_userInfoLabel.Text = $"{displayName}\n{session.GlobalData.GlobalCredits} Credits";
+			}
+			else
+			{
+				_userInfoLabel.Text = "Not logged in";
+			}
 		}
 
 		if (_loginButton != null)

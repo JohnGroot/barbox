@@ -687,7 +687,7 @@ public partial class RacingGame : GameController
 				return;
 			}
 			
-			bool creditsSpent = await _sessionManager.CheckAndSpendGlobalCreditsAsync(currentSession.UserId, TimeTrialCreditCost, "Time Trial Race");
+			bool creditsSpent = await _sessionManager.CheckAndSpendGlobalCreditsAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Time Trial Race");
 			if (!creditsSpent)
 			{
 				// Credits not spent - don't start the race

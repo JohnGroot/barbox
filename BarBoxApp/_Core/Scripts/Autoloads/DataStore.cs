@@ -49,10 +49,13 @@ public partial class DataStore : AutoloadBase
 	/// </summary>
 	public partial class GlobalUserData
 	{
-		public string UserId { get; init; } = string.Empty;
+		public string PhoneNumber { get; init; } = string.Empty; // Primary identifier (10 digits)
+		public string UserName { get; set; } = string.Empty; // Display name (max 7 chars)
+		public string CreatedAtLocation { get; init; } = string.Empty; // Location where account was created
 		public int GlobalCredits { get; set; }
 		public DateTime LastSyncAt { get; init; } = DateTime.UtcNow;
-		
+		public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+
 		// Game-specific properties added via partial class extensions in game directories
 	}
 
@@ -61,10 +64,10 @@ public partial class DataStore : AutoloadBase
 	/// </summary>
 	public partial class LocalUserData
 	{
-		public string UserId { get; init; } = string.Empty;
+		public string PhoneNumber { get; init; } = string.Empty;
 		public string LocationId { get; set; } = string.Empty;
 		public DateTime LastLoginTime { get; set; } = DateTime.UtcNow;
-		
+
 		// Game-specific properties added via partial class extensions in game directories
 	}
 
@@ -139,58 +142,58 @@ public partial class DataStore : AutoloadBase
 	/// <summary>
 	/// Get global user data (cross-location)
 	/// </summary>
-	public async Task<Result<GlobalUserData>> GetGlobalDataAsync(string userId)
+	public async Task<Result<GlobalUserData>> GetGlobalDataAsync(string phoneNumber)
 	{
-		return await _backend.GetGlobalDataAsync(userId);
+		return await _backend.GetGlobalDataAsync(phoneNumber);
 	}
 
 	/// <summary>
 	/// Update global user data (cross-location)
 	/// </summary>
-	public async Task<Result<bool>> SetGlobalDataAsync(string userId, GlobalUserData data)
+	public async Task<Result<bool>> SetGlobalDataAsync(string phoneNumber, GlobalUserData data)
 	{
-		return await _backend.SetGlobalDataAsync(userId, data);
+		return await _backend.SetGlobalDataAsync(phoneNumber, data);
 	}
 
 	/// <summary>
 	/// Get local user data for this location
 	/// </summary>
-	public async Task<Result<LocalUserData>> GetLocalDataAsync(string userId)
+	public async Task<Result<LocalUserData>> GetLocalDataAsync(string phoneNumber)
 	{
-		return await _backend.GetLocalDataAsync(userId);
+		return await _backend.GetLocalDataAsync(phoneNumber);
 	}
 
 	/// <summary>
 	/// Update local user data for this location
 	/// </summary>
-	public async Task<Result<bool>> SetLocalDataAsync(string userId, LocalUserData data)
+	public async Task<Result<bool>> SetLocalDataAsync(string phoneNumber, LocalUserData data)
 	{
-		return await _backend.SetLocalDataAsync(userId, data);
+		return await _backend.SetLocalDataAsync(phoneNumber, data);
 	}
 
 	/// <summary>
 	/// Spend global credits (cross-location)
 	/// </summary>
-	public async Task<Result<bool>> SpendGlobalCreditsAsync(string userId, int amount, string reason = "")
+	public async Task<Result<bool>> SpendGlobalCreditsAsync(string phoneNumber, int amount, string reason = "")
 	{
-		return await _backend.SpendGlobalCreditsAsync(userId, amount, reason);
+		return await _backend.SpendGlobalCreditsAsync(phoneNumber, amount, reason);
 	}
 
 	/// <summary>
 	/// Add global credits (cross-location)
 	/// </summary>
-	public async Task<Result<bool>> AddGlobalCreditsAsync(string userId, int amount, string reason = "")
+	public async Task<Result<bool>> AddGlobalCreditsAsync(string phoneNumber, int amount, string reason = "")
 	{
-		return await _backend.AddGlobalCreditsAsync(userId, amount, reason);
+		return await _backend.AddGlobalCreditsAsync(phoneNumber, amount, reason);
 	}
 
 
 	/// <summary>
 	/// Sync user data - called when user logs out or system shuts down
 	/// </summary>
-	public async Task<bool> SyncUserDataAsync(string userId)
+	public async Task<bool> SyncUserDataAsync(string phoneNumber)
 	{
-		return await _backend.SyncUserDataAsync(userId);
+		return await _backend.SyncUserDataAsync(phoneNumber);
 	}
 
 	/// <summary>
@@ -212,9 +215,9 @@ public partial class DataStore : AutoloadBase
 	/// <summary>
 	/// Transfer credits from user's global account to machine credits for specific game
 	/// </summary>
-	public async Task<bool> TransferCreditsToMachineAsync(string userId, string gameId, int amount, string reason = "")
+	public async Task<bool> TransferCreditsToMachineAsync(string phoneNumber, string gameId, int amount, string reason = "")
 	{
-		return await _backend.TransferCreditsToMachineAsync(userId, gameId, amount, reason);
+		return await _backend.TransferCreditsToMachineAsync(phoneNumber, gameId, amount, reason);
 	}
 
 	/// <summary>
@@ -244,6 +247,38 @@ public partial class DataStore : AutoloadBase
 	public async Task<bool> IsServiceAvailableAsync()
 	{
 		return await _backend.IsServiceAvailableAsync();
+	}
+
+	/// <summary>
+	/// Check if a phone number is already registered
+	/// </summary>
+	public async Task<Result<bool>> IsPhoneNumberRegisteredAsync(string phoneNumber)
+	{
+		return await _backend.IsPhoneNumberRegisteredAsync(phoneNumber);
+	}
+
+	/// <summary>
+	/// Check if a username is already taken
+	/// </summary>
+	public async Task<Result<bool>> IsUsernameTakenAsync(string username)
+	{
+		return await _backend.IsUsernameTakenAsync(username);
+	}
+
+	/// <summary>
+	/// Create a new user account with phone number authentication
+	/// </summary>
+	public async Task<Result<GlobalUserData>> CreateUserAccountAsync(string phoneNumber, string pin, string username, string locationId)
+	{
+		return await _backend.CreateUserAccountAsync(phoneNumber, pin, username, locationId);
+	}
+
+	/// <summary>
+	/// Authenticate user by phone number and PIN
+	/// </summary>
+	public async Task<Result<GlobalUserData>> AuthenticateByPhoneAsync(string phoneNumber, string pin)
+	{
+		return await _backend.AuthenticateByPhoneAsync(phoneNumber, pin);
 	}
 
 	// Private helper methods

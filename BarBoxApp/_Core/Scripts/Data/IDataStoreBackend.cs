@@ -19,22 +19,22 @@ public interface IDataStoreBackend
 	/// <summary>
 	/// Get global user data (cross-location)
 	/// </summary>
-	Task<Result<DataStore.GlobalUserData>> GetGlobalDataAsync(string userId);
+	Task<Result<DataStore.GlobalUserData>> GetGlobalDataAsync(string phoneNumber);
 
 	/// <summary>
 	/// Update global user data (cross-location)
 	/// </summary>
-	Task<Result<bool>> SetGlobalDataAsync(string userId, DataStore.GlobalUserData data);
+	Task<Result<bool>> SetGlobalDataAsync(string phoneNumber, DataStore.GlobalUserData data);
 
 	/// <summary>
 	/// Get local user data for this location
 	/// </summary>
-	Task<Result<DataStore.LocalUserData>> GetLocalDataAsync(string userId);
+	Task<Result<DataStore.LocalUserData>> GetLocalDataAsync(string phoneNumber);
 
 	/// <summary>
 	/// Update local user data for this location
 	/// </summary>
-	Task<Result<bool>> SetLocalDataAsync(string userId, DataStore.LocalUserData data);
+	Task<Result<bool>> SetLocalDataAsync(string phoneNumber, DataStore.LocalUserData data);
 
 	/// <summary>
 	/// Get machine-game data for this location and specific game
@@ -49,17 +49,17 @@ public interface IDataStoreBackend
 	/// <summary>
 	/// Spend global credits (cross-location)
 	/// </summary>
-	Task<Result<bool>> SpendGlobalCreditsAsync(string userId, int amount, string reason = "");
+	Task<Result<bool>> SpendGlobalCreditsAsync(string phoneNumber, int amount, string reason = "");
 
 	/// <summary>
 	/// Add global credits (cross-location)
 	/// </summary>
-	Task<Result<bool>> AddGlobalCreditsAsync(string userId, int amount, string reason = "");
+	Task<Result<bool>> AddGlobalCreditsAsync(string phoneNumber, int amount, string reason = "");
 
 	/// <summary>
 	/// Transfer credits from user's global account to machine credits for specific game
 	/// </summary>
-	Task<bool> TransferCreditsToMachineAsync(string userId, string gameId, int amount, string reason = "");
+	Task<bool> TransferCreditsToMachineAsync(string phoneNumber, string gameId, int amount, string reason = "");
 
 	/// <summary>
 	/// Spend machine credits for specific game
@@ -74,10 +74,30 @@ public interface IDataStoreBackend
 	/// <summary>
 	/// Sync user data - called when user logs out or system shuts down
 	/// </summary>
-	Task<bool> SyncUserDataAsync(string userId);
+	Task<bool> SyncUserDataAsync(string phoneNumber);
 
 	/// <summary>
 	/// Get the current location ID for this backend instance
 	/// </summary>
 	string GetCurrentLocationId();
+
+	/// <summary>
+	/// Check if a phone number is already registered
+	/// </summary>
+	Task<Result<bool>> IsPhoneNumberRegisteredAsync(string phoneNumber);
+
+	/// <summary>
+	/// Check if a username is already taken
+	/// </summary>
+	Task<Result<bool>> IsUsernameTakenAsync(string username);
+
+	/// <summary>
+	/// Create a new user account with phone number authentication
+	/// </summary>
+	Task<Result<DataStore.GlobalUserData>> CreateUserAccountAsync(string phoneNumber, string pin, string username, string locationId);
+
+	/// <summary>
+	/// Authenticate user by phone number and PIN
+	/// </summary>
+	Task<Result<DataStore.GlobalUserData>> AuthenticateByPhoneAsync(string phoneNumber, string pin);
 }

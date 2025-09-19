@@ -196,7 +196,7 @@ public partial class BuyCreditsModal : Control
 			return;
 		}
 
-		_currentUserId = session.UserId;
+		_currentUserId = session.PhoneNumber;
 		UpdateCurrentCreditsDisplay(session.GlobalData?.GlobalCredits ?? 0);
 
 		Visible = true;

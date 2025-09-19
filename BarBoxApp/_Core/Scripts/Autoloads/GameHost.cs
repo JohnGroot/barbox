@@ -192,12 +192,12 @@ public partial class GameHost : AutoloadBase
 		if (userSession != null)
 		{
 			// Convert UserSession to PlayerSession for compatibility
-			var userData = new UserData(userSession.UserId);
+			var userData = new UserData(userSession.PhoneNumber);
 			if (userSession.GlobalData != null)
 			{
 				userData.Credits = userSession.GlobalData.GlobalCredits;
 			}
-			return new PlayerSession(userSession.UserId, userData);
+			return new PlayerSession(userSession.PhoneNumber, userData);
 		}
 		
 		return null;

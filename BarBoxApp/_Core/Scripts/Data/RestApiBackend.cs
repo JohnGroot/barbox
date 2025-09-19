@@ -58,37 +58,37 @@ public class RestApiBackend : IDataStoreBackend
 		}
 	}
 
-	public async Task<Result<DataStore.GlobalUserData>> GetGlobalDataAsync(string userId)
+	public async Task<Result<DataStore.GlobalUserData>> GetGlobalDataAsync(string phoneNumber)
 	{
-		if (string.IsNullOrEmpty(userId))
+		if (string.IsNullOrEmpty(phoneNumber))
 			return Result<DataStore.GlobalUserData>.Failure("User ID cannot be null or empty");
 
 		try
 		{
-			var (success, response) = await MakeRequestAsync(HttpClient.Method.Get, $"/api/users/{userId}/global");
+			var (success, response) = await MakeRequestAsync(HttpClient.Method.Get, $"/api/users/{phoneNumber}/global");
 			if (success && !string.IsNullOrEmpty(response))
 			{
 				var data = JsonSerializer.Deserialize<DataStore.GlobalUserData>(response, JsonOptions);
-				return Result<DataStore.GlobalUserData>.Success(data ?? new DataStore.GlobalUserData { UserId = userId });
+				return Result<DataStore.GlobalUserData>.Success(data ?? new DataStore.GlobalUserData { PhoneNumber = phoneNumber });
 			}
 			
 			// If user doesn't exist, return new instance
 			if (response == RESPONSE_NOT_FOUND)
 			{
-				return Result<DataStore.GlobalUserData>.Success(new DataStore.GlobalUserData { UserId = userId });
+				return Result<DataStore.GlobalUserData>.Success(new DataStore.GlobalUserData { PhoneNumber = phoneNumber });
 			}
 			
-			return Result<DataStore.GlobalUserData>.Failure($"Failed to get global data for user {userId}: HTTP error");
+			return Result<DataStore.GlobalUserData>.Failure($"Failed to get global data for user {phoneNumber}: HTTP error");
 		}
 		catch (Exception ex)
 		{
-			return Result<DataStore.GlobalUserData>.Failure($"Exception getting global data for user {userId}: {ex.Message}");
+			return Result<DataStore.GlobalUserData>.Failure($"Exception getting global data for user {phoneNumber}: {ex.Message}");
 		}
 	}
 
-	public async Task<Result<bool>> SetGlobalDataAsync(string userId, DataStore.GlobalUserData data)
+	public async Task<Result<bool>> SetGlobalDataAsync(string phoneNumber, DataStore.GlobalUserData data)
 	{
-		if (string.IsNullOrEmpty(userId))
+		if (string.IsNullOrEmpty(phoneNumber))
 			return Result<bool>.Failure("User ID cannot be null or empty");
 		if (data == null)
 			return Result<bool>.Failure("Data cannot be null");
@@ -97,52 +97,52 @@ public class RestApiBackend : IDataStoreBackend
 		{
 			var json = JsonSerializer.Serialize(data, JsonOptions);
 			
-			var (success, response) = await MakeRequestAsync(HttpClient.Method.Post, $"/api/users/{userId}/global", json);
+			var (success, response) = await MakeRequestAsync(HttpClient.Method.Post, $"/api/users/{phoneNumber}/global", json);
 			
 			if (success)
 			{
 				return Result<bool>.Success(true);
 			}
 			
-			return Result<bool>.Failure($"Failed to set global data for user {userId}: HTTP error - {response}");
+			return Result<bool>.Failure($"Failed to set global data for user {phoneNumber}: HTTP error - {response}");
 		}
 		catch (Exception ex)
 		{
-			return Result<bool>.Failure($"Exception setting global data for user {userId}: {ex.Message}");
+			return Result<bool>.Failure($"Exception setting global data for user {phoneNumber}: {ex.Message}");
 		}
 	}
 
-	public async Task<Result<DataStore.LocalUserData>> GetLocalDataAsync(string userId)
+	public async Task<Result<DataStore.LocalUserData>> GetLocalDataAsync(string phoneNumber)
 	{
-		if (string.IsNullOrEmpty(userId))
+		if (string.IsNullOrEmpty(phoneNumber))
 			return Result<DataStore.LocalUserData>.Failure("User ID cannot be null or empty");
 
 		try
 		{
-			var (success, response) = await MakeRequestAsync(HttpClient.Method.Get, $"/api/locations/{_locationId}/local/{userId}");
+			var (success, response) = await MakeRequestAsync(HttpClient.Method.Get, $"/api/locations/{_locationId}/local/{phoneNumber}");
 			if (success && !string.IsNullOrEmpty(response))
 			{
 				var data = JsonSerializer.Deserialize<DataStore.LocalUserData>(response, JsonOptions);
-				return Result<DataStore.LocalUserData>.Success(data ?? new DataStore.LocalUserData { UserId = userId, LocationId = _locationId });
+				return Result<DataStore.LocalUserData>.Success(data ?? new DataStore.LocalUserData { PhoneNumber = phoneNumber, LocationId = _locationId });
 			}
 			
 			// If user doesn't exist locally, return new instance
 			if (response == RESPONSE_NOT_FOUND)
 			{
-				return Result<DataStore.LocalUserData>.Success(new DataStore.LocalUserData { UserId = userId, LocationId = _locationId });
+				return Result<DataStore.LocalUserData>.Success(new DataStore.LocalUserData { PhoneNumber = phoneNumber, LocationId = _locationId });
 			}
 			
-			return Result<DataStore.LocalUserData>.Failure($"Failed to get local data for user {userId}: HTTP error");
+			return Result<DataStore.LocalUserData>.Failure($"Failed to get local data for user {phoneNumber}: HTTP error");
 		}
 		catch (Exception ex)
 		{
-			return Result<DataStore.LocalUserData>.Failure($"Exception getting local data for user {userId}: {ex.Message}");
+			return Result<DataStore.LocalUserData>.Failure($"Exception getting local data for user {phoneNumber}: {ex.Message}");
 		}
 	}
 
-	public async Task<Result<bool>> SetLocalDataAsync(string userId, DataStore.LocalUserData data)
+	public async Task<Result<bool>> SetLocalDataAsync(string phoneNumber, DataStore.LocalUserData data)
 	{
-		if (string.IsNullOrEmpty(userId))
+		if (string.IsNullOrEmpty(phoneNumber))
 			return Result<bool>.Failure("User ID cannot be null or empty");
 		if (data == null)
 			return Result<bool>.Failure("Data cannot be null");
@@ -152,18 +152,18 @@ public class RestApiBackend : IDataStoreBackend
 			data.LocationId = _locationId; // Ensure correct location
 			var json = JsonSerializer.Serialize(data, JsonOptions);
 			
-			var (success, response) = await MakeRequestAsync(HttpClient.Method.Post, $"/api/locations/{_locationId}/local/{userId}", json);
+			var (success, response) = await MakeRequestAsync(HttpClient.Method.Post, $"/api/locations/{_locationId}/local/{phoneNumber}", json);
 			
 			if (success)
 			{
 				return Result<bool>.Success(true);
 			}
 			
-			return Result<bool>.Failure($"Failed to set local data for user {userId}: HTTP error - {response}");
+			return Result<bool>.Failure($"Failed to set local data for user {phoneNumber}: HTTP error - {response}");
 		}
 		catch (Exception ex)
 		{
-			return Result<bool>.Failure($"Exception setting local data for user {userId}: {ex.Message}");
+			return Result<bool>.Failure($"Exception setting local data for user {phoneNumber}: {ex.Message}");
 		}
 	}
 
@@ -228,9 +228,9 @@ public class RestApiBackend : IDataStoreBackend
 		}
 	}
 
-	public async Task<Result<bool>> SpendGlobalCreditsAsync(string userId, int amount, string reason = "")
+	public async Task<Result<bool>> SpendGlobalCreditsAsync(string phoneNumber, int amount, string reason = "")
 	{
-		var globalResult = await GetGlobalDataAsync(userId);
+		var globalResult = await GetGlobalDataAsync(phoneNumber);
 		if (!globalResult.IsSuccess)
 			return Result<bool>.Failure($"Failed to get global data: {globalResult.Error}");
 
@@ -238,45 +238,45 @@ public class RestApiBackend : IDataStoreBackend
 			return Result<bool>.Failure($"Insufficient credits: has {globalResult.Value.GlobalCredits}, needs {amount}");
 
 		globalResult.Value.GlobalCredits -= amount;
-		var setResult = await SetGlobalDataAsync(userId, globalResult.Value);
+		var setResult = await SetGlobalDataAsync(phoneNumber, globalResult.Value);
 		
 		if (!setResult.IsSuccess)
 			return Result<bool>.Failure($"Failed to update global data: {setResult.Error}");
 		
-		GD.Print($"User {userId} spent {amount} global credits for: {reason}");
+		GD.Print($"User {phoneNumber} spent {amount} global credits for: {reason}");
 		return Result<bool>.Success(true);
 	}
 
-	public async Task<Result<bool>> AddGlobalCreditsAsync(string userId, int amount, string reason = "")
+	public async Task<Result<bool>> AddGlobalCreditsAsync(string phoneNumber, int amount, string reason = "")
 	{
-		var globalResult = await GetGlobalDataAsync(userId);
+		var globalResult = await GetGlobalDataAsync(phoneNumber);
 		if (!globalResult.IsSuccess)
 			return Result<bool>.Failure($"Failed to get global data: {globalResult.Error}");
 
 		globalResult.Value.GlobalCredits += amount;
-		var setResult = await SetGlobalDataAsync(userId, globalResult.Value);
+		var setResult = await SetGlobalDataAsync(phoneNumber, globalResult.Value);
 		
 		if (!setResult.IsSuccess)
 			return Result<bool>.Failure($"Failed to update global data: {setResult.Error}");
 		
-		GD.Print($"User {userId} gained {amount} global credits from: {reason}");
+		GD.Print($"User {phoneNumber} gained {amount} global credits from: {reason}");
 		return Result<bool>.Success(true);
 	}
 
-	public async Task<bool> TransferCreditsToMachineAsync(string userId, string gameId, int amount, string reason = "")
+	public async Task<bool> TransferCreditsToMachineAsync(string phoneNumber, string gameId, int amount, string reason = "")
 	{
 		if (amount <= 0)
 			return false;
 
 		// Check if user has enough global credits
-		var globalData = await GetGlobalDataAsync(userId);
+		var globalData = await GetGlobalDataAsync(phoneNumber);
 		if (globalData.Value.GlobalCredits < amount)
 			return false;
 
 		try
 		{
 			// Spend user's global credits
-			var globalSpent = await SpendGlobalCreditsAsync(userId, amount, $"Transfer to machine for {gameId}: {reason}");
+			var globalSpent = await SpendGlobalCreditsAsync(phoneNumber, amount, $"Transfer to machine for {gameId}: {reason}");
 			if (!globalSpent.IsSuccess)
 				return false;
 
@@ -287,13 +287,13 @@ public class RestApiBackend : IDataStoreBackend
 			bool machineUpdated = await SetMachineGameDataAsync(gameId, machineData);
 			if (machineUpdated)
 			{
-				GD.Print($"User {userId} transferred {amount} credits to machine for game {gameId}: {reason}");
+				GD.Print($"User {phoneNumber} transferred {amount} credits to machine for game {gameId}: {reason}");
 				return true;
 			}
 			else
 			{
 				// Rollback: add credits back to user (best effort)
-				await AddGlobalCreditsAsync(userId, amount, $"Rollback failed machine transfer for {gameId}");
+				await AddGlobalCreditsAsync(phoneNumber, amount, $"Rollback failed machine transfer for {gameId}");
 				return false;
 			}
 		}
@@ -335,24 +335,24 @@ public class RestApiBackend : IDataStoreBackend
 		return success;
 	}
 
-	public async Task<bool> SyncUserDataAsync(string userId)
+	public async Task<bool> SyncUserDataAsync(string phoneNumber)
 	{
 		try
 		{
-			var (success, _) = await MakeRequestAsync(HttpClient.Method.Post, $"/api/sync/{userId}");
+			var (success, _) = await MakeRequestAsync(HttpClient.Method.Post, $"/api/sync/{phoneNumber}");
 			
 			if (success)
 			{
-				GD.Print($"Successfully synced data for user {userId}");
+				GD.Print($"Successfully synced data for user {phoneNumber}");
 				return true;
 			}
 			
-			GD.PrintErr($"Failed to sync data for user {userId}");
+			GD.PrintErr($"Failed to sync data for user {phoneNumber}");
 			return false;
 		}
 		catch (Exception ex)
 		{
-			GD.PrintErr($"Exception syncing data for user {userId}: {ex.Message}");
+			GD.PrintErr($"Exception syncing data for user {phoneNumber}: {ex.Message}");
 			return false;
 		}
 	}
@@ -527,16 +527,76 @@ public class RestApiBackend : IDataStoreBackend
 		return (true, responseBody);
 	}
 
+	public async Task<Result<bool>> IsPhoneNumberRegisteredAsync(string phoneNumber)
+	{
+		// TODO: Implement REST API call to check phone number registration
+		// For now, return false (phone number not registered)
+		await Task.Delay(1); // Simulate async operation
+		return Result<bool>.Success(false);
+	}
+
+	public async Task<Result<bool>> IsUsernameTakenAsync(string username)
+	{
+		// TODO: Implement REST API call to check username availability
+		// For now, return false (username not taken)
+		await Task.Delay(1); // Simulate async operation
+		return Result<bool>.Success(false);
+	}
+
+	public async Task<Result<DataStore.GlobalUserData>> CreateUserAccountAsync(string phoneNumber, string pin, string username, string locationId)
+	{
+		// TODO: Implement REST API call to create user account
+		// For now, create a basic user account structure
+		await Task.Delay(1); // Simulate async operation
+
+		var userData = new DataStore.GlobalUserData
+		{
+			PhoneNumber = phoneNumber,
+			UserName = username,
+			CreatedAtLocation = locationId,
+			GlobalCredits = 0,
+			LastSyncAt = DateTime.UtcNow,
+			CreatedAt = DateTime.UtcNow
+		};
+
+		return Result<DataStore.GlobalUserData>.Success(userData);
+	}
+
+	public async Task<Result<DataStore.GlobalUserData>> AuthenticateByPhoneAsync(string phoneNumber, string pin)
+	{
+		// TODO: Implement REST API call to authenticate by phone number
+		// For now, fall back to the basic authentication
+		await Task.Delay(1); // Simulate async operation
+
+		// In development context, allow simplified authentication
+		if (GameHost.IsDevelopmentContext())
+		{
+			var userData = new DataStore.GlobalUserData
+			{
+				PhoneNumber = phoneNumber,
+				UserName = "DevUser",
+				CreatedAtLocation = _locationId,
+				GlobalCredits = 100, // Development users get starter credits
+				LastSyncAt = DateTime.UtcNow,
+				CreatedAt = DateTime.UtcNow
+			};
+
+			return Result<DataStore.GlobalUserData>.Success(userData);
+		}
+
+		return Result<DataStore.GlobalUserData>.Failure("Phone number authentication not yet implemented for production REST API");
+	}
+
 	public void Dispose()
 	{
 		// Cancel any ongoing operations
 		_connectionCancellation?.Cancel();
 		_requestCancellation?.Cancel();
-		
+
 		// Dispose cancellation tokens
 		_connectionCancellation?.Dispose();
 		_requestCancellation?.Dispose();
-		
+
 		// Clean up HTTP client
 		_httpClient?.Close();
 		_httpClient = null;

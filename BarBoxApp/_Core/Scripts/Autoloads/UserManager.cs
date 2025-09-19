@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using Godot;
 
@@ -23,7 +24,7 @@ public partial class UserManager : AutoloadBase
 		var session = sessionManager?.GetCurrentUserSession();
 		if (session != null)
 		{
-			var userData = new UserData(session.UserId);
+			var userData = new UserData(session.PhoneNumber);
 			if (session.GlobalData != null)
 			{
 				userData.Credits = session.GlobalData.GlobalCredits;
@@ -45,7 +46,7 @@ public partial class UserManager : AutoloadBase
 		var session = sessionManager?.GetCurrentUserSession();
 		if (session != null)
 		{
-			await sessionManager.LogoutUserAsync(session.UserId);
+			await sessionManager.LogoutUserAsync(session.PhoneNumber);
 		}
 	}
 
@@ -57,7 +58,39 @@ public partial class UserManager : AutoloadBase
 		_ = LogoutUserAsync();
 	}
 
-	// Compatibility stubs for missing methods
+	// Phone number authentication methods
+	public async Task<bool> LoginUserByPhoneAsync(string phoneNumber, string pin)
+	{
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager != null)
+		{
+			return await sessionManager.LoginUserByPhoneAsync(phoneNumber, pin);
+		}
+		return false;
+	}
+
+	public async Task<Result<string>> CreateUserAccountAsync(string phoneNumber, string pin, string username)
+	{
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager != null)
+		{
+			return await sessionManager.CreateUserAccountAsync(phoneNumber, pin, username);
+		}
+		return Result<string>.Failure("SessionManager not available");
+	}
+
+	public async Task<Result<bool>> IsUsernameAvailableAsync(string username)
+	{
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager != null)
+		{
+			return await sessionManager.IsUsernameAvailableAsync(username);
+		}
+		return Result<bool>.Failure("SessionManager not available");
+	}
+
+	// Legacy compatibility stubs (deprecated)
+	[Obsolete("Use LoginUserByPhoneAsync instead for phone number authentication")]
 	public bool LoginUserDevelopment(string userId)
 	{
 		var sessionManager = SessionManager.GetInstance();
@@ -69,6 +102,7 @@ public partial class UserManager : AutoloadBase
 		return false;
 	}
 
+	[Obsolete("Use LoginUserByPhoneAsync instead for phone number authentication")]
 	public bool LoginUser(string userId, string pin)
 	{
 		var sessionManager = SessionManager.GetInstance();
@@ -80,6 +114,7 @@ public partial class UserManager : AutoloadBase
 		return false;
 	}
 
+	[Obsolete("Use CreateUserAccountAsync instead for phone number registration")]
 	public UserData CreateUser(string userId, string pin)
 	{
 		// In the new system, users are created automatically on first login
@@ -101,7 +136,7 @@ public partial class UserManager : AutoloadBase
 		var session = sessionManager?.GetCurrentUserSession();
 		if (session != null && sessionManager != null)
 		{
-			_ = sessionManager.AddGlobalCreditsAsync(session.UserId, amount, "Compatibility method");
+			_ = sessionManager.AddGlobalCreditsAsync(session.PhoneNumber, amount, "Compatibility method");
 		}
 	}
 
