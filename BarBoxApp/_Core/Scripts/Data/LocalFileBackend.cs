@@ -381,18 +381,18 @@ public class LocalFileBackend : IDataStoreBackend
 
 	public string GetCurrentLocationId() => _locationId;
 
-	public async Task<Result<bool>> IsPhoneNumberRegisteredAsync(string phoneNumber)
+	public Task<Result<bool>> IsPhoneNumberRegisteredAsync(string phoneNumber)
 	{
 		try
 		{
 			// Search through all global user files to see if phone number exists
 			var globalDir = $"{_dataPath}/{GLOBAL_DATA_DIR}";
 			if (!DirAccess.DirExistsAbsolute(globalDir))
-				return Result<bool>.Success(false);
+				return Task.FromResult(Result<bool>.Success(false));
 
 			var dirAccess = DirAccess.Open(globalDir);
 			if (dirAccess == null)
-				return Result<bool>.Failure("Cannot access global data directory");
+				return Task.FromResult(Result<bool>.Failure("Cannot access global data directory"));
 
 			dirAccess.ListDirBegin();
 			string fileName = dirAccess.GetNext();
@@ -411,33 +411,33 @@ public class LocalFileBackend : IDataStoreBackend
 						var userData = JsonSerializer.Deserialize<DataStore.GlobalUserData>(content, JsonOptions);
 						if (userData != null && userData.PhoneNumber == phoneNumber)
 						{
-							return Result<bool>.Success(true);
+							return Task.FromResult(Result<bool>.Success(true));
 						}
 					}
 				}
 				fileName = dirAccess.GetNext();
 			}
 
-			return Result<bool>.Success(false);
+			return Task.FromResult(Result<bool>.Success(false));
 		}
 		catch (Exception ex)
 		{
-			return Result<bool>.Failure($"Error checking phone number: {ex.Message}");
+			return Task.FromResult(Result<bool>.Failure($"Error checking phone number: {ex.Message}"));
 		}
 	}
 
-	public async Task<Result<bool>> IsUsernameTakenAsync(string username)
+	public Task<Result<bool>> IsUsernameTakenAsync(string username)
 	{
 		try
 		{
 			// Search through all global user files to see if username exists
 			var globalDir = $"{_dataPath}/{GLOBAL_DATA_DIR}";
 			if (!DirAccess.DirExistsAbsolute(globalDir))
-				return Result<bool>.Success(false);
+				return Task.FromResult(Result<bool>.Success(false));
 
 			var dirAccess = DirAccess.Open(globalDir);
 			if (dirAccess == null)
-				return Result<bool>.Failure("Cannot access global data directory");
+				return Task.FromResult(Result<bool>.Failure("Cannot access global data directory"));
 
 			dirAccess.ListDirBegin();
 			string fileName = dirAccess.GetNext();
@@ -456,18 +456,18 @@ public class LocalFileBackend : IDataStoreBackend
 						var userData = JsonSerializer.Deserialize<DataStore.GlobalUserData>(content, JsonOptions);
 						if (userData != null && userData.UserName.Equals(username, StringComparison.OrdinalIgnoreCase))
 						{
-							return Result<bool>.Success(true);
+							return Task.FromResult(Result<bool>.Success(true));
 						}
 					}
 				}
 				fileName = dirAccess.GetNext();
 			}
 
-			return Result<bool>.Success(false);
+			return Task.FromResult(Result<bool>.Success(false));
 		}
 		catch (Exception ex)
 		{
-			return Result<bool>.Failure($"Error checking username: {ex.Message}");
+			return Task.FromResult(Result<bool>.Failure($"Error checking username: {ex.Message}"));
 		}
 	}
 
@@ -527,18 +527,18 @@ public class LocalFileBackend : IDataStoreBackend
 		}
 	}
 
-	public async Task<Result<DataStore.GlobalUserData>> AuthenticateByPhoneAsync(string phoneNumber, string pin)
+	public Task<Result<DataStore.GlobalUserData>> AuthenticateByPhoneAsync(string phoneNumber, string pin)
 	{
 		try
 		{
 			// Search through all global user files to find the phone number
 			var globalDir = $"{_dataPath}/{GLOBAL_DATA_DIR}";
 			if (!DirAccess.DirExistsAbsolute(globalDir))
-				return Result<DataStore.GlobalUserData>.Failure("Global data directory does not exist");
+				return Task.FromResult(Result<DataStore.GlobalUserData>.Failure("Global data directory does not exist"));
 
 			var dirAccess = DirAccess.Open(globalDir);
 			if (dirAccess == null)
-				return Result<DataStore.GlobalUserData>.Failure("Cannot access global data directory");
+				return Task.FromResult(Result<DataStore.GlobalUserData>.Failure("Cannot access global data directory"));
 
 			dirAccess.ListDirBegin();
 			string fileName = dirAccess.GetNext();
@@ -561,11 +561,11 @@ public class LocalFileBackend : IDataStoreBackend
 							// In production, PIN should be hashed and salted
 							if (GameHost.IsDevelopmentContext() || pin.Length == 4)
 							{
-								return Result<DataStore.GlobalUserData>.Success(userData);
+								return Task.FromResult(Result<DataStore.GlobalUserData>.Success(userData));
 							}
 							else
 							{
-								return Result<DataStore.GlobalUserData>.Failure("Invalid PIN");
+								return Task.FromResult(Result<DataStore.GlobalUserData>.Failure("Invalid PIN"));
 							}
 						}
 					}
@@ -573,11 +573,11 @@ public class LocalFileBackend : IDataStoreBackend
 				fileName = dirAccess.GetNext();
 			}
 
-			return Result<DataStore.GlobalUserData>.Failure("Phone number not found or invalid credentials");
+			return Task.FromResult(Result<DataStore.GlobalUserData>.Failure("Phone number not found or invalid credentials"));
 		}
 		catch (Exception ex)
 		{
-			return Result<DataStore.GlobalUserData>.Failure($"Error authenticating user: {ex.Message}");
+			return Task.FromResult(Result<DataStore.GlobalUserData>.Failure($"Error authenticating user: {ex.Message}"));
 		}
 	}
 

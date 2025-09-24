@@ -510,8 +510,8 @@ public partial class CarromGame : GameController
 			return;
 		
 		// Check credits in production mode
-		var player = _players?.FirstOrDefault();
-		if (player?.PlayerId != null && CompetitiveCreditCost > 0)
+		string phoneNumber = GetCurrentUserPhoneNumber();
+		if (!string.IsNullOrEmpty(phoneNumber) && CompetitiveCreditCost > 0)
 		{
 			bool isDevelopmentMode = Engine.IsEditorHint() || OS.IsDebugBuild();
 			if (!isDevelopmentMode)
@@ -520,7 +520,7 @@ public partial class CarromGame : GameController
 				if (sessionManager != null)
 				{
 					bool creditsSpent = await sessionManager.CheckAndSpendGlobalCreditsAsync(
-						player.PlayerId, CompetitiveCreditCost, "Competitive Carrom Match");
+						phoneNumber, CompetitiveCreditCost, "Competitive Carrom Match");
 					
 					// Check if game is still valid after await
 					if (!IsInstanceValid(this))
@@ -1095,7 +1095,7 @@ public partial class CarromGame : GameController
 	private void DetectAndAdaptToContext()
 	{
 		var gameHost = GameHost.GetInstance();
-		
+
 		if (gameHost != null && GodotObject.IsInstanceValid(gameHost))
 		{
 			// Production context - integrate with platform
@@ -1109,13 +1109,8 @@ public partial class CarromGame : GameController
 				AddPlayer(player);
 			}
 		}
-		else
-		{
-			// Development context - create default player
-			var player = new CarromPlayer();
-			player.PlayerId = "dev_player";
-			AddPlayer(player);
-		}
+		// Development context: No auto-player creation
+		// Require actual login for data persistence and game functionality
 	}
 
 	// ================================================================
@@ -1130,13 +1125,13 @@ public partial class CarromGame : GameController
 		var dataStore = DataStore.GetInstance();
 		if (dataStore == null) return;
 
-		var player = _players?.FirstOrDefault();
-		if (player?.PlayerId == null) return;
+		string phoneNumber = GetCurrentUserPhoneNumber();
+		if (string.IsNullOrEmpty(phoneNumber)) return;
 
 		// Fire-and-forget load with proper error handling
 		try
 		{
-			var globalDataResult = await dataStore.GetGlobalDataAsync(player.PlayerId);
+			var globalDataResult = await dataStore.GetGlobalDataAsync(phoneNumber);
 			if (globalDataResult.IsSuccess)
 			{
 				var carromData = globalDataResult.Value.Carrom;
@@ -1144,7 +1139,7 @@ public partial class CarromGame : GameController
 				CallDeferred(MethodName.LogLoadedData, $"Loaded global data - Wins: {carromData.GlobalWins}, Losses: {carromData.GlobalLosses}, Best Streak: {carromData.BestWinStreak}");
 			}
 
-			var localDataResult = await dataStore.GetLocalDataAsync(player.PlayerId);
+			var localDataResult = await dataStore.GetLocalDataAsync(phoneNumber);
 			if (localDataResult.IsSuccess)
 			{
 				var carromLocalData = localDataResult.Value.Carrom;
@@ -1167,11 +1162,14 @@ public partial class CarromGame : GameController
 		var dataStore = DataStore.GetInstance();
 		if (dataStore == null) return;
 
+		string phoneNumber = GetCurrentUserPhoneNumber();
+		if (string.IsNullOrEmpty(phoneNumber)) return;
+
 		// Fire-and-forget save with proper error handling
 		try
 		{
 			// Update global data
-			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+			var globalDataResult = await dataStore.GetGlobalDataAsync(phoneNumber);
 			if (globalDataResult.IsSuccess)
 			{
 				var globalData = globalDataResult.Value;
@@ -1191,13 +1189,13 @@ public partial class CarromGame : GameController
 					globalData.Carrom.GlobalLosses++;
 				}
 
-				await dataStore.SetGlobalDataAsync(playerId, globalData);
+				await dataStore.SetGlobalDataAsync(phoneNumber, globalData);
 				// Thread-safe logging via CallDeferred
 				CallDeferred(MethodName.LogSavedData, $"Saved global data - Win: {isWin}");
 			}
 
 			// Update local data
-			var localDataResult = await dataStore.GetLocalDataAsync(playerId);
+			var localDataResult = await dataStore.GetLocalDataAsync(phoneNumber);
 			if (localDataResult.IsSuccess)
 			{
 				var localData = localDataResult.Value;
@@ -1215,7 +1213,7 @@ public partial class CarromGame : GameController
 					localData.Carrom.CurrentWinStreak = 0;
 				}
 
-				await dataStore.SetLocalDataAsync(playerId, localData);
+				await dataStore.SetLocalDataAsync(phoneNumber, localData);
 			}
 		}
 		catch (System.Exception ex)
@@ -1258,6 +1256,32 @@ public partial class CarromGame : GameController
 	private void LogAsyncError(string message)
 	{
 		GD.PrintErr($"[CarromGame] {message}");
+	}
+
+	/// <summary>
+	/// Get the current user's phone number from SessionManager
+	/// Returns null if no user is logged in
+	/// </summary>
+	private string GetCurrentUserPhoneNumber()
+	{
+		try
+		{
+			var sessionManager = SessionManager.GetInstance();
+			if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
+			{
+				var currentSession = sessionManager.GetCurrentUserSession();
+				if (currentSession != null)
+				{
+					return currentSession.PhoneNumber;
+				}
+			}
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[CarromGame] Error getting current user phone number: {ex.Message}");
+		}
+		// Return null if no user is logged in - no fallbacks
+		return null;
 	}
 
 	// ================================================================

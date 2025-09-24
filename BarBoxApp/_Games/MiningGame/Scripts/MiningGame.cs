@@ -53,7 +53,6 @@ namespace BarBox.Games.MiningGame
 		// Context detection
 		private bool _isProductionContext;
 		private string _playerId;
-		private UserData _currentUser;
 		
 		// Race condition prevention
 		private bool _isProcessingUserChange = false;
@@ -84,10 +83,10 @@ namespace BarBox.Games.MiningGame
 			_gameHost = GameHost.GetInstance();
 			_userManager = UserManager.GetAutoload();
 			_locationManager = LocationManager.GetAutoload();
-			
+
 			// Check if we're loaded as a direct scene (root scene) vs overlay
 			bool isDirectSceneLoad = GetTree().CurrentScene == this;
-			
+
 			if (_gameHost != null && IsInstanceValid(_gameHost))
 			{
 				_isProductionContext = true;
@@ -97,38 +96,20 @@ namespace BarBox.Games.MiningGame
 			else
 			{
 				_isProductionContext = false;
-				_playerId = "dev_player";
-				SetupDevelopmentMode();
+				// No auto-login or dev_player - require actual user login for data persistence
+				_playerId = null;
+				EnableDebugMode = true;
 			}
-			
+
 			// Ensure MainController exists for logout functionality when loading scene directly
 			if (isDirectSceneLoad)
 			{
 				EnsureMainControllerExists();
 			}
-			
+
 			// Context detected
 		}
 		
-		private void SetupDevelopmentMode()
-		{
-			EnableDebugMode = true;
-			
-			// Auto-login debug user
-			if (_userManager != null)
-			{
-				_userManager.LoginUserDevelopment("dev_player");
-				_currentUser = _userManager.GetCurrentUser();
-				
-				// Give debug user some starting gems for testing
-				if (_currentUser != null)
-				{
-					_userManager.AddCredits(DEBUG_STARTING_CREDITS);
-				}
-			}
-			
-			// Development mode initialized
-		}
 		
 		private void EnsureMainControllerExists()
 		{
@@ -290,11 +271,8 @@ namespace BarBox.Games.MiningGame
 					return;
 				}
 				
-				// Get current user state - but don't block initialization if temporarily null
-				_currentUser = _userManager?.GetCurrentUser();
-				
 				// In production context, we need a valid user to proceed with actual game functionality
-				if (_currentUser == null && _isProductionContext)
+				if (string.IsNullOrEmpty(GetCurrentUserPhoneNumber()) && _isProductionContext)
 				{
 					GD.PrintErr("[MiningGame] Cannot start: No user logged in");
 					
@@ -308,7 +286,7 @@ namespace BarBox.Games.MiningGame
 				}
 				
 				// Load user data first, then start mining after data is ready
-				if (_currentUser != null)
+				if (!string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 				{
 					await _state.LoadUserDataAsync();
 					
@@ -390,8 +368,7 @@ namespace BarBox.Games.MiningGame
 			// Now handle initial UI state based on current context (after event handlers are connected)
 			if (_isProductionContext)
 			{
-				_currentUser = _userManager?.GetCurrentUser();
-				if (_currentUser != null)
+				if (!string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 				{
 					// User is already logged in, start the game
 					CallDeferred(MethodName.StartGame);
@@ -579,6 +556,32 @@ namespace BarBox.Games.MiningGame
 		{
 			GD.PrintErr($"[MiningGame] {message}");
 		}
+
+		/// <summary>
+		/// Get the current user's phone number from SessionManager
+		/// Returns null if no user is logged in
+		/// </summary>
+		private string GetCurrentUserPhoneNumber()
+		{
+			try
+			{
+				var sessionManager = SessionManager.GetInstance();
+				if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
+				{
+					var currentSession = sessionManager.GetCurrentUserSession();
+					if (currentSession != null)
+					{
+						return currentSession.PhoneNumber;
+					}
+				}
+			}
+			catch (System.Exception ex)
+			{
+				GD.PrintErr($"[MiningGame] Error getting current user phone number: {ex.Message}");
+			}
+			// Return null if no user is logged in - no fallbacks
+			return null;
+		}
 		
 		// ================================================================
 		// EVENT HANDLERS
@@ -599,8 +602,6 @@ namespace BarBox.Games.MiningGame
 				// Clear any previous user state FIRST to prevent data mixing
 				if (GodotObject.IsInstanceValid(_state))
 					_state.ClearAllState();
-					
-				_currentUser = userData;
 				
 				// User data will be loaded by InitializeGameSession() after StartGame()
 				// No need to load it here to avoid race conditions
@@ -647,8 +648,6 @@ namespace BarBox.Games.MiningGame
 				// Clear all state to ensure no previous user data remains
 				if (GodotObject.IsInstanceValid(_state))
 					_state.ClearAllState();
-					
-				_currentUser = null;
 				
 				// Ensure UI properly reflects no-user state
 				if (GodotObject.IsInstanceValid(_ui))
@@ -964,8 +963,8 @@ namespace BarBox.Games.MiningGame
 				string currentLocationId = _game._locationManager?.CurrentLocationId ?? "default";
 				_locationTemplate = _game.GetLocationDataTemplate(currentLocationId);
 				
-				string userId = _game._currentUser?.UserId;
-				if (string.IsNullOrEmpty(userId))
+				string phoneNumber = _game.GetCurrentUserPhoneNumber();
+				if (string.IsNullOrEmpty(phoneNumber))
 				{
 					CreateDefaultState();
 					return;
@@ -982,7 +981,7 @@ namespace BarBox.Games.MiningGame
 				try
 				{
 					// Load location-specific runtime state using DataStore extensions
-					var miningData = await DataStoreExtensions.GetMiningDataAsync(dataStore, userId);
+					var miningData = await DataStoreExtensions.GetMiningDataAsync(dataStore, phoneNumber);
 					
 					// Create state from loaded data
 					var savedState = new MiningLocationState
@@ -1022,7 +1021,7 @@ namespace BarBox.Games.MiningGame
 						// Apply first-time bonus if this is truly the first time
 						if (_firstTimeBonus && _locationTemplate != null)
 						{
-							bool hasValidUser = _game._currentUser != null && !string.IsNullOrEmpty(_game._currentUser.UserId);
+							bool hasValidUser = !string.IsNullOrEmpty(_game.GetCurrentUserPhoneNumber());
 							if (hasValidUser)
 							{
 								_pendingGems = _locationTemplate.GetMaxCapacity(0, _game.Config); // Start at level 0
@@ -1054,7 +1053,7 @@ namespace BarBox.Games.MiningGame
 					}
 					
 					// Load global mining data using DataStore
-					var globalResult = await dataStore.GetGlobalDataAsync(userId);
+					var globalResult = await dataStore.GetGlobalDataAsync(phoneNumber);
 					if (globalResult.IsSuccess)
 					{
 						_globalData = new BarBox.Games.MiningGame.MiningGlobalDataStore();
@@ -1072,10 +1071,10 @@ namespace BarBox.Games.MiningGame
 						{
 							var newGlobalData = new DataStore.GlobalUserData
 							{
-								UserId = userId,
+								PhoneNumber = phoneNumber,
 								Mining = new MiningGlobalDataStore() // DataStore version
 							};
-							await dataStore.SetGlobalDataAsync(userId, newGlobalData);
+							await dataStore.SetGlobalDataAsync(phoneNumber, newGlobalData);
 						}
 						catch (Exception ex)
 						{
@@ -1109,7 +1108,7 @@ namespace BarBox.Games.MiningGame
 				_firstTimeBonus = true;
 				
 				// Check if we have a valid user - only give bonuses for actual users
-				bool hasValidUser = _game._currentUser != null && !string.IsNullOrEmpty(_game._currentUser.UserId);
+				bool hasValidUser = !string.IsNullOrEmpty(_game.GetCurrentUserPhoneNumber());
 				
 				// First-time bonus: only for actual logged-in users, not "no user" state
 				if (_locationTemplate != null && _firstTimeBonus && hasValidUser)
@@ -1133,15 +1132,16 @@ namespace BarBox.Games.MiningGame
 				
 				if (_game.EnableDebugMode)
 				{
-					GD.Print($"[GameState] Default state created - User: {(hasValidUser ? _game._currentUser.UserId : "None")}, " +
+					var phoneNumber = _game.GetCurrentUserPhoneNumber();
+					GD.Print($"[GameState] Default state created - User: {(hasValidUser ? phoneNumber : "None")}, " +
 						$"StartingGems: {_pendingGems}, DebugResources: {(hasValidUser ? "Added" : "Skipped")}");
 				}
 			}
 			
 			private async Task SaveLocationStateAsync()
 			{
-				string userId = _game._currentUser?.UserId;
-				if (string.IsNullOrEmpty(userId)) 
+				string phoneNumber = _game.GetCurrentUserPhoneNumber();
+				if (string.IsNullOrEmpty(phoneNumber))
 				{
 					return;
 				}
@@ -1169,7 +1169,7 @@ namespace BarBox.Games.MiningGame
 				try
 				{
 					// Use DataStore extension for clean save operation
-					await DataStoreExtensions.SetMiningDataAsync(dataStore, userId, miningLocalData);
+					await DataStoreExtensions.SetMiningDataAsync(dataStore, phoneNumber, miningLocalData);
 				}
 				catch (System.Exception ex)
 				{
@@ -1264,7 +1264,7 @@ namespace BarBox.Games.MiningGame
 				_globalData.CreditTimers.Add(timer);
 				
 				// Actually add credit to user account
-				if (_game._currentUser != null)
+				if (!string.IsNullOrEmpty(_game.GetCurrentUserPhoneNumber()))
 				{
 					_game._userManager?.AddCredits(CREDITS_PER_PURCHASE);
 				}
@@ -1312,8 +1312,8 @@ namespace BarBox.Games.MiningGame
 
 			public async Task SaveDataAsync()
 			{
-				string userId = _game._currentUser?.UserId;
-				if (string.IsNullOrEmpty(userId)) 
+				string phoneNumber = _game.GetCurrentUserPhoneNumber();
+				if (string.IsNullOrEmpty(phoneNumber))
 					return;
 				
 				var dataStore = DataStore.GetInstance();
@@ -1327,7 +1327,7 @@ namespace BarBox.Games.MiningGame
 					
 					// Save global data directly using DataStore
 					// For now, we'll create a minimal global data save (gems will be saved when extracted)
-					var globalResult = await dataStore.GetGlobalDataAsync(userId);
+					var globalResult = await dataStore.GetGlobalDataAsync(phoneNumber);
 					if (globalResult.IsSuccess)
 					{
 						// Global data already exists, just ensure Mining section is initialized
@@ -1335,17 +1335,17 @@ namespace BarBox.Games.MiningGame
 						{
 							globalResult.Value.Mining = new MiningGlobalDataStore();
 						}
-						await dataStore.SetGlobalDataAsync(userId, globalResult.Value);
+						await dataStore.SetGlobalDataAsync(phoneNumber, globalResult.Value);
 					}
 					else
 					{
 						// Create new global data structure
 						var newGlobalData = new DataStore.GlobalUserData
 						{
-							UserId = userId,
+							PhoneNumber = phoneNumber,
 							Mining = new MiningGlobalDataStore()
 						};
-						await dataStore.SetGlobalDataAsync(userId, newGlobalData);
+						await dataStore.SetGlobalDataAsync(phoneNumber, newGlobalData);
 					}
 					
 					if (_game.EnableDebugMode)

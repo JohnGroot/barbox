@@ -225,8 +225,6 @@ public partial class UIManager : AutoloadBase
 	/// </summary>
 	public void UpdateUserDisplay()
 	{
-		UserData currentUser = null;
-		
 		// Get current user session from SessionManager
 		var session = _sessionManager?.GetCurrentUserSession();
 

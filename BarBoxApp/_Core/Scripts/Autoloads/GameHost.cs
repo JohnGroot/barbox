@@ -274,7 +274,7 @@ public partial class GameHost : AutoloadBase
 	{
 		var sessionManager = SessionManager.GetInstance();
 		var session = sessionManager?.GetCurrentUserSession();
-		return session?.UserId ?? "unknown";
+		return session?.PhoneNumber ?? "unknown";
 	}
 
 	/// <summary>

@@ -363,11 +363,11 @@ namespace BarBox.Games.Racing
 	// DATA GETTERS
 	// ================================================================
 
-	public int GetPlayerCurrentLap(string playerId) => _playerCurrentLap.GetValueOrDefault(playerId, 0);
-	public float GetPlayerCurrentLapTime(string playerId) => _playerCurrentLapTime.GetValueOrDefault(playerId, 0.0f);
-	public float GetPlayerBestLapTime(string playerId) => _playerBestLapTime.GetValueOrDefault(playerId, float.MaxValue);
-	public float GetPlayerGapTime(string playerId) => _playerGapTime.GetValueOrDefault(playerId, 0.0f);
-	public List<float> GetPlayerLapTimes(string playerId) => _playerLapTimes.GetValueOrDefault(playerId, new List<float>());
+	public int GetPlayerCurrentLap(string playerId) => string.IsNullOrEmpty(playerId) ? 0 : _playerCurrentLap.GetValueOrDefault(playerId, 0);
+	public float GetPlayerCurrentLapTime(string playerId) => string.IsNullOrEmpty(playerId) ? 0.0f : _playerCurrentLapTime.GetValueOrDefault(playerId, 0.0f);
+	public float GetPlayerBestLapTime(string playerId) => string.IsNullOrEmpty(playerId) ? float.MaxValue : _playerBestLapTime.GetValueOrDefault(playerId, float.MaxValue);
+	public float GetPlayerGapTime(string playerId) => string.IsNullOrEmpty(playerId) ? 0.0f : _playerGapTime.GetValueOrDefault(playerId, 0.0f);
+	public List<float> GetPlayerLapTimes(string playerId) => string.IsNullOrEmpty(playerId) ? new List<float>() : _playerLapTimes.GetValueOrDefault(playerId, new List<float>());
 
 	/// <summary>
 	/// Calculate player score based on game mode

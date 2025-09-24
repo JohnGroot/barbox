@@ -149,11 +149,8 @@ public partial class RacingGame : GameController
 		GameId = "racing_game";
 		SetGameMode(GameMode.Practice); // Start in practice mode
 
-		// Detect context FIRST to ensure proper player data is available
-		DetectAndAdaptToContext();
-
-		// Initialize all systems AFTER context detection
-		// This ensures timing system exists when InitializeGame() is called
+		// Initialize systems - no special context handling needed
+		// Login is required for data persistence, but games work without it
 		SetupTimingSystem();
 		SetupTrackValidationSystem();
 		SetupCameraController();
@@ -425,8 +422,12 @@ public partial class RacingGame : GameController
 			UpdateScore(playerId, totalTime);
 		}
 		
-		// Save best lap time if this is a new record
-		_ = SaveBestLapTime(playerId, lapTime);
+		// Save best lap time only if user is logged in (uses phone number as real ID)
+		var currentPhoneNumber = GetCurrentPlayerPhoneNumber();
+		if (currentPhoneNumber != null)
+		{
+			_ = SaveBestLapTime(currentPhoneNumber, lapTime);
+		}
 		
 		// Emit signal for external integrations (GameHost) at high level
 		EmitSignal(SignalName.LapCompleted, playerId, lapNumber, lapTime);
@@ -437,12 +438,16 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void OnTimingSystemRaceCompleted(string playerId, float totalTime)
 	{
-		// Save global high score if this is a new record
-		_ = SaveGlobalHighScore(playerId, totalTime);
-		
+		// Save global high score only if user is logged in (uses phone number as real ID)
+		var currentPhoneNumber = GetCurrentPlayerPhoneNumber();
+		if (currentPhoneNumber != null)
+		{
+			_ = SaveGlobalHighScore(currentPhoneNumber, totalTime);
+		}
+
 		// End the game when race is completed
 		EndGame();
-		
+
 		// Emit signal for external integrations (GameHost) at high level
 		EmitSignal(SignalName.RaceCompleted, playerId, totalTime);
 	}
@@ -513,8 +518,8 @@ public partial class RacingGame : GameController
 			
 			if (isNewBest)
 			{
-				// Save using new key format and update counters
-				globalData.Racing.SetBestRaceTime(_currentTrackId, _targetLaps, totalTime);
+				// Save using new key format with username and update counters
+				globalData.Racing.SetBestRaceTime(_currentTrackId, _targetLaps, totalTime, globalData.UserName);
 				
 				// Save updated data
 				var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
@@ -595,8 +600,8 @@ public partial class RacingGame : GameController
 			
 			if (isNewBest)
 			{
-				// Save using new key format
-				globalData.Racing.SetBestLapTime(_currentTrackId, lapTime);
+				// Save using new key format with username
+				globalData.Racing.SetBestLapTime(_currentTrackId, lapTime, globalData.UserName);
 				
 				// Save updated data
 				var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
@@ -1391,10 +1396,10 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void OnTracksLeaderboardRequested()
 	{
-		var player = _racingCar?.GetPlayer();
-		var playerId = player?.PlayerId ?? "player1";
+		// Use the actual phone number from session as player ID for leaderboard
+		var playerId = GetCurrentPlayerPhoneNumber();
 		var trackMetadata = GatherTrackMetadata();
-		
+
 		_uiManager?.UpdateTrackMetadataWithLeaderboard(trackMetadata, _currentTrackId, playerId);
 	}
 
@@ -1449,8 +1454,8 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private async void ShowGlobalHighScores()
 	{
-		var player = _racingCar?.GetPlayer();
-		var playerId = player?.PlayerId ?? "player1";
+		// Use the actual phone number from session as player ID for high scores
+		var playerId = GetCurrentPlayerPhoneNumber();
 		
 		var dataStore = DataStore.GetInstance();
 		if (dataStore == null)
@@ -1479,18 +1484,18 @@ public partial class RacingGame : GameController
 			
 			// Get racing best times from typed properties
 			var racingData = globalDataResult.Value.Racing;
-			var allBestTimes = new List<(string track, float time, string type)>();
-			
+			var allBestTimes = new List<(string track, float time, string type, string username)>();
+
 			// Add best lap times
 			foreach (var lapTime in racingData.BestLapTimes)
 			{
-				allBestTimes.Add((lapTime.Key, lapTime.Value, "Best Lap"));
+				allBestTimes.Add((lapTime.Key, lapTime.Value.Time, "Best Lap", lapTime.Value.Username));
 			}
-			
+
 			// Add best race times
 			foreach (var raceTime in racingData.BestRaceTimes)
 			{
-				allBestTimes.Add((raceTime.Key, raceTime.Value, "Best Race"));
+				allBestTimes.Add((raceTime.Key, raceTime.Value.Time, "Best Race", raceTime.Value.Username));
 			}
 			
 			var racingScores = allBestTimes
@@ -1501,7 +1506,8 @@ public partial class RacingGame : GameController
 			{
 				foreach (var score in racingScores)
 				{
-					highScores.AppendLine($"{score.track} - {score.type}: {score.time:F3}s");
+					var username = string.IsNullOrEmpty(score.username) ? "Unknown" : score.username;
+					highScores.AppendLine($"{score.track} - {score.type}: {username} - {score.time:F3}s");
 				}
 				
 				// Add total races completed
@@ -1692,8 +1698,8 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private RacingUIState GatherCurrentState()
 	{
-		var player = _racingCar?.GetPlayer();
-		var playerId = player?.PlayerId ?? "player1";
+		// Use consistent "player1" for game logic, phone number only for persistence
+		var playerId = "player1";
 		var gameMode = GetGameMode();
 		var loggedIn = _cachedUserManager?.IsUserLoggedIn() ?? false;
 		var currentRacingState = _timingSystem?.CurrentRacingState ?? RacingTimingSystem.RacingState.Idle;
@@ -1771,41 +1777,44 @@ public partial class RacingGame : GameController
 
 
 	// ================================================================
-	// CONTEXT DETECTION AND INTEGRATION
+	// PLAYER ID MANAGEMENT - SIMPLIFIED
 	// ================================================================
 
-	private void DetectAndAdaptToContext()
+	/// <summary>
+	/// Get the current player's phone number from SessionManager (null if not logged in)
+	/// </summary>
+	private string GetCurrentPlayerPhoneNumber()
 	{
-		// Context detection initiated
-		var gameHost = GameHost.GetInstance();
-		// Context detection completed
-
-		if (gameHost != null && IsInstanceValid(gameHost))
+		try
 		{
-			// Production context
-			var playerSession = gameHost.GetPlayerSession("default");
-			if (playerSession != null && IsInstanceValid(_racingCar) && _racingCar.IsInitialized)
+			var sessionManager = SessionManager.GetInstance();
+			if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
 			{
-				_racingCar.PlayerId = playerSession.PlayerId;
-				_racingCar.SetUserData(playerSession.UserData);
+				var currentSession = sessionManager.GetCurrentUserSession();
+				if (currentSession != null)
+				{
+					return currentSession.PhoneNumber;
+				}
 			}
 		}
-		else if (IsInstanceValid(_racingCar) && _racingCar.IsInitialized)
+		catch (System.Exception ex)
 		{
-			// Development context - auto-start practice mode
-			_racingCar.PlayerId = "dev_player";
+			GD.PrintErr($"[RacingGame] Error getting current player phone number: {ex.Message}");
 		}
+
+		// Return null if no user is logged in - no fallbacks
+		return null;
 	}
 
 	// ================================================================
 	// RACING DATA GETTERS
 	// ================================================================
 
-	public int GetPlayerCurrentLap(string playerId) => IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerCurrentLap(playerId) : 0;
-	public float GetPlayerCurrentLapTime(string playerId) => IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerCurrentLapTime(playerId) : 0.0f;
-	public float GetPlayerBestLapTime(string playerId) => IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerBestLapTime(playerId) : 0.0f;
-	public float GetPlayerGapTime(string playerId) => IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerGapTime(playerId) : 0.0f;
-	public List<float> GetPlayerLapTimes(string playerId) => IsInstanceValid(_timingSystem) ? _timingSystem.GetPlayerLapTimes(playerId) : new List<float>();
+	public int GetPlayerCurrentLap(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerCurrentLap(playerId) : 0;
+	public float GetPlayerCurrentLapTime(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerCurrentLapTime(playerId) : 0.0f;
+	public float GetPlayerBestLapTime(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerBestLapTime(playerId) : 0.0f;
+	public float GetPlayerGapTime(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerGapTime(playerId) : 0.0f;
+	public List<float> GetPlayerLapTimes(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerLapTimes(playerId) : new List<float>();
 	public RacingTimingSystem.RacingState GetRacingState() => IsInstanceValid(_timingSystem) ? _timingSystem.CurrentRacingState : RacingTimingSystem.RacingState.Idle;
 	public bool IsInCountdown() => IsInstanceValid(_timingSystem) && _timingSystem.IsInCountdown;
 	public int GetCountdownNumber() => IsInstanceValid(_timingSystem) ? _timingSystem.CountdownNumber : 0;

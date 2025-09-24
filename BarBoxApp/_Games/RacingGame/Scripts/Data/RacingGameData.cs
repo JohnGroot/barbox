@@ -5,6 +5,26 @@ using Godot;
 
 namespace BarBox.Games.Racing
 {
+	// ============= RACE TIME ENTRY =============
+
+	/// <summary>
+	/// Represents a race time entry with associated username
+	/// </summary>
+	[Serializable]
+	public class RaceTimeEntry
+	{
+		public float Time { get; set; }
+		public string Username { get; set; } = string.Empty;
+
+		public RaceTimeEntry() { }
+
+		public RaceTimeEntry(float time, string username)
+		{
+			Time = time;
+			Username = username ?? string.Empty;
+		}
+	}
+
 	// ============= GLOBAL DATA STORE =============
 
 	/// <summary>
@@ -14,15 +34,15 @@ namespace BarBox.Games.Racing
 	/// KEY FORMATS:
 	/// - Best Lap Times: "{trackId}_bestlap" (e.g., "gocart_track_bestlap")
 	/// - Best Race Times: "{trackId}_{laps}laps" (e.g., "gocart_track_3laps")
-	/// - Legacy Format: "track_{index}" and "track_{index}_{laps}laps" (for backward compatibility)
+	/// Each entry stores both time and username for proper leaderboard display
 	/// </summary>
 	[Serializable]
 	public class RacingGlobalDataStore
 	{
-		public Dictionary<string, float> BestLapTimes { get; set; } = new();
+		public Dictionary<string, RaceTimeEntry> BestLapTimes { get; set; } = new();
 		public int TotalRaces { get; set; } = 0;
 		public int GlobalRanking { get; set; } = 0;
-		public Dictionary<string, float> BestRaceTimes { get; set; } = new();
+		public Dictionary<string, RaceTimeEntry> BestRaceTimes { get; set; } = new();
 
 		/// <summary>
 		/// Generate stable track ID from scene resource path.
@@ -76,7 +96,16 @@ namespace BarBox.Games.Racing
 		public float GetBestLapTime(string trackId)
 		{
 			var key = GetBestLapKey(trackId);
-			return BestLapTimes.TryGetValue(key, out float time) ? time : 0f;
+			return BestLapTimes.TryGetValue(key, out RaceTimeEntry entry) ? entry.Time : 0f;
+		}
+
+		/// <summary>
+		/// Get best lap time entry (with username) for a track
+		/// </summary>
+		public RaceTimeEntry GetBestLapTimeEntry(string trackId)
+		{
+			var key = GetBestLapKey(trackId);
+			return BestLapTimes.TryGetValue(key, out RaceTimeEntry entry) ? entry : null;
 		}
 
 		/// <summary>
@@ -85,25 +114,34 @@ namespace BarBox.Games.Racing
 		public float GetBestRaceTime(string trackId, int laps)
 		{
 			var key = GetBestRaceKey(trackId, laps);
-			return BestRaceTimes.TryGetValue(key, out float time) ? time : 0f;
+			return BestRaceTimes.TryGetValue(key, out RaceTimeEntry entry) ? entry.Time : 0f;
 		}
 
 		/// <summary>
-		/// Set best lap time using new key format
+		/// Get best race time entry (with username) for a track with specific lap count
 		/// </summary>
-		public void SetBestLapTime(string trackId, float time)
-		{
-			var key = GetBestLapKey(trackId);
-			BestLapTimes[key] = time;
-		}
-
-		/// <summary>
-		/// Set best race time using new key format
-		/// </summary>
-		public void SetBestRaceTime(string trackId, int laps, float time)
+		public RaceTimeEntry GetBestRaceTimeEntry(string trackId, int laps)
 		{
 			var key = GetBestRaceKey(trackId, laps);
-			BestRaceTimes[key] = time;
+			return BestRaceTimes.TryGetValue(key, out RaceTimeEntry entry) ? entry : null;
+		}
+
+		/// <summary>
+		/// Set best lap time with username
+		/// </summary>
+		public void SetBestLapTime(string trackId, float time, string username)
+		{
+			var key = GetBestLapKey(trackId);
+			BestLapTimes[key] = new RaceTimeEntry(time, username);
+		}
+
+		/// <summary>
+		/// Set best race time with username
+		/// </summary>
+		public void SetBestRaceTime(string trackId, int laps, float time, string username)
+		{
+			var key = GetBestRaceKey(trackId, laps);
+			BestRaceTimes[key] = new RaceTimeEntry(time, username);
 			TotalRaces++;
 		}
 

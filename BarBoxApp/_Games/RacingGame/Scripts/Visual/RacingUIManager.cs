@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using BarBox.Core.UI;
 
 namespace BarBox.Games.Racing
 {
@@ -107,6 +108,7 @@ namespace BarBox.Games.Racing
 		public int Laps { get; set; } = 0;
 		public bool IsCurrentPlayer { get; set; } = false;
 		public DateTime SetDate { get; set; } = DateTime.UtcNow;
+		public string Username { get; set; } = "";
 
 		public string FormattedTime => Time > 0f ? $"{Time:F3}s" : "No time";
 		public string CategoryDisplay => Type == "Best Lap" ? "Best Lap" : $"Best Race ({Laps} laps)";
@@ -224,7 +226,7 @@ namespace BarBox.Games.Racing
 		private void CreateTrackListPanel(Container parent)
 		{
 			TrackListPanel = new Panel();
-			TrackListPanel.CustomMinimumSize = new Vector2(250, 0);
+			TrackListPanel.CustomMinimumSize = new Vector2(180, 0);
 			TrackListPanel.SizeFlagsHorizontal = Control.SizeFlags.Fill;
 			parent.AddChild(TrackListPanel);
 
@@ -298,19 +300,27 @@ namespace BarBox.Games.Racing
 			// Best Laps tab
 			var lapTimesScroll = new ScrollContainer();
 			lapTimesScroll.Name = "Best Laps";
+			lapTimesScroll.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			lapTimesScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
 			LeaderboardTabs.AddChild(lapTimesScroll);
 
 			var lapTimesContainer = new VBoxContainer();
 			lapTimesContainer.Name = "LapTimesContainer";
+			lapTimesContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			lapTimesContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
 			lapTimesScroll.AddChild(lapTimesContainer);
 
 			// Best Races tab
 			var raceTimesScroll = new ScrollContainer();
 			raceTimesScroll.Name = "Best Races";
+			raceTimesScroll.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			raceTimesScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
 			LeaderboardTabs.AddChild(raceTimesScroll);
 
 			var raceTimesContainer = new VBoxContainer();
 			raceTimesContainer.Name = "RaceTimesContainer";
+			raceTimesContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			raceTimesContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
 			raceTimesScroll.AddChild(raceTimesContainer);
 		}
 
@@ -386,24 +396,43 @@ namespace BarBox.Games.Racing
 				return;
 			}
 
-			// Add entries
-			for (int i = 0; i < entries.Count && i < 10; i++) // Top 10
+			// Create and configure DataTableView
+			var tableView = new DataTableView();
+			tableView.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			tableView.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+			tableView.CustomMinimumSize = new Vector2(380, 250); // Increased from 320 to utilize extra space from narrower track list
+
+			// Configure table appearance
+			tableView.AlternatingRowColors = true;
+			tableView.ShowHeaders = true;
+			tableView.HeaderBackgroundColor = new Color(0.2f, 0.2f, 0.3f, 1.0f);
+			tableView.HeaderTextColor = Colors.White;
+			tableView.RowBackgroundColor1 = new Color(0.1f, 0.1f, 0.15f, 0.8f);
+			tableView.RowBackgroundColor2 = new Color(0.15f, 0.15f, 0.2f, 0.8f);
+			tableView.RowTextColor = Colors.White;
+			tableView.HighlightRowColor = new Color(0.9f, 0.7f, 0.0f, 0.5f); // More visible golden yellow
+
+			// Add columns (removed Type column as it's self-evident from tab selection)
+			tableView.AddColumn("Rank", (obj) =>
+				{
+					var entry = (LeaderboardEntry)obj;
+					return (entries.IndexOf(entry) + 1).ToString();
+				}, 60, HorizontalAlignment.Center)
+					 .AddColumn("Player", (obj) => ((LeaderboardEntry)obj).Username, 150, HorizontalAlignment.Left) // Increased to 150px to utilize extra space
+					 .AddColumn("Time", (obj) => ((LeaderboardEntry)obj).FormattedTime, 100, HorizontalAlignment.Right, true); // Reduced from 120px to 100px
+
+			// Set highlight predicate only if we have entries that belong to current player
+			bool hasCurrentPlayerEntries = entries.Any(entry => entry.IsCurrentPlayer);
+			if (hasCurrentPlayerEntries)
 			{
-				var entry = entries[i];
-				var entryLabel = new Label();
-				entryLabel.Text = $"{i + 1}. {entry.FormattedTime} - {entry.CategoryDisplay}";
-				
-				if (entry.IsCurrentPlayer)
-				{
-					entryLabel.AddThemeColorOverride("font_color", Colors.Yellow);
-				}
-				else
-				{
-					entryLabel.AddThemeColorOverride("font_color", Colors.White);
-				}
-				
-				container.AddChild(entryLabel);
+				tableView.SetHighlightPredicate(obj => ((LeaderboardEntry)obj).IsCurrentPlayer);
 			}
+
+			// Bind data (limit to top 10)
+			var displayEntries = entries.Take(10).Cast<object>().ToList();
+			tableView.BindData(displayEntries);
+
+			container.AddChild(tableView);
 		}
 
 		public void ShowOverlay()
@@ -1139,9 +1168,16 @@ namespace BarBox.Games.Racing
 	{
 		try
 		{
-			// Get current player ID (this logic should be provided by the game)
-			var playerId = GetCurrentPlayerId();
-			
+			// Get current player's phone number from SessionManager (real backend identifier)
+			var playerId = GetCurrentPlayerPhoneNumber();
+
+			// If no user is logged in, show empty leaderboard
+			if (playerId == null)
+			{
+				UpdateLeaderboardFallback(trackId);
+				return;
+			}
+
 			var dataStore = DataStore.GetInstance();
 			if (dataStore == null)
 			{
@@ -1164,9 +1200,11 @@ namespace BarBox.Games.Racing
 			var racingData = globalDataResult.Value.Racing;
 			var lapEntries = new List<LeaderboardEntry>();
 			var raceEntries = new List<LeaderboardEntry>();
-			
+
 			// Extract track-specific times using both new and legacy key formats
-			ExtractTrackLeaderboardEntries(racingData, trackId, playerId, lapEntries, raceEntries);
+			// Pass the username from global data as fallback
+			string fallbackUsername = globalDataResult.Value.UserName;
+			ExtractTrackLeaderboardEntries(racingData, trackId, playerId, lapEntries, raceEntries, fallbackUsername);
 			
 			// Update UI on main thread
 			var callable = Callable.From(() => UpdateLeaderboardUI(trackId, lapEntries, raceEntries));
@@ -1183,42 +1221,59 @@ namespace BarBox.Games.Racing
 	/// <summary>
 	/// Extract leaderboard entries for a specific track from racing data
 	/// </summary>
-	private void ExtractTrackLeaderboardEntries(RacingGlobalDataStore racingData, string trackId, string currentPlayerId, 
-		List<LeaderboardEntry> lapEntries, List<LeaderboardEntry> raceEntries)
+	private void ExtractTrackLeaderboardEntries(RacingGlobalDataStore racingData, string trackId, string currentPlayerId,
+		List<LeaderboardEntry> lapEntries, List<LeaderboardEntry> raceEntries, string fallbackUsername = "")
 	{
 		if (!_trackMetadataCache.TryGetValue(trackId, out var track))
 			return;
 
-		// Get best lap time using new key format
-		float bestLapTime = racingData.GetBestLapTime(trackId);
-		
-		if (bestLapTime > 0f)
+		// Get current session username as additional fallback
+		string sessionUsername = GetCurrentSessionUsername();
+
+		// Get best lap time entry with username
+		var bestLapEntry = racingData.GetBestLapTimeEntry(trackId);
+
+		if (bestLapEntry != null && bestLapEntry.Time > 0f)
 		{
+			// Enhanced username fallback logic
+			string displayName = ResolveDisplayName(bestLapEntry.Username, fallbackUsername, sessionUsername, currentPlayerId);
+
+			// Determine if this entry belongs to the current player
+			bool isCurrentPlayer = IsEntryForCurrentPlayer(displayName, bestLapEntry.Username, currentPlayerId, fallbackUsername, sessionUsername);
+
 			lapEntries.Add(new LeaderboardEntry
 			{
 				TrackId = trackId,
 				TrackName = track.TrackName,
-				Time = bestLapTime,
+				Time = bestLapEntry.Time,
 				Type = "Best Lap",
-				IsCurrentPlayer = true
+				Username = displayName,
+				IsCurrentPlayer = isCurrentPlayer
 			});
 		}
 
 		// Get best race times for different lap counts
 		for (int laps = 1; laps <= 10; laps++) // Support up to 10 lap races
 		{
-			float bestRaceTime = racingData.GetBestRaceTime(trackId, laps);
-			
-			if (bestRaceTime > 0f)
+			var bestRaceEntry = racingData.GetBestRaceTimeEntry(trackId, laps);
+
+			if (bestRaceEntry != null && bestRaceEntry.Time > 0f)
 			{
+				// Enhanced username fallback logic
+				string displayName = ResolveDisplayName(bestRaceEntry.Username, fallbackUsername, sessionUsername, currentPlayerId);
+
+				// Determine if this entry belongs to the current player
+				bool isCurrentPlayer = IsEntryForCurrentPlayer(displayName, bestRaceEntry.Username, currentPlayerId, fallbackUsername, sessionUsername);
+
 				raceEntries.Add(new LeaderboardEntry
 				{
 					TrackId = trackId,
 					TrackName = track.TrackName,
-					Time = bestRaceTime,
+					Time = bestRaceEntry.Time,
 					Type = "Best Race",
 					Laps = laps,
-					IsCurrentPlayer = true
+					Username = displayName,
+					IsCurrentPlayer = isCurrentPlayer
 				});
 			}
 		}
@@ -1226,6 +1281,125 @@ namespace BarBox.Games.Racing
 		// Sort entries by time (fastest first)
 		lapEntries.Sort((a, b) => a.Time.CompareTo(b.Time));
 		raceEntries.Sort((a, b) => a.Time.CompareTo(b.Time));
+	}
+
+	/// <summary>
+	/// Resolve display name with enhanced fallback logic
+	/// </summary>
+	private string ResolveDisplayName(string storedUsername, string fallbackUsername, string sessionUsername, string currentPlayerId)
+	{
+		// Priority order:
+		// 1. Stored username from the time entry
+		// 2. Fallback username from global data
+		// 3. Current session username (from UserManager/SessionManager)
+		// 4. Player ID (if not default "player1")
+		// 5. Empty string if no username available
+
+		if (!string.IsNullOrEmpty(storedUsername))
+			return storedUsername;
+
+		if (!string.IsNullOrEmpty(fallbackUsername))
+			return fallbackUsername;
+
+		if (!string.IsNullOrEmpty(sessionUsername))
+			return sessionUsername;
+
+		if (!string.IsNullOrEmpty(currentPlayerId) && currentPlayerId != "player1")
+			return currentPlayerId;
+
+		return string.Empty; // No fallback - display empty if no username available
+	}
+
+	/// <summary>
+	/// Check if we have a valid logged-in player for highlighting purposes
+	/// </summary>
+	private bool HasValidCurrentPlayer(string currentPlayerId, string fallbackUsername, string sessionUsername)
+	{
+		// Consider valid if we have a non-default player ID or any username
+		if (!string.IsNullOrEmpty(currentPlayerId) && currentPlayerId != "player1")
+			return true;
+
+		if (!string.IsNullOrEmpty(fallbackUsername))
+			return true;
+
+		if (!string.IsNullOrEmpty(sessionUsername))
+			return true;
+
+		return false;
+	}
+
+	/// <summary>
+	/// Determine if a leaderboard entry belongs to the current player
+	/// </summary>
+	private bool IsEntryForCurrentPlayer(string entryUsername, string storedUsername, string currentPlayerId, string fallbackUsername, string sessionUsername)
+	{
+		// If we don't have a valid current player, no entries belong to current player
+		if (!HasValidCurrentPlayer(currentPlayerId, fallbackUsername, sessionUsername))
+			return false;
+
+		// Check if the entry username matches any of the current player's identifiers
+		if (!string.IsNullOrEmpty(entryUsername))
+		{
+			// Compare with session username
+			if (!string.IsNullOrEmpty(sessionUsername) && entryUsername == sessionUsername)
+				return true;
+
+			// Compare with fallback username
+			if (!string.IsNullOrEmpty(fallbackUsername) && entryUsername == fallbackUsername)
+				return true;
+
+			// Compare with player ID (if not default)
+			if (!string.IsNullOrEmpty(currentPlayerId) && currentPlayerId != "player1" && entryUsername == currentPlayerId)
+				return true;
+		}
+
+		// Also check stored username from the time entry itself
+		if (!string.IsNullOrEmpty(storedUsername))
+		{
+			if (!string.IsNullOrEmpty(sessionUsername) && storedUsername == sessionUsername)
+				return true;
+
+			if (!string.IsNullOrEmpty(fallbackUsername) && storedUsername == fallbackUsername)
+				return true;
+
+			if (!string.IsNullOrEmpty(currentPlayerId) && currentPlayerId != "player1" && storedUsername == currentPlayerId)
+				return true;
+		}
+
+		return false;
+	}
+
+	/// <summary>
+	/// Get current session username from UserManager/SessionManager
+	/// </summary>
+	private string GetCurrentSessionUsername()
+	{
+		try
+		{
+			// Try SessionManager first - get the current user session and extract username
+			var sessionManager = SessionManager.GetInstance();
+			if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
+			{
+				var currentSession = sessionManager.GetCurrentUserSession();
+				if (currentSession != null)
+				{
+					// First, try to get username from cached GlobalData if available
+					if (currentSession.GlobalData != null && !string.IsNullOrEmpty(currentSession.GlobalData.UserName))
+					{
+						return currentSession.GlobalData.UserName;
+					}
+
+					// Privacy-safe fallback - never expose phone numbers in display
+					// Use generic player identifier instead
+				}
+			}
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[RacingUIManager] Error getting session username: {ex.Message}");
+		}
+
+		return "Player"; // Generic fallback that doesn't expose private information
 	}
 
 	/// <summary>
@@ -1267,6 +1441,32 @@ namespace BarBox.Games.Racing
 	private string GetCurrentPlayerId()
 	{
 		return _currentPlayerId;
+	}
+
+	/// <summary>
+	/// Get the current player's phone number from SessionManager (null if not logged in)
+	/// </summary>
+	private string GetCurrentPlayerPhoneNumber()
+	{
+		try
+		{
+			var sessionManager = SessionManager.GetInstance();
+			if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
+			{
+				var currentSession = sessionManager.GetCurrentUserSession();
+				if (currentSession != null)
+				{
+					return currentSession.PhoneNumber;
+				}
+			}
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[RacingUIManager] Error getting current player phone number: {ex.Message}");
+		}
+
+		// Return null if no user is logged in - no fallbacks
+		return null;
 	}
 
 	/// <summary>

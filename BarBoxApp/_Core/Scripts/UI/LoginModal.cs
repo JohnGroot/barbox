@@ -332,6 +332,9 @@ public partial class LoginModal : Control
 		// Update visual feedback
 		var validationState = InputValidator.GetPhoneNumberValidationState(cleaned);
 		UpdateInputValidationStyle(_loginPhoneInput, validationState);
+
+		// Update login button state
+		UpdateLoginButtonState();
 	}
 
 	private void OnLoginPhoneFocusExited()
@@ -361,6 +364,9 @@ public partial class LoginModal : Control
 		// Update visual feedback
 		var validationState = InputValidator.GetPinValidationState(cleaned);
 		UpdateInputValidationStyle(_loginPinInput, validationState);
+
+		// Update login button state
+		UpdateLoginButtonState();
 	}
 
 	private void OnCreatePhoneChanged(string newText)
@@ -472,6 +478,35 @@ public partial class LoginModal : Control
 		input.AddThemeStyleboxOverride("normal", style);
 	}
 
+	private void ResetInputValidationStyle(LineEdit input)
+	{
+		if (input == null) return;
+
+		// Remove the theme style override to return to default
+		input.RemoveThemeStyleboxOverride("normal");
+	}
+
+	private void UpdateLoginButtonState()
+	{
+		if (_loginButton == null || _loginPhoneInput == null || _loginPinInput == null) return;
+
+		string phoneNumber = _loginPhoneInput.Text.Trim();
+		string pin = _loginPinInput.Text.Trim();
+
+		// Validate phone number
+		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
+		bool isPhoneValid = InputValidator.IsValidPhoneNumber(cleanedPhone);
+
+		// Validate PIN (relaxed in development mode)
+		var cleanedPin = InputValidator.CleanPin(pin);
+		bool isPinValid = GameHost.IsDevelopmentContext() ?
+			!string.IsNullOrEmpty(cleanedPin) : // In dev mode, any non-empty PIN is valid
+			InputValidator.IsValidPin(cleanedPin); // In production mode, requires 4 digits
+
+		// Enable button only if both inputs are valid
+		_loginButton.Disabled = !(isPhoneValid && isPinValid);
+	}
+
 	// Username availability checking with debouncing
 	private Timer _usernameCheckTimer;
 	private string _lastUsernameToCheck = "";
@@ -551,6 +586,10 @@ public partial class LoginModal : Control
 		}
 
 		ClearForm();
+
+		// Initialize login button state
+		UpdateLoginButtonState();
+
 		// Modal shown
 	}
 
@@ -567,16 +606,47 @@ public partial class LoginModal : Control
 
 	private void ClearForm()
 	{
-		// Clear login tab fields
-		if (_loginPhoneInput != null) _loginPhoneInput.Text = "";
-		if (_loginPinInput != null) _loginPinInput.Text = "";
-		if (_loginStatusLabel != null && !GameHost.IsDevelopmentContext()) _loginStatusLabel.Text = "";
+		// Clear and reset login tab fields
+		if (_loginPhoneInput != null)
+		{
+			_loginPhoneInput.Text = "";
+			ResetInputValidationStyle(_loginPhoneInput);
+		}
+		if (_loginPinInput != null)
+		{
+			_loginPinInput.Text = "";
+			ResetInputValidationStyle(_loginPinInput);
+		}
+		if (_loginStatusLabel != null)
+		{
+			_loginStatusLabel.Text = "";
+			_loginStatusLabel.Modulate = Colors.White;
+		}
 
-		// Clear create account tab fields
-		if (_createPhoneInput != null) _createPhoneInput.Text = "";
-		if (_createPinInput != null) _createPinInput.Text = "";
-		if (_createUsernameInput != null) _createUsernameInput.Text = "";
-		if (_createStatusLabel != null) _createStatusLabel.Text = "";
+		// Clear and reset create account tab fields
+		if (_createPhoneInput != null)
+		{
+			_createPhoneInput.Text = "";
+			ResetInputValidationStyle(_createPhoneInput);
+		}
+		if (_createPinInput != null)
+		{
+			_createPinInput.Text = "";
+			ResetInputValidationStyle(_createPinInput);
+		}
+		if (_createUsernameInput != null)
+		{
+			_createUsernameInput.Text = "";
+			ResetInputValidationStyle(_createUsernameInput);
+		}
+		if (_createStatusLabel != null)
+		{
+			_createStatusLabel.Text = "";
+			_createStatusLabel.Modulate = Colors.White;
+		}
+
+		// Update button states after clearing
+		UpdateLoginButtonState();
 	}
 
 	private void ShowLoginStatusMessage(string message, bool isSuccess)

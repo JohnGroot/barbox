@@ -289,7 +289,7 @@ public partial class TopMenuBar : Control
 			{
 				string displayName = !string.IsNullOrEmpty(session.GlobalData.UserName)
 					? session.GlobalData.UserName
-					: session.PhoneNumber; // Fallback to phone number
+					: "Player"; // Privacy-safe fallback - never expose phone numbers
 
 				_userInfoLabel.Text = $"{displayName}\n{session.GlobalData.GlobalCredits} Credits";
 			}

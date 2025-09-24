@@ -234,7 +234,7 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 		}
 	}
 
-	public float GetPlayerScore(string playerId) => _playerScores.GetValueOrDefault(playerId, 0.0f);
+	public float GetPlayerScore(string playerId) => string.IsNullOrEmpty(playerId) ? 0.0f : _playerScores.GetValueOrDefault(playerId, 0.0f);
 	public Dictionary<string, float> GetAllScores() => new Dictionary<string, float>(_playerScores);
 	public List<BasePlayer> GetPlayers() => new List<BasePlayer>(_players);
 	public int GetPlayerCount() => _players.Count;
