@@ -49,10 +49,13 @@ namespace BarBox.Games.Racing
 	// Main UI layer
 	private CanvasLayer _uiLayer;
 	
-	// Status display labels
+	// Status display labels (kept for compatibility)
 	private Label _speedLabel;
 	private Label _lapLabel;
 	private Label _timeLabel;
+
+	// Arc-based HUD renderer
+	private RacingHUDArcRenderer _hudArcRenderer;
 	
 	// Control buttons
 	private Button _timeTrialButton;
@@ -76,6 +79,9 @@ namespace BarBox.Games.Racing
 	// Tracks & Leaderboard overlay data
 	private TracksLeaderboardOverlay _tracksLeaderboardOverlay;
 	private Dictionary<string, TrackMetadata> _trackMetadataCache = new();
+
+	// Countdown state tracking
+	private bool _wasCountdownVisible = false;
 
 	// ================================================================
 	// NESTED CLASSES FOR TRACK & LEADERBOARD MANAGEMENT
@@ -504,37 +510,29 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Setup the status bar showing speed, lap, and time information
+	/// Setup the status bar with modern arc-based HUD elements
 	/// </summary>
 	/// <param name="parent">Parent container</param>
 	private void SetupStatusBar(Control parent)
 	{
+		// Create arc-based HUD renderer
+		_hudArcRenderer = new RacingHUDArcRenderer();
+		_uiLayer.AddChild(_hudArcRenderer);
+
+		// Create invisible status bar elements for compatibility (keep references for code that updates them)
 		var statusBar = new HBoxContainer();
-		statusBar.AnchorLeft = 0;
-		statusBar.AnchorTop = 1;
-		statusBar.AnchorRight = 1;
-		statusBar.AnchorBottom = 1;
-		statusBar.OffsetTop = -120; // Position above bottom controls
-		statusBar.OffsetBottom = -80;
-		statusBar.Alignment = BoxContainer.AlignmentMode.Center;
+		statusBar.Visible = false; // Hide completely - arc renderer provides all visual feedback
 		parent.AddChild(statusBar);
 
-		_speedLabel = new Label() { Text = "Speed: 0", HorizontalAlignment = HorizontalAlignment.Center };
-		_speedLabel.AddThemeColorOverride("font_color", Colors.White);
-		_speedLabel.AddThemeFontSizeOverride("font_size", 16);
-		statusBar.AddChild(_speedLabel);
-		statusBar.AddChild(new VSeparator());
+		// Create labels but keep them hidden (for compatibility with existing update code)
+		_speedLabel = new Label() { Text = "Speed: 0" };
+		_lapLabel = new Label() { Text = "Practice Mode" };
+		_timeLabel = new Label() { Text = "Gap: 0.0s" };
 
-		_lapLabel = new Label() { Text = "Practice Mode", HorizontalAlignment = HorizontalAlignment.Center };
-		_lapLabel.AddThemeColorOverride("font_color", Colors.White);
-		_lapLabel.AddThemeFontSizeOverride("font_size", 16);
-		statusBar.AddChild(_lapLabel);
-		statusBar.AddChild(new VSeparator());
-
-		_timeLabel = new Label() { Text = "Gap: 0.0s", HorizontalAlignment = HorizontalAlignment.Center };
-		_timeLabel.AddThemeColorOverride("font_color", Colors.White);
-		_timeLabel.AddThemeFontSizeOverride("font_size", 16);
-		statusBar.AddChild(_timeLabel);
+		// Don't add them to the UI - just keep references
+		// statusBar.AddChild(_speedLabel);
+		// statusBar.AddChild(_lapLabel);
+		// statusBar.AddChild(_timeLabel);
 	}
 
 	/// <summary>
@@ -783,7 +781,7 @@ namespace BarBox.Games.Racing
 	// ================================================================
 
 	/// <summary>
-	/// Update status labels with current game state
+	/// Update status labels and arc HUD with current game state
 	/// </summary>
 	/// <param name="carSpeed">Current car speed</param>
 	/// <param name="gameMode">Current game mode</param>
@@ -791,15 +789,24 @@ namespace BarBox.Games.Racing
 	/// <param name="targetLaps">Target number of laps</param>
 	/// <param name="timeDisplay">Time value to display</param>
 	/// <param name="timeLabel">Label for the time display</param>
-	public void UpdateStatusLabels(float carSpeed, GameController.GameMode gameMode, int currentLap, int targetLaps, float timeDisplay, string timeLabel)
+	/// <param name="maxSpeed">Maximum car speed for percentage calculation</param>
+	/// <param name="lapProgress">Current lap progress (0.0 to 1.0)</param>
+	public void UpdateStatusLabels(float carSpeed, GameController.GameMode gameMode, int currentLap, int targetLaps, float timeDisplay, string timeLabel, float maxSpeed = 1800.0f, float lapProgress = 0.0f)
 	{
-		// Update speed display
+		// Update arc-based HUD (primary display)
+		if (_hudArcRenderer != null && IsInstanceValid(_hudArcRenderer))
+		{
+			var timeText = $"{timeLabel}: {timeDisplay:F1}s";
+			var isPracticeMode = (gameMode == GameController.GameMode.Practice);
+			_hudArcRenderer.UpdateHUDState(carSpeed, maxSpeed, currentLap, targetLaps, lapProgress, timeText, isPracticeMode);
+		}
+
+		// Update traditional labels (fallback/debug display)
 		if (_speedLabel != null)
 		{
 			_speedLabel.Text = $"Speed: {(int)carSpeed}";
 		}
 
-		// Update lap/mode display
 		if (_lapLabel != null)
 		{
 			if (gameMode == GameController.GameMode.Practice)
@@ -812,7 +819,6 @@ namespace BarBox.Games.Racing
 			}
 		}
 
-		// Update time display
 		if (_timeLabel != null)
 		{
 			_timeLabel.Text = $"{timeLabel}: {timeDisplay:F1}s";
@@ -826,14 +832,17 @@ namespace BarBox.Games.Racing
 	public void UpdateFromState(RacingUIState state)
 	{
 		// Update everything, every time - let Godot handle rendering optimization
-		UpdateStatusLabels(state.CarSpeed, state.GameMode, state.CurrentLap, 
-						  state.TargetLaps, state.TimeDisplay, state.TimeLabel);
-		
+		UpdateStatusLabels(state.CarSpeed, state.GameMode, state.CurrentLap,
+						  state.TargetLaps, state.TimeDisplay, state.TimeLabel, state.MaxSpeed, state.LapProgress);
+
 		UpdateButtonStates(state.IsTimeTrialInProgress, state.CanStartTimeTrial, state.IsInCountdown,
 						  state.GameMode == GameController.GameMode.TimeTrial, state.IsUserLoggedIn);
 
 		SetPauseOverlayVisible(state.IsGamePaused);
 		SetGameOverOverlayVisible(state.ShowGameOverOverlay, state.FinalTime, state.CanAffordReplay);
+
+		// Update countdown display in arc renderer
+		UpdateCountdownArc(state.IsInCountdown, state.CountdownNumber, state.CountdownProgress);
 	}
 
 	/// <summary>
@@ -914,19 +923,29 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Show/hide countdown overlay
+	/// Show/hide countdown overlay (traditional) and update arc renderer
 	/// </summary>
 	/// <param name="visible">Whether to show the overlay</param>
 	public void SetCountdownOverlayVisible(bool visible)
 	{
 		if (_countdownOverlay != null)
 		{
-			_countdownOverlay.Visible = visible;
+			// Hide traditional overlay completely - arc renderer handles countdown
+			_countdownOverlay.Visible = false;
+		}
+
+		// Arc renderer handles the primary countdown display
+		if (_hudArcRenderer != null && IsInstanceValid(_hudArcRenderer))
+		{
+			if (!visible)
+			{
+				_hudArcRenderer.HideCountdown();
+			}
 		}
 	}
 
 	/// <summary>
-	/// Update countdown text
+	/// Update countdown text (traditional) and arc animation
 	/// </summary>
 	/// <param name="text">Text to display</param>
 	public void UpdateCountdownText(string text)
@@ -934,6 +953,38 @@ namespace BarBox.Games.Racing
 		if (_countdownLabel != null)
 		{
 			_countdownLabel.Text = text;
+		}
+	}
+
+	/// <summary>
+	/// Update countdown arc animation with number and progress
+	/// </summary>
+	/// <param name="isVisible">Whether countdown is active</param>
+	/// <param name="countdownNumber">Current countdown number (3, 2, 1, or 0 for GO)</param>
+	/// <param name="countdownProgress">Progress from 0.0 (start) to 1.0 (complete)</param>
+	private void UpdateCountdownArc(bool isVisible, int countdownNumber, float countdownProgress)
+	{
+		if (_hudArcRenderer != null && IsInstanceValid(_hudArcRenderer))
+		{
+			if (isVisible)
+			{
+				// If countdown just became visible, start the countdown animation
+				if (!_wasCountdownVisible)
+				{
+					_hudArcRenderer.StartCountdown(countdownNumber, countdownProgress);
+				}
+				else
+				{
+					_hudArcRenderer.UpdateCountdown(countdownNumber, countdownProgress);
+				}
+			}
+			else
+			{
+				_hudArcRenderer.HideCountdown();
+			}
+
+			// Track previous state
+			_wasCountdownVisible = isVisible;
 		}
 	}
 

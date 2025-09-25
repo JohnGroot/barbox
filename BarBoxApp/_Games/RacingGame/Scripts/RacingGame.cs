@@ -16,22 +16,28 @@ public class RacingUIState
 	public bool IsTimeTrialInProgress { get; set; } // Tracks formal race vs practice
 	public bool CanStartTimeTrial { get; set; }
 	public GameController.GameMode GameMode { get; set; }
-		
+
 	// Player data
 	public float CarSpeed { get; set; }
 	public int CurrentLap { get; set; }
 	public int TargetLaps { get; set; }
 	public float TimeDisplay { get; set; }
 	public string TimeLabel { get; set; }
-		
+
+	// Arc HUD specific data
+	public float MaxSpeed { get; set; } = 1800.0f;
+	public float LapProgress { get; set; } = 0.0f; // 0.0 to 1.0 for current lap completion
+	public int CountdownNumber { get; set; } = 0; // 3, 2, 1, or 0 for GO
+	public float CountdownProgress { get; set; } = 0.0f; // 0.0 to 1.0 for arc animation
+
 	// Authentication
 	public bool IsUserLoggedIn { get; set; }
-		
+
 	// Game over
 	public bool ShowGameOverOverlay { get; set; }
 	public float FinalTime { get; set; }
 	public bool CanAffordReplay { get; set; }
-	
+
 	// Tracks & Leaderboard overlay
 	public bool ShowTracksLeaderboardOverlay { get; set; }
 	public bool CanShowTracksLeaderboard { get; set; }
@@ -1786,6 +1792,13 @@ public partial class RacingGame : GameController
 			currentRacingState != RacingTimingSystem.RacingState.GameOverDeciding &&
 			!IsInCountdown();
 		
+		// Calculate lap progress for arc display
+		float lapProgress = CalculateLapProgress(playerId);
+
+		// Get countdown state for arc animation
+		int countdownNumber = GetCountdownNumber();
+		float countdownProgress = CalculateCountdownProgress();
+
 		return new RacingUIState
 		{
 			IsGamePaused = IsGamePaused(),
@@ -1796,14 +1809,21 @@ public partial class RacingGame : GameController
 			CarSpeed = _racingCar?.GetCarSpeed() ?? 0f,
 			CurrentLap = GetPlayerCurrentLap(playerId),
 			TargetLaps = TargetLaps,
-			TimeDisplay = gameMode == GameMode.Practice ? 
+			TimeDisplay = gameMode == GameMode.Practice ?
 				GetPlayerGapTime(playerId) : GetPlayerCurrentLapTime(playerId),
 			TimeLabel = gameMode == GameMode.Practice ? "Gap" : "Time",
+
+			// Arc HUD specific data
+			MaxSpeed = _racingCar?.MaxSpeed ?? 1800.0f,
+			LapProgress = lapProgress,
+			CountdownNumber = countdownNumber,
+			CountdownProgress = countdownProgress,
+
 			IsUserLoggedIn = loggedIn,
 			ShowGameOverOverlay = currentRacingState == RacingTimingSystem.RacingState.GameOverDeciding,
 			FinalTime = GetPlayerScore(playerId),
 			CanAffordReplay = canAffordReplay,
-			
+
 			// Tracks & Leaderboard overlay state
 			ShowTracksLeaderboardOverlay = _uiManager?.IsTracksLeaderboardVisible ?? false,
 			CanShowTracksLeaderboard = canShowTracksLeaderboard,
@@ -1978,6 +1998,69 @@ public partial class RacingGame : GameController
 			{
 				_cameraController.OnViewportSizeChanged();
 			}
+		}
+	}
+
+	// ================================================================
+	// ARC HUD HELPER METHODS
+	// ================================================================
+
+	/// <summary>
+	/// Calculate lap progress for arc display (0.0 to 1.0)
+	/// </summary>
+	private float CalculateLapProgress(string playerId)
+	{
+		if (!IsInstanceValid(_timingSystem))
+			return 0.0f;
+
+		// For practice mode, use gap time as a rough progress indicator
+		if (GetGameMode() == GameMode.Practice)
+		{
+			var gapTime = GetPlayerGapTime(playerId);
+			// Convert gap time to progress (lower gap = more progress)
+			// This is approximate - ideally we'd track checkpoint progress
+			return gapTime > 0 ? Mathf.Clamp(1.0f - (gapTime / 60.0f), 0.0f, 1.0f) : 0.0f;
+		}
+
+		// For time trial, calculate progress based on checkpoints
+		if (_checkpointTriggers != null && _checkpointTriggers.Length > 0)
+		{
+			return Mathf.Clamp((float)_nextCheckpointIndex / _checkpointTriggers.Length, 0.0f, 1.0f);
+		}
+
+		// Fallback: use current lap time as progress estimate
+		var currentLapTime = GetPlayerCurrentLapTime(playerId);
+		var bestLapTime = GetPlayerBestLapTime(playerId);
+
+		if (bestLapTime > 0)
+		{
+			return Mathf.Clamp(currentLapTime / bestLapTime, 0.0f, 1.0f);
+		}
+
+		// Final fallback: estimate based on time (assume ~30s lap)
+		return Mathf.Clamp(currentLapTime / 30.0f, 0.0f, 1.0f);
+	}
+
+	/// <summary>
+	/// Calculate countdown progress for arc animation (0.0 to 1.0)
+	/// </summary>
+	private float CalculateCountdownProgress()
+	{
+		if (!IsInstanceValid(_timingSystem) || !_timingSystem.IsInCountdown)
+			return 0.0f;
+
+		// Estimate progress based on countdown number
+		var countdownNumber = _timingSystem.CountdownNumber;
+		var totalCountdownNumbers = 4; // 3, 2, 1, GO
+
+		// Convert countdown number to progress (3->0.25, 2->0.5, 1->0.75, 0->1.0)
+		if (countdownNumber > 0)
+		{
+			return Mathf.Clamp((float)(totalCountdownNumbers - countdownNumber) / totalCountdownNumbers, 0.0f, 1.0f);
+		}
+		else
+		{
+			return 1.0f; // GO state
 		}
 	}
 }
