@@ -1313,13 +1313,13 @@ public partial class RacingGame : GameController
 
 		// Connect UI manager signals
 		_uiManager.TimeTrialRequested += StartTimeTrial;
-		_uiManager.RestartRequested += () => { 
-			// Only call EndGame() if we're in time trial mode
-			if (GetGameMode() == GameMode.TimeTrial)
+		_uiManager.RestartRequested += () => {
+			// Always properly end any active game before restarting
+			if (_isGameActive)
 			{
 				EndGame();
 			}
-			StartPractice(); 
+			StartPractice();
 		};
 		_uiManager.TrackSwitchRequested += OnTrackSwitchRequested;
 		_uiManager.ResumeRequested += ResumeGame;
@@ -1383,12 +1383,71 @@ public partial class RacingGame : GameController
 		StartPractice();
 	}
 
-	private void OnRaceAgainRequested()
+	private async void OnRaceAgainRequested()
 	{
+		// Always require login first, regardless of development mode
+		if (_cachedUserManager == null || !IsInstanceValid(_cachedUserManager))
+		{
+			GD.PrintErr("Race again cancelled - user management system not available");
+			return;
+		}
+
+		bool isLoggedIn = _cachedUserManager.IsUserLoggedIn();
+		if (!isLoggedIn)
+		{
+			GD.PrintErr("Race again cancelled - user must be logged in");
+			return;
+		}
+
+		// Reset idle timer when starting a premium feature
+		_cachedUserManager.ResetUserIdleTimer();
+
+		// Check credits only in production mode or when explicitly required
+		bool isDevelopmentMode = Engine.IsEditorHint() || OS.IsDebugBuild();
+		if (TimeTrialCreditCost > 0 && !isDevelopmentMode)
+		{
+			// Set state to waiting for credits during async check
+			_timingSystem?.SetWaitingForCredits();
+
+			if (_sessionManager == null || !IsInstanceValid(_sessionManager))
+			{
+				GD.PrintErr("Race again cancelled - session system not available");
+				_timingSystem?.StopRacing(); // Reset to idle state
+				return;
+			}
+
+			var currentSession = _sessionManager.GetCurrentUserSession();
+			if (currentSession == null)
+			{
+				GD.PrintErr("Race again cancelled - no active user session");
+				_timingSystem?.StopRacing(); // Reset to idle state
+				return;
+			}
+
+			bool creditsSpent = await _sessionManager.CheckAndSpendGlobalCreditsAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Race Again");
+			if (!creditsSpent)
+			{
+				// Credits not spent - don't start the race
+				GD.PrintErr("Race again cancelled - insufficient credits");
+				_timingSystem?.StopRacing(); // Reset to idle state
+				return;
+			}
+		}
+
 		// Reset state and start new time trial
 		_timingSystem?.StopRacing(); // Reset to idle
-		SetGameMode(GameMode.Practice); // Reset game mode so StartTimeTrial can work
-		StartTimeTrial(); // StartTimeTrial will call ResetForNewRace() which handles complete reset
+		SetGameMode(GameMode.TimeTrial);
+		ResetForNewRace(); // Complete reset including car physics state
+
+		if (ShowCountdown)
+		{
+			StartCountdown();
+		}
+		else
+		{
+			_timingSystem?.StartRacing(); // Set racing state
+			StartGame();
+		}
 	}
 
 	/// <summary>
@@ -1717,9 +1776,8 @@ public partial class RacingGame : GameController
 			currentRacingState != RacingTimingSystem.RacingState.GameOverDeciding &&
 			currentRacingState != RacingTimingSystem.RacingState.HighScoreDisplay;
 
-		// Check if user can afford replay (simplified check for now)
-		bool isDevelopmentMode = Engine.IsEditorHint() || OS.IsDebugBuild();
-		bool canAffordReplay = loggedIn && (isDevelopmentMode || TimeTrialCreditCost == 0);
+		// Enable replay button if user is logged in - actual credit check happens in OnRaceAgainRequested
+		bool canAffordReplay = loggedIn;
 		
 		// Check if tracks & leaderboard can be shown (not during races or countdown)
 		bool canShowTracksLeaderboard = !isTimeTrialInProgress &&
@@ -1858,18 +1916,6 @@ public partial class RacingGame : GameController
 			}
 		}
 
-		// Racing-specific restart button (only in practice mode)
-		if (GetGameMode() == GameMode.Practice && !IsInCountdown())
-		{
-			buttons.Add(new ContextButtonData("Restart", () => {
-				if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
-				{
-					_cachedUserManager.ResetUserIdleTimer();
-				}
-				EndGame();
-				StartPractice();
-			}, "🔄", true, "Restart practice session"));
-		}
 
 		return buttons.ToArray();
 	}

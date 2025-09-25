@@ -56,6 +56,7 @@ namespace BarBox.Games.Racing
 	
 	// Control buttons
 	private Button _timeTrialButton;
+	private Button _restartButton;
 	private Button _tracksLeaderboardButton;
 
 	private Button _gameOverRestartButton;
@@ -590,12 +591,12 @@ namespace BarBox.Games.Racing
 	/// <param name="parent">Parent container</param>
 	private void SetupRestartButton(Container parent)
 	{
-		var restartButton = new Button() { Text = "Restart Practice" };
-		restartButton.Pressed += () => { 
+		_restartButton = new Button() { Text = "Restart Practice" };
+		_restartButton.Pressed += () => {
 			ResetUserIdleTimer();
 			EmitSignal(SignalName.RestartRequested);
 		};
-		parent.AddChild(restartButton);
+		parent.AddChild(_restartButton);
 	}
 
 	/// <summary>
@@ -828,7 +829,7 @@ namespace BarBox.Games.Racing
 		UpdateStatusLabels(state.CarSpeed, state.GameMode, state.CurrentLap, 
 						  state.TargetLaps, state.TimeDisplay, state.TimeLabel);
 		
-		UpdateButtonStates(state.IsTimeTrialInProgress, state.CanStartTimeTrial, state.IsInCountdown, 
+		UpdateButtonStates(state.IsTimeTrialInProgress, state.CanStartTimeTrial, state.IsInCountdown,
 						  state.GameMode == GameController.GameMode.TimeTrial, state.IsUserLoggedIn);
 
 		SetPauseOverlayVisible(state.IsGamePaused);
@@ -839,6 +840,7 @@ namespace BarBox.Games.Racing
 	/// Update button states based on racing state and authentication
 	/// </summary>
 	/// <param name="isTimeTrialInProgress">Whether a formal time trial race is in progress</param>
+	/// <param name="canStartTimeTrial">Whether user can start a time trial</param>
 	/// <param name="isInCountdown">Whether countdown is active</param>
 	/// <param name="isTimeTrial">Whether in time trial mode</param>
 	/// <param name="isUserLoggedIn">Whether user is logged in (required for time trial)</param>
@@ -848,6 +850,12 @@ namespace BarBox.Games.Racing
 		if (_timeTrialButton != null)
 		{
 			_timeTrialButton.Disabled = !canStartTimeTrial || isTimeTrialInProgress || !isUserLoggedIn;
+		}
+
+		// Update restart button - hide during time trials and countdown
+		if (_restartButton != null)
+		{
+			_restartButton.Visible = !isTimeTrialInProgress && !isInCountdown;
 		}
 
 		// Update track selection buttons - disable during time trial or countdown
