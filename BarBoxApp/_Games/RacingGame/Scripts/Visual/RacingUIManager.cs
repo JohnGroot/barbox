@@ -27,6 +27,7 @@ namespace BarBox.Games.Racing
 	[Signal] public delegate void PracticeModeRequestedEventHandler();
 	[Signal] public delegate void TracksLeaderboardRequestedEventHandler();
 	[Signal] public delegate void TrackLoadFromOverlayRequestedEventHandler(string trackId);
+	[Signal] public delegate void AddCreditsRequestedEventHandler();
 
 	// ================================================================
 	// EXPORT PROPERTIES
@@ -80,6 +81,9 @@ namespace BarBox.Games.Racing
 	private TracksLeaderboardOverlay _tracksLeaderboardOverlay;
 	private Dictionary<string, TrackMetadata> _trackMetadataCache = new();
 
+	// Race complete overlay data
+	private RaceCompleteOverlay _raceCompleteOverlay;
+
 	// Countdown state tracking
 	private bool _wasCountdownVisible = false;
 
@@ -116,6 +120,9 @@ namespace BarBox.Games.Racing
 		public bool IsCurrentPlayer { get; set; } = false;
 		public DateTime SetDate { get; set; } = DateTime.UtcNow;
 		public string Username { get; set; } = "";
+
+		// Rank for display purposes
+		public string DisplayRank { get; set; } = "";
 
 		public string FormattedTime => Time > 0f ? $"{Time:F3}s" : "No time";
 		public string CategoryDisplay => Type == "Best Lap" ? "Best Lap" : $"Best Race ({Laps} laps)";
@@ -455,12 +462,280 @@ namespace BarBox.Games.Racing
 		}
 	}
 
+	/// <summary>
+	/// Manages the race complete overlay UI with high scores and action buttons
+	/// </summary>
+	private class RaceCompleteOverlay
+	{
+		// Overlay components
+		public Control OverlayRoot { get; private set; }
+		public VBoxContainer ContentContainer { get; private set; }
+		public Label RaceCompleteLabel { get; private set; }
+		public Label FinalTimeLabel { get; private set; }
+		public Label PositionLabel { get; private set; }
+		public Button TryAgainButton { get; private set; }
+		public Button AddCreditsButton { get; private set; }
+		public Button ReturnToPracticeButton { get; private set; }
+		public DataTableView HighScoresTable { get; private set; }
+
+		// State
+		public bool IsVisible => OverlayRoot?.Visible ?? false;
+
+		/// <summary>
+		/// Create the race complete overlay UI structure
+		/// </summary>
+		public void CreateOverlay(CanvasLayer uiLayer)
+		{
+			// Root overlay with semi-transparent background
+			OverlayRoot = new Control();
+			OverlayRoot.AnchorLeft = 0;
+			OverlayRoot.AnchorTop = 0;
+			OverlayRoot.AnchorRight = 1;
+			OverlayRoot.AnchorBottom = 1;
+			OverlayRoot.Visible = false;
+			uiLayer.AddChild(OverlayRoot);
+
+			// Semi-transparent background
+			var background = new ColorRect();
+			background.AnchorLeft = 0;
+			background.AnchorTop = 0;
+			background.AnchorRight = 1;
+			background.AnchorBottom = 1;
+			background.Color = new Color(0, 0, 0, 0.8f);
+			OverlayRoot.AddChild(background);
+
+			// Main content panel (centered, larger than old overlay)
+			var mainPanel = new Panel();
+			mainPanel.AnchorLeft = 0.5f;
+			mainPanel.AnchorTop = 0.5f;
+			mainPanel.AnchorRight = 0.5f;
+			mainPanel.AnchorBottom = 0.5f;
+			mainPanel.OffsetLeft = -300; // Wider than old overlay
+			mainPanel.OffsetTop = -250;
+			mainPanel.OffsetRight = 300;
+			mainPanel.OffsetBottom = 250;
+			OverlayRoot.AddChild(mainPanel);
+
+			CreateOverlayContent(mainPanel);
+		}
+
+		private void CreateOverlayContent(Control parent)
+		{
+			ContentContainer = new VBoxContainer();
+			ContentContainer.AnchorLeft = 0;
+			ContentContainer.AnchorTop = 0;
+			ContentContainer.AnchorRight = 1;
+			ContentContainer.AnchorBottom = 1;
+			ContentContainer.AddThemeConstantOverride("separation", 15);
+			parent.AddChild(ContentContainer);
+
+			// Header section
+			CreateHeader();
+
+			// High scores section
+			CreateHighScoresSection();
+
+			// Button section
+			CreateButtonSection();
+		}
+
+		private void CreateHeader()
+		{
+			// "RACE COMPLETE!" title
+			RaceCompleteLabel = new Label();
+			RaceCompleteLabel.Text = "RACE COMPLETE!";
+			RaceCompleteLabel.HorizontalAlignment = HorizontalAlignment.Center;
+			RaceCompleteLabel.AddThemeFontSizeOverride("font_size", 28);
+			RaceCompleteLabel.AddThemeColorOverride("font_color", Colors.Gold);
+			ContentContainer.AddChild(RaceCompleteLabel);
+
+			// Final time display
+			FinalTimeLabel = new Label();
+			FinalTimeLabel.Text = "Final Time: 0.0s";
+			FinalTimeLabel.HorizontalAlignment = HorizontalAlignment.Center;
+			FinalTimeLabel.AddThemeFontSizeOverride("font_size", 20);
+			FinalTimeLabel.AddThemeColorOverride("font_color", Colors.White);
+			ContentContainer.AddChild(FinalTimeLabel);
+
+			// Position display
+			PositionLabel = new Label();
+			PositionLabel.Text = "Position: --";
+			PositionLabel.HorizontalAlignment = HorizontalAlignment.Center;
+			PositionLabel.AddThemeFontSizeOverride("font_size", 18);
+			PositionLabel.AddThemeColorOverride("font_color", Colors.LightBlue);
+			ContentContainer.AddChild(PositionLabel);
+		}
+
+		private void CreateHighScoresSection()
+		{
+			// High scores title
+			var highScoresTitle = new Label();
+			highScoresTitle.Text = "Track High Scores";
+			highScoresTitle.HorizontalAlignment = HorizontalAlignment.Center;
+			highScoresTitle.AddThemeFontSizeOverride("font_size", 16);
+			highScoresTitle.AddThemeColorOverride("font_color", Colors.Yellow);
+			ContentContainer.AddChild(highScoresTitle);
+
+			// High scores table
+			HighScoresTable = new DataTableView();
+			HighScoresTable.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			HighScoresTable.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+			HighScoresTable.CustomMinimumSize = new Vector2(550, 200);
+
+			// Configure table appearance
+			HighScoresTable.AlternatingRowColors = true;
+			HighScoresTable.ShowHeaders = true;
+			HighScoresTable.HeaderBackgroundColor = new Color(0.2f, 0.2f, 0.3f, 1.0f);
+			HighScoresTable.HeaderTextColor = Colors.White;
+			HighScoresTable.RowBackgroundColor1 = new Color(0.1f, 0.1f, 0.15f, 0.8f);
+			HighScoresTable.RowBackgroundColor2 = new Color(0.15f, 0.15f, 0.2f, 0.8f);
+			HighScoresTable.RowTextColor = Colors.White;
+			HighScoresTable.HighlightRowColor = new Color(0.9f, 0.7f, 0.0f, 0.6f); // Gold highlight for player
+
+			// Add columns
+			HighScoresTable.AddColumn("Rank", (obj) =>
+			{
+				var entry = (LeaderboardEntry)obj;
+				return entry.DisplayRank;
+			}, 60, HorizontalAlignment.Center)
+			.AddColumn("Player", (obj) => ((LeaderboardEntry)obj).Username, 200, HorizontalAlignment.Left)
+			.AddColumn("Time", (obj) => ((LeaderboardEntry)obj).FormattedTime, 120, HorizontalAlignment.Right, true);
+
+			ContentContainer.AddChild(HighScoresTable);
+		}
+
+		private void CreateButtonSection()
+		{
+			var buttonContainer = new HBoxContainer();
+			buttonContainer.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
+			buttonContainer.AddThemeConstantOverride("separation", 20);
+			ContentContainer.AddChild(buttonContainer);
+
+			// Try Again button
+			TryAgainButton = new Button();
+			TryAgainButton.Text = "Try Again - 1 Credit";
+			TryAgainButton.CustomMinimumSize = new Vector2(150, 40);
+			buttonContainer.AddChild(TryAgainButton);
+
+			// Add Credits button
+			AddCreditsButton = new Button();
+			AddCreditsButton.Text = "Add Credits";
+			AddCreditsButton.CustomMinimumSize = new Vector2(120, 40);
+			buttonContainer.AddChild(AddCreditsButton);
+
+			// Return to Practice button
+			ReturnToPracticeButton = new Button();
+			ReturnToPracticeButton.Text = "Return to Practice";
+			ReturnToPracticeButton.CustomMinimumSize = new Vector2(150, 40);
+			buttonContainer.AddChild(ReturnToPracticeButton);
+		}
+
+		public void UpdateRaceResults(float finalTime, string trackName, int position, bool isNewHighScore)
+		{
+			if (FinalTimeLabel != null)
+			{
+				FinalTimeLabel.Text = $"Final Time: {finalTime:F2}s";
+			}
+
+			if (PositionLabel != null)
+			{
+				if (position > 0)
+				{
+					var positionSuffix = GetPositionSuffix(position);
+					PositionLabel.Text = $"Position: {position}{positionSuffix}";
+
+					if (isNewHighScore)
+					{
+						PositionLabel.Text += " 🏆 NEW HIGH SCORE!";
+						PositionLabel.AddThemeColorOverride("font_color", Colors.Gold);
+					}
+				}
+				else
+				{
+					PositionLabel.Text = "Position: First recorded time!";
+					PositionLabel.AddThemeColorOverride("font_color", Colors.Gold);
+				}
+			}
+
+			// Update track name in high scores title
+			var highScoresTitle = ContentContainer.GetChild(3) as Label; // 4th child is the title
+			if (highScoresTitle != null)
+			{
+				highScoresTitle.Text = $"{trackName} - High Scores";
+			}
+		}
+
+		private string GetPositionSuffix(int position)
+		{
+			return position switch
+			{
+				1 => "st",
+				2 => "nd",
+				3 => "rd",
+				_ => "th"
+			};
+		}
+
+		public void UpdateHighScores(List<LeaderboardEntry> highScores, string currentPlayerPhoneNumber)
+		{
+			if (HighScoresTable == null || highScores == null)
+				return;
+
+			// Add rank information to entries
+			for (int i = 0; i < highScores.Count; i++)
+			{
+				var entry = highScores[i];
+				entry.DisplayRank = (i + 1).ToString();
+
+				// Check if this is the current player's entry
+				entry.IsCurrentPlayer = !string.IsNullOrEmpty(currentPlayerPhoneNumber) &&
+					entry.Username == currentPlayerPhoneNumber;
+			}
+
+			// Set highlight predicate for current player
+			HighScoresTable.SetHighlightPredicate(obj => ((LeaderboardEntry)obj).IsCurrentPlayer);
+
+			// Bind data (show top 8 to fit in overlay)
+			var displayEntries = highScores.Take(8).Cast<object>().ToList();
+			HighScoresTable.BindData(displayEntries);
+		}
+
+		public void UpdateButtonStates(bool canAffordTryAgain, int creditCost)
+		{
+			if (TryAgainButton != null)
+			{
+				TryAgainButton.Disabled = !canAffordTryAgain;
+				if (creditCost > 0)
+				{
+					TryAgainButton.Text = $"Try Again - {creditCost} Credit{(creditCost != 1 ? "s" : "")}";
+				}
+				else
+				{
+					TryAgainButton.Text = "Try Again";
+				}
+			}
+		}
+
+		public void ShowOverlay()
+		{
+			if (OverlayRoot != null)
+				OverlayRoot.Visible = true;
+		}
+
+		public void HideOverlay()
+		{
+			if (OverlayRoot != null)
+				OverlayRoot.Visible = false;
+		}
+	}
+
 	// ================================================================
 	// PUBLIC PROPERTIES
 	// ================================================================
 
 	public bool IsPauseOverlayVisible => _pauseOverlay?.Visible ?? false;
-	public bool IsGameOverOverlayVisible => _gameOverOverlay?.Visible ?? false;
+	public bool IsGameOverOverlayVisible => _raceCompleteOverlay?.IsVisible ?? false; // Now uses race complete overlay
+	public bool IsRaceCompleteOverlayVisible => _raceCompleteOverlay?.IsVisible ?? false;
 	public bool IsCountdownOverlayVisible => _countdownOverlay?.Visible ?? false;
 
 	// ================================================================
@@ -619,6 +894,7 @@ namespace BarBox.Games.Racing
 		SetupCountdownOverlay();
 		SetupPauseOverlay();
 		SetupGameOverOverlay();
+		SetupRaceCompleteOverlay();
 	}
 
 	// ================================================================
@@ -776,6 +1052,31 @@ namespace BarBox.Games.Racing
 		vbox.AddChild(_gameOverPracticeButton);
 	}
 
+	/// <summary>
+	/// Setup race complete overlay with comprehensive results display
+	/// </summary>
+	private void SetupRaceCompleteOverlay()
+	{
+		_raceCompleteOverlay = new RaceCompleteOverlay();
+		_raceCompleteOverlay.CreateOverlay(_uiLayer);
+
+		// Connect button signals
+		_raceCompleteOverlay.TryAgainButton.Pressed += () => {
+			ResetUserIdleTimer();
+			EmitSignal(SignalName.RaceAgainRequested);
+		};
+
+		_raceCompleteOverlay.AddCreditsButton.Pressed += () => {
+			ResetUserIdleTimer();
+			EmitSignal(SignalName.AddCreditsRequested);
+		};
+
+		_raceCompleteOverlay.ReturnToPracticeButton.Pressed += () => {
+			ResetUserIdleTimer();
+			EmitSignal(SignalName.PracticeModeRequested);
+		};
+	}
+
 	// ================================================================
 	// UI UPDATE METHODS
 	// ================================================================
@@ -839,7 +1140,16 @@ namespace BarBox.Games.Racing
 						  state.GameMode == GameController.GameMode.TimeTrial, state.IsUserLoggedIn);
 
 		SetPauseOverlayVisible(state.IsGamePaused);
-		SetGameOverOverlayVisible(state.ShowGameOverOverlay, state.FinalTime, state.CanAffordReplay);
+
+		// Use new race complete overlay with track information
+		if (state.ShowGameOverOverlay)
+		{
+			SetRaceCompleteOverlayVisible(true, state.FinalTime, state.CanAffordReplay, state.CurrentTrackId, TimeTrialCreditCost);
+		}
+		else
+		{
+			SetRaceCompleteOverlayVisible(false);
+		}
 
 		// Update countdown display in arc renderer
 		UpdateCountdownArc(state.IsInCountdown, state.CountdownNumber, state.CountdownProgress);
@@ -902,23 +1212,50 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Show/hide game over overlay with final time
+	/// Show/hide race complete overlay with comprehensive results display
+	/// </summary>
+	/// <param name="visible">Whether to show the overlay</param>
+	/// <param name="finalTime">Final race time to display</param>
+	/// <param name="canAffordReplay">Whether player can afford to race again</param>
+	/// <param name="currentTrackId">Current track ID for loading high scores</param>
+	/// <param name="creditCost">Credit cost for racing again</param>
+	public void SetRaceCompleteOverlayVisible(bool visible, float finalTime = 0f, bool canAffordReplay = true, string currentTrackId = "", int creditCost = 1)
+	{
+		if (_raceCompleteOverlay == null)
+			return;
+
+		if (visible)
+		{
+			// Update button states first
+			_raceCompleteOverlay.UpdateButtonStates(canAffordReplay, creditCost);
+
+			// Load high score data for this track
+			LoadRaceCompleteDataAsync(currentTrackId, finalTime);
+
+			_raceCompleteOverlay.ShowOverlay();
+		}
+		else
+		{
+			_raceCompleteOverlay.HideOverlay();
+		}
+	}
+
+	/// <summary>
+	/// Show/hide game over overlay with final time (legacy support)
 	/// </summary>
 	/// <param name="visible">Whether to show the overlay</param>
 	/// <param name="finalTime">Final race time to display</param>
 	public void SetGameOverOverlayVisible(bool visible, float finalTime, bool canAffordReplay)
 	{
-		if (_gameOverOverlay != null)
+		// Legacy method - now delegates to race complete overlay for time trials
+		// Keep the old simple overlay for non-time-trial modes if needed
+		if (visible)
 		{
-			_gameOverOverlay.Visible = visible;
-			
-			if (visible)
-			{
-				_finalTimeLabel.Text = $"Final Time: {finalTime:F2}s";
-				
-				// Disable restart button if player can't afford replay
-				_gameOverRestartButton.Disabled = !canAffordReplay;
-			}
+			SetRaceCompleteOverlayVisible(visible, finalTime, canAffordReplay, "", TimeTrialCreditCost);
+		}
+		else
+		{
+			SetRaceCompleteOverlayVisible(false);
 		}
 	}
 
@@ -986,6 +1323,153 @@ namespace BarBox.Games.Racing
 			// Track previous state
 			_wasCountdownVisible = isVisible;
 		}
+	}
+
+	/// <summary>
+	/// Load race complete data asynchronously with high scores and player position calculation
+	/// </summary>
+	private async void LoadRaceCompleteDataAsync(string trackId, float finalTime)
+	{
+		if (_raceCompleteOverlay == null)
+			return;
+
+		try
+		{
+			// Get current player's phone number for leaderboard data
+			var playerId = GetCurrentPlayerPhoneNumber();
+			var trackName = GetTrackNameFromId(trackId);
+
+			// Load high score data from DataStore
+			var highScores = new List<LeaderboardEntry>();
+			int playerPosition = 0;
+			bool isNewHighScore = false;
+
+			if (playerId != null)
+			{
+				var dataStore = DataStore.GetInstance();
+				if (dataStore != null)
+				{
+					var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+
+					// Check if overlay is still valid after await
+					if (_raceCompleteOverlay == null || !IsInstanceValid(this))
+						return;
+
+					if (globalDataResult.IsSuccess)
+					{
+						var racingData = globalDataResult.Value.Racing;
+
+						// Get all race times for this track (different lap counts)
+						var allRaceTimes = new List<(float time, string username, int laps)>();
+
+						// Get best race times for various lap counts
+						for (int laps = 1; laps <= 10; laps++)
+						{
+							var raceEntry = racingData.GetBestRaceTimeEntry(trackId, laps);
+							if (raceEntry != null && raceEntry.Time > 0f)
+							{
+								allRaceTimes.Add((raceEntry.Time, raceEntry.Username, laps));
+							}
+						}
+
+						// Sort all times and create leaderboard entries
+						var sortedTimes = allRaceTimes.OrderBy(x => x.time).ToList();
+
+						for (int i = 0; i < sortedTimes.Count; i++)
+						{
+							var (time, username, laps) = sortedTimes[i];
+
+							highScores.Add(new LeaderboardEntry
+							{
+								TrackId = trackId,
+								TrackName = trackName,
+								Time = time,
+								Type = "Race",
+								Laps = laps,
+								Username = !string.IsNullOrEmpty(username) ? username : "Player",
+								IsCurrentPlayer = username == globalDataResult.Value.UserName ||
+												 username == playerId ||
+												 (string.IsNullOrEmpty(username) && playerId != null)
+							});
+						}
+
+						// Calculate player position based on final time
+						if (finalTime > 0f)
+						{
+							var betterTimes = allRaceTimes.Count(x => x.time < finalTime);
+							playerPosition = betterTimes + 1;
+
+							// Check if this is a new high score
+							var previousBest = racingData.GetBestRaceTime(trackId, 3); // Assume 3 laps for most races
+							isNewHighScore = previousBest == 0f || finalTime < previousBest;
+						}
+					}
+				}
+			}
+
+			// If no data loaded, show empty state
+			if (highScores.Count == 0 && finalTime > 0f)
+			{
+				playerPosition = 1; // First recorded time
+				isNewHighScore = true;
+			}
+
+			// Update UI on main thread
+			var callable = Callable.From(() => UpdateRaceCompleteUI(trackName, finalTime, playerPosition, isNewHighScore, highScores, playerId));
+			callable.CallDeferred();
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[RacingUIManager] Exception loading race complete data: {ex.Message}");
+
+			// Fallback UI update
+			var fallbackCallable = Callable.From(() => UpdateRaceCompleteUIFallback(trackId, finalTime));
+			fallbackCallable.CallDeferred();
+		}
+	}
+
+	/// <summary>
+	/// Update race complete UI on main thread
+	/// </summary>
+	private void UpdateRaceCompleteUI(string trackName, float finalTime, int position, bool isNewHighScore, List<LeaderboardEntry> highScores, string currentPlayerPhoneNumber)
+	{
+		if (_raceCompleteOverlay == null)
+			return;
+
+		// Update race results display
+		_raceCompleteOverlay.UpdateRaceResults(finalTime, trackName, position, isNewHighScore);
+
+		// Update high scores table
+		_raceCompleteOverlay.UpdateHighScores(highScores, currentPlayerPhoneNumber);
+	}
+
+	/// <summary>
+	/// Fallback race complete UI update when DataStore is unavailable
+	/// </summary>
+	private void UpdateRaceCompleteUIFallback(string trackId, float finalTime)
+	{
+		if (_raceCompleteOverlay == null)
+			return;
+
+		var trackName = GetTrackNameFromId(trackId);
+
+		// Show basic results without leaderboard data
+		_raceCompleteOverlay.UpdateRaceResults(finalTime, trackName, 1, true); // Assume first place without data
+		_raceCompleteOverlay.UpdateHighScores(new List<LeaderboardEntry>(), null);
+	}
+
+	/// <summary>
+	/// Get track name from track ID (fallback if not in cache)
+	/// </summary>
+	private string GetTrackNameFromId(string trackId)
+	{
+		if (_trackMetadataCache.TryGetValue(trackId, out var track))
+		{
+			return track.TrackName;
+		}
+
+		// Fallback: convert track ID back to readable name
+		return trackId.Replace("_", " ").Replace("-", " ");
 	}
 
 	// ================================================================
@@ -1619,7 +2103,7 @@ namespace BarBox.Games.Racing
 	public void UpdateSettings(int timeTrialCreditCost)
 	{
 		TimeTrialCreditCost = timeTrialCreditCost;
-		
+
 		// Update time trial button text if it exists
 		if (_timeTrialButton != null)
 		{
@@ -1629,6 +2113,19 @@ namespace BarBox.Games.Racing
 				timeTrialText += $" - {TimeTrialCreditCost} Credit{(TimeTrialCreditCost != 1 ? "s" : "")}";
 			}
 			_timeTrialButton.Text = timeTrialText;
+		}
+	}
+
+	/// <summary>
+	/// Handle credits acquired event to update button states
+	/// </summary>
+	public void OnCreditsAcquired()
+	{
+		// Update race complete overlay button states if visible
+		if (_raceCompleteOverlay != null && _raceCompleteOverlay.IsVisible)
+		{
+			// Assume player can now afford replay after purchasing credits
+			_raceCompleteOverlay.UpdateButtonStates(true, TimeTrialCreditCost);
 		}
 	}
 }

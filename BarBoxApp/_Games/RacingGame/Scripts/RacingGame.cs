@@ -1336,6 +1336,7 @@ public partial class RacingGame : GameController
 		_uiManager.PracticeModeRequested += OnEndToPracticeModeRequested;
 		_uiManager.TracksLeaderboardRequested += OnTracksLeaderboardRequested;
 		_uiManager.TrackLoadFromOverlayRequested += OnTrackLoadFromOverlayRequested;
+		_uiManager.AddCreditsRequested += OnAddCreditsRequested;
 	}
 
 	/// <summary>
@@ -1456,6 +1457,38 @@ public partial class RacingGame : GameController
 			_timingSystem?.StartRacing(); // Set racing state
 			StartGame();
 		}
+	}
+
+	/// <summary>
+	/// Handle add credits request from race complete overlay
+	/// </summary>
+	private void OnAddCreditsRequested()
+	{
+		// Reset idle timer when accessing premium features
+		if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
+		{
+			_cachedUserManager.ResetUserIdleTimer();
+		}
+
+		// Show credit purchase modal through UIManager
+		var uiManager = UIManager.GetInstance();
+		if (uiManager != null && IsInstanceValid(uiManager))
+		{
+			uiManager.ShowBuyCreditsModal();
+		}
+		else
+		{
+			GD.PrintErr("[RacingGame] UIManager not available for credit purchase");
+		}
+	}
+
+	/// <summary>
+	/// Handle credits acquired event from credit purchase modal
+	/// </summary>
+	private void OnCreditsAcquired(string userId, int amount)
+	{
+		// Update UI manager to reflect new credit balance
+		_uiManager?.OnCreditsAcquired();
 	}
 
 	/// <summary>
