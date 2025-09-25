@@ -150,10 +150,11 @@ public partial class TopMenuBar : Control
 		_contextSection.Visible = false;
 		_mainContainer.AddChild(_contextSection);
 
-		// Context button container - centered
+		// Context button container - left aligned with margin
 		_contextButtonContainer = new HBoxContainer();
-		_contextButtonContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.Center);
-		_contextButtonContainer.Alignment = BoxContainer.AlignmentMode.Center;
+		_contextButtonContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.LeftWide);
+		_contextButtonContainer.Position = new Vector2(20, 0); // Add 20px left margin
+		_contextButtonContainer.Alignment = BoxContainer.AlignmentMode.Begin;
 		_contextButtonContainer.AddThemeConstantOverride("separation", 15);
 		_contextSection.AddChild(_contextButtonContainer);
 
