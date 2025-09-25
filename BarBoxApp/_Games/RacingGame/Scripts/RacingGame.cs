@@ -894,6 +894,7 @@ public partial class RacingGame : GameController
 	protected virtual void ResetForNewRace()
 	{
 		ResetRacingData();           // Reset timing data
+		ResetCheckpoints();          // Reset checkpoint tracking and visuals
 		PositionCarAtStart();        // Reset position AND physics state (calls ResetCarState)
 		_racingCar?.SetActive(true); // Reactivate racing car
 	}
@@ -1231,6 +1232,7 @@ public partial class RacingGame : GameController
 		{
 			// Practice mode - always start new lap
 			OnPlayerCheckpointCrossed(playerId, -1);
+			ResetCheckpoints();
 			// Restore practice state
 			_timingSystem?.StartPracticeMode();
 		}
