@@ -90,7 +90,7 @@ public partial class TopMenuBar : Control
 		gameTitleContainer.ClipContents = true; // Prevent overflow
 
 		_gameTitleLabel = new Label();
-		_gameTitleLabel.Text = "BarBox Arcade";
+		_gameTitleLabel.Text = "BarBox";
 		_gameTitleLabel.VerticalAlignment = VerticalAlignment.Center;
 		_gameTitleLabel.AddThemeColorOverride("font_color", Colors.White);
 		_gameTitleLabel.AddThemeFontSizeOverride("font_size", 24);

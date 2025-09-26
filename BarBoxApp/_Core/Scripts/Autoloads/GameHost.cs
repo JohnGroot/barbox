@@ -54,15 +54,6 @@ public partial class GameHost : AutoloadBase
 		LoadGameScene(gameId, gameData.ScenePath);
 	}
 
-	/// <summary>
-	/// Compatibility overload for old LoadGameOverlay signature
-	/// </summary>
-	public void LoadGameOverlay(string gameId, UserData userData)
-	{
-		// Just ignore the UserData parameter and call the new version
-		// Session management is now handled separately
-		LoadGameOverlay(gameId);
-	}
 
 	private void LoadGameScene(string gameId, string scenePath)
 	{
@@ -182,24 +173,19 @@ public partial class GameHost : AutoloadBase
 	public Node GetCurrentGame() => _currentGame;
 
 	/// <summary>
-	/// Compatibility method - redirects to SessionManager
+	/// Get player session - redirects to SessionManager
 	/// </summary>
 	public PlayerSession GetPlayerSession(string playerId)
 	{
 		var sessionManager = SessionManager.GetInstance();
 		var userSession = sessionManager?.GetUserSession(playerId) ?? sessionManager?.GetCurrentUserSession();
-		
+
 		if (userSession != null)
 		{
-			// Convert UserSession to PlayerSession for compatibility
-			var userData = new UserData(userSession.PhoneNumber);
-			if (userSession.GlobalData != null)
-			{
-				userData.Credits = userSession.GlobalData.GlobalCredits;
-			}
-			return new PlayerSession(userSession.PhoneNumber, userData);
+			// Convert UserSession to PlayerSession
+			return new PlayerSession(userSession.PhoneNumber, userSession);
 		}
-		
+
 		return null;
 	}
 

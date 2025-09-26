@@ -1,10 +1,6 @@
 using System;
-using System.Collections.Generic;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Godot;
-using BarBox.Games.Racing;
-using BarBox.Games.Carrom;
 using BarBox.Games.MiningGame;
 
 /// <summary>
@@ -37,7 +33,7 @@ public static class DataStoreExtensions
 		
 		return result.Value.Mining ?? new MiningLocalData();
 	}
-	
+
 	/// <summary>
 	/// Save mining game data with automatic error handling
 	/// </summary>
@@ -52,14 +48,14 @@ public static class DataStoreExtensions
 	{
 		if (store == null || string.IsNullOrEmpty(userId) || miningData == null)
 			return false;
-		
+
 		var result = await store.GetLocalDataAsync(userId);
-		if (!result.IsSuccess) 
+		if (!result.IsSuccess)
 		{
 			GD.PrintErr($"[DataStoreExtensions] Failed to load local data for user {userId}: {result.Error}");
 			return false;
 		}
-		
+
 		try
 		{
 			result.Value.Mining = miningData;
@@ -77,4 +73,5 @@ public static class DataStoreExtensions
 			return false;
 		}
 	}
+
 }

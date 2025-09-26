@@ -1105,7 +1105,7 @@ public partial class CarromGame : GameController
 				// Setup player integration
 				var player = new CarromPlayer();
 				player.PlayerId = playerSession.PlayerId;
-				player.SetUserData(playerSession.UserData);
+				player.SetUserSession(playerSession.UserSession);
 				AddPlayer(player);
 			}
 		}

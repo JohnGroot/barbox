@@ -172,14 +172,14 @@ public partial class MainController : Control
 		var gameData = _gameRegistry?.GetGameData(gameId);
 		if (gameData == null) return;
 
-		// Get current user if logged in (can be null)
-		var currentUser = _userManager?.GetCurrentUser();
+		// Get current user session if logged in (can be null)
+		var currentUserSession = _userManager?.GetCurrentUserSession();
 
 		// Load game - it will run in practice mode if no user is logged in
 		var gameHost = GameHost.Instance;
 		if (gameHost != null)
 		{
-			gameHost.LoadGameOverlay(gameId, currentUser);
+			gameHost.LoadGameOverlay(gameId);
 		}
 		else
 		{
@@ -195,13 +195,13 @@ public partial class MainController : Control
 
 	private void UpdateUI()
 	{
-		var currentUser = _userManager?.GetCurrentUser();
-		
+		var currentUserSession = _userManager?.GetCurrentUserSession();
+
 		if (UserInfoLabel != null)
 		{
-			if (currentUser != null)
+			if (currentUserSession?.GlobalData != null)
 			{
-				UserInfoLabel.Text = $"User: {currentUser.UserId}\nCredits: {currentUser.Credits}";
+				UserInfoLabel.Text = $"User: {currentUserSession.GlobalData.UserName}\nCredits: {currentUserSession.GlobalData.GlobalCredits}";
 			}
 			else
 			{
@@ -210,19 +210,19 @@ public partial class MainController : Control
 		}
 	}
 
-	private void OnUserLoggedIn(UserData userData)
+	private void OnUserLoggedIn(string phoneNumber, string userName)
 	{
 		// Game selection panel stays visible - no login panel switching needed
 		UpdateUI();
 	}
 
-	private void OnUserLoggedOut()
+	private void OnUserLoggedOut(string phoneNumber)
 	{
 		// Game selection panel stays visible - login handled by UIManager modal
 		UpdateUI();
 	}
 
-	private void OnUserDataUpdated(UserData userData)
+	private void OnUserDataUpdated(string phoneNumber)
 	{
 		UpdateUI();
 	}

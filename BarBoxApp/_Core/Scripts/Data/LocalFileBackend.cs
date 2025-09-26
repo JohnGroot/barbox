@@ -581,6 +581,101 @@ public class LocalFileBackend : IDataStoreBackend
 		}
 	}
 
+	// ============= GENERIC GAME QUERY MECHANISM =============
+
+	public async Task<Result<TResult>> ExecuteGameQueryAsync<TResult>(
+		string gameId,
+		string queryType,
+		System.Collections.Generic.Dictionary<string, object> parameters)
+	{
+		if (string.IsNullOrEmpty(gameId))
+			return Result<TResult>.Failure("Game ID cannot be null or empty");
+		if (string.IsNullOrEmpty(queryType))
+			return Result<TResult>.Failure("Query type cannot be null or empty");
+
+		try
+		{
+			// For LocalFileBackend, we provide raw access to all global user data
+			// Games can then implement their own query logic in their extensions
+			switch (queryType.ToLowerInvariant())
+			{
+				case "all_global_data":
+					return await GetAllGlobalUserDataAsync<TResult>();
+
+				default:
+					return Result<TResult>.Failure($"Unsupported query type '{queryType}' for game '{gameId}'");
+			}
+		}
+		catch (Exception ex)
+		{
+			return Result<TResult>.Failure($"Exception executing game query: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Helper method to get all global user data for game-specific processing
+	/// Games can use this to implement their own cross-user queries
+	/// </summary>
+	private Task<Result<TResult>> GetAllGlobalUserDataAsync<TResult>()
+	{
+		try
+		{
+			var allUserData = new System.Collections.Generic.List<DataStore.GlobalUserData>();
+			var globalDir = $"{_dataPath}/{GLOBAL_DATA_DIR}";
+
+			if (!DirAccess.DirExistsAbsolute(globalDir))
+			{
+				// Return empty list cast as TResult
+				var emptyResult = (TResult)(object)allUserData;
+				return Task.FromResult(Result<TResult>.Success(emptyResult));
+			}
+
+			var dirAccess = DirAccess.Open(globalDir);
+			if (dirAccess == null)
+				return Task.FromResult(Result<TResult>.Failure("Cannot access global data directory"));
+
+			// Scan all user files
+			dirAccess.ListDirBegin();
+			string fileName = dirAccess.GetNext();
+
+			while (!string.IsNullOrEmpty(fileName))
+			{
+				if (fileName.EndsWith(".json"))
+				{
+					var filePath = $"{globalDir}/{fileName}";
+					var fileAccess = FileAccess.Open(filePath, FileAccess.ModeFlags.Read);
+					if (fileAccess != null)
+					{
+						var content = fileAccess.GetAsText();
+						fileAccess.Close();
+
+						try
+						{
+							var userData = JsonSerializer.Deserialize<DataStore.GlobalUserData>(content, JsonOptions);
+							if (userData != null)
+							{
+								allUserData.Add(userData);
+							}
+						}
+						catch (Exception ex)
+						{
+							GD.PrintErr($"Failed to parse user data from {fileName}: {ex.Message}");
+						}
+					}
+				}
+				fileName = dirAccess.GetNext();
+			}
+
+			// Cast to TResult - games will handle the actual type
+			var result = (TResult)(object)allUserData;
+			return Task.FromResult(Result<TResult>.Success(result));
+		}
+		catch (Exception ex)
+		{
+			return Task.FromResult(Result<TResult>.Failure($"Exception getting all global user data: {ex.Message}"));
+		}
+	}
+
 	// Private helper methods
 
 	private void EnsureDirectoryExists(string path)

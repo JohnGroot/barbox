@@ -126,7 +126,7 @@ public partial class LoginModal : Control
 
 		// Title
 		_loginTitleLabel = new Label();
-		_loginTitleLabel.Text = "Login to BarBox Arcade";
+		_loginTitleLabel.Text = "Login to BarBox";
 		_loginTitleLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		_loginTitleLabel.AddThemeColorOverride("font_color", Colors.White);
 		_loginTitleLabel.AddThemeFontSizeOverride("font_size", 18);
@@ -792,13 +792,13 @@ public partial class LoginModal : Control
 		HideModal();
 	}
 
-	private void OnUserLoggedIn(UserData userData)
+	private void OnUserLoggedIn(string phoneNumber, string userName)
 	{
 		// Auto-hide modal on successful login
 		HideModal();
 	}
 
-	private void OnUserLoggedOut()
+	private void OnUserLoggedOut(string phoneNumber)
 	{
 		// Clear form when user logs out
 		ClearForm();

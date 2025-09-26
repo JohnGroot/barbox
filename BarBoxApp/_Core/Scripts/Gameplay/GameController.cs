@@ -223,8 +223,8 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 			{
 				if (GodotObject.IsInstanceValid(player))
 				{
-					var userData = player.GetUserData();
-					if (userData != null && _playerScores.ContainsKey(player.PlayerId))
+					var userSession = player.GetUserSession();
+					if (userSession != null && _playerScores.ContainsKey(player.PlayerId))
 					{
 						// Convert float score to int for UserManager compatibility
 						int intScore = (int)_playerScores[player.PlayerId];

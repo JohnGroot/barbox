@@ -359,6 +359,83 @@ public class RestApiBackend : IDataStoreBackend
 
 	public string GetCurrentLocationId() => _locationId;
 
+	// ============= GENERIC GAME QUERY MECHANISM =============
+
+	public async Task<Result<TResult>> ExecuteGameQueryAsync<TResult>(
+		string gameId,
+		string queryType,
+		System.Collections.Generic.Dictionary<string, object> parameters)
+	{
+		if (string.IsNullOrEmpty(gameId))
+			return Result<TResult>.Failure("Game ID cannot be null or empty");
+		if (string.IsNullOrEmpty(queryType))
+			return Result<TResult>.Failure("Query type cannot be null or empty");
+
+		try
+		{
+			// Build API path for game-specific queries
+			string path;
+			var method = HttpClient.Method.Get;
+			string requestBody = "";
+
+			if (parameters != null && parameters.Count > 0)
+			{
+				// For GET requests, convert to query string
+				if (IsGetQuery(queryType))
+				{
+					var queryParams = new System.Collections.Generic.List<string>();
+					foreach (var param in parameters)
+					{
+						queryParams.Add($"{param.Key}={Uri.EscapeDataString(param.Value?.ToString() ?? "")}");
+					}
+					var queryString = string.Join("&", queryParams);
+					path = $"/api/{gameId}/{queryType}?{queryString}";
+				}
+				else
+				{
+					// For POST requests, serialize parameters as JSON body
+					method = HttpClient.Method.Post;
+					requestBody = JsonSerializer.Serialize(parameters, JsonOptions);
+					path = $"/api/{gameId}/{queryType}";
+				}
+			}
+			else
+			{
+				path = $"/api/{gameId}/{queryType}";
+			}
+
+			// Use the existing MakeRequestAsync method
+			var (success, response) = await MakeRequestAsync(method, path, requestBody);
+
+			if (!success)
+			{
+				return Result<TResult>.Failure($"API request failed for game query '{queryType}'");
+			}
+
+			if (string.IsNullOrEmpty(response))
+			{
+				return Result<TResult>.Failure($"Query '{queryType}' not found for game '{gameId}'");
+			}
+
+			// Deserialize response to requested type
+			var result = JsonSerializer.Deserialize<TResult>(response, JsonOptions);
+			return Result<TResult>.Success(result);
+		}
+		catch (Exception ex)
+		{
+			return Result<TResult>.Failure($"Exception executing game query: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Determine if a query type should use GET or POST method
+	/// </summary>
+	private bool IsGetQuery(string queryType)
+	{
+		// Most queries are GET except for submissions
+		return !queryType.ToLowerInvariant().Contains("submit");
+	}
+
 	// Private helper methods (extracted from original DataStore)
 
 	private string[] GetRequestHeaders(bool includeJsonContentType = false)

@@ -10,4 +10,7 @@
   <ItemGroup>
     <Folder Include="addons\" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ZLinq.Godot" Version="1.5.2" />
+  </ItemGroup>
 </Project>

@@ -10,7 +10,7 @@ public abstract partial class BasePlayer : Node2D
 	[Export] public string PlayerId { get; set; } = "player1";
 	[Export] public string PlayerName { get; set; } = "Player";
 	
-	protected UserData _userData;
+	protected UserSession _userSession;
 	protected bool _isActive = true;
 
 	public override void _Ready()
@@ -23,12 +23,12 @@ public abstract partial class BasePlayer : Node2D
 	{
 	}
 
-	public virtual void SetUserData(UserData userData)
+	public virtual void SetUserSession(UserSession userSession)
 	{
-		_userData = userData;
-		if (_userData != null)
+		_userSession = userSession;
+		if (_userSession?.GlobalData != null)
 		{
-			PlayerName = _userData.UserId;
+			PlayerName = _userSession.GlobalData.UserName;
 		}
 	}
 
@@ -45,7 +45,7 @@ public abstract partial class BasePlayer : Node2D
 		base._ExitTree();
 	}
 
-	public UserData GetUserData() => _userData;
+	public UserSession GetUserSession() => _userSession;
 	public bool IsActive() => _isActive;
 	public void SetActive(bool active) => _isActive = active;
 }

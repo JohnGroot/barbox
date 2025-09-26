@@ -651,7 +651,7 @@ public partial class RacingGame : GameController
 	/// <summary>
 	/// Handle user login - refresh UI to enable time trial button
 	/// </summary>
-	private void OnUserLoggedIn(UserData userData)
+	private void OnUserLoggedIn(string phoneNumber, string userName)
 	{
 		// Just update UI - no cache manipulation needed
 		UpdateUI();
@@ -660,7 +660,7 @@ public partial class RacingGame : GameController
 	/// <summary>
 	/// Handle user logout - refresh UI to disable time trial button
 	/// </summary>
-	private void OnUserLoggedOut()
+	private void OnUserLoggedOut(string phoneNumber)
 	{
 		// Just update UI - no cache manipulation needed
 		UpdateUI();

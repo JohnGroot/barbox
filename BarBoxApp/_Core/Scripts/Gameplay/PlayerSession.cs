@@ -5,24 +5,24 @@ public partial class PlayerSession : RefCounted
 {
 	public string PlayerId { get; private set; }
 	public string PlayerName { get; set; }
-	public UserData UserData { get; private set; }
+	public UserSession UserSession { get; private set; }
 	public bool IsActive { get; set; } = true;
 	public float SessionStartTime { get; private set; }
 
-	public PlayerSession(string playerId, UserData userData = null)
+	public PlayerSession(string playerId, UserSession userSession = null)
 	{
 		PlayerId = playerId;
-		UserData = userData;
-		PlayerName = userData?.UserId ?? playerId;
+		UserSession = userSession;
+		PlayerName = userSession?.GlobalData?.UserName ?? playerId;
 		SessionStartTime = (float)Time.GetUnixTimeFromSystem();
 	}
 
-	public void SetUserData(UserData userData)
+	public void SetUserSession(UserSession userSession)
 	{
-		UserData = userData;
-		if (userData != null)
+		UserSession = userSession;
+		if (userSession?.GlobalData != null)
 		{
-			PlayerName = userData.UserId;
+			PlayerName = userSession.GlobalData.UserName;
 		}
 	}
 
@@ -31,9 +31,14 @@ public partial class PlayerSession : RefCounted
 		return (float)Time.GetUnixTimeFromSystem() - SessionStartTime;
 	}
 
-	public bool HasUserData()
+	public bool HasUserSession()
 	{
-		return UserData != null;
+		return UserSession != null;
+	}
+
+	public int GetCredits()
+	{
+		return UserSession?.GlobalData?.GlobalCredits ?? 0;
 	}
 
 	public override string ToString()

@@ -281,6 +281,20 @@ public partial class DataStore : AutoloadBase
 		return await _backend.AuthenticateByPhoneAsync(phoneNumber, pin);
 	}
 
+	// ============= GENERIC GAME QUERY MECHANISM =============
+
+	/// <summary>
+	/// Execute a game-specific query operation
+	/// This provides games with access to cross-user queries while keeping Core game-agnostic
+	/// </summary>
+	public async Task<Result<TResult>> ExecuteGameQueryAsync<TResult>(
+		string gameId,
+		string queryType,
+		System.Collections.Generic.Dictionary<string, object> parameters)
+	{
+		return await _backend.ExecuteGameQueryAsync<TResult>(gameId, queryType, parameters);
+	}
+
 	// Private helper methods
 
 	private string GetStorageMode()

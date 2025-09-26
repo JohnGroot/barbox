@@ -8,9 +8,9 @@ using Godot;
 /// </summary>
 public partial class UserManager : AutoloadBase
 {
-	[Signal] public delegate void UserLoggedInEventHandler(UserData userData);
-	[Signal] public delegate void UserLoggedOutEventHandler();
-	[Signal] public delegate void UserDataUpdatedEventHandler(UserData userData);
+	[Signal] public delegate void UserLoggedInEventHandler(string phoneNumber, string userName);
+	[Signal] public delegate void UserLoggedOutEventHandler(string phoneNumber);
+	[Signal] public delegate void UserDataUpdatedEventHandler(string phoneNumber);
 
 	public static UserManager GetAutoload()
 	{
@@ -18,20 +18,28 @@ public partial class UserManager : AutoloadBase
 	}
 
 	// Redirect to SessionManager for basic compatibility
-	public UserData GetCurrentUser()
+	public UserSession GetCurrentUserSession()
 	{
 		var sessionManager = SessionManager.GetInstance();
-		var session = sessionManager?.GetCurrentUserSession();
-		if (session != null)
-		{
-			var userData = new UserData(session.PhoneNumber);
-			if (session.GlobalData != null)
-			{
-				userData.Credits = session.GlobalData.GlobalCredits;
-			}
-			return userData;
-		}
-		return null;
+		return sessionManager?.GetCurrentUserSession();
+	}
+
+	public string GetCurrentUserPhoneNumber()
+	{
+		var session = GetCurrentUserSession();
+		return session?.PhoneNumber ?? string.Empty;
+	}
+
+	public string GetCurrentUserName()
+	{
+		var session = GetCurrentUserSession();
+		return session?.GlobalData?.UserName ?? string.Empty;
+	}
+
+	public int GetCurrentUserCredits()
+	{
+		var session = GetCurrentUserSession();
+		return session?.GlobalData?.GlobalCredits ?? 0;
 	}
 
 	public bool IsUserLoggedIn()
@@ -148,26 +156,21 @@ public partial class UserManager : AutoloadBase
 	}
 
 	// Signal bridging methods to forward SessionManager events with correct signatures
-	private void OnSessionUserLoggedIn(string userId)
+	private void OnSessionUserLoggedIn(string phoneNumber)
 	{
-		// Convert SessionManager's UserLoggedIn(string) to UserManager's UserLoggedIn(UserData)
-		var userData = GetCurrentUser();
-		if (userData != null)
-		{
-			EmitSignal(SignalName.UserLoggedIn, userData);
-			LogInfo($"UserLoggedIn signal emitted for user: {userId}");
-		}
-		else
-		{
-			LogWarning($"Could not get UserData for logged in user: {userId}");
-		}
+		// Convert SessionManager's UserLoggedIn(string) to UserManager's UserLoggedIn(string, string)
+		var session = GetCurrentUserSession();
+		var userName = session?.GlobalData?.UserName ?? string.Empty;
+
+		EmitSignal(SignalName.UserLoggedIn, phoneNumber, userName);
+		LogInfo($"UserLoggedIn signal emitted for user: {phoneNumber} ({userName})");
 	}
 
-	private void OnSessionUserLoggedOut(string userId)
+	private void OnSessionUserLoggedOut(string phoneNumber)
 	{
-		// Convert SessionManager's UserLoggedOut(string) to UserManager's UserLoggedOut() 
-		EmitSignal(SignalName.UserLoggedOut);
-		LogInfo($"UserLoggedOut signal emitted for user: {userId}");
+		// Forward SessionManager's UserLoggedOut(string) to UserManager's UserLoggedOut(string)
+		EmitSignal(SignalName.UserLoggedOut, phoneNumber);
+		LogInfo($"UserLoggedOut signal emitted for user: {phoneNumber}");
 	}
 
 	public override void _ExitTree()

@@ -590,11 +590,11 @@ namespace BarBox.Games.Racing
 		// ================================================================
 
 		/// <summary>
-		/// Set user data for the car player (for GameHost integration)
+		/// Set user session for the car player (for GameHost integration)
 		/// </summary>
-		public new void SetUserData(UserData userData)
+		public new void SetUserSession(UserSession userSession)
 		{
-			base.SetUserData(userData);
+			base.SetUserSession(userSession);
 		}
 
 		/// <summary>

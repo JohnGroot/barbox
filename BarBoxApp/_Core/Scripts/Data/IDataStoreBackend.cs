@@ -100,4 +100,21 @@ public interface IDataStoreBackend
 	/// Authenticate user by phone number and PIN
 	/// </summary>
 	Task<Result<DataStore.GlobalUserData>> AuthenticateByPhoneAsync(string phoneNumber, string pin);
+
+	// ============= GENERIC GAME QUERY MECHANISM =============
+
+	/// <summary>
+	/// Execute a game-specific query operation
+	/// This provides a generic hook for games to implement their own cross-user queries
+	/// without Core systems needing to know about game-specific types
+	/// </summary>
+	/// <typeparam name="TResult">The expected result type</typeparam>
+	/// <param name="gameId">Game identifier (e.g., "racing", "mining")</param>
+	/// <param name="queryType">Type of query (e.g., "leaderboard", "best_lap")</param>
+	/// <param name="parameters">Query parameters as key-value pairs</param>
+	/// <returns>Result containing the query response or error</returns>
+	Task<Result<TResult>> ExecuteGameQueryAsync<TResult>(
+		string gameId,
+		string queryType,
+		System.Collections.Generic.Dictionary<string, object> parameters);
 }

@@ -38,7 +38,7 @@ public partial class UIManager : AutoloadBase
 	private bool _isHelpVisible = false;
 	
 	// Context tracking
-	private string _currentGameTitle = "BarBox Arcade";
+	private string _currentGameTitle = "BarBox";
 	private ContextButtonData[] _currentContextButtons = null;
 
 	protected override void OnServiceReady()
@@ -157,7 +157,7 @@ public partial class UIManager : AutoloadBase
 	/// </summary>
 	public void SetGameContext(string gameTitle, ContextButtonData[] contextButtons = null)
 	{
-		_currentGameTitle = gameTitle ?? "BarBox Arcade";
+		_currentGameTitle = gameTitle ?? "BarBox";
 		_currentContextButtons = contextButtons;
 		
 		// If not yet initialized, the context will be applied when OnServiceInitialize runs
@@ -179,7 +179,7 @@ public partial class UIManager : AutoloadBase
 	/// </summary>
 	public void ClearGameContext()
 	{
-		_currentGameTitle = "BarBox Arcade";
+		_currentGameTitle = "BarBox";
 		_currentContextButtons = null;
 		
 		if (_topMenuBar != null)

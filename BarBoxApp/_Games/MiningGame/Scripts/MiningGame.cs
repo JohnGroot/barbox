@@ -587,37 +587,37 @@ namespace BarBox.Games.MiningGame
 		// EVENT HANDLERS
 		// ================================================================
 		
-		private void OnUserLoggedIn(UserData userData)
+		private void OnUserLoggedIn(string phoneNumber, string userName)
 		{
 			if (_isProcessingUserChange)
 			{
 				GD.PrintErr("[MiningGame] User change already in progress, ignoring login event");
 				return;
 			}
-			
+
 			_isProcessingUserChange = true;
-			
+
 			try
 			{
 				// Clear any previous user state FIRST to prevent data mixing
 				if (GodotObject.IsInstanceValid(_state))
 					_state.ClearAllState();
-				
+
 				// User data will be loaded by InitializeGameSession() after StartGame()
 				// No need to load it here to avoid race conditions
-				
+
 				// Ensure game is properly reset before starting
 				if (IsGameActive())
 				{
 					EndGame();
 				}
-				
+
 				StartGame();
-				
+
 				// Game session is automatically initialized via OnGameStarted() -> InitializeGameSession()
 				// No need to call InitializeGameSession() again as it would cause double initialization
-				
-				GD.Print($"[MiningGame] User logged in: {userData.UserId}");
+
+				GD.Print($"[MiningGame] User logged in: {userName} ({phoneNumber})");
 			}
 			finally
 			{
@@ -625,16 +625,16 @@ namespace BarBox.Games.MiningGame
 			}
 		}
 		
-		private void OnUserLoggedOut()
+		private void OnUserLoggedOut(string phoneNumber)
 		{
 			if (_isProcessingUserChange)
 			{
 				GD.PrintErr("[MiningGame] User change already in progress, ignoring logout event");
 				return;
 			}
-			
+
 			_isProcessingUserChange = true;
-			
+
 			try
 			{
 				// Save current data before stopping game
@@ -642,13 +642,13 @@ namespace BarBox.Games.MiningGame
 					// Use discard pattern for intentional fire-and-forget async call to avoid CS4014 warning
 					// User switching should not block on save completion - errors are handled within SaveDataAsync
 					_ = _state.SaveDataAsync(); // Fire-and-forget
-					
+
 				StopGame();
-				
+
 				// Clear all state to ensure no previous user data remains
 				if (GodotObject.IsInstanceValid(_state))
 					_state.ClearAllState();
-				
+
 				// Ensure UI properly reflects no-user state
 				if (GodotObject.IsInstanceValid(_ui))
 				{
