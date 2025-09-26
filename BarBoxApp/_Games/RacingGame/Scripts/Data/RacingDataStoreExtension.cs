@@ -8,13 +8,7 @@ public partial class DataStore
 {
 	public partial class GlobalUserData
 	{
-		// Racing game global data (cross-location)
-		public RacingGlobalDataStore Racing { get; set; } = new();
-	}
-
-	public partial class LocalUserData  
-	{
-		// Racing game local data (machine-specific)
-		public RacingLocalData Racing { get; set; } = new();
+		// Racing game database (cross-location)
+		public RaceDatabase RaceDb { get; set; } = new();
 	}
 }

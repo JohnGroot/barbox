@@ -55,6 +55,8 @@ namespace BarBox.Games.Racing
 	private Dictionary<string, float> _playerCurrentLapTime = new();
 	private Dictionary<string, float> _playerBestLapTime = new();
 	private Dictionary<string, float> _playerGapTime = new(); // Time since last checkpoint in practice mode
+	private Dictionary<string, List<CheckpointTime>> _playerCheckpointTimes = new();
+	private Dictionary<string, float> _playerLastCheckpointTime = new();
 
 	// Game mode reference
 	private GameController.GameMode _currentGameMode = GameController.GameMode.Practice;
@@ -152,6 +154,10 @@ namespace BarBox.Games.Racing
 			return;
 		
 		int lapNumber = _playerCurrentLap[playerId];
+
+		// Ensure lap times list exists before adding
+		if (!_playerLapTimes.ContainsKey(playerId))
+			_playerLapTimes[playerId] = new List<float>();
 		_playerLapTimes[playerId].Add(lapTime);
 		
 		// Update best lap time
@@ -161,12 +167,6 @@ namespace BarBox.Games.Racing
 		}
 		
 		EmitSignal(SignalName.LapCompleted, playerId, lapNumber, lapTime);
-		
-		// Check if race is complete
-		if (_currentGameMode == GameController.GameMode.TimeTrial && lapNumber >= TargetLaps)
-		{
-			CompletePlayerRace(playerId);
-		}
 	}
 
 	/// <summary>
@@ -207,7 +207,18 @@ namespace BarBox.Games.Racing
 	{
 		float gapTime = _playerGapTime.GetValueOrDefault(playerId, 0.0f);
 		_playerGapTime[playerId] = 0.0f; // Reset gap timer
-		
+
+		// Calculate total time from race start to this checkpoint
+		float totalTime = GetPlayerTotalTime(playerId);
+
+		// Store checkpoint time data
+		if (!_playerCheckpointTimes.ContainsKey(playerId))
+			_playerCheckpointTimes[playerId] = new List<CheckpointTime>();
+
+		var checkpointTime = new CheckpointTime(checkpointIndex, totalTime, gapTime);
+		_playerCheckpointTimes[playerId].Add(checkpointTime);
+		_playerLastCheckpointTime[playerId] = totalTime;
+
 		EmitSignal(SignalName.CheckpointCrossed, playerId, checkpointIndex, gapTime);
 	}
 
@@ -356,6 +367,8 @@ namespace BarBox.Games.Racing
 		_playerCurrentLapTime.Clear();
 		_playerBestLapTime.Clear();
 		_playerGapTime.Clear();
+		_playerCheckpointTimes.Clear();
+		_playerLastCheckpointTime.Clear();
 		_racingState = RacingState.Idle;
 	}
 
@@ -368,6 +381,19 @@ namespace BarBox.Games.Racing
 	public float GetPlayerBestLapTime(string playerId) => string.IsNullOrEmpty(playerId) ? float.MaxValue : _playerBestLapTime.GetValueOrDefault(playerId, float.MaxValue);
 	public float GetPlayerGapTime(string playerId) => string.IsNullOrEmpty(playerId) ? 0.0f : _playerGapTime.GetValueOrDefault(playerId, 0.0f);
 	public List<float> GetPlayerLapTimes(string playerId) => string.IsNullOrEmpty(playerId) ? new List<float>() : _playerLapTimes.GetValueOrDefault(playerId, new List<float>());
+	public List<CheckpointTime> GetPlayerCheckpointTimes(string playerId) => string.IsNullOrEmpty(playerId) ? new List<CheckpointTime>() : _playerCheckpointTimes.GetValueOrDefault(playerId, new List<CheckpointTime>());
+
+	/// <summary>
+	/// Get total time from race start for a player (lap time + current lap progress)
+	/// </summary>
+	public float GetPlayerTotalTime(string playerId)
+	{
+		if (string.IsNullOrEmpty(playerId)) return 0.0f;
+
+		var lapTimes = GetPlayerLapTimes(playerId);
+		var currentLapTime = GetPlayerCurrentLapTime(playerId);
+		return lapTimes.Sum() + currentLapTime;
+	}
 
 	/// <summary>
 	/// Calculate player score based on game mode

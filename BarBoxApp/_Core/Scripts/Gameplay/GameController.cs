@@ -1,6 +1,7 @@
 using Godot;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 [GlobalClass]
 public abstract partial class GameController : Node2D, IGameUIIntegration
@@ -390,10 +391,29 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	}
 
 	/// <summary>
-	/// Return to the main menu - can be overridden for custom behavior
+	/// Return to the main menu with confirmation dialog - can be overridden for custom behavior
 	/// </summary>
-	protected virtual void ReturnToMainMenu()
+	protected virtual async void ReturnToMainMenu()
 	{
+		// Get UIManager for confirmation dialog
+		var uiManager = UIManager.GetInstance();
+		if (uiManager != null)
+		{
+			// Show confirmation dialog
+			bool confirmed = await uiManager.ShowConfirmationAsync(
+				"Return to Menu",
+				"Are you sure you want to return to the main menu?\n\nAny unsaved progress will be lost.",
+				"Return to Menu",
+				"Cancel"
+			);
+
+			if (!confirmed)
+			{
+				return; // User cancelled
+			}
+		}
+
+		// User confirmed or no UIManager available - proceed with return to menu
 		_gameHost?.ReturnToMainMenu();
 	}
 

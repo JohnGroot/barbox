@@ -89,37 +89,6 @@ public partial class UserManager : AutoloadBase
 		return Result<bool>.Failure("SessionManager not available");
 	}
 
-	// Legacy compatibility stubs (deprecated)
-	[Obsolete("Use LoginUserByPhoneAsync instead for phone number authentication")]
-	public bool LoginUserDevelopment(string userId)
-	{
-		var sessionManager = SessionManager.GetInstance();
-		if (sessionManager != null)
-		{
-			_ = sessionManager.LoginUserAsync(userId);
-			return true;
-		}
-		return false;
-	}
-
-	[Obsolete("Use LoginUserByPhoneAsync instead for phone number authentication")]
-	public bool LoginUser(string userId, string pin)
-	{
-		var sessionManager = SessionManager.GetInstance();
-		if (sessionManager != null)
-		{
-			_ = sessionManager.LoginUserAsync(userId, pin);
-			return true;
-		}
-		return false;
-	}
-
-	[Obsolete("Use CreateUserAccountAsync instead for phone number registration")]
-	public UserData CreateUser(string userId, string pin)
-	{
-		// In the new system, users are created automatically on first login
-		return new UserData(userId) { Pin = pin };
-	}
 
 	public void AddCredits(string userId, int amount)
 	{

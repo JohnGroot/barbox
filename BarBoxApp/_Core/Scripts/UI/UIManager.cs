@@ -1,4 +1,5 @@
 using Godot;
+using System.Threading.Tasks;
 
 /// <summary>
 /// UI management service for global UI components
@@ -24,6 +25,7 @@ public partial class UIManager : AutoloadBase
 	private TopMenuBar _topMenuBar;
 	private LoginModal _loginModal;
 	private BuyCreditsModal _buyCreditsModal;
+	private ConfirmationDialog _confirmationDialog;
 	private SessionManager _sessionManager;
 
 	// Help system components
@@ -79,6 +81,10 @@ public partial class UIManager : AutoloadBase
 		// Create buy credits modal
 		_buyCreditsModal = new BuyCreditsModal();
 		_modalLayer.AddChild(_buyCreditsModal);
+
+		// Create confirmation dialog
+		_confirmationDialog = new ConfirmationDialog();
+		_modalLayer.AddChild(_confirmationDialog);
 		
 		// Connect signals
 		_topMenuBar.LoginRequested += OnLoginRequested;
@@ -287,6 +293,25 @@ public partial class UIManager : AutoloadBase
 		{
 			_buyCreditsModal.HideModal();
 		}
+	}
+
+	/// <summary>
+	/// Show confirmation dialog with customizable content
+	/// Returns Task<bool> - true for confirmed, false for cancelled
+	/// </summary>
+	public async Task<bool> ShowConfirmationAsync(
+		string title = "Confirm Action",
+		string message = "Are you sure?",
+		string confirmText = "Confirm",
+		string cancelText = "Cancel")
+	{
+		if (_confirmationDialog != null)
+		{
+			return await _confirmationDialog.ShowAsync(title, message, confirmText, cancelText);
+		}
+
+		// Fallback: assume confirmation if dialog unavailable
+		return true;
 	}
 
 	/// <summary>

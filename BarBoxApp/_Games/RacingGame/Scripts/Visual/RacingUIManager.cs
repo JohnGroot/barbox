@@ -101,10 +101,10 @@ namespace BarBox.Games.Racing
 		public int DefaultLaps { get; set; } = 3;
 		public PackedScene Scene { get; set; }
 		public int Index { get; set; } = -1;
-		public float BestLapTime { get; set; } = 0f;
 		public float BestRaceTime { get; set; } = 0f;
 		public bool HasPlayerScores { get; set; } = false;
 		public bool IsCurrentTrack { get; set; } = false;
+		public int RaceCount { get; set; } = 0;
 	}
 
 	/// <summary>
@@ -115,7 +115,7 @@ namespace BarBox.Games.Racing
 		public string TrackId { get; set; } = "";
 		public string TrackName { get; set; } = "";
 		public float Time { get; set; } = 0f;
-		public string Type { get; set; } = ""; // "Best Lap" or "Best Race"
+		public string Type { get; set; } = ""; // "Best Race"
 		public int Laps { get; set; } = 0;
 		public bool IsCurrentPlayer { get; set; } = false;
 		public DateTime SetDate { get; set; } = DateTime.UtcNow;
@@ -125,7 +125,7 @@ namespace BarBox.Games.Racing
 		public string DisplayRank { get; set; } = "";
 
 		public string FormattedTime => Time > 0f ? $"{Time:F3}s" : "No time";
-		public string CategoryDisplay => Type == "Best Lap" ? "Best Lap" : $"Best Race ({Laps} laps)";
+		public string CategoryDisplay => $"Best Race ({Laps} laps)";
 	}
 
 	/// <summary>
@@ -283,7 +283,7 @@ namespace BarBox.Games.Racing
 			// Track name and load button
 			CreateLeaderboardHeader(vbox);
 
-			// Tabbed leaderboard (Best Laps / Best Races)
+			// Race Times leaderboard
 			CreateLeaderboardTabs(vbox);
 		}
 
@@ -311,22 +311,9 @@ namespace BarBox.Games.Racing
 			LeaderboardTabs.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
 			parent.AddChild(LeaderboardTabs);
 
-			// Best Laps tab
-			var lapTimesScroll = new ScrollContainer();
-			lapTimesScroll.Name = "Best Laps";
-			lapTimesScroll.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			lapTimesScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-			LeaderboardTabs.AddChild(lapTimesScroll);
-
-			var lapTimesContainer = new VBoxContainer();
-			lapTimesContainer.Name = "LapTimesContainer";
-			lapTimesContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			lapTimesContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-			lapTimesScroll.AddChild(lapTimesContainer);
-
-			// Best Races tab
+			// Race Times tab
 			var raceTimesScroll = new ScrollContainer();
-			raceTimesScroll.Name = "Best Races";
+			raceTimesScroll.Name = "Race Times";
 			raceTimesScroll.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			raceTimesScroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
 			LeaderboardTabs.AddChild(raceTimesScroll);
@@ -1357,7 +1344,7 @@ namespace BarBox.Games.Racing
 
 					if (globalDataResult.IsSuccess)
 					{
-						var racingData = globalDataResult.Value.Racing;
+						var racingData = globalDataResult.Value.RaceDb;
 
 						// Get all race times for this track (different lap counts)
 						var allRaceTimes = new List<(float time, string username, int laps)>();
@@ -1366,9 +1353,9 @@ namespace BarBox.Games.Racing
 						for (int laps = 1; laps <= 10; laps++)
 						{
 							var raceEntry = racingData.GetBestRaceTimeEntry(trackId, laps);
-							if (raceEntry != null && raceEntry.Time > 0f)
+							if (raceEntry != null && raceEntry.TotalTime > 0f)
 							{
-								allRaceTimes.Add((raceEntry.Time, raceEntry.Username, laps));
+								allRaceTimes.Add((raceEntry.TotalTime, raceEntry.Username, laps));
 							}
 						}
 
@@ -1740,7 +1727,7 @@ namespace BarBox.Games.Racing
 				return;
 			}
 			
-			var racingData = globalDataResult.Value.Racing;
+			var racingData = globalDataResult.Value.RaceDb;
 			var lapEntries = new List<LeaderboardEntry>();
 			var raceEntries = new List<LeaderboardEntry>();
 
@@ -1764,7 +1751,7 @@ namespace BarBox.Games.Racing
 	/// <summary>
 	/// Extract leaderboard entries for a specific track from racing data
 	/// </summary>
-	private void ExtractTrackLeaderboardEntries(RacingGlobalDataStore racingData, string trackId, string currentPlayerId,
+	private void ExtractTrackLeaderboardEntries(RaceDatabase racingData, string trackId, string currentPlayerId,
 		List<LeaderboardEntry> lapEntries, List<LeaderboardEntry> raceEntries, string fallbackUsername = "")
 	{
 		if (!_trackMetadataCache.TryGetValue(trackId, out var track))
@@ -1773,34 +1760,13 @@ namespace BarBox.Games.Racing
 		// Get current session username as additional fallback
 		string sessionUsername = GetCurrentSessionUsername();
 
-		// Get best lap time entry with username
-		var bestLapEntry = racingData.GetBestLapTimeEntry(trackId);
-
-		if (bestLapEntry != null && bestLapEntry.Time > 0f)
-		{
-			// Enhanced username fallback logic
-			string displayName = ResolveDisplayName(bestLapEntry.Username, fallbackUsername, sessionUsername, currentPlayerId);
-
-			// Determine if this entry belongs to the current player
-			bool isCurrentPlayer = IsEntryForCurrentPlayer(displayName, bestLapEntry.Username, currentPlayerId, fallbackUsername, sessionUsername);
-
-			lapEntries.Add(new LeaderboardEntry
-			{
-				TrackId = trackId,
-				TrackName = track.TrackName,
-				Time = bestLapEntry.Time,
-				Type = "Best Lap",
-				Username = displayName,
-				IsCurrentPlayer = isCurrentPlayer
-			});
-		}
 
 		// Get best race times for different lap counts
 		for (int laps = 1; laps <= 10; laps++) // Support up to 10 lap races
 		{
 			var bestRaceEntry = racingData.GetBestRaceTimeEntry(trackId, laps);
 
-			if (bestRaceEntry != null && bestRaceEntry.Time > 0f)
+			if (bestRaceEntry != null && bestRaceEntry.TotalTime > 0f)
 			{
 				// Enhanced username fallback logic
 				string displayName = ResolveDisplayName(bestRaceEntry.Username, fallbackUsername, sessionUsername, currentPlayerId);
@@ -1812,7 +1778,7 @@ namespace BarBox.Games.Racing
 				{
 					TrackId = trackId,
 					TrackName = track.TrackName,
-					Time = bestRaceEntry.Time,
+					Time = bestRaceEntry.TotalTime,
 					Type = "Best Race",
 					Laps = laps,
 					Username = displayName,
@@ -2068,19 +2034,19 @@ namespace BarBox.Games.Racing
 			if (!globalDataResult.IsSuccess)
 				return enhancedMetadata;
 
-			var racingData = globalDataResult.Value.Racing;
+			var racingData = globalDataResult.Value.RaceDb;
 			
 			// Enhance each track with score data
 			foreach (var track in enhancedMetadata.Values)
 			{
-				// Get best lap time
-				track.BestLapTime = racingData.GetBestLapTime(track.TrackId);
-				
 				// Get best race time (use default laps)
 				track.BestRaceTime = racingData.GetBestRaceTime(track.TrackId, track.DefaultLaps);
-				
+
 				// Mark if player has scores
-				track.HasPlayerScores = track.BestLapTime > 0f || track.BestRaceTime > 0f;
+				track.HasPlayerScores = track.BestRaceTime > 0f;
+
+				// Get total race count for this track
+				track.RaceCount = racingData.GetRaceCountForTrack(track.TrackId);
 			}
 		}
 		catch (System.Exception ex)

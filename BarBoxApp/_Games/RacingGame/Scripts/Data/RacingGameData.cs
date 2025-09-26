@@ -5,44 +5,46 @@ using Godot;
 
 namespace BarBox.Games.Racing
 {
-	// ============= RACE TIME ENTRY =============
+	// ============= RACE DATABASE RECORDS =============
 
 	/// <summary>
-	/// Represents a race time entry with associated username
+	/// Immutable record representing a checkpoint timing entry
 	/// </summary>
 	[Serializable]
-	public class RaceTimeEntry
-	{
-		public float Time { get; set; }
-		public string Username { get; set; } = string.Empty;
-
-		public RaceTimeEntry() { }
-
-		public RaceTimeEntry(float time, string username)
-		{
-			Time = time;
-			Username = username ?? string.Empty;
-		}
-	}
-
-	// ============= GLOBAL DATA STORE =============
+	public record CheckpointTime(
+		int Index,
+		float Time,
+		float Gap
+	);
 
 	/// <summary>
-	/// Racing game global data structure for DataStore integration.
-	/// Stores cross-location racing data like best times and global ranking.
-	/// 
-	/// KEY FORMATS:
-	/// - Best Lap Times: "{trackId}_bestlap" (e.g., "gocart_track_bestlap")
-	/// - Best Race Times: "{trackId}_{laps}laps" (e.g., "gocart_track_3laps")
-	/// Each entry stores both time and username for proper leaderboard display
+	/// Immutable record representing a complete race entry
+	/// Only created when races are fully completed
 	/// </summary>
 	[Serializable]
-	public class RacingGlobalDataStore
+	public record RaceEntry(
+		string RaceId,
+		DateTime Date,
+		string TrackId,
+		string PlayerId,
+		string Username,
+		int TotalLaps,
+		float TotalTime,
+		float[] LapTimes,
+		CheckpointTime[] Checkpoints
+	);
+
+	// ============= RACE DATABASE =============
+
+	/// <summary>
+	/// NoSQL-friendly race database that stores complete race entries
+	/// bucketed by track ID for efficient querying
+	/// </summary>
+	[Serializable]
+	public class RaceDatabase
 	{
-		public Dictionary<string, RaceTimeEntry> BestLapTimes { get; set; } = new();
-		public int TotalRaces { get; set; } = 0;
-		public int GlobalRanking { get; set; } = 0;
-		public Dictionary<string, RaceTimeEntry> BestRaceTimes { get; set; } = new();
+		public Dictionary<string, List<RaceEntry>> RacesByTrack { get; set; } = new();
+		public int TotalRacesCompleted { get; set; } = 0;
 
 		/// <summary>
 		/// Generate stable track ID from scene resource path.
@@ -75,37 +77,57 @@ namespace BarBox.Games.Racing
 		}
 
 		/// <summary>
-		/// Get best lap time key for a track
+		/// Add a completed race entry to the database
+		/// Only call this when a race is fully completed
 		/// </summary>
-		public static string GetBestLapKey(string trackId)
+		public void AddRaceEntry(RaceEntry raceEntry)
 		{
-			return $"{trackId}_bestlap";
+			if (raceEntry == null) return;
+
+			if (!RacesByTrack.ContainsKey(raceEntry.TrackId))
+			{
+				RacesByTrack[raceEntry.TrackId] = new List<RaceEntry>();
+			}
+
+			RacesByTrack[raceEntry.TrackId].Add(raceEntry);
+			TotalRacesCompleted++;
 		}
 
 		/// <summary>
-		/// Get best race time key for a track with specific lap count
+		/// Generate a unique race ID
 		/// </summary>
-		public static string GetBestRaceKey(string trackId, int laps)
+		public static string GenerateRaceId()
 		{
-			return $"{trackId}_{laps}laps";
+			return Guid.NewGuid().ToString("N")[..12]; // Short unique ID
 		}
 
 		/// <summary>
-		/// Get best lap time for a track
+		/// Get best lap time for a track from race database
 		/// </summary>
 		public float GetBestLapTime(string trackId)
 		{
-			var key = GetBestLapKey(trackId);
-			return BestLapTimes.TryGetValue(key, out RaceTimeEntry entry) ? entry.Time : 0f;
+			if (!RacesByTrack.ContainsKey(trackId))
+				return 0f;
+
+			return RacesByTrack[trackId]
+				.SelectMany(race => race.LapTimes)
+				.Where(lapTime => lapTime > 0f)
+				.DefaultIfEmpty(0f)
+				.Min();
 		}
 
 		/// <summary>
 		/// Get best lap time entry (with username) for a track
 		/// </summary>
-		public RaceTimeEntry GetBestLapTimeEntry(string trackId)
+		public RaceEntry GetBestLapTimeEntry(string trackId)
 		{
-			var key = GetBestLapKey(trackId);
-			return BestLapTimes.TryGetValue(key, out RaceTimeEntry entry) ? entry : null;
+			if (!RacesByTrack.ContainsKey(trackId))
+				return null;
+
+			return RacesByTrack[trackId]
+				.Where(race => race.LapTimes.Any(lap => lap > 0f))
+				.OrderBy(race => race.LapTimes.Where(lap => lap > 0f).Min())
+				.FirstOrDefault();
 		}
 
 		/// <summary>
@@ -113,84 +135,84 @@ namespace BarBox.Games.Racing
 		/// </summary>
 		public float GetBestRaceTime(string trackId, int laps)
 		{
-			var key = GetBestRaceKey(trackId, laps);
-			return BestRaceTimes.TryGetValue(key, out RaceTimeEntry entry) ? entry.Time : 0f;
+			if (!RacesByTrack.ContainsKey(trackId))
+				return 0f;
+
+			return RacesByTrack[trackId]
+				.Where(race => race.TotalLaps == laps && race.TotalTime > 0f)
+				.Select(race => race.TotalTime)
+				.DefaultIfEmpty(0f)
+				.Min();
 		}
 
 		/// <summary>
 		/// Get best race time entry (with username) for a track with specific lap count
 		/// </summary>
-		public RaceTimeEntry GetBestRaceTimeEntry(string trackId, int laps)
+		public RaceEntry GetBestRaceTimeEntry(string trackId, int laps)
 		{
-			var key = GetBestRaceKey(trackId, laps);
-			return BestRaceTimes.TryGetValue(key, out RaceTimeEntry entry) ? entry : null;
+			if (!RacesByTrack.ContainsKey(trackId))
+				return null;
+
+			return RacesByTrack[trackId]
+				.Where(race => race.TotalLaps == laps && race.TotalTime > 0f)
+				.OrderBy(race => race.TotalTime)
+				.FirstOrDefault();
 		}
 
 		/// <summary>
-		/// Set best lap time with username
+		/// Get all races for a specific track, sorted by date
 		/// </summary>
-		public void SetBestLapTime(string trackId, float time, string username)
+		public List<RaceEntry> GetRacesForTrack(string trackId)
 		{
-			var key = GetBestLapKey(trackId);
-			BestLapTimes[key] = new RaceTimeEntry(time, username);
+			if (!RacesByTrack.ContainsKey(trackId))
+				return new List<RaceEntry>();
+
+			return RacesByTrack[trackId]
+				.OrderByDescending(race => race.Date)
+				.ToList();
 		}
 
 		/// <summary>
-		/// Set best race time with username
+		/// Get leaderboard for a track with specific lap count
 		/// </summary>
-		public void SetBestRaceTime(string trackId, int laps, float time, string username)
+		public List<RaceEntry> GetLeaderboard(string trackId, int laps, int maxEntries = 10)
 		{
-			var key = GetBestRaceKey(trackId, laps);
-			BestRaceTimes[key] = new RaceTimeEntry(time, username);
-			TotalRaces++;
+			if (!RacesByTrack.ContainsKey(trackId))
+				return new List<RaceEntry>();
+
+			return RacesByTrack[trackId]
+				.Where(race => race.TotalLaps == laps && race.TotalTime > 0f)
+				.OrderBy(race => race.TotalTime)
+				.Take(maxEntries)
+				.ToList();
 		}
 
 		/// <summary>
-		/// Get all tracks that have recorded times
+		/// Get all tracks that have recorded races
 		/// </summary>
-		public HashSet<string> GetTracksWithTimes()
+		public HashSet<string> GetTracksWithRaces()
 		{
-			var tracks = new HashSet<string>();
-
-			// Extract track IDs from lap time keys
-			foreach (var key in BestLapTimes.Keys)
-			{
-				if (key.EndsWith("_bestlap"))
-				{
-					tracks.Add(key.Substring(0, key.Length - "_bestlap".Length));
-				}
-			}
-
-			// Extract track IDs from race time keys
-			foreach (var key in BestRaceTimes.Keys)
-			{
-				if (key.Contains("laps"))
-				{
-					var lapIndex = key.LastIndexOf("_");
-					if (lapIndex > 0)
-					{
-						tracks.Add(key.Substring(0, lapIndex));
-					}
-				}
-			}
-
-			return tracks;
+			return new HashSet<string>(RacesByTrack.Keys.Where(trackId => RacesByTrack[trackId].Count > 0));
 		}
-	}
 
-	// ============= LOCAL DATA =============
+		/// <summary>
+		/// Get total number of races for a specific track
+		/// </summary>
+		public int GetRaceCountForTrack(string trackId)
+		{
+			return RacesByTrack.ContainsKey(trackId) ? RacesByTrack[trackId].Count : 0;
+		}
 
-	/// <summary>
-	/// Racing game local data structure for DataStore integration.
-	/// Stores location-specific racing data like session stats and favorite tracks.
-	/// </summary>
-	[Serializable]
-	public class RacingLocalData
-	{
-		public DateTime LastPlayedAt { get; set; } = DateTime.UtcNow;
-		public int RacesAtLocation { get; set; }
-		public string FavoriteTrack { get; set; } = string.Empty;
-		public int SessionRaces { get; set; }
-		public int SessionPersonalBests { get; set; }
+		/// <summary>
+		/// Get races by a specific player
+		/// </summary>
+		public List<RaceEntry> GetRacesByPlayer(string playerId)
+		{
+			return RacesByTrack.Values
+				.SelectMany(races => races)
+				.Where(race => race.PlayerId == playerId)
+				.OrderByDescending(race => race.Date)
+				.ToList();
+		}
 	}
 }

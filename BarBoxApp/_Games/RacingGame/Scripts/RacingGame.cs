@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -264,8 +265,9 @@ public partial class RacingGame : GameController
 		
 		AddChild(_racingCar);
 
-		// Initialize with validated dependencies
-		_racingCar.Initialize(_cameraController, _trackValidationSystem);
+		// Initialize with validated dependencies and phone number as player ID
+		var phoneNumber = GetCurrentPlayerPhoneNumber() ?? "guest_player";
+		_racingCar.Initialize(_cameraController, _trackValidationSystem, phoneNumber, "Player");
 
 		// Connect car movement events for visual feedback
 		_racingCar.CarMoved += OnCarMoved;
@@ -516,29 +518,44 @@ public partial class RacingGame : GameController
 			
 			var globalData = globalDataResult.Value;
 			
-			// Use new stable track ID system
-			float currentBestTime = globalData.Racing.GetBestRaceTime(_currentTrackId, _targetLaps);
-			
-			// Check if this is a new best time (0 means no time recorded)
-			bool isNewBest = currentBestTime == 0f || currentBestTime > totalTime;
-			
-			if (isNewBest)
+			// Create complete race entry with comprehensive timing data
+			var raceEntry = new RaceEntry(
+				RaceId: RaceDatabase.GenerateRaceId(),
+				Date: DateTime.Now,
+				TrackId: _currentTrackId,
+				PlayerId: playerId,
+				Username: globalData.UserName,
+				TotalLaps: _targetLaps,
+				TotalTime: totalTime,
+				LapTimes: GetPlayerLapTimes(playerId).ToArray(),
+				Checkpoints: GetPlayerCheckpointTimes(playerId)
+			);
+
+			// Add race entry to database
+			globalData.RaceDb.AddRaceEntry(raceEntry);
+
+			// Save updated database
+			var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
+			if (saveResult.IsSuccess)
 			{
-				// Save using new key format with username and update counters
-				globalData.Racing.SetBestRaceTime(_currentTrackId, _targetLaps, totalTime, globalData.UserName);
-				
-				// Save updated data
-				var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
-				if (saveResult.IsSuccess)
+				// Check if this was a new best time
+				float currentBestTime = globalData.RaceDb.GetBestRaceTime(_currentTrackId, _targetLaps);
+				bool isNewBest = Mathf.Abs(currentBestTime - totalTime) < 0.001f;
+
+				// Thread-safe logging via CallDeferred
+				if (isNewBest)
 				{
-					// Thread-safe logging via CallDeferred
 					CallDeferred(MethodName.LogHighScoreSaved, totalTime, $"{_currentTrackId}_{_targetLaps}laps");
 				}
 				else
 				{
-					// Thread-safe error logging via CallDeferred
-					CallDeferred(MethodName.LogHighScoreError, saveResult.Error);
+					CallDeferred(MethodName.LogRaceSaved, totalTime, _currentTrackId);
 				}
+			}
+			else
+			{
+				// Thread-safe error logging via CallDeferred
+				CallDeferred(MethodName.LogHighScoreError, saveResult.Error);
 			}
 		}
 		catch (System.Exception ex)
@@ -561,7 +578,17 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void LogHighScoreError(string error)
 	{
-		GD.PrintErr($"[RacingGame] Failed to save high score: {error}");
+		GD.PrintErr($"[RacingGame] Failed to save race data: {error}");
+	}
+
+	private void LogRaceSaved(float totalTime, string trackId)
+	{
+		GD.Print($"[RacingGame] Race completed and saved - Time: {totalTime:F3}s, Track: {trackId}");
+	}
+
+	private void LogPotentialBestLap(float lapTime, string trackId)
+	{
+		GD.Print($"[RacingGame] Potential best lap time - Time: {lapTime:F3}s, Track: {trackId} (will save on race completion)");
 	}
 	
 	/// <summary>
@@ -598,30 +625,26 @@ public partial class RacingGame : GameController
 			
 			var globalData = globalDataResult.Value;
 			
-			// Use new stable track ID system
-			float currentBestLapTime = globalData.Racing.GetBestLapTime(_currentTrackId);
-			
+			// Note: Individual lap times are now saved as part of complete race entries
+			// This method is called during races but actual persistence happens only on race completion
+			// Check current best lap time for comparison
+			float currentBestLapTime = globalData.RaceDb.GetBestLapTime(_currentTrackId);
+
 			// Check if this is a new best lap time (0 means no time recorded)
 			bool isNewBest = currentBestLapTime == 0f || currentBestLapTime > lapTime;
-			
+
 			if (isNewBest)
 			{
-				// Save using new key format with username
-				globalData.Racing.SetBestLapTime(_currentTrackId, lapTime, globalData.UserName);
-				
-				// Save updated data
-				var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
-				if (saveResult.IsSuccess)
-				{
-					// Thread-safe logging via CallDeferred
-					CallDeferred(MethodName.LogBestLapSaved, lapTime, $"{_currentTrackId}_bestlap");
-				}
+				// Log the potential new best lap time (will be saved on race completion)
+				CallDeferred(MethodName.LogPotentialBestLap, lapTime, _currentTrackId);
 			}
+
+			// No immediate save - lap times are persisted only when race completes
 		}
 		catch (System.Exception ex)
 		{
 			// Thread-safe error logging via CallDeferred
-			CallDeferred(MethodName.LogAsyncError, $"Exception saving lap time: {ex.Message}");
+			CallDeferred(MethodName.LogAsyncError, $"Exception accessing lap time data: {ex.Message}");
 		}
 	}
 
@@ -710,7 +733,7 @@ public partial class RacingGame : GameController
 		
 		SetGameMode(GameMode.TimeTrial);
 		ResetForNewRace(); // Complete reset including car physics state
-		
+
 		if (ShowCountdown)
 		{
 			StartCountdown();
@@ -719,6 +742,12 @@ public partial class RacingGame : GameController
 		{
 			_timingSystem?.StartRacing(); // Set racing state
 			StartGame();
+
+			// Start first lap for all players (same as EndCountdown does)
+			foreach (var player in _players)
+			{
+				_timingSystem.StartPlayerLap(player.PlayerId);
+			}
 		}
 	}
 
@@ -931,7 +960,7 @@ public partial class RacingGame : GameController
 			var trackScene = TrackScenes[i];
 			if (trackScene?.ResourcePath != null)
 			{
-				var trackId = RacingGlobalDataStore.GenerateTrackId(trackScene);
+				var trackId = RaceDatabase.GenerateTrackId(trackScene);
 				_trackIndexToIdMap[i] = trackId;
 			}
 		}
@@ -962,7 +991,7 @@ public partial class RacingGame : GameController
 				_currentTrackIndex = 0;
 				
 				// Generate track ID from track name for direct child tracks
-				_currentTrackId = RacingGlobalDataStore.GenerateTrackIdFromName(trackDef.TrackName);
+				_currentTrackId = RaceDatabase.GenerateTrackIdFromName(trackDef.TrackName);
 				_trackIndexToIdMap[0] = _currentTrackId;
 				
 				SetupLoadedTrack();
@@ -1181,7 +1210,7 @@ public partial class RacingGame : GameController
 		if (player == null) 
 			return;
 
-		string playerId = player.PlayerId ?? "player1";
+		string playerId = GetCurrentGamePlayerId();
 		if (GetGameMode() == GameMode.TimeTrial && GetPlayerCurrentLap(playerId) > 0)
 		{
 			// Check if this should be treated as finish line crossing
@@ -1215,7 +1244,7 @@ public partial class RacingGame : GameController
 		if (player == null) 
 			return;
 
-		string playerId = player.PlayerId ?? "player1";
+		string playerId = GetCurrentGamePlayerId();
 		
 		// Set processing state during finish line handling
 		_timingSystem?.SetCrossingFinish();
@@ -1250,7 +1279,7 @@ public partial class RacingGame : GameController
 		if (player == null) 
 			return;
 
-		string playerId = player.PlayerId ?? "player1";
+		string playerId = GetCurrentGamePlayerId();
 		if (GetGameMode() == GameMode.TimeTrial && checkpointIndex == _nextCheckpointIndex)
 		{
 			_checkpointsCrossed[checkpointIndex] = true;
@@ -1372,17 +1401,8 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void HandleMainMenuRequest()
 	{
-		// Return to main menu via GameHost
-		var gameHost = GameHost.GetInstance();
-		if (gameHost != null && IsInstanceValid(gameHost))
-		{
-			gameHost.ReturnToMainMenu();
-		}
-		else
-		{
-			// Fallback: just end the game
-			EndGame();
-		}
+		// Use base class method which includes confirmation dialog
+		ReturnToMainMenu();
 	}
 
 	private void OnEndToPracticeModeRequested()
@@ -1456,6 +1476,12 @@ public partial class RacingGame : GameController
 		{
 			_timingSystem?.StartRacing(); // Set racing state
 			StartGame();
+
+			// Start first lap for all players (same as EndCountdown does)
+			foreach (var player in _players)
+			{
+				_timingSystem.StartPlayerLap(player.PlayerId);
+			}
 		}
 	}
 
@@ -1583,19 +1609,30 @@ public partial class RacingGame : GameController
 			var highScores = new System.Text.StringBuilder("🏁 RACING HIGH SCORES 🏁\n\n");
 			
 			// Get racing best times from typed properties
-			var racingData = globalDataResult.Value.Racing;
+			var racingData = globalDataResult.Value.RaceDb;
 			var allBestTimes = new List<(string track, float time, string type, string username)>();
 
-			// Add best lap times
-			foreach (var lapTime in racingData.BestLapTimes)
+			// Add best times from all tracks
+			var tracksWithRaces = racingData.GetTracksWithRaces();
+			foreach (var trackId in tracksWithRaces)
 			{
-				allBestTimes.Add((lapTime.Key, lapTime.Value.Time, "Best Lap", lapTime.Value.Username));
-			}
+				// Add best lap time for this track
+				var bestLapEntry = racingData.GetBestLapTimeEntry(trackId);
+				if (bestLapEntry != null && bestLapEntry.LapTimes.Any(lap => lap > 0f))
+				{
+					var bestLapTime = bestLapEntry.LapTimes.Where(lap => lap > 0f).Min();
+					allBestTimes.Add((trackId, bestLapTime, "Best Lap", bestLapEntry.Username));
+				}
 
-			// Add best race times
-			foreach (var raceTime in racingData.BestRaceTimes)
-			{
-				allBestTimes.Add((raceTime.Key, raceTime.Value.Time, "Best Race", raceTime.Value.Username));
+				// Add best race times for different lap counts
+				for (int laps = 1; laps <= 10; laps++)
+				{
+					var bestRaceEntry = racingData.GetBestRaceTimeEntry(trackId, laps);
+					if (bestRaceEntry != null && bestRaceEntry.TotalTime > 0f)
+					{
+						allBestTimes.Add((trackId, bestRaceEntry.TotalTime, $"Best Race ({laps} laps)", bestRaceEntry.Username));
+					}
+				}
 			}
 			
 			var racingScores = allBestTimes
@@ -1611,9 +1648,9 @@ public partial class RacingGame : GameController
 				}
 				
 				// Add total races completed
-				if (racingData.TotalRaces > 0)
+				if (racingData.TotalRacesCompleted > 0)
 				{
-					highScores.AppendLine($"\nTotal Races Completed: {racingData.TotalRaces}");
+					highScores.AppendLine($"\nTotal Races Completed: {racingData.TotalRacesCompleted}");
 				}
 			}
 			else
@@ -1697,7 +1734,68 @@ public partial class RacingGame : GameController
 		base.ResumeGame();
 		_timingSystem?.SetPaused(false);
 	}
-	
+
+	/// <summary>
+	/// Override ReturnToMainMenu to pause active time trial races during confirmation
+	/// </summary>
+	protected override async void ReturnToMainMenu()
+	{
+		// Check if we should pause the game during confirmation
+		bool shouldPauseForConfirmation = IsGameActive() &&
+		                                  GetGameMode() == GameMode.TimeTrial &&
+		                                  !IsGamePaused();
+
+		// Pause the game if time trial is active to prevent race interference
+		if (shouldPauseForConfirmation)
+		{
+			PauseGame();
+		}
+
+		try
+		{
+			// Get UIManager for confirmation dialog
+			var uiManager = UIManager.GetInstance();
+			if (uiManager != null)
+			{
+				// Show confirmation dialog
+				bool confirmed = await uiManager.ShowConfirmationAsync(
+					"Return to Menu",
+					"Are you sure you want to return to the main menu?\n\nYour current race progress will be lost.",
+					"Return to Menu",
+					"Cancel"
+				);
+
+				if (!confirmed)
+				{
+					// User cancelled - resume the game if we paused it
+					if (shouldPauseForConfirmation)
+					{
+						ResumeGame();
+					}
+					return;
+				}
+			}
+
+			// User confirmed or no UIManager available - call base implementation
+			// (can't call base async method directly, so replicate the logic)
+			var gameHost = GameHost.GetInstance();
+			if (gameHost != null && GodotObject.IsInstanceValid(gameHost))
+			{
+				gameHost.ReturnToMainMenu();
+			}
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[RacingGame] Error in ReturnToMainMenu: {ex.Message}");
+
+			// Resume game on error to prevent being stuck in paused state
+			if (shouldPauseForConfirmation)
+			{
+				ResumeGame();
+			}
+		}
+	}
+
 	private void UpdateUI()
 	{
 		if (!IsInstanceValid(_uiManager)) 
@@ -1727,7 +1825,7 @@ public partial class RacingGame : GameController
 			if (trackScene?.ResourcePath == null)
 				continue;
 				
-			var trackId = _trackIndexToIdMap.GetValueOrDefault(i, RacingGlobalDataStore.GenerateTrackId(trackScene));
+			var trackId = _trackIndexToIdMap.GetValueOrDefault(i, RaceDatabase.GenerateTrackId(trackScene));
 			var trackName = GetTrackName(trackScene, i);
 			var defaultLaps = GetTrackDefaultLaps(trackScene);
 			
@@ -1798,8 +1896,8 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private RacingUIState GatherCurrentState()
 	{
-		// Use consistent "player1" for game logic, phone number only for persistence
-		var playerId = "player1";
+		// Use consistent player ID throughout - phone number when logged in
+		var playerId = GetCurrentGamePlayerId();
 		var gameMode = GetGameMode();
 		var loggedIn = _cachedUserManager?.IsUserLoggedIn() ?? false;
 		var currentRacingState = _timingSystem?.CurrentRacingState ?? RacingTimingSystem.RacingState.Idle;
@@ -1919,6 +2017,27 @@ public partial class RacingGame : GameController
 		return null;
 	}
 
+	/// <summary>
+	/// Get the current player ID for all game operations
+	/// Uses phone number when logged in, guest fallback otherwise
+	/// SINGLE SOURCE OF TRUTH for player identification
+	/// </summary>
+	private string GetCurrentGamePlayerId()
+	{
+		// First try to get from the racing car (already initialized with phone number)
+		var player = _racingCar?.GetPlayer();
+		if (player != null && !string.IsNullOrEmpty(player.PlayerId) && player.PlayerId != "player1")
+			return player.PlayerId;
+
+		// Fallback to phone number lookup
+		var phoneNumber = GetCurrentPlayerPhoneNumber();
+		if (!string.IsNullOrEmpty(phoneNumber))
+			return phoneNumber;
+
+		// Guest player fallback
+		return "guest_player";
+	}
+
 	// ================================================================
 	// RACING DATA GETTERS
 	// ================================================================
@@ -1928,6 +2047,18 @@ public partial class RacingGame : GameController
 	public float GetPlayerBestLapTime(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerBestLapTime(playerId) : 0.0f;
 	public float GetPlayerGapTime(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerGapTime(playerId) : 0.0f;
 	public List<float> GetPlayerLapTimes(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerLapTimes(playerId) : new List<float>();
+
+	/// <summary>
+	/// Get checkpoint times for a player as an array for race entry creation
+	/// </summary>
+	private CheckpointTime[] GetPlayerCheckpointTimes(string playerId)
+	{
+		if (IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId))
+		{
+			return _timingSystem.GetPlayerCheckpointTimes(playerId).ToArray();
+		}
+		return Array.Empty<CheckpointTime>();
+	}
 	public RacingTimingSystem.RacingState GetRacingState() => IsInstanceValid(_timingSystem) ? _timingSystem.CurrentRacingState : RacingTimingSystem.RacingState.Idle;
 	public bool IsInCountdown() => IsInstanceValid(_timingSystem) && _timingSystem.IsInCountdown;
 	public int GetCountdownNumber() => IsInstanceValid(_timingSystem) ? _timingSystem.CountdownNumber : 0;
