@@ -43,6 +43,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	private SessionManager _sessionManager;
 	private UIManager _uiManager;
 
+	// Modals
+	private CreditTransferModal _creditTransferModal;
+
 	// Player slot tracking
 	private Dictionary<int, string> _slotToPhoneNumber = new Dictionary<int, string>();
 	private Dictionary<string, int> _creditsTransferredByPlayer = new Dictionary<string, int>();
@@ -220,6 +223,346 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		}
 	}
 
+	/// <summary>
+	/// Credit transfer confirmation modal with amount selection
+	/// Renders at Layer 109 (above game modals, below system modals)
+	/// </summary>
+	private partial class CreditTransferModal : CanvasLayer
+	{
+		// Transfer state
+		private string _targetPhoneNumber;
+		private int _targetSlotIndex;
+		private string _playerName;
+		private int _availableCredits;
+		private int _selectedAmount = 1;
+
+		// Constants
+		private const int MIN_TRANSFER_AMOUNT = 1;
+		private const int MAX_TRANSFER_PER_TRANSACTION = 20;
+
+		// Async completion
+		private TaskCompletionSource<int?> _completionSource;
+
+		// UI Components
+		private Panel _backgroundPanel;
+		private Panel _modalPanel;
+		private Label _titleLabel;
+		private Label _playerNameLabel;
+		private Label _availableCreditsLabel;
+		private Button _decrementButton;
+		private Label _amountLabel;
+		private Button _incrementButton;
+		private Label _statusLabel;
+		private Button _confirmButton;
+		private Button _cancelButton;
+
+		public CreditTransferModal()
+		{
+			// Set layer to 109 (between game modals at 108 and system modals at 110)
+			Layer = 109;
+
+			CreateModalUI();
+			Visible = false;
+		}
+
+		private void CreateModalUI()
+		{
+			// CanvasLayer automatically fills the viewport, no anchor setup needed
+
+			// Semi-transparent background
+			_backgroundPanel = new Panel();
+			_backgroundPanel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+			var backgroundStyle = new StyleBoxFlat();
+			backgroundStyle.BgColor = new Color(0.0f, 0.0f, 0.0f, 0.7f);
+			_backgroundPanel.AddThemeStyleboxOverride("panel", backgroundStyle);
+			AddChild(_backgroundPanel);
+
+			// Click background to cancel
+			_backgroundPanel.GuiInput += (InputEvent @event) =>
+			{
+				if (@event is InputEventMouseButton mouseButton &&
+				    mouseButton.Pressed &&
+				    mouseButton.ButtonIndex == MouseButton.Left)
+				{
+					OnCancelPressed();
+				}
+			};
+
+			// Centering container
+			var centerContainer = new CenterContainer();
+			centerContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+			AddChild(centerContainer);
+
+			// Modal panel
+			_modalPanel = new Panel();
+			_modalPanel.CustomMinimumSize = new Vector2(400, 350);
+			_modalPanel.SetSize(new Vector2(400, 350));
+
+			var modalStyle = new StyleBoxFlat();
+			modalStyle.BgColor = new Color(0.1f, 0.1f, 0.12f, 1.0f);
+			modalStyle.BorderWidthTop = 3;
+			modalStyle.BorderWidthBottom = 3;
+			modalStyle.BorderWidthLeft = 3;
+			modalStyle.BorderWidthRight = 3;
+			modalStyle.BorderColor = new Color(0.4f, 0.4f, 0.5f, 1.0f);
+			modalStyle.CornerRadiusTopLeft = 10;
+			modalStyle.CornerRadiusTopRight = 10;
+			modalStyle.CornerRadiusBottomLeft = 10;
+			modalStyle.CornerRadiusBottomRight = 10;
+			_modalPanel.AddThemeStyleboxOverride("panel", modalStyle);
+
+			centerContainer.AddChild(_modalPanel);
+
+			// Content container with padding
+			var marginContainer = new MarginContainer();
+			marginContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+			marginContainer.AddThemeConstantOverride("margin_left", 20);
+			marginContainer.AddThemeConstantOverride("margin_right", 20);
+			marginContainer.AddThemeConstantOverride("margin_top", 20);
+			marginContainer.AddThemeConstantOverride("margin_bottom", 20);
+			_modalPanel.AddChild(marginContainer);
+
+			var contentContainer = new VBoxContainer();
+			contentContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+			contentContainer.AddThemeConstantOverride("separation", 15);
+			marginContainer.AddChild(contentContainer);
+
+			// Title
+			_titleLabel = new Label();
+			_titleLabel.Text = "Transfer Credits";
+			_titleLabel.HorizontalAlignment = HorizontalAlignment.Center;
+			_titleLabel.AddThemeColorOverride("font_color", Colors.White);
+			_titleLabel.AddThemeFontSizeOverride("font_size", 20);
+			contentContainer.AddChild(_titleLabel);
+
+			// Player name
+			_playerNameLabel = new Label();
+			_playerNameLabel.Text = "Player: ";
+			_playerNameLabel.HorizontalAlignment = HorizontalAlignment.Center;
+			_playerNameLabel.AddThemeColorOverride("font_color", Colors.LightGray);
+			_playerNameLabel.AddThemeFontSizeOverride("font_size", 16);
+			contentContainer.AddChild(_playerNameLabel);
+
+			// Available credits
+			_availableCreditsLabel = new Label();
+			_availableCreditsLabel.Text = "Available: 0 credits";
+			_availableCreditsLabel.HorizontalAlignment = HorizontalAlignment.Center;
+			_availableCreditsLabel.AddThemeColorOverride("font_color", Colors.LightGreen);
+			_availableCreditsLabel.AddThemeFontSizeOverride("font_size", 14);
+			contentContainer.AddChild(_availableCreditsLabel);
+
+			// Separator
+			var separator1 = new HSeparator();
+			contentContainer.AddChild(separator1);
+
+			// Amount selection container
+			var amountContainer = new HBoxContainer();
+			amountContainer.Alignment = BoxContainer.AlignmentMode.Center;
+			amountContainer.AddThemeConstantOverride("separation", 20);
+			contentContainer.AddChild(amountContainer);
+
+			// Decrement button
+			_decrementButton = new Button();
+			_decrementButton.Text = "−";
+			_decrementButton.CustomMinimumSize = new Vector2(50, 50);
+			_decrementButton.AddThemeFontSizeOverride("font_size", 24);
+			TopMenuBar.ApplyStandardButtonStyle(_decrementButton);
+			_decrementButton.Pressed += OnDecrementPressed;
+			amountContainer.AddChild(_decrementButton);
+
+			// Amount label
+			_amountLabel = new Label();
+			_amountLabel.Text = "1";
+			_amountLabel.HorizontalAlignment = HorizontalAlignment.Center;
+			_amountLabel.CustomMinimumSize = new Vector2(80, 50);
+			_amountLabel.AddThemeColorOverride("font_color", Colors.Yellow);
+			_amountLabel.AddThemeFontSizeOverride("font_size", 28);
+			amountContainer.AddChild(_amountLabel);
+
+			// Increment button
+			_incrementButton = new Button();
+			_incrementButton.Text = "+";
+			_incrementButton.CustomMinimumSize = new Vector2(50, 50);
+			_incrementButton.AddThemeFontSizeOverride("font_size", 24);
+			TopMenuBar.ApplyStandardButtonStyle(_incrementButton);
+			_incrementButton.Pressed += OnIncrementPressed;
+			amountContainer.AddChild(_incrementButton);
+
+			// Status label
+			_statusLabel = new Label();
+			_statusLabel.Text = "";
+			_statusLabel.HorizontalAlignment = HorizontalAlignment.Center;
+			_statusLabel.AddThemeColorOverride("font_color", Colors.Orange);
+			_statusLabel.AddThemeFontSizeOverride("font_size", 12);
+			_statusLabel.CustomMinimumSize = new Vector2(0, 20);
+			contentContainer.AddChild(_statusLabel);
+
+			// Separator
+			var separator2 = new HSeparator();
+			contentContainer.AddChild(separator2);
+
+			// Button container
+			var buttonContainer = new HBoxContainer();
+			buttonContainer.Alignment = BoxContainer.AlignmentMode.Center;
+			buttonContainer.AddThemeConstantOverride("separation", 15);
+			contentContainer.AddChild(buttonContainer);
+
+			// Cancel button
+			_cancelButton = new Button();
+			_cancelButton.Text = "Cancel";
+			_cancelButton.CustomMinimumSize = new Vector2(120, 40);
+			TopMenuBar.ApplyStandardButtonStyle(_cancelButton);
+			_cancelButton.Pressed += OnCancelPressed;
+			buttonContainer.AddChild(_cancelButton);
+
+			// Confirm button (primary style)
+			_confirmButton = new Button();
+			_confirmButton.Text = "Transfer 1 Credit";
+			_confirmButton.CustomMinimumSize = new Vector2(150, 40);
+			ApplyPrimaryButtonStyle(_confirmButton);
+			_confirmButton.Pressed += OnConfirmPressed;
+			buttonContainer.AddChild(_confirmButton);
+		}
+
+		private void ApplyPrimaryButtonStyle(Button button)
+		{
+			var normalStyle = new StyleBoxFlat();
+			normalStyle.BgColor = new Color(0.4f, 0.6f, 0.4f, 1.0f);
+			normalStyle.BorderWidthTop = 1;
+			normalStyle.BorderWidthBottom = 1;
+			normalStyle.BorderWidthLeft = 1;
+			normalStyle.BorderWidthRight = 1;
+			normalStyle.BorderColor = new Color(0.6f, 0.8f, 0.6f, 1.0f);
+			normalStyle.CornerRadiusTopLeft = 4;
+			normalStyle.CornerRadiusTopRight = 4;
+			normalStyle.CornerRadiusBottomLeft = 4;
+			normalStyle.CornerRadiusBottomRight = 4;
+			button.AddThemeStyleboxOverride("normal", normalStyle);
+
+			var hoverStyle = new StyleBoxFlat();
+			hoverStyle.BgColor = new Color(0.5f, 0.7f, 0.5f, 1.0f);
+			hoverStyle.BorderWidthTop = 1;
+			hoverStyle.BorderWidthBottom = 1;
+			hoverStyle.BorderWidthLeft = 1;
+			hoverStyle.BorderWidthRight = 1;
+			hoverStyle.BorderColor = new Color(0.7f, 0.9f, 0.7f, 1.0f);
+			hoverStyle.CornerRadiusTopLeft = 4;
+			hoverStyle.CornerRadiusTopRight = 4;
+			hoverStyle.CornerRadiusBottomLeft = 4;
+			hoverStyle.CornerRadiusBottomRight = 4;
+			button.AddThemeStyleboxOverride("hover", hoverStyle);
+
+			button.AddThemeColorOverride("font_color", Colors.White);
+			button.AddThemeFontSizeOverride("font_size", 14);
+		}
+
+		public async Task<int?> ShowAsync(string phoneNumber, int slotIndex, string playerName, int availableCredits)
+		{
+			// Set state
+			_targetPhoneNumber = phoneNumber;
+			_targetSlotIndex = slotIndex;
+			_playerName = playerName;
+			_availableCredits = availableCredits;
+			_selectedAmount = 1;
+
+			// Update UI
+			_playerNameLabel.Text = $"Player: {_playerName}";
+			_availableCreditsLabel.Text = $"Available: {_availableCredits} credit{(_availableCredits != 1 ? "s" : "")}";
+			_amountLabel.Text = _selectedAmount.ToString();
+			_statusLabel.Text = "";
+
+			UpdateButtonStates();
+
+			// Create completion source
+			_completionSource = new TaskCompletionSource<int?>();
+
+			// Show modal
+			Visible = true;
+
+			return await _completionSource.Task;
+		}
+
+		private void HideModal()
+		{
+			Visible = false;
+		}
+
+		private void UpdateButtonStates()
+		{
+			// Update amount label
+			_amountLabel.Text = _selectedAmount.ToString();
+
+			// Decrement button: disabled at minimum
+			_decrementButton.Disabled = _selectedAmount <= MIN_TRANSFER_AMOUNT;
+
+			// Increment button: disabled at maximum (min of MAX_TRANSFER or available credits)
+			int maxAmount = Math.Min(MAX_TRANSFER_PER_TRANSACTION, _availableCredits);
+			_incrementButton.Disabled = _selectedAmount >= maxAmount;
+
+			// Confirm button text and state
+			string creditText = _selectedAmount != 1 ? "Credits" : "Credit";
+			_confirmButton.Text = $"Transfer {_selectedAmount} {creditText}";
+			_confirmButton.Disabled = _selectedAmount > _availableCredits || _selectedAmount < MIN_TRANSFER_AMOUNT;
+
+			// Status message
+			if (_selectedAmount >= MAX_TRANSFER_PER_TRANSACTION && _availableCredits > MAX_TRANSFER_PER_TRANSACTION)
+			{
+				_statusLabel.Text = $"Maximum {MAX_TRANSFER_PER_TRANSACTION} credits per transfer";
+				_statusLabel.Modulate = Colors.Orange;
+			}
+			else if (_selectedAmount >= _availableCredits && _availableCredits < MAX_TRANSFER_PER_TRANSACTION)
+			{
+				_statusLabel.Text = "All available credits selected";
+				_statusLabel.Modulate = Colors.Yellow;
+			}
+			else
+			{
+				_statusLabel.Text = "";
+			}
+		}
+
+		private void OnDecrementPressed()
+		{
+			if (_selectedAmount > MIN_TRANSFER_AMOUNT)
+			{
+				_selectedAmount--;
+				UpdateButtonStates();
+			}
+		}
+
+		private void OnIncrementPressed()
+		{
+			int maxAmount = Math.Min(MAX_TRANSFER_PER_TRANSACTION, _availableCredits);
+			if (_selectedAmount < maxAmount)
+			{
+				_selectedAmount++;
+				UpdateButtonStates();
+			}
+		}
+
+		private void OnConfirmPressed()
+		{
+			// Final validation
+			if (_selectedAmount < MIN_TRANSFER_AMOUNT || _selectedAmount > _availableCredits)
+			{
+				_statusLabel.Text = "Invalid amount selected";
+				_statusLabel.Modulate = Colors.Red;
+				return;
+			}
+
+			// Complete the task with the selected amount
+			_completionSource?.SetResult(_selectedAmount);
+			HideModal();
+		}
+
+		private void OnCancelPressed()
+		{
+			// Complete the task with null (cancelled)
+			_completionSource?.SetResult(null);
+			HideModal();
+		}
+	}
+
 	public override void _Ready()
 	{
 		// Set layer for game modals (below system modals like login/buy credits)
@@ -227,6 +570,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		_sessionManager = SessionManager.GetInstance();
 		_uiManager = UIManager.GetInstance();
+
+		// Create credit transfer modal
+		_creditTransferModal = new CreditTransferModal();
+		AddChild(_creditTransferModal);
 
 		// Connect to SessionManager signals for real-time updates
 		if (_sessionManager != null)
@@ -690,25 +1037,42 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			return;
 
 		// Check if player has credits
-		if (session.GlobalData.GlobalCredits < 1)
+		int availableCredits = session.GlobalData.GlobalCredits;
+		if (availableCredits < 1)
 		{
 			GD.Print($"Player {phoneNumber} has insufficient credits");
 			return;
 		}
 
-		// Transfer 1 credit from player to table
-		// Note: We temporarily decrement here, but don't persist until game starts
-		var spendResult = await _sessionManager.CheckAndSpendGlobalCreditsAsync(phoneNumber, 1, "Transfer to Carrom table");
+		// Show modal and get selected amount
+		var selectedAmount = await _creditTransferModal.ShowAsync(
+			phoneNumber,
+			slotIndex,
+			session.GlobalData.UserName,
+			availableCredits
+		);
+
+		// If cancelled or invalid, return
+		if (!selectedAmount.HasValue || selectedAmount.Value < 1)
+			return;
+
+		// Transfer the selected amount
+		var spendResult = await _sessionManager.CheckAndSpendGlobalCreditsAsync(
+			phoneNumber,
+			selectedAmount.Value,
+			"Transfer to Carrom table"
+		);
+
 		if (spendResult)
 		{
-			_tableCredits += 1;
+			_tableCredits += selectedAmount.Value;
 
 			// Track how many credits this player has transferred
 			if (!_creditsTransferredByPlayer.ContainsKey(phoneNumber))
 			{
 				_creditsTransferredByPlayer[phoneNumber] = 0;
 			}
-			_creditsTransferredByPlayer[phoneNumber] += 1;
+			_creditsTransferredByPlayer[phoneNumber] += selectedAmount.Value;
 
 			// Update displays
 			var updatedSession = _sessionManager.GetUserSession(phoneNumber);
