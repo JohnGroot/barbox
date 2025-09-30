@@ -19,6 +19,17 @@ public partial class UIManager : AutoloadBase
 		return GetAutoload<UIManager>();
 	}
 
+	/// <summary>
+	/// UI Layer Hierarchy
+	/// Defines the z-ordering of UI elements to prevent layering conflicts
+	/// Lower numbers render first (behind), higher numbers render last (in front)
+	/// </summary>
+	private const int LAYER_GAME_UI = 100;        // Game HUDs, TopMenuBar, score displays
+	private const int LAYER_HELP = 105;           // Help overlays and information panels
+	private const int LAYER_GAME_MODAL = 108;     // Game-specific setup/configuration modals
+	private const int LAYER_SYSTEM_MODAL = 110;   // System action modals (login, buy credits, confirmations)
+	private const int LAYER_CRITICAL = 115;       // Critical alerts and error dialogs (future use)
+
 	private CanvasLayer _topMenuLayer;
 	private CanvasLayer _modalLayer;
 	private CanvasLayer _helpLayer;
@@ -54,17 +65,17 @@ public partial class UIManager : AutoloadBase
 		
 		// Create top menu layer
 		_topMenuLayer = new CanvasLayer();
-		_topMenuLayer.Layer = 100; // High layer to appear above everything
+		_topMenuLayer.Layer = LAYER_GAME_UI; // Game UI elements and top menu bar
 		AddChild(_topMenuLayer);
-		
-		// Create help layer (between games and top menu)
+
+		// Create help layer
 		_helpLayer = new CanvasLayer();
-		_helpLayer.Layer = 105; // Above games but below top menu
+		_helpLayer.Layer = LAYER_HELP; // Help overlays appear above game UI
 		AddChild(_helpLayer);
 
-		// Create modal layer (higher than top menu)
+		// Create modal layer for system modals
 		_modalLayer = new CanvasLayer();
-		_modalLayer.Layer = 110; // Higher layer to appear above top menu
+		_modalLayer.Layer = LAYER_SYSTEM_MODAL; // System modals (login, buy credits) appear above game modals
 		AddChild(_modalLayer);
 
 		// Create top menu bar (now includes context buttons)

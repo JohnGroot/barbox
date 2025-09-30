@@ -70,6 +70,8 @@ public partial class CarromGame : GameController
 	
 	// UI Components
 	private CarromScoreDisplay _scoreDisplay;
+	private CarromPlayerSetupMenu _playerSetupMenu;
+	private int _pendingPlayerCount = 2; // Track player count for menu → game transition
 	
 	// Game state is now managed entirely by CarromGameStateMachine
 
@@ -350,6 +352,12 @@ public partial class CarromGame : GameController
 
 		// Connect to Pass Turn signal for manual turn advancement
 		_scoreDisplay.PassTurnRequested += OnPassTurnRequested;
+
+		// Initialize player setup menu
+		_playerSetupMenu = new CarromPlayerSetupMenu();
+		AddChild(_playerSetupMenu);
+		_playerSetupMenu.GameStartRequested += OnPlayerSetupMenuGameStartRequested;
+		_playerSetupMenu.MenuCancelled += OnPlayerSetupMenuCancelled;
 	}
 	
 	/// <summary>
@@ -502,52 +510,44 @@ public partial class CarromGame : GameController
 	}
 
 	/// <summary>
-	/// Start competitive mode (full carrom rules) with credit checking
+	/// Start competitive mode (full carrom rules) - now shows player setup menu first
 	/// </summary>
-	public virtual async void StartCompetitiveMode(int playerCount = 2)
+	public virtual void StartCompetitiveMode(int playerCount = 2)
 	{
-		if (_isGameActive) 
+		if (_isGameActive)
 			return;
-		
-		// Check credits in production mode
-		string phoneNumber = GetCurrentUserPhoneNumber();
-		if (!string.IsNullOrEmpty(phoneNumber) && CompetitiveCreditCost > 0)
+
+		// Store player count for when menu signals game start
+		_pendingPlayerCount = playerCount;
+
+		// Show player setup menu instead of immediately starting
+		if (_playerSetupMenu != null)
 		{
-			bool isDevelopmentMode = Engine.IsEditorHint() || OS.IsDebugBuild();
-			if (!isDevelopmentMode)
-			{
-				var sessionManager = SessionManager.GetInstance();
-				if (sessionManager != null)
-				{
-					bool creditsSpent = await sessionManager.CheckAndSpendGlobalCreditsAsync(
-						phoneNumber, CompetitiveCreditCost, "Competitive Carrom Match");
-					
-					// Check if game is still valid after await
-					if (!IsInstanceValid(this))
-						return;
-					
-					if (!creditsSpent)
-					{
-						GD.Print("[CarromGame] Competitive mode cancelled - insufficient credits");
-						return;
-					}
-				}
-			}
+			_playerSetupMenu.ShowMenu(playerCount, CompetitiveCreditCost);
 		}
-		
+	}
+
+	/// <summary>
+	/// Actually start the competitive mode after player setup is complete
+	/// </summary>
+	private void StartCompetitiveModeInternal(int playerCount)
+	{
+		if (_isGameActive)
+			return;
+
 		// Clean up practice mode before switching
 		_practiceModeManager?.CleanupMode();
-		
+
 		// Configure player count
 		_competitiveModeManager?.SetPlayerCount(playerCount);
-		
+
 		// Set current mode manager to competitive
 		_currentModeManager = _competitiveModeManager;
 		_carromGameMode = CarromGameMode.Competitive;
 		SetGameMode(GameMode.TimeTrial); // Use TimeTrial for competitive tracking
 		ResetGame();
 		StartGame();
-		
+
 		// Delegate to competitive mode manager
 		bool success = _competitiveModeManager.StartCompetitiveMode();
 		if (!success)
@@ -1302,25 +1302,6 @@ public partial class CarromGame : GameController
 			ReturnToMainMenu();
 		}));
 
-		// Pause/Resume button
-		if (CanPause)
-		{
-			if (_isGamePaused)
-			{
-				buttons.Add(GameContextButton.CreateResumeButton(() => {
-					ResumeGame();
-					RefreshUI();
-				}));
-			}
-			else if (_isGameActive)
-			{
-				buttons.Add(GameContextButton.CreatePauseButton(() => {
-					PauseGame();
-					RefreshUI();
-				}));
-			}
-		}
-
 		// Mode-specific buttons
 		if (_carromGameMode == CarromGameMode.Practice)
 		{
@@ -2029,6 +2010,24 @@ public partial class CarromGame : GameController
 		}
 	}
 
+	/// <summary>
+	/// Handle player setup menu game start request
+	/// </summary>
+	private void OnPlayerSetupMenuGameStartRequested()
+	{
+		// Use the stored player count from when the menu was shown
+		StartCompetitiveModeInternal(_pendingPlayerCount);
+	}
+
+	/// <summary>
+	/// Handle player setup menu cancellation
+	/// </summary>
+	private void OnPlayerSetupMenuCancelled()
+	{
+		// Return to practice mode
+		StartPracticeMode();
+	}
+
 	public override void _ExitTree()
 	{
 		base._ExitTree();
@@ -2065,7 +2064,14 @@ public partial class CarromGame : GameController
 		{
 			_gameStateMachine.InputAvailabilityChanged -= OnInputAvailabilityChanged;
 		}
-		
+
+		// Clean up player setup menu signals
+		if (_playerSetupMenu != null && GodotObject.IsInstanceValid(_playerSetupMenu))
+		{
+			_playerSetupMenu.GameStartRequested -= OnPlayerSetupMenuGameStartRequested;
+			_playerSetupMenu.MenuCancelled -= OnPlayerSetupMenuCancelled;
+		}
+
 		// Clean up animation components
 		_strikerTween?.Kill();
 		_penaltyPiecesTween?.Kill();
