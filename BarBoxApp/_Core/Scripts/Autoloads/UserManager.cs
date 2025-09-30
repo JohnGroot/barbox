@@ -17,11 +17,11 @@ public partial class UserManager : AutoloadBase
 		return AutoloadBase.GetAutoload<UserManager>();
 	}
 
-	// Redirect to SessionManager for basic compatibility
+	// Redirect to SessionManager for backward compatibility (primary user)
 	public UserSession GetCurrentUserSession()
 	{
 		var sessionManager = SessionManager.GetInstance();
-		return sessionManager?.GetCurrentUserSession();
+		return sessionManager?.GetPrimaryUserSession();
 	}
 
 	public string GetCurrentUserPhoneNumber()
@@ -45,13 +45,13 @@ public partial class UserManager : AutoloadBase
 	public bool IsUserLoggedIn()
 	{
 		var sessionManager = SessionManager.GetInstance();
-		return sessionManager?.GetCurrentUserSession() != null;
+		return sessionManager?.GetPrimaryUserSession() != null;
 	}
 
 	public async Task LogoutUserAsync()
 	{
 		var sessionManager = SessionManager.GetInstance();
-		var session = sessionManager?.GetCurrentUserSession();
+		var session = sessionManager?.GetPrimaryUserSession();
 		if (session != null)
 		{
 			await sessionManager.LogoutUserAsync(session.PhoneNumber);
@@ -110,7 +110,7 @@ public partial class UserManager : AutoloadBase
 	public void AddCredits(int amount)
 	{
 		var sessionManager = SessionManager.GetInstance();
-		var session = sessionManager?.GetCurrentUserSession();
+		var session = sessionManager?.GetPrimaryUserSession();
 		if (session != null && sessionManager != null)
 		{
 			_ = sessionManager.AddGlobalCreditsAsync(session.PhoneNumber, amount, "Compatibility method");
@@ -159,7 +159,8 @@ public partial class UserManager : AutoloadBase
 	private void OnSessionUserLoggedIn(string phoneNumber)
 	{
 		// Convert SessionManager's UserLoggedIn(string) to UserManager's UserLoggedIn(string, string)
-		var session = GetCurrentUserSession();
+		var sessionManager = SessionManager.GetInstance();
+		var session = sessionManager?.GetUserSession(phoneNumber);
 		var userName = session?.GlobalData?.UserName ?? string.Empty;
 
 		EmitSignal(SignalName.UserLoggedIn, phoneNumber, userName);

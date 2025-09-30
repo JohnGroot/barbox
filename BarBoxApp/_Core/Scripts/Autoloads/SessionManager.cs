@@ -4,8 +4,32 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 
 /// <summary>
-/// Simplified session management service replacing UserManager + CreditManager
-/// Handles user authentication, sessions, and credit operations
+/// Multi-user session management service with Phone/Username/PIN authentication
+///
+/// ARCHITECTURE:
+/// - Supports multiple concurrent user sessions (multi-user games like Carrom 2v2)
+/// - Phone number is primary identifier (10 digits)
+/// - Username is display name (max 7 characters, public)
+/// - 4-digit PIN for authentication
+///
+/// PRIMARY USER CONCEPT:
+/// - Primary user = first logged-in user (for UI display and single-user convenience)
+/// - Use GetPrimaryUserSession() for:
+///   * TopMenuBar/UI display (showing "a" user)
+///   * Single-user game contexts (Racing, Mining)
+///   * Auto-populate convenience (first slot in multiplayer setup)
+///   * Fallback scenarios (GameHost.GetPlayerSession)
+///
+/// MULTI-USER PATTERNS:
+/// - Multi-user games MUST use GetUserSession(phoneNumber) for explicit targeting
+/// - Example: CarromPlayerSetupMenu tracks users per slot explicitly
+/// - User-specific operations (BuyCredits, logout) require explicit phone number
+///
+/// API USAGE:
+/// - GetPrimaryUserSession() → Primary user (UI/single-user contexts)
+/// - GetUserSession(phoneNumber) → Specific user (multi-user contexts)
+/// - LoginUserByPhoneAsync(phone, pin) → Authenticate user
+/// - LogoutUserAsync(phoneNumber) → Logout specific user
 /// </summary>
 public partial class SessionManager : AutoloadBase
 {
@@ -169,41 +193,6 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Legacy method - authenticate and log in a user (deprecated, use LoginUserByPhoneAsync)
-	/// </summary>
-	[System.Obsolete("Use LoginUserByPhoneAsync instead for phone number authentication")]
-	public async Task<bool> LoginUserAsync(string phoneNumber, string pin = null)
-	{
-		if (string.IsNullOrEmpty(phoneNumber))
-			return false;
-
-		// Don't allow duplicate sessions
-		if (_activeSessions.ContainsKey(phoneNumber))
-			return false;
-
-		try
-		{
-			// In development, skip PIN validation
-			if (GameHost.IsDevelopmentContext())
-			{
-				return await CreateUserSession(phoneNumber);
-			}
-
-			// In production, validate PIN (simplified for prototype)
-			if (string.IsNullOrEmpty(pin) || pin.Length > 5)
-				return false;
-
-			// For prototype: accept any PIN of reasonable length
-			return await CreateUserSession(phoneNumber);
-		}
-		catch (Exception ex)
-		{
-			LogError($"Error logging in user {phoneNumber}: {ex.Message}");
-			return false;
-		}
-	}
-
-	/// <summary>
 	/// Log out a user and sync their data
 	/// </summary>
 	public async Task<bool> LogoutUserAsync(string phoneNumber)
@@ -253,9 +242,11 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Get first active user (for single-user scenarios)
+	/// Get primary user session (first logged-in user)
+	/// Use for: UI display (TopMenuBar), single-user game contexts, auto-populate convenience
+	/// Multi-user games: use GetUserSession(phoneNumber) for explicit targeting
 	/// </summary>
-	public UserSession GetCurrentUserSession()
+	public UserSession GetPrimaryUserSession()
 	{
 		foreach (var session in _activeSessions.Values)
 			return session;
@@ -378,52 +369,6 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	// Private helper methods
-
-	private async Task<bool> CreateUserSession(string phoneNumber)
-	{
-		// Load user data
-		var globalDataResult = await _dataStore.GetGlobalDataAsync(phoneNumber);
-		var localDataResult = await _dataStore.GetLocalDataAsync(phoneNumber);
-
-		if (!globalDataResult.IsSuccess)
-		{
-			LogError($"Failed to get global data for user {phoneNumber}: {globalDataResult.Error}");
-			return false;
-		}
-
-		if (!localDataResult.IsSuccess)
-		{
-			LogError($"Failed to get local data for user {phoneNumber}: {localDataResult.Error}");
-			return false;
-		}
-
-		var globalData = globalDataResult.Value;
-		var localData = localDataResult.Value;
-
-		// Create session
-		var session = new UserSession
-		{
-			PhoneNumber = phoneNumber,
-			LocationId = CurrentLocationId,
-			LoginTime = DateTime.UtcNow,
-			LastActivity = DateTime.UtcNow,
-			GlobalData = globalData,
-			LocalData = localData
-		};
-
-		_activeSessions[phoneNumber] = session;
-		
-		// Update login time in local data
-		localData.LastLoginTime = DateTime.UtcNow;
-		var saveResult = await _dataStore.SetLocalDataAsync(phoneNumber, localData);
-		if (!saveResult.IsSuccess)
-			LogWarning($"Failed to save login time for user {phoneNumber}: {saveResult.Error}");
-
-		EmitSignal(SignalName.UserLoggedIn, phoneNumber);
-		LogInfo($"User {phoneNumber} logged in at location {CurrentLocationId}");
-		
-		return true;
-	}
 
 	private async Task<bool> CreateUserSessionFromGlobalData(DataStore.GlobalUserData globalData)
 	{

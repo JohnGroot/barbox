@@ -172,7 +172,7 @@ public partial class MainController : Control
 		var gameData = _gameRegistry?.GetGameData(gameId);
 		if (gameData == null) return;
 
-		// Get current user session if logged in (can be null)
+		// Get primary user session if logged in (single-user main menu context)
 		var currentUserSession = _userManager?.GetCurrentUserSession();
 
 		// Load game - it will run in practice mode if no user is logged in
@@ -195,6 +195,7 @@ public partial class MainController : Control
 
 	private void UpdateUI()
 	{
+		// Show primary user info in main menu UI
 		var currentUserSession = _userManager?.GetCurrentUserSession();
 
 		if (UserInfoLabel != null)

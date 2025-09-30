@@ -1078,7 +1078,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	{
 		if (_sessionManager == null) return;
 		
-		var userSession = _sessionManager.GetCurrentUserSession();
+		var userSession = _sessionManager.GetPrimaryUserSession();
 		if (userSession?.GlobalData != null)
 		{
 			// Carrom competitive games are tracked via wins/losses in CarromGameContext

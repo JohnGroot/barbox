@@ -713,7 +713,7 @@ public partial class RacingGame : GameController
 				return;
 			}
 			
-			var currentSession = _sessionManager.GetCurrentUserSession();
+			var currentSession = _sessionManager.GetPrimaryUserSession();
 			if (currentSession == null)
 			{
 				GD.PrintErr("Time trial cancelled - no active user session");
@@ -1445,7 +1445,7 @@ public partial class RacingGame : GameController
 				return;
 			}
 
-			var currentSession = _sessionManager.GetCurrentUserSession();
+			var currentSession = _sessionManager.GetPrimaryUserSession();
 			if (currentSession == null)
 			{
 				GD.PrintErr("Race again cancelled - no active user session");
@@ -1496,11 +1496,19 @@ public partial class RacingGame : GameController
 			_cachedUserManager.ResetUserIdleTimer();
 		}
 
-		// Show credit purchase modal through UIManager
+		// Get primary user for single-user racing context
+		var currentSession = _sessionManager?.GetPrimaryUserSession();
+		if (currentSession == null)
+		{
+			GD.PrintErr("[RacingGame] No active user session for credit purchase");
+			return;
+		}
+
+		// Show credit purchase modal through UIManager for primary user
 		var uiManager = UIManager.GetInstance();
 		if (uiManager != null && IsInstanceValid(uiManager))
 		{
-			uiManager.ShowBuyCreditsModal();
+			uiManager.ShowBuyCreditsModal(currentSession.PhoneNumber);
 		}
 		else
 		{
@@ -2001,7 +2009,7 @@ public partial class RacingGame : GameController
 			var sessionManager = SessionManager.GetInstance();
 			if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
 			{
-				var currentSession = sessionManager.GetCurrentUserSession();
+				var currentSession = sessionManager.GetPrimaryUserSession();
 				if (currentSession != null)
 				{
 					return currentSession.PhoneNumber;

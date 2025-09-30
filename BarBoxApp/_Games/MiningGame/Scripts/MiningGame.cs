@@ -568,7 +568,7 @@ namespace BarBox.Games.MiningGame
 				var sessionManager = SessionManager.GetInstance();
 				if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
 				{
-					var currentSession = sessionManager.GetCurrentUserSession();
+					var currentSession = sessionManager.GetPrimaryUserSession();
 					if (currentSession != null)
 					{
 						return currentSession.PhoneNumber;

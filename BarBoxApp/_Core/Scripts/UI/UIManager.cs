@@ -238,12 +238,12 @@ public partial class UIManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Update user display based on current login state
+	/// Update user display based on primary user login state
 	/// </summary>
 	public void UpdateUserDisplay()
 	{
-		// Get current user session from SessionManager
-		var session = _sessionManager?.GetCurrentUserSession();
+		// Get primary user session for UI display (TopMenuBar shows primary user)
+		var session = _sessionManager?.GetPrimaryUserSession();
 
 		if (_topMenuBar != null)
 		{
@@ -285,13 +285,14 @@ public partial class UIManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Show the buy credits modal
+	/// Show the buy credits modal for a specific user
 	/// </summary>
-	public void ShowBuyCreditsModal()
+	/// <param name="phoneNumber">Phone number of the user purchasing credits</param>
+	public void ShowBuyCreditsModal(string phoneNumber)
 	{
 		if (_buyCreditsModal != null)
 		{
-			_buyCreditsModal.ShowModal();
+			_buyCreditsModal.ShowModal(phoneNumber);
 		}
 	}
 
@@ -347,8 +348,12 @@ public partial class UIManager : AutoloadBase
 
 	private void OnBuyCreditsRequested()
 	{
-		// Show buy credits modal directly
-		ShowBuyCreditsModal();
+		// Show buy credits modal for primary user (UI convenience - TopMenuBar button)
+		var session = _sessionManager?.GetPrimaryUserSession();
+		if (session != null)
+		{
+			ShowBuyCreditsModal(session.PhoneNumber);
+		}
 	}
 
 	private void OnLogoutRequested()

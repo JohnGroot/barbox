@@ -23,7 +23,7 @@ public partial class BuyCreditsModal : Control
 
 	private PaymentService _paymentService;
 	private SessionManager _sessionManager;
-	private string _currentUserId;
+	private string _targetPhoneNumber;
 
 	public override void _Ready()
 	{
@@ -184,19 +184,26 @@ public partial class BuyCreditsModal : Control
 	}
 
 	/// <summary>
-	/// Show the buy credits modal
+	/// Show the buy credits modal for a specific user
 	/// </summary>
-	public void ShowModal()
+	/// <param name="phoneNumber">Phone number of the user purchasing credits</param>
+	public void ShowModal(string phoneNumber)
 	{
-		// Get current user
-		var session = _sessionManager?.GetCurrentUserSession();
-		if (session == null)
+		if (string.IsNullOrEmpty(phoneNumber))
 		{
-			ShowStatusMessage("Please log in to purchase credits", false);
+			ShowStatusMessage("Invalid user specified", false);
 			return;
 		}
 
-		_currentUserId = session.PhoneNumber;
+		// Get the specified user's session
+		var session = _sessionManager?.GetUserSession(phoneNumber);
+		if (session == null)
+		{
+			ShowStatusMessage("User session not found", false);
+			return;
+		}
+
+		_targetPhoneNumber = phoneNumber;
 		UpdateCurrentCreditsDisplay(session.GlobalData?.GlobalCredits ?? 0);
 
 		Visible = true;
@@ -251,9 +258,9 @@ public partial class BuyCreditsModal : Control
 
 	private async void OnCreditPackSelected(CreditPack creditPack)
 	{
-		if (string.IsNullOrEmpty(_currentUserId))
+		if (string.IsNullOrEmpty(_targetPhoneNumber))
 		{
-			ShowStatusMessage("No user logged in", false);
+			ShowStatusMessage("No user specified", false);
 			return;
 		}
 
@@ -274,21 +281,21 @@ public partial class BuyCreditsModal : Control
 
 		try
 		{
-			var result = await _paymentService.PurchaseCreditsAsync(_currentUserId, creditPack);
+			var result = await _paymentService.PurchaseCreditsAsync(_targetPhoneNumber, creditPack);
 
 			if (result.IsSuccess)
 			{
 				ShowStatusMessage($"Purchase successful! {creditPack.Credits} credits added.", true);
 
-				// Update credits display
-				var session = _sessionManager?.GetCurrentUserSession();
+				// Update credits display for the target user
+				var session = _sessionManager?.GetUserSession(_targetPhoneNumber);
 				if (session?.GlobalData != null)
 				{
 					UpdateCurrentCreditsDisplay(session.GlobalData.GlobalCredits);
 				}
 
 				// Emit signal for UI updates
-				EmitSignal(SignalName.CreditsAcquired, _currentUserId, creditPack.Credits);
+				EmitSignal(SignalName.CreditsAcquired, _targetPhoneNumber, creditPack.Credits);
 
 				// Auto-close after delay
 				await DelayAndClose(2000);

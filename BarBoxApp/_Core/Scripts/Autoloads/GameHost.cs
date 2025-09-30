@@ -174,11 +174,12 @@ public partial class GameHost : AutoloadBase
 
 	/// <summary>
 	/// Get player session - redirects to SessionManager
+	/// Falls back to primary user if specific playerId not found (single-user game fallback)
 	/// </summary>
 	public PlayerSession GetPlayerSession(string playerId)
 	{
 		var sessionManager = SessionManager.GetInstance();
-		var userSession = sessionManager?.GetUserSession(playerId) ?? sessionManager?.GetCurrentUserSession();
+		var userSession = sessionManager?.GetUserSession(playerId) ?? sessionManager?.GetPrimaryUserSession();
 
 		if (userSession != null)
 		{
@@ -258,8 +259,9 @@ public partial class GameHost : AutoloadBase
 
 	public string GetCurrentPlayerId()
 	{
+		// Get primary user for single-user game contexts
 		var sessionManager = SessionManager.GetInstance();
-		var session = sessionManager?.GetCurrentUserSession();
+		var session = sessionManager?.GetPrimaryUserSession();
 		return session?.PhoneNumber ?? "unknown";
 	}
 

@@ -517,10 +517,11 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	{
 		if (_sessionManager == null) return;
 
-		var currentSession = _sessionManager.GetCurrentUserSession();
+		// Auto-populate first slot with primary user (UI convenience for local multiplayer)
+		var currentSession = _sessionManager.GetPrimaryUserSession();
 		if (currentSession != null && currentSession.GlobalData != null)
 		{
-			// Add current user to first slot
+			// Add primary user to first slot
 			_slotToPhoneNumber[0] = currentSession.PhoneNumber;
 			_creditsTransferredByPlayer[currentSession.PhoneNumber] = 0;
 
@@ -636,8 +637,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		var slot = _playerSlots[slotIndex];
 		slot.SetEmpty();
 
-		// Logout user if they're the current session
-		var currentSession = _sessionManager.GetCurrentUserSession();
+		// Logout user if they're the primary session
+		var currentSession = _sessionManager.GetPrimaryUserSession();
 		if (currentSession != null && currentSession.PhoneNumber == phoneNumber)
 		{
 			await _sessionManager.LogoutUserAsync(phoneNumber);
@@ -653,8 +654,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
 			return;
 
-		// Show buy credits modal
-		_uiManager.ShowBuyCreditsModal();
+		// Show buy credits modal for this specific user (explicit user targeting)
+		_uiManager.ShowBuyCreditsModal(phoneNumber);
 
 		// Wait for purchase completion and update display
 		RefreshSlotCreditsDisplay(slotIndex);
