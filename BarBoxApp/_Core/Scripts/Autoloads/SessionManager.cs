@@ -318,6 +318,12 @@ public partial class SessionManager : AutoloadBase
 		var spendResult = await _dataStore.SpendGlobalCreditsAsync(phoneNumber, amount, reason);
 		if (spendResult.IsSuccess)
 		{
+			// Update cached session data
+			if (_activeSessions.TryGetValue(phoneNumber, out var session) && session.GlobalData != null)
+			{
+				session.GlobalData.GlobalCredits -= amount;
+			}
+
 			EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, reason);
 		}
 
@@ -343,6 +349,35 @@ public partial class SessionManager : AutoloadBase
 		}
 
 		return addResult.IsSuccess;
+	}
+
+	/// <summary>
+	/// Transfer credits from user's account to machine game credits
+	/// Updates both DataStore and session cache atomically
+	/// </summary>
+	public async Task<bool> TransferCreditsToMachineAsync(string phoneNumber, string gameId, int amount, string reason)
+	{
+		if (!IsUserLoggedIn(phoneNumber))
+		{
+			LogWarning($"User {phoneNumber} not logged in for credit transfer");
+			return false;
+		}
+
+		// Perform the transfer via DataStore
+		var transferSuccess = await _dataStore.TransferCreditsToMachineAsync(phoneNumber, gameId, amount, reason);
+
+		if (transferSuccess)
+		{
+			// Update cached session data
+			if (_activeSessions.TryGetValue(phoneNumber, out var session) && session.GlobalData != null)
+			{
+				session.GlobalData.GlobalCredits -= amount;
+			}
+
+			EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, $"Transfer to {gameId}: {reason}");
+		}
+
+		return transferSuccess;
 	}
 
 	/// <summary>
