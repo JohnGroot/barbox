@@ -70,6 +70,7 @@ public partial class CarromGame : GameController
 	
 	// UI Components
 	private CarromScoreDisplay _scoreDisplay;
+	private CarromTurnIndicator _turnIndicator;
 	private CarromPlayerSetupMenu _playerSetupMenu;
 	private int _pendingPlayerCount = 2; // Track player count for menu → game transition
 	
@@ -353,6 +354,11 @@ public partial class CarromGame : GameController
 		// Connect to Pass Turn signal for manual turn advancement
 		_scoreDisplay.PassTurnRequested += OnPassTurnRequested;
 
+		// Initialize turn indicator (positioned below top menu bar)
+		_turnIndicator = new CarromTurnIndicator();
+		AddChild(_turnIndicator);
+		_turnIndicator.Hide(); // Hidden by default, shown in competitive mode
+
 		// Initialize player setup menu
 		_playerSetupMenu = new CarromPlayerSetupMenu();
 		AddChild(_playerSetupMenu);
@@ -489,13 +495,14 @@ public partial class CarromGame : GameController
 	{
 		// Clean up competitive mode before switching
 		_competitiveModeManager?.CleanupMode();
-		
-		// Hide score display
+
+		// Hide score display and turn indicator
 		_scoreDisplay?.SetVisible(false);
-		
+		_turnIndicator?.Hide();
+
 		// Reset camera to default rotation (player 0 position)
 		_cameraController?.ResetRotation();
-		
+
 		// Set current mode manager to practice
 		_currentModeManager = _practiceModeManager;
 		_carromGameMode = CarromGameMode.Practice;
@@ -504,7 +511,7 @@ public partial class CarromGame : GameController
 
 		// Delegate to practice mode manager - it will emit PracticeModeSetupComplete when done
 		_practiceModeManager?.SetupPracticeMode();
-		
+
 		// Setup state machine for practice mode
 		SetupStateMachineForCurrentMode();
 	}
@@ -1325,13 +1332,6 @@ public partial class CarromGame : GameController
 		}
 		else if (_carromGameMode == CarromGameMode.Competitive)
 		{
-			// Show current player turn
-			var currentPlayer = _competitiveModeManager?.GetCurrentPlayer();
-			if (currentPlayer != null)
-			{
-				buttons.Add(new ContextButtonData($"Current: {currentPlayer.PlayerId}", null, "👤", false, $"Current player turn"));
-			}
-			
 			// Show scores
 			buttons.Add(new ContextButtonData("Scores", () => {
 				ShowScoreboard();
@@ -1563,37 +1563,22 @@ public partial class CarromGame : GameController
 	
 
 	/// <summary>
-	/// Override to provide carrom game title
+	/// Override to provide carrom game title (simplified without player info)
 	/// </summary>
 	public override string GetGameTitle()
 	{
-		return _carromGameMode switch
+		if (_carromGameMode == CarromGameMode.Practice)
 		{
-			CarromGameMode.Practice => "Carrom - Practice",
-			CarromGameMode.Competitive => GetCompetitiveModeTitle(),
-			_ => "Carrom"
-		};
-	}
-
-	/// <summary>
-	/// Get title for competitive mode with current player info
-	/// </summary>
-	private string GetCompetitiveModeTitle()
-	{
-		if (_competitiveModeManager == null)
-		{
-			return "Carrom - Competitive";
+			return "Carrom - Practice";
 		}
-
-		var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
-		if (currentPlayer != null)
+		else if (_carromGameMode == CarromGameMode.Competitive && _competitiveModeManager != null)
 		{
-			var playerCount = _competitiveModeManager.GetPlayers().Count;
+			var playerCount = _competitiveModeManager.GetPlayers()?.Count ?? 0;
 			string modeText = playerCount == 4 ? "Doubles" : "Singles";
-			return $"Carrom {modeText} - {currentPlayer.PlayerId}'s Turn ({currentPlayer.AssignedPieceType})";
+			return $"Carrom - {modeText}";
 		}
 
-		return "Carrom - Competitive";
+		return "Carrom";
 	}
 
 	// ================================================================
@@ -1842,20 +1827,30 @@ public partial class CarromGame : GameController
 	private void OnTurnChanged(string playerId, int turnNumber)
 	{
 		EmitSignal(SignalName.TurnChanged, playerId, turnNumber);
-		
+
 		// Clear all piece trails when turn changes for clean visual reset
 		ClearAllTrails();
-		
+
+		// Update turn indicator with new player info
+		if (_turnIndicator != null && _competitiveModeManager != null)
+		{
+			var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
+			if (currentPlayer != null)
+			{
+				_turnIndicator.UpdateTurnDisplay(currentPlayer.PlayerId, currentPlayer.AssignedPieceType, turnNumber);
+			}
+		}
+
 		// Update score display to reflect new current player
 		if (_scoreDisplay != null && _competitiveModeManager != null)
 		{
 			_scoreDisplay.SetCurrentPlayer(playerId);
 			_scoreDisplay.UpdateAllPlayerScores(_competitiveModeManager.GetPlayers());
 		}
-		
+
 		// No need to show turn transition here - that's handled by OnTurnReadyForPass
 		// This method is called AFTER the turn has been advanced via pass turn button
-		
+
 		// Refresh UI to show updated player turn and title
 		RefreshUI();
 	}
@@ -1891,13 +1886,16 @@ public partial class CarromGame : GameController
 	{
 		// Save win result to DataStore
 		SaveGameResultAsync(playerId, true);
-		
+
 		// Handle win condition
 		EndGame();
-		
+
+		// Hide turn indicator on game end
+		_turnIndicator?.Hide();
+
 		// Show comprehensive game over screen
 		ShowGameOverScreen(playerId);
-		
+
 		RefreshUI();
 	}
 
@@ -1925,17 +1923,17 @@ public partial class CarromGame : GameController
 		{
 			_scoreDisplay.SetVisible(true);
 			_scoreDisplay.ClearPlayers();
-			
+
 			// Provide score display to competitive mode manager for direct floating text calls
 			_competitiveModeManager.SetScoreDisplay(_scoreDisplay);
-			
+
 			// Add all players to score display
 			var players = _competitiveModeManager.GetPlayers();
 			foreach (var player in players)
 			{
 				_scoreDisplay.AddPlayer(player.PlayerId, player.AssignedPieceType);
 			}
-			
+
 			// Set current player
 			var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
 			if (currentPlayer != null)
@@ -1943,7 +1941,18 @@ public partial class CarromGame : GameController
 				_scoreDisplay.SetCurrentPlayer(currentPlayer.PlayerId);
 			}
 		}
-		
+
+		// Show turn indicator with initial player
+		if (_turnIndicator != null && _competitiveModeManager != null)
+		{
+			var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
+			if (currentPlayer != null)
+			{
+				_turnIndicator.UpdateTurnDisplay(currentPlayer.PlayerId, currentPlayer.AssignedPieceType, 1);
+				_turnIndicator.Show();
+			}
+		}
+
 		// State machine handles game start automatically
 	}
 	
@@ -2044,25 +2053,37 @@ public partial class CarromGame : GameController
 				}
 			}
 		}
-			
+
 		if (_inputController != null && GodotObject.IsInstanceValid(_inputController))
 		{
 			_inputController.StrikeExecuted -= OnStrikeExecuted;
 			_inputController.AimingStateChanged -= OnAimingStateChanged;
 		}
-		
+
 		if (_cameraController != null && GodotObject.IsInstanceValid(_cameraController))
 		{
 			_cameraController.CameraTransitionCompleted -= OnCameraTransitionCompleted;
 		}
-		
+
 		// Clean up penalty tween signal
 		PenaltyPiecesTweenCompleted -= OnPenaltyPiecesTweenCompleted;
-		
+
 		// Clean up game state machine signals
 		if (_gameStateMachine != null && GodotObject.IsInstanceValid(_gameStateMachine))
 		{
 			_gameStateMachine.InputAvailabilityChanged -= OnInputAvailabilityChanged;
+		}
+
+		// Clean up score display signals
+		if (_scoreDisplay != null && GodotObject.IsInstanceValid(_scoreDisplay))
+		{
+			_scoreDisplay.PassTurnRequested -= OnPassTurnRequested;
+		}
+
+		// Clean up turn indicator
+		if (_turnIndicator != null && GodotObject.IsInstanceValid(_turnIndicator))
+		{
+			_turnIndicator.QueueFree();
 		}
 
 		// Clean up player setup menu signals
