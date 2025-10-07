@@ -94,43 +94,57 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	protected virtual void PositionStrikerAtBaseline()
 	{
 		if (!IsStrikerValid()) return;
-		
-		// Get default baseline position (existing behavior)
+
+		// Use shared collision detection logic
+		Vector2 validPosition = FindValidStrikerBaselinePosition();
+		_striker.GlobalPosition = validPosition;
+
+		// Clear movement
+		_striker.LinearVelocity = Vector2.Zero;
+		_striker.AngularVelocity = 0.0f;
+	}
+
+	/// <summary>
+	/// Find a valid baseline position for striker with collision detection
+	/// Shared logic used by both positioning and restoration operations
+	/// </summary>
+	/// <returns>Valid position on baseline, guaranteed to be non-null</returns>
+	private Vector2 FindValidStrikerBaselinePosition()
+	{
+		if (_board == null)
+		{
+			return Vector2.Zero;
+		}
+
+		// Get default baseline position
 		var baselinePosition = _board.ToGlobal(_board.GetBaselinePosition(0));
 		float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
-		
+
 		// Check for collisions with other pieces
 		if (!_board.IsPositionObstructed(baselinePosition, strikerRadius, _striker))
 		{
 			// Original position is clear - use it
-			_striker.GlobalPosition = baselinePosition;
+			return baselinePosition;
 		}
-		else
+
+		// Find alternative position on baseline to avoid collision
+		var validPosition = _board.FindNearestValidPositionOnBaseline(
+			baselinePosition, 0, strikerRadius, _striker);
+
+		if (validPosition.HasValue)
 		{
-			// Find alternative position on baseline to avoid collision
-			var validPosition = _board.FindNearestValidPositionOnBaseline(
-				baselinePosition, 0, strikerRadius, _striker);
-				
-			if (validPosition.HasValue)
-			{
-				_striker.GlobalPosition = validPosition.Value;
-				GD.Print($"[{GetType().Name}] Striker repositioned to avoid collision: {validPosition.Value}");
-			}
-			else
-			{
-				// Fallback to original position with warning
-				_striker.GlobalPosition = baselinePosition;
-				GD.PrintErr($"[{GetType().Name}] Could not find valid striker position, using baseline center");
-			}
+			GD.Print($"[{GetType().Name}] Striker positioned at alternative location to avoid collision");
+			return validPosition.Value;
 		}
-		
-		// Clear movement (existing behavior)
-		_striker.LinearVelocity = Vector2.Zero;
-		_striker.AngularVelocity = 0.0f;
+
+		// Fallback to original position with warning
+		GD.PrintErr($"[{GetType().Name}] Could not find valid striker position, using baseline center");
+		return baselinePosition;
 	}
 	
 	/// <summary>
 	/// Ensure striker is restored from pocketed state with comprehensive validation and retry logic
+	/// Now includes collision detection to prevent overlapping with other pieces
 	/// </summary>
 	protected void EnsureStrikerRestored()
 	{
@@ -138,20 +152,20 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		{
 			return;
 		}
-		
+
 		// Check if striker needs restoration
 		bool needsRestoration = !_striker.Visible || _striker.Freeze;
 		if (!needsRestoration)
 		{
 			return;
 		}
-		
-		// Calculate target baseline position before restoration
-		Vector2 targetPosition = CalculateStrikerBaselinePosition();
-		
-		// Attempt restoration with the target position
+
+		// Calculate target baseline position with collision detection
+		Vector2 targetPosition = CalculateValidStrikerBaselinePosition();
+
+		// Attempt restoration with the validated position
 		_striker.Reset(targetPosition);
-		
+
 		// Validate restoration succeeded
 		if (!ValidateStrikerRestoration(targetPosition))
 		{
@@ -160,19 +174,13 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	}
 	
 	/// <summary>
-	/// Calculate the target baseline position for striker restoration
+	/// Calculate a valid baseline position for striker restoration with collision detection
+	/// Uses shared collision detection logic from FindValidStrikerBaselinePosition()
 	/// </summary>
-	private Vector2 CalculateStrikerBaselinePosition()
+	private Vector2 CalculateValidStrikerBaselinePosition()
 	{
-		if (_board == null)
-		{
-			return Vector2.Zero;
-		}
-		
-		// Default to player 0 baseline - subclasses can override PositionStrikerAtBaseline for different behavior
-		var baselinePosition = _board.GetBaselinePosition(0);
-		var globalPosition = _board.ToGlobal(baselinePosition);
-		return globalPosition;
+		// Delegate to shared collision detection logic
+		return FindValidStrikerBaselinePosition();
 	}
 	
 	/// <summary>
