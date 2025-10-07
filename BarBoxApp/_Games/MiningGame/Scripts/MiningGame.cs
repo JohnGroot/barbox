@@ -301,6 +301,7 @@ namespace BarBox.Games.MiningGame
 				// Enable UI after all components are ready
 				if (GodotObject.IsInstanceValid(_ui))
 				{
+					_ui.RefreshLocationData(); // Update cached location data after load
 					_ui.SetEnabled(true);
 					_ui.UpdateAllUI(); // Force immediate UI refresh
 				}

@@ -42,7 +42,7 @@ namespace BarBox.Games.MiningGame
 		private Dictionary<UpgradeType, UpgradeUIGroup> _upgradeGroups = new();
 		
 		// Global inventory section
-		private Label _globalGemsLabel;
+		private Dictionary<GemType, Label> _gemLabels = new();
 		private VBoxContainer _creditTimersContainer;
 		private List<Label> _cachedTimerLabels = new();
 		private Label _noTimersLabel;
@@ -70,11 +70,19 @@ namespace BarBox.Games.MiningGame
 			_game = game;
 			_config = config;
 			_locationData = game.GetLocationData(); // Get location data for theming
-			
+
 			CreateUI();
 			ApplyTheme();
 		}
-		
+
+		public void RefreshLocationData()
+		{
+			if (_game != null)
+			{
+				_locationData = _game.GetLocationData();
+			}
+		}
+
 		// Theme property accessors with fallbacks
 		private Color GetBackgroundColor() => _locationData?.BackgroundColor ?? new Color(0.1f, 0.1f, 0.15f, 0.95f);
 		public Color GetPrimaryAccent() => _locationData?.PrimaryAccent ?? new Color(0.4f, 0.2f, 0.8f);
@@ -226,24 +234,38 @@ namespace BarBox.Games.MiningGame
 		private void CreateGlobalInventorySection(VBoxContainer parent)
 		{
 			var inventoryGroup = UIBuilder.CreateGroup("Global Inventory", this);
-			
-			_globalGemsLabel = new Label();
-			_globalGemsLabel.Text = "Loading gem inventory...";
-			_globalGemsLabel.AddThemeColorOverride("font_color", GetTextColor());
-			inventoryGroup.AddChild(_globalGemsLabel);
-			
+
+			// Create GridContainer for 3x2 layout
+			var gemsGrid = new GridContainer();
+			gemsGrid.Columns = 3;
+			gemsGrid.AddThemeConstantOverride("h_separation", 20);
+			gemsGrid.AddThemeConstantOverride("v_separation", 8);
+
+			// Create labels for all 5 gem types
+			foreach (GemType gemType in Enum.GetValues<GemType>())
+			{
+				var label = new Label();
+				label.CustomMinimumSize = new Vector2(120, 0);
+				label.Text = "Loading...";
+				label.AddThemeColorOverride("font_color", GetTextColor());
+				_gemLabels[gemType] = label;
+				gemsGrid.AddChild(label);
+			}
+
+			inventoryGroup.AddChild(gemsGrid);
+
 			// Credit timers section
 			var creditSection = new VBoxContainer();
 			creditSection.AddThemeConstantOverride("separation", 4);
-			
+
 			var creditHeader = new Label();
 			creditHeader.Text = "Credit Recharge Timers:";
 			creditHeader.AddThemeColorOverride("font_color", GetSecondaryAccent());
 			creditSection.AddChild(creditHeader);
-			
+
 			_creditTimersContainer = new VBoxContainer();
 			creditSection.AddChild(_creditTimersContainer);
-			
+
 			inventoryGroup.AddChild(creditSection);
 			parent.AddChild(inventoryGroup);
 		}
@@ -300,8 +322,13 @@ namespace BarBox.Games.MiningGame
 					_gemsReadyLabel.Text = "Gems ready: Login required";
 				if (_capacityLabel != null)
 					_capacityLabel.Text = "Capacity: Login required";
-				if (_globalGemsLabel != null)
-					_globalGemsLabel.Text = "Please log in to view inventory";
+
+				// Clear gem labels
+				foreach (var label in _gemLabels.Values)
+				{
+					if (GodotObject.IsInstanceValid(label))
+						label.Text = "Please log in";
+				}
 				
 				// Clear progress bar
 				if (_miningProgressBar != null)
@@ -452,38 +479,31 @@ namespace BarBox.Games.MiningGame
 		public void UpdateGlobalInventory()
 		{
 			var globalData = _game?.GetGlobalData();
-			if (globalData == null) 
+			if (globalData == null)
 			{
 				// Show disabled state when no data available
 				if (!_isEnabled)
 				{
-					_globalGemsLabel.Text = "Please log in to view inventory";
+					foreach (var label in _gemLabels.Values)
+					{
+						label.Text = "Login required";
+					}
 					ClearCreditTimersDisplay();
 				}
 				return;
 			}
-			
-			// Update gem inventory
-			var inventoryLines = new List<string>();
+
+			// Update gem inventory - populate each grid cell
 			foreach (GemType gemType in Enum.GetValues<GemType>())
 			{
-				int amount = globalData.GetGems(gemType);
-			if (amount > 0)
+				if (_gemLabels.TryGetValue(gemType, out var label))
 				{
-					var gemColor = _locationData?.GetGemColor(gemType) ?? Colors.Gray;
-					inventoryLines.Add($"  {gemType}: {amount}");
+					int amount = globalData.GetGems(gemType);
+					var gemEmoji = _locationData?.GetGemEmoji(gemType) ?? "💠";
+					label.Text = $"{gemEmoji} {gemType}: {amount}";
 				}
 			}
-			
-			if (inventoryLines.Count > 0)
-			{
-				_globalGemsLabel.Text = "Gems:\n" + string.Join("\n", inventoryLines);
-			}
-			else
-			{
-				_globalGemsLabel.Text = "No gems in inventory";
-			}
-			
+
 			// Update credit timers using cached labels
 			UpdateCreditTimers(globalData);
 		}
@@ -611,12 +631,12 @@ namespace BarBox.Games.MiningGame
 			private MiningGame _game;
 			private MiningGameConfig _config;
 			private MiningGameUI _parentUI;
-			
+
 			private Label _titleLabel;
+			private Label _ticksLabel;
 			private Label _descriptionLabel;
 			private Label _costLabel;
 			private Button _purchaseButton;
-			private ProgressBar _levelProgressBar;
 			
 			public UpgradeUIGroup(UpgradeType upgradeType, MiningGame game, MiningGameConfig config, MiningGameUI parentUI)
 			{
@@ -632,32 +652,43 @@ namespace BarBox.Games.MiningGame
 			private Color GetHeaderColor() => _parentUI.GetHeaderColor();
 			private Color GetTextColor() => _parentUI.GetTextColor();
 			private Color GetSecondaryAccent() => _parentUI.GetSecondaryAccent();
+
+			private string FormatEnumName(string enumName)
+			{
+				// Insert space before each capital letter (except first)
+				return System.Text.RegularExpressions.Regex.Replace(
+					enumName,
+					"(?<!^)([A-Z])",
+					" $1"
+				);
+			}
+
+			private string GenerateTickIndicators(int currentLevel, int maxLevel)
+			{
+				var filled = new string('●', currentLevel);
+				var empty = new string('○', maxLevel - currentLevel);
+				return filled + empty;
+			}
 			
 			private void CreateUpgradeUI()
 			{
 				// Title and level
 				var headerHBox = new HBoxContainer();
-				
+				headerHBox.AddThemeConstantOverride("separation", 12);
+
 				_titleLabel = new Label();
-				_titleLabel.Text = _parentUI._locationData?.GetUpgradeDisplayName(_upgradeType) ?? _upgradeType.ToString();
-				_titleLabel.CustomMinimumSize = new Vector2(150, 0);
+				_titleLabel.Text = _parentUI._locationData?.GetUpgradeDisplayName(_upgradeType) ?? FormatEnumName(_upgradeType.ToString());
+				_titleLabel.CustomMinimumSize = new Vector2(220, 0);
 				_titleLabel.AddThemeColorOverride("font_color", GetHeaderColor());
 				headerHBox.AddChild(_titleLabel);
-				
-				// Level progress bar
-				_levelProgressBar = new ProgressBar();
-				_levelProgressBar.CustomMinimumSize = new Vector2(150, 20);
-				_levelProgressBar.MaxValue = _config.MaxUpgradeLevel;
-				_levelProgressBar.Value = 0;
-				_levelProgressBar.ShowPercentage = false;
-				
-				var levelStyle = new StyleBoxFlat();
-				levelStyle.BgColor = GetSecondaryAccent();
-				levelStyle.SetCornerRadiusAll(2);
-				_levelProgressBar.AddThemeStyleboxOverride("fill", levelStyle);
-				
-				headerHBox.AddChild(_levelProgressBar);
-				
+
+				// Tick indicators
+				_ticksLabel = new Label();
+				_ticksLabel.Text = GenerateTickIndicators(0, _config.MaxUpgradeLevel);
+				_ticksLabel.AddThemeColorOverride("font_color", GetSecondaryAccent());
+				_ticksLabel.AddThemeFontSizeOverride("font_size", 14);
+				headerHBox.AddChild(_ticksLabel);
+
 				AddChild(headerHBox);
 				
 				// Description
@@ -688,16 +719,16 @@ namespace BarBox.Games.MiningGame
 			{
 				var locationTemplate = _game?.GetLocationData();
 				if (locationTemplate == null || _game == null) return;
-				
+
 				int currentLevel = _game.GetUpgradeLevel(_upgradeType);
 				int maxLevel = _game.Config.MaxUpgradeLevel;
-				
+
 				// Update title with level
-				_titleLabel.Text = $"{_parentUI._locationData?.GetUpgradeDisplayName(_upgradeType) ?? _upgradeType.ToString()} (Lv.{currentLevel}/{maxLevel})";
-				
-				// Update level progress bar
-				_levelProgressBar.Value = currentLevel;
-				
+				_titleLabel.Text = $"{_parentUI._locationData?.GetUpgradeDisplayName(_upgradeType) ?? FormatEnumName(_upgradeType.ToString())} (Lv.{currentLevel}/{maxLevel})";
+
+				// Update tick indicators
+				_ticksLabel.Text = GenerateTickIndicators(currentLevel, maxLevel);
+
 				// Update current stats
 				string currentStats = GetCurrentStats(_upgradeType);
 				_descriptionLabel.Text = $"{_parentUI._locationData?.GetUpgradeDescription(_upgradeType) ?? "Improves mining operations"}\n{currentStats}";
@@ -714,13 +745,13 @@ namespace BarBox.Games.MiningGame
 					// Show cost for next level
 					var cost = _game.Config.GetUpgradeCost(_upgradeType, currentLevel, locationTemplate.PrimaryGemType);
 					var costStrings = new List<string>();
-					
+
 					foreach (var kvp in cost)
 					{
-						var gemColor = _parentUI._locationData?.GetGemColor(kvp.Key) ?? Colors.Gray;
-						costStrings.Add($"{kvp.Value} {kvp.Key}");
+						var gemEmoji = _parentUI._locationData?.GetGemEmoji(kvp.Key) ?? "💠";
+						costStrings.Add($"{gemEmoji} {kvp.Value}");
 					}
-					
+
 					_costLabel.Text = $"Cost: {string.Join(", ", costStrings)}";
 					_costLabel.AddThemeColorOverride("font_color", GetTextColor());
 					

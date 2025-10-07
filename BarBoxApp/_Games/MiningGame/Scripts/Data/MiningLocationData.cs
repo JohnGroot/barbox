@@ -49,15 +49,37 @@ namespace BarBox.Games.MiningGame
 			return config.BaseGemsPerTick + (amountLevel * config.AmountPerLevel);
 		}
 		
+		public string GetUpgradeEmoji(UpgradeType upgradeType)
+		{
+			return upgradeType switch
+			{
+				UpgradeType.Capacity => "💼",
+				UpgradeType.MiningSpeed => "⚡",
+				UpgradeType.MiningAmount => "🪨",
+				UpgradeType.CreditCharges => "🎫",
+				_ => ""
+			};
+		}
+
+		private string FormatEnumName(string enumName)
+		{
+			// Insert space before each capital letter (except first)
+			return System.Text.RegularExpressions.Regex.Replace(
+				enumName,
+				"(?<!^)([A-Z])",
+				" $1"
+			);
+		}
+
 		public string GetUpgradeDisplayName(UpgradeType upgradeType)
 		{
 			return upgradeType switch
 			{
-				UpgradeType.Capacity => "Gem Capacity",
-				UpgradeType.MiningSpeed => "Mining Speed",
-				UpgradeType.MiningAmount => "Gems Per Tick",
-				UpgradeType.CreditCharges => "Credit Purchase Slots",
-				_ => upgradeType.ToString()
+				UpgradeType.Capacity => $"{GetUpgradeEmoji(upgradeType)} Gem Capacity",
+				UpgradeType.MiningSpeed => $"{GetUpgradeEmoji(upgradeType)} Mining Speed",
+				UpgradeType.MiningAmount => $"{GetUpgradeEmoji(upgradeType)} Gems Per Tick",
+				UpgradeType.CreditCharges => $"{GetUpgradeEmoji(upgradeType)} Credit Purchase Slots",
+				_ => $"{GetUpgradeEmoji(upgradeType)} {FormatEnumName(upgradeType.ToString())}"
 			};
 		}
 		
@@ -73,6 +95,19 @@ namespace BarBox.Games.MiningGame
 			};
 		}
 		
+		public string GetGemEmoji(GemType gemType)
+		{
+			return gemType switch
+			{
+				GemType.Ruby => "🟥",
+				GemType.Sapphire => "🔷",
+				GemType.Emerald => "🟢",
+				GemType.Diamond => "💎",
+				GemType.Amethyst => "🟣",
+				_ => "💠"
+			};
+		}
+
 		public Color GetGemColor(GemType gemType)
 		{
 			return gemType switch
