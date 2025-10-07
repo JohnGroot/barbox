@@ -57,6 +57,11 @@ namespace BarBox.Games.Racing
 
 	// Arc-based HUD renderer
 	private RacingHUDArcRenderer _hudArcRenderer;
+
+	// Time trial timer display
+	private Control _timerDisplayContainer;
+	private Panel _timerBackground;
+	private Label _timerLabel;
 	
 	// Control buttons
 	private Button _timeTrialButton;
@@ -768,6 +773,7 @@ namespace BarBox.Games.Racing
 		_uiLayer.AddChild(mainUI);
 
 		SetupStatusBar(mainUI);
+		SetupTimerDisplay(mainUI);
 		SetupBottomControls(mainUI);
 	}
 
@@ -795,6 +801,86 @@ namespace BarBox.Games.Racing
 		// statusBar.AddChild(_speedLabel);
 		// statusBar.AddChild(_lapLabel);
 		// statusBar.AddChild(_timeLabel);
+	}
+
+	/// <summary>
+	/// Setup the time trial timer display
+	/// </summary>
+	/// <param name="parent">Parent container</param>
+	private void SetupTimerDisplay(Control parent)
+	{
+		// Container for timer (centered above bottom bar)
+		_timerDisplayContainer = new Control();
+		_timerDisplayContainer.AnchorLeft = 0.5f;
+		_timerDisplayContainer.AnchorTop = 1.0f;
+		_timerDisplayContainer.AnchorRight = 0.5f;
+		_timerDisplayContainer.AnchorBottom = 1.0f;
+		_timerDisplayContainer.OffsetLeft = -150; // Half of 300px width
+		_timerDisplayContainer.OffsetTop = -140; // 140px from bottom (above 60px bottom bar + 80px spacing)
+		_timerDisplayContainer.OffsetRight = 150;
+		_timerDisplayContainer.OffsetBottom = -80; // 60px height
+		_timerDisplayContainer.Visible = false; // Hidden by default, shown during time trial
+		parent.AddChild(_timerDisplayContainer);
+
+		// Semi-transparent background panel
+		_timerBackground = new Panel();
+		_timerBackground.AnchorLeft = 0;
+		_timerBackground.AnchorTop = 0;
+		_timerBackground.AnchorRight = 1;
+		_timerBackground.AnchorBottom = 1;
+
+		// Create StyleBoxFlat for rounded corners and semi-transparent background
+		var styleBox = new StyleBoxFlat();
+		styleBox.BgColor = new Color(0.1f, 0.1f, 0.15f, 0.85f); // Dark semi-transparent
+		styleBox.CornerRadiusTopLeft = 8;
+		styleBox.CornerRadiusTopRight = 8;
+		styleBox.CornerRadiusBottomLeft = 8;
+		styleBox.CornerRadiusBottomRight = 8;
+		styleBox.BorderWidthTop = 2;
+		styleBox.BorderWidthBottom = 2;
+		styleBox.BorderWidthLeft = 2;
+		styleBox.BorderWidthRight = 2;
+		styleBox.BorderColor = new Color(0.3f, 0.6f, 0.9f, 0.6f); // Subtle blue border
+		_timerBackground.AddThemeStyleboxOverride("panel", styleBox);
+		_timerDisplayContainer.AddChild(_timerBackground);
+
+		// Timer label
+		_timerLabel = new Label();
+		_timerLabel.Text = "00:00.000"; // Leading zero for consistent width
+		_timerLabel.AnchorLeft = 0;
+		_timerLabel.AnchorTop = 0;
+		_timerLabel.AnchorRight = 1;
+		_timerLabel.AnchorBottom = 1;
+		_timerLabel.HorizontalAlignment = HorizontalAlignment.Center;
+		_timerLabel.VerticalAlignment = VerticalAlignment.Center;
+
+		// Set fixed minimum size to prevent jittering when text changes width
+		_timerLabel.CustomMinimumSize = new Vector2(200, 60);
+
+		// Configure size flags to prevent dynamic resizing
+		_timerLabel.SizeFlagsHorizontal = Control.SizeFlags.Fill;
+		_timerLabel.SizeFlagsVertical = Control.SizeFlags.Fill;
+
+		// Load Inter font and create FontVariation with tabular figures for zero jitter
+		var fontFile = GD.Load<FontFile>("res://_Core/Fonts/Inter/InterDisplay-SemiBold.ttf");
+		var fontVariation = new FontVariation();
+		fontVariation.SetBaseFont(fontFile);
+
+		// Enable tabular figures (tnum) via OpenType features for equal-width digits
+		var opentypeFeatures = new Godot.Collections.Dictionary();
+		opentypeFeatures["tnum"] = 1; // Tabular numbers - all digits same width
+		fontVariation.SetOpentypeFeatures(opentypeFeatures);
+
+		// Create LabelSettings for font styling
+		var labelSettings = new LabelSettings();
+		labelSettings.Font = fontVariation; // Use font variation with tabular figures
+		labelSettings.FontSize = 52; // Large, readable font
+		labelSettings.FontColor = Colors.White;
+		labelSettings.OutlineSize = 4; // Add outline for better contrast
+		labelSettings.OutlineColor = new Color(0, 0, 0, 0.8f); // Dark outline
+		_timerLabel.LabelSettings = labelSettings;
+
+		_timerDisplayContainer.AddChild(_timerLabel);
 	}
 
 	/// <summary>
@@ -1140,6 +1226,9 @@ namespace BarBox.Games.Racing
 
 		// Update countdown display in arc renderer
 		UpdateCountdownArc(state.IsInCountdown, state.CountdownNumber, state.CountdownProgress);
+
+		// Update time trial timer display
+		UpdateTimerDisplay(state.GameMode == GameController.GameMode.TimeTrial, state.TimeDisplay);
 	}
 
 	/// <summary>
@@ -1309,6 +1398,26 @@ namespace BarBox.Games.Racing
 
 			// Track previous state
 			_wasCountdownVisible = isVisible;
+		}
+	}
+
+	/// <summary>
+	/// Update timer display visibility and value
+	/// </summary>
+	/// <param name="isTimeTrial">Whether in time trial mode</param>
+	/// <param name="currentTime">Current lap time in seconds</param>
+	private void UpdateTimerDisplay(bool isTimeTrial, float currentTime)
+	{
+		if (_timerDisplayContainer == null || _timerLabel == null)
+			return;
+
+		// Show timer only during time trial mode
+		_timerDisplayContainer.Visible = isTimeTrial;
+
+		if (isTimeTrial)
+		{
+			// Update timer text with formatted time
+			_timerLabel.Text = FormatLapTime(currentTime);
 		}
 	}
 
@@ -2093,6 +2202,20 @@ namespace BarBox.Games.Racing
 			// Assume player can now afford replay after purchasing credits
 			_raceCompleteOverlay.UpdateButtonStates(true, TimeTrialCreditCost);
 		}
+	}
+
+	/// <summary>
+	/// Format lap time in MM:SS.mmm format
+	/// Always pads minutes with leading zero for consistent width and prevent jittering
+	/// </summary>
+	/// <param name="timeSeconds">Time in seconds</param>
+	/// <returns>Formatted time string</returns>
+	private string FormatLapTime(float timeSeconds)
+	{
+		int minutes = (int)(timeSeconds / 60.0f);
+		float seconds = timeSeconds % 60.0f;
+		// Pad minutes to 2 digits for consistent text width
+		return $"{minutes:00}:{seconds:00.000}";
 	}
 }
 }
