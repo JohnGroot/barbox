@@ -81,6 +81,9 @@ public partial class CarromGame : GameController
 	private Tween _penaltyPiecesTween;
 	private int _penaltyPieceIndex = 0;
 
+	// Turn transition tracking for highlight timing
+	private bool _waitingForTurnTransition = false;
+
 	// ================================================================
 	// INITIALIZATION
 	// ================================================================
@@ -318,6 +321,7 @@ public partial class CarromGame : GameController
 		_gameStateMachine.StateChanged += OnGameStateChanged;
 		_gameStateMachine.SettlementCompleted += OnSettlementCompleted;
 		_gameStateMachine.InputAvailabilityChanged += OnInputAvailabilityChanged;
+		_gameStateMachine.ReadyForInput += OnReadyForInput;
 		
 		// Game state machine initialized
 	}
@@ -621,6 +625,9 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnStrikeExecuted(Vector2 force)
 	{
+		// Stop highlights on all pieces when strike is executed
+		StopAllPieceHighlights();
+
 		// Get striker from current mode manager
 		var striker = _currentModeManager?.GetStriker();
 		if (striker != null)
@@ -632,6 +639,60 @@ public partial class CarromGame : GameController
 			{
 				var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
 				currentPlayer?.RecordShot();
+			}
+		}
+	}
+
+	/// <summary>
+	/// Stop highlights on all pieces
+	/// </summary>
+	private void StopAllPieceHighlights()
+	{
+		// Get all active pieces from the current mode (includes striker)
+		var activePieces = _currentModeManager?.GetActivePieces();
+		if (activePieces == null)
+		{
+			return;
+		}
+
+		// Stop highlight on all pieces
+		foreach (var piece in activePieces)
+		{
+			if (GodotObject.IsInstanceValid(piece))
+			{
+				piece.StopHighlight();
+			}
+		}
+	}
+
+	/// <summary>
+	/// Start piece highlights for a specific player by player index
+	/// </summary>
+	/// <param name="playerIndex">0=player1(White), 1=player2(Black), etc.</param>
+	private void StartPieceHighlightsForPlayer(int playerIndex)
+	{
+		// Only highlight in competitive mode
+		if (_carromGameMode != CarromGameMode.Competitive || _competitiveModeManager == null)
+		{
+			return;
+		}
+
+		// Map player index to piece type (player1=White, player2=Black)
+		PieceType playerPieceType = playerIndex == 0 ? PieceType.White : PieceType.Black;
+
+		// Get all active pieces from the current mode
+		var activePieces = _competitiveModeManager.GetActivePieces();
+		if (activePieces == null)
+		{
+			return;
+		}
+
+		// Start highlight on the specified player's pieces (exclude striker)
+		foreach (var piece in activePieces)
+		{
+			if (GodotObject.IsInstanceValid(piece) && piece.Type == playerPieceType)
+			{
+				piece.StartHighlight();
 			}
 		}
 	}
@@ -740,6 +801,7 @@ public partial class CarromGame : GameController
 	
 	/// <summary>
 	/// Centralized striker restoration method - replaces distributed logic across mode managers
+	/// Now includes collision detection to prevent overlapping with other pieces
 	/// </summary>
 	public bool RestoreStrikerToBaseline(int? playerIndexOverride = null)
 	{
@@ -753,7 +815,7 @@ public partial class CarromGame : GameController
 		// Determine appropriate baseline position based on game mode
 		Vector2 baselinePosition;
 		int playerIndex;
-		
+
 		if (_carromGameMode == CarromGameMode.Practice)
 		{
 			// Practice mode: Always use player 0 baseline (bottom)
@@ -772,22 +834,47 @@ public partial class CarromGame : GameController
 				// Default to current player
 				playerIndex = _competitiveModeManager?.GetCurrentPlayer()?.PlayerId == "player1" ? 0 : 1;
 			}
-			
+
 			baselinePosition = _board?.GetBaselinePosition(playerIndex) ?? Vector2.Zero;
 		}
-		
+
 		// Convert to global coordinates
 		Vector2 globalBaselinePosition = _board?.ToGlobal(baselinePosition) ?? Vector2.Zero;
+
+		// COLLISION VALIDATION: Check if baseline position is obstructed by other pieces
+		float strikerRadius = striker.PhysicsConfig?.GetRadiusForPieceType(striker.Type) ?? 15.0f;
+		bool isObstructed = _board?.IsPositionObstructed(globalBaselinePosition, strikerRadius, striker) ?? false;
+
+		if (isObstructed)
+		{
+			GD.Print($"[CarromGame] Baseline center obstructed by other pieces, searching for alternative position");
+
+			// Try to find valid position along baseline first
+			var validPositionOnBaseline = _board?.FindNearestValidPositionOnBaseline(
+				globalBaselinePosition, playerIndex, strikerRadius, striker);
+
+			if (validPositionOnBaseline.HasValue)
+			{
+				globalBaselinePosition = validPositionOnBaseline.Value;
+				GD.Print($"[CarromGame] Found alternative position on baseline: {globalBaselinePosition}");
+			}
+			else
+			{
+				// Baseline completely blocked - try center area as fallback
+				GD.PrintErr($"[CarromGame] Baseline completely obstructed, using center fallback");
+				globalBaselinePosition = _board?.FindValidPositionNearCenter(strikerRadius, striker) ?? globalBaselinePosition;
+			}
+		}
 
 		// Perform the restoration using CarromPiece's immediate reset method for predictable state
 		try
 		{
 			// Use immediate physics reset to guarantee stopped state
 			striker.Reset(globalBaselinePosition, immediate: true);
-			
+
 			// Mark this restoration in the mode manager's settlement context
 			MarkRecentRestoration(striker);
-			
+
 			// Validate restoration succeeded (position and visibility)
 			bool restorationSucceeded = ValidateStrikerRestoration(striker, globalBaselinePosition);
 			return restorationSucceeded;
@@ -857,6 +944,7 @@ public partial class CarromGame : GameController
 	
 	/// <summary>
 	/// Smoothly tween striker to baseline position for cinematic camera transitions
+	/// Now includes collision detection to prevent tweening into other pieces
 	/// </summary>
 	public void TweenStrikerToBaseline(int? playerIndexOverride = null, float duration = 0.6f)
 	{
@@ -870,7 +958,7 @@ public partial class CarromGame : GameController
 		// Determine appropriate baseline position based on game mode (same logic as RestoreStrikerToBaseline)
 		Vector2 baselinePosition;
 		int playerIndex;
-		
+
 		if (_carromGameMode == CarromGameMode.Practice)
 		{
 			// Practice mode: Always use player 0 baseline (bottom)
@@ -889,12 +977,37 @@ public partial class CarromGame : GameController
 				// Default to current player
 				playerIndex = _competitiveModeManager?.GetCurrentPlayer()?.PlayerId == "player1" ? 0 : 1;
 			}
-			
+
 			baselinePosition = _board?.GetBaselinePosition(playerIndex) ?? Vector2.Zero;
 		}
-		
+
 		// Convert to global coordinates
 		Vector2 globalBaselinePosition = _board?.ToGlobal(baselinePosition) ?? Vector2.Zero;
+
+		// COLLISION VALIDATION: Check if baseline position is obstructed by other pieces
+		float strikerRadius = striker.PhysicsConfig?.GetRadiusForPieceType(striker.Type) ?? 15.0f;
+		bool isObstructed = _board?.IsPositionObstructed(globalBaselinePosition, strikerRadius, striker) ?? false;
+
+		if (isObstructed)
+		{
+			GD.Print($"[CarromGame] Tween target obstructed by other pieces, searching for alternative position");
+
+			// Try to find valid position along baseline first
+			var validPositionOnBaseline = _board?.FindNearestValidPositionOnBaseline(
+				globalBaselinePosition, playerIndex, strikerRadius, striker);
+
+			if (validPositionOnBaseline.HasValue)
+			{
+				globalBaselinePosition = validPositionOnBaseline.Value;
+				GD.Print($"[CarromGame] Found alternative tween target on baseline: {globalBaselinePosition}");
+			}
+			else
+			{
+				// Baseline completely blocked - try center area as fallback
+				GD.PrintErr($"[CarromGame] Baseline completely obstructed for tween, using center fallback");
+				globalBaselinePosition = _board?.FindValidPositionNearCenter(strikerRadius, striker) ?? globalBaselinePosition;
+			}
+		}
 
 		try
 		{
@@ -931,6 +1044,11 @@ public partial class CarromGame : GameController
 			// Configure tween properties for smooth movement
 			_strikerTween.SetEase(Tween.EaseType.Out);
 			_strikerTween.SetTrans(Tween.TransitionType.Cubic);
+
+			// Clear turn transition flag and start piece highlights
+			// This happens when striker begins tweening to baseline (perfect timing for highlights)
+			_waitingForTurnTransition = false;
+			StartPieceHighlightsForPlayer(playerIndex);
 
 			// Animate striker position
 			_strikerTween.TweenProperty(striker, TweenConstants.GlobalPosition, globalBaselinePosition, duration);
@@ -1671,6 +1789,39 @@ public partial class CarromGame : GameController
 	}
 
 	/// <summary>
+	/// Handle ready for input state - start highlights for turn continuation (not turn change)
+	/// </summary>
+	private void OnReadyForInput()
+	{
+		// Only highlight for turn continuation, not turn change
+		// Turn change highlights happen in TweenStrikerToBaseline when camera/striker animation starts
+		if (_waitingForTurnTransition)
+		{
+			// Turn is changing, wait for tween to handle highlights
+			return;
+		}
+
+		// Only highlight pieces in competitive mode
+		if (_carromGameMode != CarromGameMode.Competitive || _competitiveModeManager == null)
+		{
+			return;
+		}
+
+		// Get current player's piece type
+		var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
+		if (currentPlayer == null)
+		{
+			return;
+		}
+
+		// Map current player to player index for consistency
+		int playerIndex = currentPlayer.PlayerId == "player1" ? 0 : 1;
+
+		// Start highlights for turn continuation
+		StartPieceHighlightsForPlayer(playerIndex);
+	}
+
+	/// <summary>
 	/// Handle practice reset request from practice mode manager
 	/// </summary>
 	private void OnPracticeResetRequested()
@@ -1865,13 +2016,17 @@ public partial class CarromGame : GameController
 			return;
 
 		var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
-		if (currentPlayer == null) 
+		if (currentPlayer == null)
 			return;
+
+		// Set flag to indicate we're waiting for turn transition animation
+		// This prevents highlights from appearing prematurely in OnReadyForInput
+		_waitingForTurnTransition = true;
 
 		// Build message for the pass turn button display
 		string pieceIcon = currentPlayer.AssignedPieceType == PieceType.White ? "⚪" : "⚫";
 		string transitionMessage = $"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN {pieceIcon} - Turn {turnNumber}";
-		
+
 		// Show ONLY the pass turn button, no other UI updates
 		if (_scoreDisplay != null)
 		{
@@ -2072,6 +2227,7 @@ public partial class CarromGame : GameController
 		if (_gameStateMachine != null && GodotObject.IsInstanceValid(_gameStateMachine))
 		{
 			_gameStateMachine.InputAvailabilityChanged -= OnInputAvailabilityChanged;
+			_gameStateMachine.ReadyForInput -= OnReadyForInput;
 		}
 
 		// Clean up score display signals

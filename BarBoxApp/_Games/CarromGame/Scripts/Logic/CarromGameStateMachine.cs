@@ -11,10 +11,11 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 	// ================================================================
 	// SIGNALS
 	// ================================================================
-	
+
 	[Signal] public delegate void StateChangedEventHandler(GameState oldState, GameState newState);
 	[Signal] public delegate void InputAvailabilityChangedEventHandler(bool canAcceptInput);
 	[Signal] public delegate void SettlementCompletedEventHandler();
+	[Signal] public delegate void ReadyForInputEventHandler();
 
 	// ================================================================
 	// ENUMS
@@ -150,9 +151,10 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 		switch (state)
 		{
 			case GameState.Ready:
-				// Game is ready for input
+				// Game is ready for input - emit signal for highlight animation
+				EmitSignal(SignalName.ReadyForInput);
 				break;
-				
+
 			case GameState.Strike:
 				// Strike executed, transition immediately to Physics monitoring
 				TransitionTo(GameState.Physics);
@@ -167,10 +169,23 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 				break;
 
 			case GameState.Settlement:
-				// Process settlement immediately and synchronously
-				ProcessSettlement();
+				// Wait one physics frame to ensure all velocities are truly zero
+				// This prevents race conditions where pieces appear stopped but still have micro-velocities
+				CallDeferred(MethodName.ProcessSettlementWithSync);
 				break;
 		}
+	}
+
+	/// <summary>
+	/// Process settlement with physics synchronization - ensures pieces are truly settled
+	/// </summary>
+	private async void ProcessSettlementWithSync()
+	{
+		// Wait for one physics frame to ensure all piece velocities are truly zero
+		await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+		// Now process settlement with guaranteed stopped pieces
+		ProcessSettlement();
 	}
 
 	// ================================================================

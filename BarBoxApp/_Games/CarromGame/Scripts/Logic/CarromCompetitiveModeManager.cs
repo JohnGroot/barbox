@@ -142,6 +142,20 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		if (shouldContinue)
 		{
 			GD.Print($"[CarromCompetitive] {currentPlayerId} continues turn after successful pocketing");
+
+			// CRITICAL FIX: Smoothly tween striker back to baseline when turn continues
+			// Use tween for visual continuity instead of instant snap
+			var carromGame = GetParent<CarromGame>();
+			if (carromGame != null)
+			{
+				carromGame.TweenStrikerToBaseline(duration: 0.4f);
+			}
+			else
+			{
+				// Fallback to base class striker restoration
+				EnsureStrikerRestored();
+			}
+
 			// State machine will automatically transition to Ready and re-enable input
 			// No need for manual state control here
 		}
