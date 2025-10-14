@@ -17,6 +17,13 @@ public partial class CarromPiece : RigidBody2D
 	[ExportCategory("Visual Settings")]
 	[Export] public Color PieceColor { get; set; } = Colors.White;
 
+	[ExportCategory("Highlight Settings")]
+	[Export] public Color HighlightColor { get; set; } = new Color(1.0f, 1.0f, 0.4f, 0.4f);
+	[Export] public float HighlightFadeInSpeed { get; set; } = 2.0f;
+	[Export] public float HighlightFadeOutSpeed { get; set; } = 5.0f;
+	[Export] public float HighlightRingThickness { get; set; } = 3.0f;
+	[Export] public float HighlightRingOffset { get; set; } = 2.0f;
+
 	// Physics components
 	private CircleShape2D _collisionShape;
 	private CollisionShape2D _collisionShape2D;
@@ -69,13 +76,17 @@ public partial class CarromPiece : RigidBody2D
 	{
 		public Vector2 Position;
 		public double Timestamp;
-		
+
 		public TrailPoint(Vector2 position, double timestamp)
 		{
 			Position = position;
 			Timestamp = timestamp;
 		}
 	}
+
+	// Highlight animation state
+	private float _highlightAlpha = 0.0f;
+	private float _highlightTargetAlpha = 0.0f;
 
 	public override void _Ready()
 	{
@@ -469,7 +480,7 @@ public partial class CarromPiece : RigidBody2D
 		{
 			float deltaF = (float)delta;
 			_stoppedTimer += deltaF;
-			
+
 			// Confirm piece has stopped after a brief delay
 			if (_stoppedTimer >= PhysicsConfig.StopConfirmationTime)
 			{
@@ -478,6 +489,14 @@ public partial class CarromPiece : RigidBody2D
 		}
 
 		_lastVelocity = LinearVelocity;
+
+		// Update highlight alpha animation
+		if (_highlightAlpha != _highlightTargetAlpha)
+		{
+			float lerpSpeed = _highlightTargetAlpha > _highlightAlpha ? HighlightFadeInSpeed : HighlightFadeOutSpeed;
+			_highlightAlpha = Mathf.MoveToward(_highlightAlpha, _highlightTargetAlpha, lerpSpeed * (float)delta);
+			QueueRedraw(); // Request redraw when highlight changes
+		}
 	}
 
 	/// <summary>
@@ -730,6 +749,32 @@ public partial class CarromPiece : RigidBody2D
 	}
 
 	/// <summary>
+	/// Start highlight animation - fade in
+	/// </summary>
+	public void StartHighlight()
+	{
+		_highlightTargetAlpha = 1.0f;
+		QueueRedraw(); // Request redraw to show highlight
+	}
+
+	/// <summary>
+	/// Stop highlight animation - fade out quickly
+	/// </summary>
+	public void StopHighlight()
+	{
+		_highlightTargetAlpha = 0.0f;
+		QueueRedraw(); // Request redraw to hide highlight
+	}
+
+	/// <summary>
+	/// Check if highlight is currently active
+	/// </summary>
+	public bool IsHighlightActive()
+	{
+		return _highlightAlpha > 0.0f || _highlightTargetAlpha > 0.0f;
+	}
+
+	/// <summary>
 	/// Enable or disable trails globally for all pieces
 	/// </summary>
 	public static void SetTrailsEnabled(bool enabled)
@@ -837,9 +882,17 @@ public partial class CarromPiece : RigidBody2D
 	{
 		// Draw trail first (behind the piece)
 		DrawTrail();
-		
+
 		// Use visual radius (not collision radius) for drawing
 		float radius = PhysicsConfig.GetRadiusForPieceType(Type);
+
+		// Draw player hint highlight ring if active
+		if (_highlightAlpha > 0.0f)
+		{
+			Color highlightColor = new Color(HighlightColor.R, HighlightColor.G, HighlightColor.B, HighlightColor.A * _highlightAlpha);
+			float highlightRadius = radius + HighlightRingOffset;
+			DrawArc(Vector2.Zero, highlightRadius, 0, Mathf.Tau, 32, highlightColor, HighlightRingThickness, true);
+		}
 
 		// Draw piece as a circle with proper colors and highlights
 		DrawCircle(Vector2.Zero, radius, GetPieceColor(), true, -1f, true);
