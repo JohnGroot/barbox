@@ -20,6 +20,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	[Signal] public delegate void PlayerWonEventHandler(string playerId);
 	[Signal] public delegate void FoulCommittedEventHandler(string playerId);
 	[Signal] public delegate void CompetitiveModeSetupCompleteEventHandler();
+	[Signal] public delegate void NotificationRequestedEventHandler(int notificationType, string message);
 
 	// Competitive mode state
 	private List<CarromPiece> _competitivePieces = new List<CarromPiece>();
@@ -311,9 +312,12 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 					_validPocketThisStroke = true;
 					currentPlayer.RecordPocketedPiece(PieceType.Red);
 					GD.Print($"[CarromCompetitive] {playerId} pocketed queen - can cover: {currentPlayer.CanCoverQueen()}");
-					
+
 					// Show floating text for queen pocketed
 					_scoreDisplay?.ShowFloatingText(playerId, "Queen Pocketed! 👑", Colors.Gold);
+
+					// Emit notification for queen pocketed
+					EmitSignal(SignalName.NotificationRequested, (int)NotificationType.QueenPocketed, "👑 Queen Pocketed!");
 				}
 				else
 				{
@@ -336,13 +340,17 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 					validPocket = true;
 					_validPocketThisStroke = true;
 					currentPlayer.RecordPocketedPiece(piece.Type);
-					
+
 					// Show floating text for valid piece pocketed
 					if (_scoreDisplay != null)
 					{
 						string pieceIcon = piece.Type == PieceType.White ? "⚪" : "⚫";
 						_scoreDisplay.ShowFloatingText(playerId, $"{pieceIcon} Piece Pocketed!", Colors.Green);
 					}
+
+					// Emit notification for piece pocketed
+					string pieceIconMsg = piece.Type == PieceType.White ? "⚪" : "⚫";
+					EmitSignal(SignalName.NotificationRequested, (int)NotificationType.PiecePocketed, $"{pieceIconMsg} Piece Pocketed!");
 				}
 				else
 				{
@@ -636,6 +644,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 				// Show floating text for queen returned
 				_scoreDisplay?.ShowFloatingText(currentPlayer.PlayerId, "Queen Returned 👑", Colors.Orange);
 
+				// Emit notification for queen returned
+				EmitSignal(SignalName.NotificationRequested, (int)NotificationType.QueenReturned, "👑 Queen Returned");
+
 				// Return uncovered queen to center
 				ReturnPieceToCenter(PieceType.Red, deferTweening: true);
 				GD.Print($"[CarromCompetitive] Returned uncovered queen to center for {currentPlayer.PlayerId}");
@@ -725,38 +736,47 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			// Breaking successful - end breaking turn, continue with normal rules
 			_isBreakingTurn = false;
 			GD.Print($"[CarromCompetitive] Breaking successful on attempt {_breakingAttempts}");
-			
+
+			// Emit notification for breaking success
+			EmitSignal(SignalName.NotificationRequested, (int)NotificationType.BreakingSuccess, $"✓ Breaking Successful!");
+
 			// Apply normal turn continuation rules
 			bool shouldContinue = _validPocketThisStroke && !_foulThisStroke;
-			
+
 			// Reset stroke flags
 			_validPocketThisStroke = false;
 			_foulThisStroke = false;
-			
+
 			return shouldContinue;
 		}
-		
+
 		// Check if max attempts reached
 		if (_breakingAttempts >= MAX_BREAKING_ATTEMPTS)
 		{
 			// Breaking failed after 3 attempts - end turn and pass to opponent
 			_isBreakingTurn = false;
 			GD.Print($"[CarromCompetitive] Breaking failed after {MAX_BREAKING_ATTEMPTS} attempts - passing turn");
-			
+
+			// Emit notification for breaking failed
+			EmitSignal(SignalName.NotificationRequested, (int)NotificationType.BreakingFailed, "✗ Breaking Failed - Turn Passes");
+
 			// Reset stroke flags
 			_validPocketThisStroke = false;
 			_foulThisStroke = false;
-			
+
 			return false; // End turn
 		}
-		
+
 		// Still have breaking attempts left - continue turn
 		GD.Print($"[CarromCompetitive] Breaking attempt {_breakingAttempts}/{MAX_BREAKING_ATTEMPTS} - pieces disturbed: {piecesDisturbedThisAttempt}");
-		
+
+		// Emit notification for breaking attempt
+		EmitSignal(SignalName.NotificationRequested, (int)NotificationType.BreakingAttempt, $"Breaking: Attempt {_breakingAttempts}/{MAX_BREAKING_ATTEMPTS}");
+
 		// Reset stroke flags for next breaking attempt
 		_validPocketThisStroke = false;
 		_foulThisStroke = false;
-		
+
 		return true; // Continue breaking attempts
 	}
 	
@@ -1082,6 +1102,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	{
 		// Show floating text for queen covered
 		_scoreDisplay?.ShowFloatingText(playerId, "Queen Covered! 👑✓", Colors.Gold);
+
+		// Emit notification for queen covered
+		EmitSignal(SignalName.NotificationRequested, (int)NotificationType.QueenCovered, "👑✓ Queen Covered!");
 	}
 	
 	/// <summary>

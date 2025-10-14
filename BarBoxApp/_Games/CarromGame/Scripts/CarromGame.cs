@@ -70,7 +70,7 @@ public partial class CarromGame : GameController
 	
 	// UI Components
 	private CarromScoreDisplay _scoreDisplay;
-	private CarromTurnIndicator _turnIndicator;
+	private CarromNotificationSystem _notificationSystem;
 	private CarromPlayerSetupMenu _playerSetupMenu;
 	private int _pendingPlayerCount = 2; // Track player count for menu → game transition
 	
@@ -358,10 +358,10 @@ public partial class CarromGame : GameController
 		// Connect to Pass Turn signal for manual turn advancement
 		_scoreDisplay.PassTurnRequested += OnPassTurnRequested;
 
-		// Initialize turn indicator (positioned below top menu bar)
-		_turnIndicator = new CarromTurnIndicator();
-		AddChild(_turnIndicator);
-		_turnIndicator.Hide(); // Hidden by default, shown in competitive mode
+		// Initialize notification system (positioned below top menu bar)
+		_notificationSystem = new CarromNotificationSystem();
+		AddChild(_notificationSystem);
+		_notificationSystem.Hide(); // Hidden by default, shown in competitive mode
 
 		// Initialize player setup menu
 		_playerSetupMenu = new CarromPlayerSetupMenu();
@@ -419,6 +419,7 @@ public partial class CarromGame : GameController
 		_competitiveModeManager.PlayerWon += OnPlayerWon;
 		_competitiveModeManager.FoulCommitted += OnFoulCommitted;
 		_competitiveModeManager.CompetitiveModeSetupComplete += OnCompetitiveModeSetupComplete;
+		_competitiveModeManager.NotificationRequested += OnNotificationRequested;
 		
 		// Piece factory signals
 		_pieceFactory.PieceCreated += OnPieceCreated;
@@ -500,9 +501,9 @@ public partial class CarromGame : GameController
 		// Clean up competitive mode before switching
 		_competitiveModeManager?.CleanupMode();
 
-		// Hide score display and turn indicator
+		// Hide score display and notification system
 		_scoreDisplay?.SetVisible(false);
-		_turnIndicator?.Hide();
+		_notificationSystem?.Hide();
 
 		// Reset camera to default rotation (player 0 position)
 		_cameraController?.ResetRotation();
@@ -627,6 +628,9 @@ public partial class CarromGame : GameController
 	{
 		// Stop highlights on all pieces when strike is executed
 		StopAllPieceHighlights();
+
+		// Clear any sticky notifications when striker is hit
+		_notificationSystem?.ClearStickyNotification();
 
 		// Get striker from current mode manager
 		var striker = _currentModeManager?.GetStriker();
@@ -1049,6 +1053,21 @@ public partial class CarromGame : GameController
 			// This happens when striker begins tweening to baseline (perfect timing for highlights)
 			_waitingForTurnTransition = false;
 			StartPieceHighlightsForPlayer(playerIndex);
+
+			// Show turn notification at same time as highlights for visual consistency
+			if (_notificationSystem != null && _competitiveModeManager != null && _carromGameMode == CarromGameMode.Competitive)
+			{
+				var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
+				if (currentPlayer != null)
+				{
+					string pieceIcon = currentPlayer.AssignedPieceType == PieceType.White ? "⚪" : "⚫";
+					// Get turn number from current player index + 1 for display
+					int turnNumber = _competitiveModeManager.GetPlayers().Count > 0 ?
+						(_competitiveModeManager.GetPlayers().IndexOf(currentPlayer) + 1) : 1;
+					string message = $"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN {pieceIcon}";
+					_notificationSystem.ShowNotification(NotificationType.TurnStart, message);
+				}
+			}
 
 			// Animate striker position
 			_strikerTween.TweenProperty(striker, TweenConstants.GlobalPosition, globalBaselinePosition, duration);
@@ -1982,16 +2001,6 @@ public partial class CarromGame : GameController
 		// Clear all piece trails when turn changes for clean visual reset
 		ClearAllTrails();
 
-		// Update turn indicator with new player info
-		if (_turnIndicator != null && _competitiveModeManager != null)
-		{
-			var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
-			if (currentPlayer != null)
-			{
-				_turnIndicator.UpdateTurnDisplay(currentPlayer.PlayerId, currentPlayer.AssignedPieceType, turnNumber);
-			}
-		}
-
 		// Update score display to reflect new current player
 		if (_scoreDisplay != null && _competitiveModeManager != null)
 		{
@@ -2045,8 +2054,8 @@ public partial class CarromGame : GameController
 		// Handle win condition
 		EndGame();
 
-		// Hide turn indicator on game end
-		_turnIndicator?.Hide();
+		// Hide notification system on game end
+		_notificationSystem?.Hide();
 
 		// Show comprehensive game over screen
 		ShowGameOverScreen(playerId);
@@ -2060,11 +2069,28 @@ public partial class CarromGame : GameController
 	private void OnFoulCommitted(string playerId)
 	{
 		EmitSignal(SignalName.StrikerFoul, playerId);
-		
-		// Show floating text for foul
+
+		// Show foul notification (timed)
+		if (_notificationSystem != null)
+		{
+			_notificationSystem.ShowNotification(NotificationType.Foul, $"⚠️ Foul by {playerId.ToUpper()}!");
+		}
+
+		// Also show floating text above player's score for emphasis
 		if (_scoreDisplay != null)
 		{
 			_scoreDisplay.ShowFloatingText(playerId, "Foul! ⚠️", Colors.Red);
+		}
+	}
+
+	/// <summary>
+	/// Handle notification request from competitive mode manager
+	/// </summary>
+	private void OnNotificationRequested(int notificationType, string message)
+	{
+		if (_notificationSystem != null)
+		{
+			_notificationSystem.ShowNotification((NotificationType)notificationType, message);
 		}
 	}
 
@@ -2097,14 +2123,16 @@ public partial class CarromGame : GameController
 			}
 		}
 
-		// Show turn indicator with initial player
-		if (_turnIndicator != null && _competitiveModeManager != null)
+		// Show notification system with initial turn notification
+		if (_notificationSystem != null && _competitiveModeManager != null)
 		{
 			var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
 			if (currentPlayer != null)
 			{
-				_turnIndicator.UpdateTurnDisplay(currentPlayer.PlayerId, currentPlayer.AssignedPieceType, 1);
-				_turnIndicator.Show();
+				string pieceIcon = currentPlayer.AssignedPieceType == PieceType.White ? "⚪" : "⚫";
+				string message = $"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN {pieceIcon} - Turn 1";
+				_notificationSystem.Show();
+				_notificationSystem.ShowNotification(NotificationType.TurnStart, message);
 			}
 		}
 
@@ -2164,6 +2192,7 @@ public partial class CarromGame : GameController
 			_competitiveModeManager.PlayerWon -= OnPlayerWon;
 			_competitiveModeManager.FoulCommitted -= OnFoulCommitted;
 			_competitiveModeManager.CompetitiveModeSetupComplete -= OnCompetitiveModeSetupComplete;
+			_competitiveModeManager.NotificationRequested -= OnNotificationRequested;
 		}
 		
 		// Piece factory signals
@@ -2236,10 +2265,10 @@ public partial class CarromGame : GameController
 			_scoreDisplay.PassTurnRequested -= OnPassTurnRequested;
 		}
 
-		// Clean up turn indicator
-		if (_turnIndicator != null && GodotObject.IsInstanceValid(_turnIndicator))
+		// Clean up notification system
+		if (_notificationSystem != null && GodotObject.IsInstanceValid(_notificationSystem))
 		{
-			_turnIndicator.QueueFree();
+			_notificationSystem.QueueFree();
 		}
 
 		// Clean up player setup menu signals
