@@ -20,8 +20,7 @@ namespace BarBox.Games.MiningGame
 	{
 		Capacity,       // Max gem storage capacity
 		MiningSpeed,    // Mining tick frequency (reduces time)
-		MiningAmount,   // Gems per tick
-		CreditCharges   // Maximum credit charges available
+		MiningAmount    // Gems per tick
 	}
 
 	public enum UpgradeTier
@@ -41,7 +40,6 @@ namespace BarBox.Games.MiningGame
 	public class MiningGlobalDataStore
 	{
 		public Dictionary<string, int> Gems { get; set; } = new();
-		public List<GameTimeCreditTimer> CreditTimers { get; set; } = new();
 
 		/// <summary>
 		/// Add gems using type-safe enum with modern C# conversion
@@ -83,22 +81,6 @@ namespace BarBox.Games.MiningGame
 				Gems[key] = Math.Max(0, currentAmount - kvp.Value);
 			}
 		}
-
-		/// <summary>
-		/// Get count of available (recharged) credits
-		/// </summary>
-		public int GetAvailableCredits(double currentGameTime)
-		{
-			return CreditTimers.Count(t => t.IsRecharged(currentGameTime));
-		}
-
-		/// <summary>
-		/// Remove expired credit timers that have recharged
-		/// </summary>
-		public void CleanupExpiredTimers(double currentGameTime)
-		{
-			CreditTimers = CreditTimers.Where(t => !t.IsRecharged(currentGameTime)).ToList();
-		}
 	}
 
 	// ============= LOCAL DATA =============
@@ -115,66 +97,7 @@ namespace BarBox.Games.MiningGame
 		public DateTime LastMiningTick { get; set; } = DateTime.UtcNow;
 		public string LocationGemType { get; set; } = "Amethyst";
 		public Dictionary<string, int> Upgrades { get; set; } = new(); // upgrade_type -> level
-		public List<CreditPurchaseTimer> CreditTimers { get; set; } = new();
 	}
-
-	// ============= TIMER CLASSES =============
-
-	/// <summary>
-	/// Data class for tracking credit purchase timers using game time in the mining game.
-	/// Each timer represents a credit that was purchased and needs to recharge before another can be bought.
-	/// </summary>
-	public class GameTimeCreditTimer
-	{
-		/// <summary>
-		/// Game time when the credit was purchased.
-		/// </summary>
-		public double PurchaseGameTime { get; set; }
-		
-		/// <summary>
-		/// Game time when the credit will be fully recharged and available for purchase again.
-		/// </summary>
-		public double RechargeGameTime { get; set; }
-		
-		/// <summary>
-		/// Checks if the credit has finished recharging and is available for purchase.
-		/// </summary>
-		/// <param name="currentGameTime">Current game time in seconds</param>
-		/// <returns>True if the credit has recharged</returns>
-		public bool IsRecharged(double currentGameTime) => currentGameTime >= RechargeGameTime;
-		
-		/// <summary>
-		/// Gets the remaining time in seconds until the credit is recharged.
-		/// </summary>
-		/// <param name="currentGameTime">Current game time in seconds</param>
-		/// <returns>Remaining seconds until recharge, or 0 if already recharged</returns>
-		public double GetTimeRemainingSeconds(double currentGameTime) 
-		{
-			return Math.Max(0, RechargeGameTime - currentGameTime);
-		}
-		
-		/// <summary>
-		/// Gets the remaining time in hours until the credit is recharged.
-		/// </summary>
-		/// <param name="currentGameTime">Current game time in seconds</param>
-		/// <returns>Remaining hours until recharge, or 0 if already recharged</returns>
-		public float GetTimeRemainingHours(double currentGameTime)
-		{
-			return (float)(GetTimeRemainingSeconds(currentGameTime) / 3600.0);
-		}
-	}
-
-	[Serializable]
-	public class CreditPurchaseTimer
-	{
-		public DateTime PurchaseTime { get; set; }
-		public int RechargeHours { get; set; }
-		public int CreditsRecharging { get; set; }
-		
-		public bool IsRecharged => DateTime.UtcNow >= PurchaseTime.AddHours(RechargeHours);
-		public TimeSpan TimeRemaining => IsRecharged ? TimeSpan.Zero : PurchaseTime.AddHours(RechargeHours) - DateTime.UtcNow;
-	}
-
 
 	// ============= LOCATION STATE =============
 

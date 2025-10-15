@@ -7,11 +7,9 @@
 - Each BarBox Location has one of several Gem Types assigned to them representing what gem type is being mined AND the 
   resource required for purchasing Credits and Upgrades
 - There should be a Max Capacity of Gems ready to be extracted, but not of how many gems can be held in the global inventory
-- It should cost 150 gems to purchase a Credit & there should be a running timer for every Credit purchased.
-  - For example if you bought 1 credit then 3 hours later you buy another, it should take 24 hours to be able to recharge 
-the first charge and 24 hours from the 2nd purchase (so 3 hours later) for the next. 
-- Upgrades should allow for the incremental improvement of Gem Capacity (Increases your max gem capacity), Gem Mining      
-Amount (Increases amount mined every Tick), Gem Mining Speed (Speeds up your mining Tick), Credit Charges (Increases how many charges of credits the player can purchase but not the speed of the recharge)
+- It should cost 150 gems to purchase a Credit with unlimited purchases (no recharge timers)
+- Upgrades should allow for the incremental improvement of Gem Capacity (Increases your max gem capacity), Gem Mining
+Amount (Increases amount mined every Tick), Gem Mining Speed (Speeds up your mining Tick)
 - Upgrades should "level up" every time they're purchased, with a limit of 15 levels (so once level 15 is met it can't be upgraded anymore)
 - These upgrades are Local to the Location that they're purchased on, as are the levels. So Each Machine you upgrade disparately
 - Every 5 upgrade "levels" they entire a new tier with a more difficult price: 

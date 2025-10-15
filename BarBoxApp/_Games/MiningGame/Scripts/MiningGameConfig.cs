@@ -13,7 +13,6 @@ namespace BarBox.Games.MiningGame
 		[Export] public int BaseGemsPerTick { get; set; } = 25;
 		[Export] public int BaseCapacity { get; set; } = 150;
 		[Export] public int CreditCost { get; set; } = 150; // Gems needed per credit
-		[Export] public float CreditRechargeHours { get; set; } = 24.0f;
 		[Export] public int MaxUpgradeLevel { get; set; } = 15;
 		
 		[ExportCategory("Upgrade Scaling")]
@@ -23,7 +22,6 @@ namespace BarBox.Games.MiningGame
 		
 		[ExportCategory("Upgrade Costs")]
 		[Export] public Godot.Collections.Dictionary<UpgradeType, UpgradeCostData> UpgradeCostsDict { get; set; }
-		[Export] public int BaseCreditCharges { get; set; } = 1;
 		
 		[ExportCategory("Upgrade Tiers")]
 		[Export] public int Tier1MaxLevel { get; set; } = 5;
@@ -47,8 +45,7 @@ namespace BarBox.Games.MiningGame
 				{
 					{ UpgradeType.Capacity, new UpgradeCostData { BaseCost = 100, CostMultiplier = 1.4f } },
 					{ UpgradeType.MiningSpeed, new UpgradeCostData { BaseCost = 150, CostMultiplier = 1.5f } },
-					{ UpgradeType.MiningAmount, new UpgradeCostData { BaseCost = 120, CostMultiplier = 1.45f } },
-					{ UpgradeType.CreditCharges, new UpgradeCostData { BaseCost = 200, CostMultiplier = 1.6f } }
+					{ UpgradeType.MiningAmount, new UpgradeCostData { BaseCost = 120, CostMultiplier = 1.45f } }
 				};
 			}
 		}
@@ -110,12 +107,7 @@ namespace BarBox.Games.MiningGame
 			if (level <= Tier2MaxLevel) return UpgradeTier.Tier2;
 			return UpgradeTier.Tier3;
 		}
-		
-		public int GetMaxCreditCharges(int chargesLevel)
-		{
-			return BaseCreditCharges + chargesLevel;
-		}
-		
+
 		private GemType GetRandomOtherGemType(IEnumerable<GemType> exclude)
 		{
 			var allGems = Enum.GetValues<GemType>()

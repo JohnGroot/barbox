@@ -137,7 +137,7 @@ private void OnUserLoggedIn(UserData userData)
 - **Capacity Management**: Local extraction limits with global inventory
 
 ### **Upgrade System**
-- **15 Levels**: Per upgrade type (Capacity, Mining Amount, Mining Speed, Credit Charges)
+- **15 Levels**: Per upgrade type (Capacity, Mining Amount, Mining Speed)
 - **3 Tiers**: Increasingly complex cost structures
   - Tier 1: Single gem type
   - Tier 2: Location gem + 1 random other type
@@ -145,8 +145,8 @@ private void OnUserLoggedIn(UserData userData)
 
 ### **Credit Purchase System**
 - **Cost**: 150 gems per credit
-- **Timer System**: 24-hour recharge per credit with staggered timing
-- **Location-Specific**: Each machine tracks credits independently
+- **Unlimited Purchases**: Buy credits anytime you have enough gems
+- **No Timers**: No recharge delays between purchases
 
 ## UI Architecture
 

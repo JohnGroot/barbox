@@ -56,7 +56,6 @@ namespace BarBox.Games.MiningGame
 				UpgradeType.Capacity => "💼",
 				UpgradeType.MiningSpeed => "⚡",
 				UpgradeType.MiningAmount => "🪨",
-				UpgradeType.CreditCharges => "🎫",
 				_ => ""
 			};
 		}
@@ -78,7 +77,6 @@ namespace BarBox.Games.MiningGame
 				UpgradeType.Capacity => $"{GetUpgradeEmoji(upgradeType)} Gem Capacity",
 				UpgradeType.MiningSpeed => $"{GetUpgradeEmoji(upgradeType)} Mining Speed",
 				UpgradeType.MiningAmount => $"{GetUpgradeEmoji(upgradeType)} Gems Per Tick",
-				UpgradeType.CreditCharges => $"{GetUpgradeEmoji(upgradeType)} Credit Purchase Slots",
 				_ => $"{GetUpgradeEmoji(upgradeType)} {FormatEnumName(upgradeType.ToString())}"
 			};
 		}
@@ -90,7 +88,6 @@ namespace BarBox.Games.MiningGame
 				UpgradeType.Capacity => "Increases maximum gem storage capacity",
 				UpgradeType.MiningSpeed => "Reduces time between mining ticks",
 				UpgradeType.MiningAmount => "Increases gems earned per tick",
-				UpgradeType.CreditCharges => "Allows more credits before waiting for recharge",
 				_ => "Improves mining operations"
 			};
 		}

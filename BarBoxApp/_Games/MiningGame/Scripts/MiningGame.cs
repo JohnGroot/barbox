@@ -420,15 +420,14 @@ namespace BarBox.Games.MiningGame
 
 				.AddSection("😮‍💨 USING GEMS 🤑",
 					"• Trade your extracted gems for credits OR upgrade this machine's mine",
-					"• Buying a credit uses a Charge that has to regenerate so you can spend more gems on a credit",
+					"• Buy unlimited credits as long as you have enough gems",
 					"• Credits cost the same gem type as the machine produces")
 
-				.AddSection("⬆️ FOUR UPGRADE TYPES ⬆️",
+				.AddSection("⬆️ THREE UPGRADE TYPES ⬆️",
 					"• All upgrades are applied to the current machine you're on. Upgrade the mines at all your favorite spots!",
 					"• 💼 Capacity - Increases maximum mined gem storage on this machine",
 					"• ⚡ Mining Amount - Increases gems produced per 2-hour cycle",
-					"• 🚀 Mining Speed - Decreases time between mining cycles",
-					"• 🎫 Credit Charges - Increases the number of credits that can be bought at a time");
+					"• 🚀 Mining Speed - Decreases time between mining cycles");
 		}
 
 		// ================================================================
@@ -454,7 +453,6 @@ namespace BarBox.Games.MiningGame
 		public double GetStateTime() => _state?.GameTime ?? 0.0;
 		public int GetGemsPerTick() => _state?.GetGemsPerTick() ?? 0;
 		public float GetMiningTickTime() => _state?.GetMiningTickTime() ?? 0.0f;
-		public int GetMaxCreditCharges() => _state?.GetMaxCreditCharges() ?? 0;
 		public int GetUpgradeLevel(UpgradeType upgradeType) => _state?.GetUpgradeLevel(upgradeType) ?? 0;
 		
 		public MiningLocationData GetLocationDataTemplate(string locationId)
@@ -771,7 +769,6 @@ namespace BarBox.Games.MiningGame
 			private int _cachedMaxCapacity;
 			private float _cachedMiningTickTime;
 			private int _cachedGemsPerTick;
-			private int _cachedMaxCreditCharges;
 			private bool _cacheValid = false;
 			
 			// Game time management
@@ -831,13 +828,7 @@ namespace BarBox.Games.MiningGame
 				RefreshCacheIfNeeded();
 				return _cachedGemsPerTick;
 			}
-			
-			public int GetMaxCreditCharges()
-			{
-				RefreshCacheIfNeeded();
-				return _cachedMaxCreditCharges;
-			}
-			
+
 			public int GetUpgradeLevel(UpgradeType upgradeType)
 			{
 				return _upgradeLevels.ContainsKey(upgradeType) ? _upgradeLevels[upgradeType] : 0;
@@ -856,7 +847,6 @@ namespace BarBox.Games.MiningGame
 					_cachedMaxCapacity = _locationTemplate.GetMaxCapacity(GetUpgradeLevel(UpgradeType.Capacity), _game.Config);
 					_cachedMiningTickTime = _locationTemplate.GetMiningTickTime(GetUpgradeLevel(UpgradeType.MiningSpeed), _game.Config);
 					_cachedGemsPerTick = _locationTemplate.GetGemsPerTick(GetUpgradeLevel(UpgradeType.MiningAmount), _game.Config);
-					_cachedMaxCreditCharges = _game.Config.GetMaxCreditCharges(GetUpgradeLevel(UpgradeType.CreditCharges));
 					_cacheValid = true;
 				}
 			}
@@ -1094,10 +1084,7 @@ namespace BarBox.Games.MiningGame
 				
 				// Process any mining ticks that are ready (handles offline progress automatically)
 				ProcessReadyMiningTicks();
-				
-				// Cleanup expired credit timers
-				_globalData.CleanupExpiredTimers(_gameTime);
-				
+
 				// Invalidate cache so it gets rebuilt with new data
 				InvalidateCache();
 			}
@@ -1163,8 +1150,7 @@ namespace BarBox.Games.MiningGame
 					Upgrades = _upgradeLevels.ToDictionary(
 						kvp => kvp.Key.ToString(), // Modern enum to string
 						kvp => kvp.Value
-					),
-					CreditTimers = new List<CreditPurchaseTimer>() // Simplified - no complex conversion needed
+					)
 				};
 				
 				try
@@ -1185,29 +1171,12 @@ namespace BarBox.Games.MiningGame
 			public bool CanPurchaseCredit()
 			{
 				if (_globalData == null || _locationTemplate == null) return false;
-				
+
 				var cost = new Dictionary<GemType, int>
 				{
 					{ _locationTemplate.PrimaryGemType, _game.Config.CreditCost }
 				};
-				
-				// Check if we haven't exceeded max credit charges
-				int maxCharges = GetMaxCreditCharges();
-				int activeCharges = 0;
-				
-				// Count non-recharged timers
-				foreach (var timer in _globalData.CreditTimers)
-				{
-					if (!timer.IsRecharged(_gameTime))
-						activeCharges++;
-				}
-				
-				if (activeCharges >= maxCharges)
-				{
-					GD.Print($"[GameState] Max credit charges reached: {activeCharges}/{maxCharges}");
-					return false;
-				}
-				
+
 				return _globalData.HasSufficientGems(cost);
 			}
 			
@@ -1249,27 +1218,19 @@ namespace BarBox.Games.MiningGame
 			public bool PurchaseCredit()
 			{
 				if (!CanPurchaseCredit() || _locationTemplate == null) return false;
-				
+
 				var cost = new Dictionary<GemType, int>
 				{
 					{ _locationTemplate.PrimaryGemType, _game.Config.CreditCost }
 				};
 				_globalData.SpendGems(cost);
-				
-				// Add credit timer using game time
-				var timer = new GameTimeCreditTimer
-				{
-					PurchaseGameTime = _gameTime,
-					RechargeGameTime = _gameTime + (_game.Config.CreditRechargeHours * SECONDS_PER_HOUR)
-				};
-				_globalData.CreditTimers.Add(timer);
-				
+
 				// Actually add credit to user account
 				if (!string.IsNullOrEmpty(_game.GetCurrentUserPhoneNumber()))
 				{
 					_game._userManager?.AddCredits(CREDITS_PER_PURCHASE);
 				}
-				
+
 				_ = SaveDataAsync(); // Fire-and-forget
 				return true;
 			}

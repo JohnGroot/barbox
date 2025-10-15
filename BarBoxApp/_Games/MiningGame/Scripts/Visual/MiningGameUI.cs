@@ -43,9 +43,6 @@ namespace BarBox.Games.MiningGame
 		
 		// Global inventory section
 		private Dictionary<GemType, Label> _gemLabels = new();
-		private VBoxContainer _creditTimersContainer;
-		private List<Label> _cachedTimerLabels = new();
-		private Label _noTimersLabel;
 		
 		// ================================================================
 		// REFERENCES
@@ -253,20 +250,6 @@ namespace BarBox.Games.MiningGame
 			}
 
 			inventoryGroup.AddChild(gemsGrid);
-
-			// Credit timers section
-			var creditSection = new VBoxContainer();
-			creditSection.AddThemeConstantOverride("separation", 4);
-
-			var creditHeader = new Label();
-			creditHeader.Text = "Credit Recharge Timers:";
-			creditHeader.AddThemeColorOverride("font_color", GetSecondaryAccent());
-			creditSection.AddChild(creditHeader);
-
-			_creditTimersContainer = new VBoxContainer();
-			creditSection.AddChild(_creditTimersContainer);
-
-			inventoryGroup.AddChild(creditSection);
 			parent.AddChild(inventoryGroup);
 		}
 		
@@ -339,33 +322,6 @@ namespace BarBox.Games.MiningGame
 					_extractButton.Text = "Extract Gems";
 				if (_purchaseCreditButton != null)
 					_purchaseCreditButton.Text = $"Purchase Credit ({_config.CreditCost} gems)";
-					
-				// Hide/clear credit timers
-				ClearCreditTimersDisplay();
-			}
-		}
-
-		private void ClearCreditTimersDisplay()
-		{
-			// Hide all timer labels
-			foreach (var label in _cachedTimerLabels)
-			{
-				if (GodotObject.IsInstanceValid(label))
-					label.Visible = false;
-			}
-			
-			// Show "login required" message instead of timers
-			if (_noTimersLabel == null)
-			{
-				_noTimersLabel = new Label();
-				_noTimersLabel.Text = "  Login required to view timers";
-				_noTimersLabel.AddThemeColorOverride("font_color", Colors.Gray);
-				_creditTimersContainer.AddChild(_noTimersLabel);
-			}
-			else
-			{
-				_noTimersLabel.Text = "  Login required to view timers";
-				_noTimersLabel.Visible = true;
 			}
 		}
 		
@@ -488,7 +444,6 @@ namespace BarBox.Games.MiningGame
 					{
 						label.Text = "Login required";
 					}
-					ClearCreditTimersDisplay();
 				}
 				return;
 			}
@@ -503,73 +458,11 @@ namespace BarBox.Games.MiningGame
 					label.Text = $"{gemEmoji} {gemType}: {amount}";
 				}
 			}
-
-			// Update credit timers using cached labels
-			UpdateCreditTimers(globalData);
 		}
 		
 		private void ApplyTheme()
 		{
 			Modulate = Colors.White;
-		}
-		
-		private void UpdateCreditTimers(MiningGlobalDataStore globalData)
-		{
-			var activeTimers = globalData.CreditTimers
-				.Where(timer => !timer.IsRecharged(_game.GetStateTime()))
-				.ToList();
-			
-			// Hide all cached labels first
-			foreach (var label in _cachedTimerLabels)
-				label.Visible = false;
-			if (_noTimersLabel != null)
-				_noTimersLabel.Visible = false;
-			
-			if (activeTimers.Count == 0)
-			{
-				// Show "no timers" message
-				if (_noTimersLabel == null)
-				{
-					_noTimersLabel = new Label();
-					_noTimersLabel.Text = "  No active timers";
-					_noTimersLabel.AddThemeColorOverride("font_color", Colors.Gray);
-					_creditTimersContainer.AddChild(_noTimersLabel);
-				}
-				_noTimersLabel.Visible = true;
-			}
-			else
-			{
-				// Update or create timer labels as needed
-				for (int i = 0; i < activeTimers.Count; i++)
-				{
-					Label timerLabel;
-					if (i < _cachedTimerLabels.Count)
-					{
-						timerLabel = _cachedTimerLabels[i];
-					}
-					else
-					{
-						timerLabel = new Label();
-						timerLabel.AddThemeColorOverride("font_color", GetSecondaryAccent());
-						_cachedTimerLabels.Add(timerLabel);
-						_creditTimersContainer.AddChild(timerLabel);
-					}
-					
-					float hoursRemaining = activeTimers[i].GetTimeRemainingHours(_game.GetStateTime());
-					
-					if (hoursRemaining < 1)
-					{
-						int minutesRemaining = (int)(hoursRemaining * 60);
-						timerLabel.Text = $"  Credit recharging: {minutesRemaining} minutes";
-					}
-					else
-					{
-						timerLabel.Text = $"  Credit recharging: {hoursRemaining:F1} hours";
-					}
-					
-					timerLabel.Visible = true;
-				}
-			}
 		}
 		
 		public override void _Process(double delta)
@@ -772,7 +665,6 @@ namespace BarBox.Games.MiningGame
 					UpgradeType.Capacity => $"Current: {_game.GetMaxCapacity()} gems",
 					UpgradeType.MiningSpeed => $"Current: {_game.GetMiningTickTime() / 60:F1} minutes/tick",
 					UpgradeType.MiningAmount => $"Current: {_game.GetGemsPerTick()} gems/tick",
-					UpgradeType.CreditCharges => $"Current: {_game.GetMaxCreditCharges()} simultaneous purchases",
 					_ => ""
 				};
 			}
