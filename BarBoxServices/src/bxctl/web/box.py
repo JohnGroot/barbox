@@ -29,10 +29,26 @@ async def create_box(
 async def create_box_session(
     box_id: UUID,
     player_id: Annotated[UUID, Header()],
-    # db_service: dependencies.Database,
+    db_service: dependencies.Database,
+    now: dependencies.Now,
 ) -> structures.Identifiable:
     session_id = uuid4()
-    print(f"Started session {session_id} for box {box_id} and player {player_id}??")
+    logger.info(
+        "session_started",
+        box_id=box_id,
+        player_id=player_id,
+        session_id=session_id,
+    )
+    await db_service.create(
+        target=db.defs.BoxSession,
+        data=structures.BoxSession(
+            id=session_id,
+            box_id=box_id,
+            player_id=player_id,
+            events=[],
+            start_time=now,
+        ),
+    )
     return structures.Identifiable(id=session_id)
 
 
