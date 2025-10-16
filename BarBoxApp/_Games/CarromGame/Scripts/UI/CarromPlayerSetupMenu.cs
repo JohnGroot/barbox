@@ -1263,6 +1263,66 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	}
 
 	/// <summary>
+	/// Cleanup all player sessions when exiting the game
+	/// Logs out secondary players (non-primary sessions) without returning credits
+	/// Credits transferred to the table are permanent and remain in machine pool
+	/// </summary>
+	private async Task CleanupAllPlayerSessions()
+	{
+		if (_sessionManager == null) return;
+
+		// Get primary session to avoid logging it out (primary user manages their own session lifecycle)
+		var primarySession = _sessionManager.GetPrimaryUserSession();
+		string primaryPhoneNumber = primarySession?.PhoneNumber;
+
+		// Process each slot - use ToList to avoid modification during iteration
+		foreach (var kvp in _slotToPhoneNumber.ToList())
+		{
+			string phoneNumber = kvp.Value;
+
+			// Logout secondary players only (non-primary sessions)
+			// Primary user manages their own session lifecycle
+			// NOTE: Credits transferred to table are PERMANENT and are NOT returned
+			if (!string.IsNullOrEmpty(phoneNumber) && phoneNumber != primaryPhoneNumber)
+			{
+				await _sessionManager.LogoutUserAsync(phoneNumber);
+				GD.Print($"[CarromPlayerSetupMenu] Logged out secondary player: {phoneNumber}");
+			}
+		}
+
+		// Clear slot tracking (credits remain in machine pool permanently)
+		_slotToPhoneNumber.Clear();
+		_creditsTransferredByPlayer.Clear();
+
+		// Clear persisted slot assignments (but machine credits remain untouched)
+		await SavePlayerContributionsToMachineData();
+	}
+
+	/// <summary>
+	/// Async void wrapper for session cleanup - safe to call from synchronous _ExitTree
+	/// </summary>
+	private async void CleanupAllPlayerSessionsAsync()
+	{
+		try
+		{
+			await CleanupAllPlayerSessions();
+		}
+		catch (System.Exception ex)
+		{
+			// Thread-safe error logging via CallDeferred
+			CallDeferred(MethodName.LogCleanupError, ex.Message);
+		}
+	}
+
+	/// <summary>
+	/// Thread-safe logging for cleanup errors
+	/// </summary>
+	private void LogCleanupError(string message)
+	{
+		GD.PrintErr($"[CarromPlayerSetupMenu] Session cleanup failed: {message}");
+	}
+
+	/// <summary>
 	/// Persist player contributions and slot assignments to MachineGameData.GameState
 	/// </summary>
 	private async Task SavePlayerContributionsToMachineData()
@@ -1318,6 +1378,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	public override void _ExitTree()
 	{
+		// Cleanup all player sessions (return credits and logout secondary players)
+		CleanupAllPlayerSessionsAsync();
+
 		// Cleanup SessionManager signals
 		if (GodotObject.IsInstanceValid(_sessionManager))
 		{
