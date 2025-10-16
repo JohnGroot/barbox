@@ -1,5 +1,4 @@
-from typing import overload
-from uuid import uuid4
+from typing import Any, overload
 
 from pydantic import BaseModel
 from sqlalchemy import Select, insert
@@ -14,6 +13,11 @@ class DbError(Exception):
 
 class DbCreateFailedError(DbError):
     pass
+
+
+class CanNotCreateWithoutIdError(DbError):
+    def __init__(self, target: type[defs.Base]) -> None:
+        super().__init__(f"Can not create {target.__name__} without 'id' field in data")
 
 
 class CRUD:
@@ -37,15 +41,28 @@ class CRUD:
         read_as: type[ReadAs],
     ) -> ReadAs: ...
 
-    async def create[Target: defs.Base, Data: BaseModel, ReadAs: BaseModel](
+    @overload
+    async def create[Target: defs.Base, Data: dict[str, object | Any]](
+        self,
+        *,
+        target: type[Target],
+        data: Data,
+    ) -> None: ...
+
+    async def create[
+        Target: defs.Base,
+        Data: BaseModel | dict[str, object | Any],
+        ReadAs: BaseModel,
+    ](
         self,
         *,
         target: type[Target],
         data: Data,
         read_as: type[ReadAs] | None = None,
     ) -> ReadAs | None:
-        values = data.model_dump()
-        values["id"] = values.pop("id", uuid4())
+        values = data.model_dump() if isinstance(data, BaseModel) else data
+        if "id" not in values:
+            raise CanNotCreateWithoutIdError(target)
         if result := await self.session.scalar(
             insert(target).values(values).returning(target),
         ):

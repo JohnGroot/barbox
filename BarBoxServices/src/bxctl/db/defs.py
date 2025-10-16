@@ -8,8 +8,10 @@ from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     MappedAsDataclass,
+    MappedColumn,
     declared_attr,
     mapped_column,
+    relationship,
 )
 
 type JsonObject = dict[str, Any]
@@ -25,7 +27,11 @@ class PkMixin:
 class Base(PkMixin, MappedAsDataclass, DeclarativeBase):
     @declared_attr.directive
     def __tablename__(cls) -> str:  # noqa: N805
-        return cls.__name__.lower()
+        # Convert PascalCase to snake_case
+        return "".join(
+            f"_{c.lower()}" if c.isupper() and i > 0 else c.lower()
+            for i, c in enumerate(cls.__name__)
+        )
 
     type_annotation_map = {  # noqa: RUF012
         JsonObject: sqlite.JSON,
@@ -33,12 +39,18 @@ class Base(PkMixin, MappedAsDataclass, DeclarativeBase):
     }
 
 
+def fk_to(model: type[Base]) -> MappedColumn[Any]:
+    """Helper to create foreign key columns with correct target table name."""
+    name = f"{model.__tablename__}.id"
+    return mapped_column(ForeignKey(name))
+
+
 class Box(Base):
     name: Mapped[str]
     tag: Mapped[str]
 
 
-type BoxFk = Annotated[UUID, mapped_column(ForeignKey("box.id"))]
+type BoxFk = Annotated[UUID, fk_to(Box)]
 
 
 class Game(Base):
@@ -46,29 +58,22 @@ class Game(Base):
     tag: Mapped[str]
 
 
-type GameFk = Annotated[UUID, mapped_column(ForeignKey("game.id"))]
-
-
 class Player(Base):
     tag: Mapped[str]
     origin_id: Mapped[BoxFk]
 
 
-type PlayerFk = Annotated[UUID, mapped_column(ForeignKey("player.id"))]
-
-
-class PlayThrough(Base):
-    player_id: Mapped[PlayerFk]
-    game_id: Mapped[GameFk]
-    box_id: Mapped[BoxFk]
-    payload: Mapped[JsonObject]
-    start_time: Mapped[datetime]
-    end_time: Mapped[datetime | None]
-
-
 class BoxSession(Base):
     box_id: Mapped[BoxFk]
-    player_id: Mapped[PlayerFk]
+    player_id: Mapped[Annotated[UUID, fk_to(Player)]]
     start_time: Mapped[datetime]
     end_time: Mapped[datetime | None]
-    events: Mapped[JsonArray]
+    events: Mapped[list["BoxSessionEvent"]] = relationship(back_populates="session")
+
+
+class BoxSessionEvent(Base):
+    session_id: Mapped[Annotated[UUID, fk_to(BoxSession)]]
+    type: Mapped[str]
+    timestamp: Mapped[datetime]
+    payload: Mapped[JsonObject]
+    session: Mapped["BoxSession"] = relationship(back_populates="events")

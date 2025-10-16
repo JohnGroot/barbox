@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -17,7 +17,7 @@ class Identifiable(BaseModel):
     id: UUID
 
 
-class BoxCreate(Named, Tagged):
+class BoxCreate(Identifiable, Named, Tagged):
     pass
 
 
@@ -25,7 +25,7 @@ class BoxDetail(Identifiable):
     pass
 
 
-class PlayerCreate(Tagged):
+class PlayerCreate(Identifiable, Tagged):
     origin_id: UUID
 
 
@@ -41,12 +41,10 @@ class GameDetail(Identifiable):
     pass
 
 
-type SessionEventType = Literal[
-    "begin",
-    "browse",
-    "playthrough/begin",
-    "playthrough/score",
-    "playthrough/finish",
+SessionEventType = Literal[
+    "play/begin",
+    "play/score",
+    "play/finish",
     "quit",
 ]
 
@@ -55,7 +53,7 @@ class SessionEventBase(BaseModel):
     type: SessionEventType
     timestamp: Annotated[
         datetime,
-        Field(default_factory=datetime.now),
+        Field(default_factory=lambda: datetime.now(UTC)),
         PlainSerializer(lambda v: v.isoformat()),
     ]
 
@@ -63,22 +61,25 @@ class SessionEventBase(BaseModel):
 type GameTag = Literal["carrom"]
 
 
-class SessionStart(SessionEventBase):
-    event_type: Literal["begin"] = "begin"
+class BeginPlay(SessionEventBase):
+    type: Literal["play/begin"]
+    game: GameTag
 
 
-class SessionEnd(SessionEventBase):
-    event_type: Literal["quit"] = "quit"
+class EndPlay(SessionEventBase):
+    type: Literal["play/finish"]
+    game: GameTag
 
 
-class SessionBrowse(SessionEventBase):
-    event_type: Literal["browse"] = "browse"
+class Score(SessionEventBase):
+    type: Literal["play/score"]
+    points: int
 
 
 class SessionEvent(BaseModel):
     event: Annotated[
-        SessionStart | SessionEnd | SessionBrowse,
-        Field(discriminator="event_type"),
+        BeginPlay | EndPlay | Score,
+        Field(discriminator="type"),
     ]
 
 
@@ -88,5 +89,5 @@ class BoxSession(Identifiable):
     start_time: Annotated[datetime, Field(default_factory=datetime.now)]
     events: Annotated[
         list[SessionEvent],
-        Field(default_factory=lambda: [SessionStart()]),
+        Field(default_factory=lambda: [BeginPlay()]),
     ]

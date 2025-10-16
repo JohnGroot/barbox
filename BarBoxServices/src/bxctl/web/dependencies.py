@@ -19,4 +19,4 @@ def _current_timestamp() -> datetime:
     return datetime.now(tz=UTC)
 
 
-Now = Annotated[datetime, Depends(_current_timestamp)]
+Now = Annotated[datetime, Depends(_current_timestamp, use_cache=False)]

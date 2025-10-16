@@ -82,3 +82,6 @@ __pycache__/
 *.pyo
 *.pyd
 .venv/
+
+# sqlite
+app.db
