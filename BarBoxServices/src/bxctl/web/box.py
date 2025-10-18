@@ -34,12 +34,6 @@ async def create_box_session(
     db_service: dependencies.Database,
     now: dependencies.Now,
 ) -> structures.Identifiable:
-    logger.info(
-        "session_started",
-        box_id=box_id,
-        player_id=player_id,
-        session_id=session_id,
-    )
     await db_service.create(
         target=db.defs.BoxSession,
         data={
@@ -54,7 +48,7 @@ async def create_box_session(
 
 @router.post("/session/{session_id}", status_code=status.HTTP_201_CREATED)
 async def add_session_event(
-    event: structures.SessionEvent,
+    event: structures.SessionEventBase,
     session_id: UUID,
     db_service: dependencies.Database,
     now: dependencies.Now,
@@ -62,13 +56,8 @@ async def add_session_event(
     new_id = uuid4()
     await db_service.create(
         target=db.defs.BoxSessionEvent,
-        data={
-            "id": new_id,
-            "type": str(event.event.type),
-            "session_id": session_id,
-            "timestamp": now,
-            "payload": event.event.model_dump(exclude={"type", "timestamp"}),
-        },
+        data=event.model_dump()
+        | {"session_id": session_id, "id": new_id, "timestamp": now},
     )
     return structures.Identifiable(id=new_id)
 
@@ -89,10 +78,7 @@ async def get_box_session(
         .unique()
         .scalar_one()
     )
-    return structures.BoxSession(
-        box_id=result.box_id,
-        player_id=result.player_id,
-        start_time=result.start_time,
-        id=result.id,
-        events=[e.__dict__ for e in result.events],
+    return structures.BoxSession.model_validate(
+        result,
+        from_attributes=True,
     )

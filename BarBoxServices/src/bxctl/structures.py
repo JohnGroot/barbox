@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, PlainSerializer
@@ -56,6 +56,7 @@ class SessionEventBase(BaseModel):
         Field(default_factory=lambda: datetime.now(UTC)),
         PlainSerializer(lambda v: v.isoformat()),
     ]
+    payload: Any
 
 
 type GameTag = Literal["carrom"]
@@ -63,12 +64,10 @@ type GameTag = Literal["carrom"]
 
 class BeginPlay(SessionEventBase):
     type: Literal["play/begin"]
-    game: GameTag
 
 
 class EndPlay(SessionEventBase):
     type: Literal["play/finish"]
-    game: GameTag
 
 
 class Score(SessionEventBase):
@@ -76,18 +75,11 @@ class Score(SessionEventBase):
     points: int
 
 
-class SessionEvent(BaseModel):
-    event: Annotated[
-        BeginPlay | EndPlay | Score,
-        Field(discriminator="type"),
-    ]
-
-
 class BoxSession(Identifiable):
     box_id: UUID
     player_id: UUID
     start_time: Annotated[datetime, Field(default_factory=datetime.now)]
     events: Annotated[
-        list[SessionEvent],
+        list[SessionEventBase],
         Field(default_factory=lambda: [BeginPlay()]),
     ]

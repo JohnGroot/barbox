@@ -20,6 +20,6 @@ async def register_game(
 
 
 @router.get("/leaderboard/{game_id}")
-def get_leaderboard(game_id: str) -> dict:
-    # Placeholder implementation
+def get_leaderboard(game_id: structures.GameTag) -> dict:
+    # logic will be different per-game.
     return {"game_id": game_id, "leaderboard": []}

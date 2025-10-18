@@ -38,17 +38,33 @@ HTTP 202
 [Captures]
 session-id: jsonpath "$['id']"
 
-# add an event to the session
+# add a series of events
 POST http://127.0.0.1:8000/box/session/{{session-id}}
 {
-  "event": {
-    "type": "play/begin",
-    "game": "carrom",
-    "timestamp": "{{newDate}}"
-  }
+  "type": "play/begin",
+  "timestamp": "{{newDate}}",
+  "payload": { "game": "carrom" }
+}
+
+POST http://127.0.0.1:8000/box/session/{{session-id}}
+{
+  "type": "play/score",
+  "timestamp": "{{newDate}}",
+  "payload": { "points": 10 }
+}
+
+POST http://127.0.0.1:8000/box/session/{{session-id}}
+{
+  "type": "play/finish",
+  "timestamp": "{{newDate}}",
+  "payload": null
 }
 HTTP 201
 
 # check the session
 GET http://127.0.0.1:8000/box/session/{{session-id}}
 HTTP 200
+[Asserts]
+jsonpath "$.events" count == 3
+
+# should all end up in the leaderboard

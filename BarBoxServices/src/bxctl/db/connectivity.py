@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from bxctl import env
 
-engine = create_async_engine(env.acquire().db_url, echo=True)
+engine = create_async_engine(env.acquire().db_url, echo=False)
 
 Session = async_sessionmaker(engine)
 
