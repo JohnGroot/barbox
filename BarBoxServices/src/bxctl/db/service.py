@@ -1,7 +1,8 @@
+from collections.abc import Mapping, Sequence
 from typing import Any, overload
 
 from pydantic import BaseModel
-from sqlalchemy import Select, insert
+from sqlalchemy import Result, Select, insert, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import defs
@@ -81,3 +82,10 @@ class CRUD:
     ) -> ReadAs:
         result = await self.session.execute(selection)
         return read_as.model_validate(result.scalar_one(), from_attributes=True)
+
+    async def get_many_raw(
+        self,
+        query: str,
+        params: Sequence[Mapping[str, Any]] | Mapping[str, Any] | None = None,
+    ) -> Result[Any]:
+        return await self.session.execute(text(query), params)

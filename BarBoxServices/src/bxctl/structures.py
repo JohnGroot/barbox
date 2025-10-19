@@ -72,7 +72,6 @@ class EndPlay(SessionEventBase):
 
 class Score(SessionEventBase):
     type: Literal["play/score"]
-    points: int
 
 
 class BoxSession(Identifiable):

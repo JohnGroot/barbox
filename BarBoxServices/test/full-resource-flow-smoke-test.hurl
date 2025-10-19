@@ -9,16 +9,6 @@ HTTP 201
 [Captures]
 box-id: jsonpath "$['id']"
 
-# # we push a new game
-# POST http://127.0.0.1:8000/game/
-# {
-#   "name": "Carrom: So Sick",
-#   "tag": "carrom"
-# }
-# HTTP 201
-# [Captures]
-# game-id: jsonpath "$['id']"
-
 # a player signs up
 POST http://127.0.0.1:8000/player/
 {
@@ -68,3 +58,8 @@ HTTP 200
 jsonpath "$.events" count == 3
 
 # should all end up in the leaderboard
+GET http://127.0.0.1:8000/game/leaderboard/carrom
+HTTP 200
+[Asserts]
+jsonpath "$[0]['player']['id']" == "{{player-id}}"
+jsonpath "$[0]['score']" == 10
