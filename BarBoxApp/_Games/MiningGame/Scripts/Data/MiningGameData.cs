@@ -93,27 +93,10 @@ namespace BarBox.Games.MiningGame
 	public class MiningLocalData
 	{
 		public int LocalGemsReady { get; set; } = 0;
-		public int GemCapacity { get; set; } = 150;
-		public DateTime LastMiningTick { get; set; } = DateTime.UtcNow;
-		public string LocationGemType { get; set; } = "Amethyst";
+		public DateTime LastMiningTick { get; set; } = DateTime.UtcNow; // Initialize to current time to avoid default(DateTime) issues
 		public Dictionary<string, int> Upgrades { get; set; } = new(); // upgrade_type -> level
+		public bool HasClaimedFirstTimeBonus { get; set; } = false; // Explicit first-time tracking
 	}
 
-	// ============= LOCATION STATE =============
-
-	/// <summary>
-	/// Simple data structure for MiningGame location-specific state.
-	/// Aligned with DataStore's MiningLocalData format for direct integration.
-	/// </summary>
-	[GlobalClass]
-	public partial class MiningLocationState : Resource
-	{
-		[Export] public string LocationId { get; set; } = "";
-		[Export] public int PendingGems { get; set; } = 0;
-		[Export] public Godot.Collections.Dictionary<string, int> UpgradeLevels { get; set; } = new();
-		[Export] public bool FirstTimeBonus { get; set; } = true;
-		public DateTime LastSaveTime { get; set; } = DateTime.UtcNow; // Not exported - DateTime not supported by Godot
-		public DateTime LastMiningTickTime { get; set; } = DateTime.UtcNow; // Not exported - DateTime not supported by Godot
-	}
 
 }
