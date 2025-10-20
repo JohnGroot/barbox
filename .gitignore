@@ -75,3 +75,13 @@ claude.md
 .claude/settings.local.json
 */.claude
 GodotDocs_4_4_1
+
+# python stuff
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+
+# sqlite
+app.db
