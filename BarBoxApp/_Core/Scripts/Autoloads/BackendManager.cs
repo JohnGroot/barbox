@@ -6,6 +6,16 @@ using System.Threading.Tasks;
 /// Manages local FastAPI backend lifecycle
 /// Ensures backend is running before game operations
 /// Blocks app initialization if backend fails to start
+///
+/// REFERENCE IMPLEMENTATION: HttpClient Persistent Connection Pattern
+/// This class demonstrates the correct pattern for reusing HttpClient across requests.
+/// Key requirements when using Godot's HttpClient:
+/// 1. Always call Poll() in wait loops - advances the state machine
+/// 2. Check both Resolving and Connecting states - DNS resolution is separate
+/// 3. Use "127.0.0.1" not "localhost" - avoids DNS lookup delays
+/// 4. Use DelayAsync() not Task.Delay() - respects game pause states
+///
+/// See IsBackendHealthyAsync() method (lines 119-173) for complete implementation.
 /// </summary>
 public partial class BackendManager : AutoloadBase
 {
@@ -124,18 +134,22 @@ public partial class BackendManager : AutoloadBase
 			if (_healthCheckClient.GetStatus() != Godot.HttpClient.Status.Connected &&
 			    _healthCheckClient.GetStatus() != Godot.HttpClient.Status.Connecting)
 			{
+				// Use 127.0.0.1 instead of "localhost" to avoid DNS lookup delays
 				var error = _healthCheckClient.ConnectToHost("127.0.0.1", BACKEND_PORT);
 				if (error != Error.Ok)
 					return false;
 			}
 
 			// Wait for connection (including DNS resolution)
+			// CRITICAL: Must check both Resolving and Connecting states
 			var attempts = 0;
 			while ((_healthCheckClient.GetStatus() == Godot.HttpClient.Status.Resolving ||
 			        _healthCheckClient.GetStatus() == Godot.HttpClient.Status.Connecting) &&
 			       attempts < 20)
 			{
+				// CRITICAL: Poll() advances the HttpClient state machine
 				_healthCheckClient.Poll();
+				// Use DelayAsync() not Task.Delay() - respects game pause
 				await DelayAsync(0.05f);
 				attempts++;
 			}
@@ -153,6 +167,7 @@ public partial class BackendManager : AutoloadBase
 			var pollAttempts = 0;
 			while (_healthCheckClient.GetStatus() == Godot.HttpClient.Status.Requesting && pollAttempts < 100)
 			{
+				// CRITICAL: Poll() processes the response
 				_healthCheckClient.Poll();
 				await DelayAsync(0.01f);
 				pollAttempts++;

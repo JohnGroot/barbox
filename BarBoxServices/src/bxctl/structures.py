@@ -190,3 +190,45 @@ class PlayerCreditsResponse(BaseModel):
     player_id: UUID
     location_id: str
     credits: int
+
+
+# ============= ERROR HANDLING STRUCTURES =============
+
+class ErrorCode(str):
+    """Standard error codes for structured error responses"""
+    # Validation errors
+    VALIDATION_ERROR = "VALIDATION_ERROR"
+    INVALID_INPUT = "INVALID_INPUT"
+
+    # Resource errors
+    RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
+    DUPLICATE_RESOURCE = "DUPLICATE_RESOURCE"
+
+    # Constraint errors
+    FK_VIOLATION = "FK_VIOLATION"
+    UNIQUE_CONSTRAINT = "UNIQUE_CONSTRAINT"
+
+    # Operation errors
+    OPERATION_FAILED = "OPERATION_FAILED"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
+class ErrorDetail(BaseModel):
+    """Structured error response model"""
+    code: str  # ErrorCode value
+    message: str  # Human-readable error message
+    details: dict[str, Any] | None = None  # Additional context
+    request_id: str | None = None  # Request tracking ID
+
+
+class ValidationErrorDetail(BaseModel):
+    """Validation-specific error details"""
+    field: str
+    message: str
+    value: Any | None = None
+
+
+class ValidationResult(BaseModel):
+    """Result of validation check"""
+    valid: bool
+    errors: list[ValidationErrorDetail] = []

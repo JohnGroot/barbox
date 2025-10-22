@@ -46,8 +46,15 @@ public partial class SessionManager : AutoloadBase
 	private const float IDLE_CHECK_INTERVAL = 30.0f; // 30 seconds
 	private const float IDLE_TIMEOUT = 600.0f; // 10 minutes
 
-	public string CurrentLocationId => System.Environment.GetEnvironmentVariable("BARBOX_LOCATION_ID") ??
-	                                   System.Environment.MachineName.ToLowerInvariant().Replace("-", "_");
+	public string CurrentLocationId
+	{
+		get
+		{
+			var locationManager = LocationManager.GetAutoload();
+			return locationManager?.LocationId ??
+			       System.Environment.MachineName.ToLowerInvariant().Replace("-", "_");
+		}
+	}
 
 	protected override void OnServiceReady()
 	{
@@ -71,21 +78,22 @@ public partial class SessionManager : AutoloadBase
 
 	/// <summary>
 	/// Authenticate and log in a user by phone number and PIN
+	/// Returns Result with UserSession on success or specific error message on failure
 	/// </summary>
-	public async Task<bool> LoginUserByPhoneAsync(string phoneNumber, string pin)
+	public async Task<Result<UserSession>> LoginUserByPhoneAsync(string phoneNumber, string pin)
 	{
 		if (string.IsNullOrEmpty(phoneNumber))
-			return false;
+			return Result<UserSession>.Failure("Phone number is required");
 
 		// Clean phone number for consistency
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
-			return false;
+			return Result<UserSession>.Failure("Invalid phone number format");
 
 		// Clean PIN for consistency
 		var cleanedPin = InputValidator.CleanPin(pin);
-		if (!GameHost.IsDevelopmentContext() && !InputValidator.IsValidPin(cleanedPin))
-			return false;
+		if (!InputValidator.IsValidPin(cleanedPin))
+			return Result<UserSession>.Failure("PIN must be exactly 4 digits");
 
 		try
 		{
@@ -96,7 +104,7 @@ public partial class SessionManager : AutoloadBase
 			if (_activeSessions.ContainsKey(cleanedPhone))
 			{
 				LogWarning($"User {cleanedPhone} already has an active session");
-				return false;
+				return Result<UserSession>.Failure("User already logged in");
 			}
 
 			// Generate deterministic player ID from phone number
@@ -119,14 +127,16 @@ public partial class SessionManager : AutoloadBase
 			// Create backend session (strict mode - fail if backend unavailable)
 			if (_eventService != null)
 			{
-				// Get box ID from environment - EventService validates this during initialization
-				var boxIdStr = System.Environment.GetEnvironmentVariable("BARBOX_BOX_ID");
-				if (string.IsNullOrEmpty(boxIdStr) || !Guid.TryParse(boxIdStr, out var boxId))
+				// Get box ID from LocationManager
+				var locationManager = LocationManager.GetAutoload();
+				if (locationManager == null || !locationManager.IsConfigLoaded)
 				{
 					_activeSessions.Remove(cleanedPhone);
-					LogError("BARBOX_BOX_ID environment variable not set or invalid");
-					return false;
+					LogError("LocationManager not available or config not loaded");
+					return Result<UserSession>.Failure("System configuration error - please contact support");
 				}
+
+				var boxId = locationManager.BoxId;
 
 				var sessionResult = await _eventService.CreateSessionAsync(boxId, playerId);
 				if (!sessionResult.IsSuccess)
@@ -134,7 +144,14 @@ public partial class SessionManager : AutoloadBase
 					// Remove local session on backend failure
 					_activeSessions.Remove(cleanedPhone);
 					LogError($"Backend session creation failed: {sessionResult.Error}");
-					return false;
+
+					// Provide specific error messages based on backend response
+					if (sessionResult.Error.Contains("not initialized") || sessionResult.Error.Contains("not ready"))
+						return Result<UserSession>.Failure("Authentication service unavailable - please try again later");
+					else if (sessionResult.Error.Contains("timeout") || sessionResult.Error.Contains("Timeout"))
+						return Result<UserSession>.Failure("Connection timeout - please check your network and try again");
+					else
+						return Result<UserSession>.Failure($"Login failed: {sessionResult.Error}");
 				}
 
 				// Store backend session ID
@@ -155,65 +172,148 @@ public partial class SessionManager : AutoloadBase
 				// EventService required for backend session
 				_activeSessions.Remove(cleanedPhone);
 				LogError("EventService not available - cannot create backend session");
-				return false;
+				return Result<UserSession>.Failure("Authentication service unavailable - please try again later");
 			}
 
 			LogInfo($"User session created for phone {cleanedPhone}");
 			EmitSignal(SignalName.UserLoggedIn, cleanedPhone);
 
-			return true;
+			return Result<UserSession>.Success(session);
 		}
 		catch (Exception ex)
 		{
 			LogError($"Error logging in user with phone {cleanedPhone}: {ex.Message}");
-			return false;
+			return Result<UserSession>.Failure($"Unexpected error: {ex.Message}");
 		}
 	}
 
 	/// <summary>
 	/// Create a new user account with phone number authentication
 	/// </summary>
-	public Task<Result<string>> CreateUserAccountAsync(string phoneNumber, string pin, string username)
+	public async Task<Result<string>> CreateUserAccountAsync(string phoneNumber, string pin, string username)
 	{
 		// Validate inputs
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
-			return Task.FromResult(Result<string>.Failure("Invalid phone number format"));
+			return Result<string>.Failure("Invalid phone number format");
 
 		var cleanedPin = InputValidator.CleanPin(pin);
 		if (!InputValidator.IsValidPin(cleanedPin))
-			return Task.FromResult(Result<string>.Failure("PIN must be exactly 4 digits"));
+			return Result<string>.Failure("PIN must be exactly 4 digits");
 
 		var cleanedUsername = InputValidator.CleanUsername(username);
 		if (!InputValidator.IsValidUsername(cleanedUsername))
-			return Task.FromResult(Result<string>.Failure("Username must be 1-7 characters, alphanumeric and underscore only"));
+			return Result<string>.Failure("Username must be 1-7 characters, alphanumeric and underscore only");
+
+		if (_eventService == null)
+		{
+			LogError("EventService not available for account creation");
+			return Result<string>.Failure("Backend service unavailable - please try again later");
+		}
 
 		try
 		{
-			// Event-sourced persistence - backend validates phone/username uniqueness
-			// For now, optimistically create account (backend will reject if duplicate)
-
 			LogInfo($"User account creation requested: {cleanedUsername} ({cleanedPhone})");
 
-			// Emit user/create event to backend
-			if (_eventService != null)
+			// Generate deterministic player ID from phone number
+			var playerId = EventService.GetPlayerIdFromPhone(cleanedPhone);
+
+			// Get box ID from LocationManager
+			var locationManager = LocationManager.GetAutoload();
+			if (locationManager == null || !locationManager.IsConfigLoaded)
 			{
-				var payload = new
-				{
-					phone_number = cleanedPhone,
-					pin = cleanedPin,
-					username = cleanedUsername,
-					location_id = CurrentLocationId
-				};
-				_ = _eventService.EmitEventAsync("user/create", payload);
+				LogError("LocationManager not available for account creation");
+				return Result<string>.Failure("Location service unavailable - please try again later");
 			}
 
-			return Task.FromResult(Result<string>.Success(cleanedPhone));
+			var boxId = locationManager.BoxId;
+
+			// Create player account via direct REST call to backend
+			var result = await _eventService.CreatePlayerAsync(playerId, cleanedUsername, boxId);
+
+			if (result.IsSuccess)
+			{
+				LogInfo($"Account created successfully for {cleanedUsername} ({cleanedPhone})");
+				return Result<string>.Success(cleanedPhone);
+			}
+			else
+			{
+				LogError($"Account creation failed: {result.Error}");
+
+				// Provide user-friendly error messages
+				if (result.Error.Contains("409") || result.Error.Contains("already exists"))
+					return Result<string>.Failure("An account with this phone number or username already exists");
+				else if (result.Error.Contains("timeout"))
+					return Result<string>.Failure("Connection timeout - please check your network and try again");
+				else
+					return Result<string>.Failure($"Account creation failed: {result.Error}");
+			}
 		}
 		catch (Exception ex)
 		{
 			LogError($"Error creating user account: {ex.Message}");
-			return Task.FromResult(Result<string>.Failure($"Account creation failed: {ex.Message}"));
+			return Result<string>.Failure($"Account creation failed: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Validate player creation before attempting to create (pre-flight check)
+	/// Checks: box exists, username available, player ID unique
+	/// </summary>
+	public async Task<Result<PlayerValidationResponse>> ValidatePlayerCreationAsync(string phoneNumber, string pin, string username)
+	{
+		// Clean and validate inputs
+		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
+		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
+			return Result<PlayerValidationResponse>.Failure("Invalid phone number format");
+
+		var cleanedPin = InputValidator.CleanPin(pin);
+		if (!InputValidator.IsValidPin(cleanedPin))
+			return Result<PlayerValidationResponse>.Failure("PIN must be exactly 4 digits");
+
+		var cleanedUsername = InputValidator.CleanUsername(username);
+		if (!InputValidator.IsValidUsername(cleanedUsername))
+			return Result<PlayerValidationResponse>.Failure("Username must be 1-7 characters, alphanumeric and underscore only");
+
+		if (_eventService == null)
+		{
+			LogError("EventService not available for validation");
+			return Result<PlayerValidationResponse>.Failure("Backend service unavailable - please try again later");
+		}
+
+		try
+		{
+			// Generate deterministic player ID from phone number
+			var playerId = EventService.GetPlayerIdFromPhone(cleanedPhone);
+
+			// Get box ID from LocationManager
+			var locationManager = LocationManager.GetAutoload();
+			if (locationManager == null || !locationManager.IsConfigLoaded)
+			{
+				LogError("LocationManager not available for validation");
+				return Result<PlayerValidationResponse>.Failure("Location service unavailable - please try again later");
+			}
+
+			var boxId = locationManager.BoxId;
+
+			// Validate via backend
+			var result = await _eventService.ValidatePlayerCreationAsync(playerId, cleanedUsername, boxId);
+
+			if (result.IsSuccess)
+			{
+				LogInfo($"Validation result for {cleanedUsername}: Valid={result.Value.Valid}, ErrorCount={result.Value.Errors?.Length ?? 0}");
+				return result;
+			}
+			else
+			{
+				LogWarning($"Validation failed: {result.Error}");
+				return Result<PlayerValidationResponse>.Failure(result.Error);
+			}
+		}
+		catch (Exception ex)
+		{
+			LogError($"Error validating player creation: {ex.Message}");
+			return Result<PlayerValidationResponse>.Failure($"Validation error: {ex.Message}");
 		}
 	}
 

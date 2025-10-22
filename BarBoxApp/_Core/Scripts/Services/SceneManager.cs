@@ -27,28 +27,31 @@ public partial class SceneManager : AutoloadBase
 	{
 		LogInfo("Initializing all services in dependency order...");
 
-		// Phase 1: Core Data Services (no dependencies)
-		// DataStore removed - event-sourced persistence via EventService
+		// Phase 1: Configuration and Backend Infrastructure (no dependencies)
+		InitializeService("LocationManager", () => LocationManager.GetAutoload()?.Initialize());
+		InitializeService("BackendManager", () => BackendManager.GetInstance()?.Initialize());
 
-		// Phase 2: Services that depend on EventService
+		// Phase 2: Event Service (depends on BackendManager)
+		InitializeService("EventService", () => EventService.GetInstance()?.Initialize());
+
+		// Phase 3: Services that depend on EventService
 		InitializeService("SessionManager", () => SessionManager.GetInstance()?.Initialize());
 		InitializeService("PaymentService", () => PaymentService.GetInstance()?.Initialize());
-		InitializeService("LocationManager", () => LocationManager.GetAutoload()?.Initialize());
 
-		// Phase 3: Game Services
+		// Phase 4: Game Services
 		InitializeService("GameRegistry", () => GameRegistry.GetAutoload()?.Initialize());
 		InitializeService("GameHost", () => GameHost.GetInstance()?.Initialize());
 
-		// Phase 4: Input/UI Services
+		// Phase 5: Input/UI Services
 		InitializeService("InputManager", () => GetAutoload<InputManager>()?.Initialize());
 		InitializeService("UIManager", () => UIManager.GetInstance()?.Initialize());
 
-		// Phase 5: Compatibility stubs (can fail gracefully)
+		// Phase 6: Compatibility stubs (can fail gracefully)
 		InitializeService("UserManager", () => UserManager.GetAutoload()?.Initialize());
 
 		_servicesInitialized = true;
 		LogInfo("All services initialized successfully");
-		
+
 		// Emit signal that services are ready
 		EmitSignal(SignalName.AllServicesReady);
 	}

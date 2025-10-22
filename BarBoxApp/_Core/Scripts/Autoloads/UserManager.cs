@@ -67,14 +67,14 @@ public partial class UserManager : AutoloadBase
 	}
 
 	// Phone number authentication methods
-	public async Task<bool> LoginUserByPhoneAsync(string phoneNumber, string pin)
+	public async Task<Result<UserSession>> LoginUserByPhoneAsync(string phoneNumber, string pin)
 	{
 		var sessionManager = SessionManager.GetInstance();
 		if (sessionManager != null)
 		{
 			return await sessionManager.LoginUserByPhoneAsync(phoneNumber, pin);
 		}
-		return false;
+		return Result<UserSession>.Failure("SessionManager not available");
 	}
 
 	public async Task<Result<string>> CreateUserAccountAsync(string phoneNumber, string pin, string username)
@@ -97,6 +97,15 @@ public partial class UserManager : AutoloadBase
 		return Result<bool>.Failure("SessionManager not available");
 	}
 
+	public async Task<Result<PlayerValidationResponse>> ValidatePlayerCreationAsync(string phoneNumber, string pin, string username)
+	{
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager != null)
+		{
+			return await sessionManager.ValidatePlayerCreationAsync(phoneNumber, pin, username);
+		}
+		return Result<PlayerValidationResponse>.Failure("SessionManager not available");
+	}
 
 	public void AddCredits(string userId, int amount)
 	{

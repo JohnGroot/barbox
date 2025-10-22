@@ -5,6 +5,11 @@
 .godot/
 godot.env
 
+# Environment configuration
+.env.local
+.env
+!.env.example
+
 # Mono (C#) specific
 .mono/
 data_*/  # Godot's C# build output

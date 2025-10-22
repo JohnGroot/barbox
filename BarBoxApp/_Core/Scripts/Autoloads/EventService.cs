@@ -76,10 +76,37 @@ public partial class EventService : AutoloadBase
 		}
 	}
 
-	private void OnBackendReady()
+	private async void OnBackendReady()
 	{
-		_isInitialized = true;
-		LogInfo($"EventService ready - backend available at {BASE_URL}");
+		try
+		{
+			// Mark as initialized so PostAsync/QueryAsync can be used
+			_isInitialized = true;
+
+			// Register box with backend
+			var locationManager = LocationManager.GetAutoload();
+			if (locationManager != null && locationManager.IsConfigLoaded)
+			{
+				var registerResult = await RegisterBoxAsync(_boxId, _locationId);
+				if (!registerResult.IsSuccess)
+				{
+					LogError($"Failed to register box with backend: {registerResult.Error}");
+					// Continue anyway - box may already exist
+				}
+			}
+			else
+			{
+				LogWarning("LocationManager not available - skipping box registration");
+			}
+
+			LogInfo($"EventService ready - backend available at {BASE_URL}");
+		}
+		catch (Exception ex)
+		{
+			LogError($"Error during EventService initialization: {ex.Message}");
+			// Still mark as initialized to avoid blocking app
+			_isInitialized = true;
+		}
 	}
 
 	/// <summary>
@@ -249,7 +276,11 @@ public partial class EventService : AutoloadBase
 
 			var responseCode = _httpClient.GetResponseCode();
 			if (responseCode != 200)
+			{
+				// Close connection to allow recovery on next request
+				_httpClient.Close();
 				return Result<TResponse>.Failure($"Query failed with code {responseCode}");
+			}
 
 			var bodyBytes = _httpClient.ReadResponseBodyChunk();
 			var bodyText = bodyBytes.GetStringFromUtf8();
@@ -259,7 +290,66 @@ public partial class EventService : AutoloadBase
 		}
 		catch (Exception ex)
 		{
+			// Close connection on exception to ensure clean state
+			_httpClient.Close();
 			return Result<TResponse>.Failure($"Query exception: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Execute POST request against backend API with JSON body
+	/// </summary>
+	public async Task<Result<TResponse>> PostAsync<TRequest, TResponse>(
+		string endpoint,
+		TRequest requestBody,
+		int expectedStatusCode = 201
+	) where TResponse : class
+	{
+		if (!_isInitialized)
+			return Result<TResponse>.Failure("EventService not initialized");
+
+		try
+		{
+			await EnsureConnectedAsync();
+
+			var json = JsonSerializer.Serialize(requestBody, JsonOptions);
+
+			var headers = new[]
+			{
+				"User-Agent: BarBox-Client/1.0",
+				"Accept: application/json",
+				"Content-Type: application/json"
+			};
+
+			var error = _httpClient.Request(Godot.HttpClient.Method.Post, endpoint, headers, json);
+			if (error != Error.Ok)
+				return Result<TResponse>.Failure($"POST request failed: {error}");
+
+			await WaitForResponseAsync();
+
+			var responseCode = _httpClient.GetResponseCode();
+			if (responseCode != expectedStatusCode)
+			{
+				var errorBytes = _httpClient.ReadResponseBodyChunk();
+				var errorText = errorBytes.GetStringFromUtf8();
+
+				// Close connection to allow recovery on next request
+				_httpClient.Close();
+
+				return Result<TResponse>.Failure($"POST failed with code {responseCode}: {errorText}");
+			}
+
+			var bodyBytes = _httpClient.ReadResponseBodyChunk();
+			var bodyText = bodyBytes.GetStringFromUtf8();
+
+			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
+			return Result<TResponse>.Success(response);
+		}
+		catch (Exception ex)
+		{
+			// Close connection on exception to ensure clean state
+			_httpClient.Close();
+			return Result<TResponse>.Failure($"POST exception: {ex.Message}");
 		}
 	}
 
@@ -277,6 +367,97 @@ public partial class EventService : AutoloadBase
 			return Result<bool>.Success(result.Value.IsAvailable);
 
 		return Result<bool>.Failure(result.Error);
+	}
+
+	/// <summary>
+	/// Validate player creation without actually creating the player (pre-flight check)
+	/// Performs all validation checks: box exists, username available, player ID unique
+	/// </summary>
+	public async Task<Result<PlayerValidationResponse>> ValidatePlayerCreationAsync(Guid playerId, string username, Guid originBoxId)
+	{
+		var request = new PlayerCreateRequest
+		{
+			Id = playerId.ToString(),
+			Tag = username,
+			OriginId = originBoxId.ToString()
+		};
+
+		var result = await PostAsync<PlayerCreateRequest, PlayerValidationResponse>("/player/validate", request, 200);
+
+		if (result.IsSuccess)
+		{
+			if (!result.Value.Valid)
+			{
+				// Validation failed - construct error message from validation errors
+				var errorMessages = new System.Text.StringBuilder();
+				errorMessages.AppendLine("Validation failed:");
+				foreach (var error in result.Value.Errors)
+				{
+					errorMessages.AppendLine($"  - {error.Field}: {error.Message}");
+				}
+				LogWarning($"Player validation failed: {errorMessages}");
+			}
+			return Result<PlayerValidationResponse>.Success(result.Value);
+		}
+
+		LogError($"Failed to validate player creation: {result.Error}");
+		return Result<PlayerValidationResponse>.Failure(result.Error);
+	}
+
+	/// <summary>
+	/// Create a new player account via backend API
+	/// </summary>
+	public async Task<Result<Guid>> CreatePlayerAsync(Guid playerId, string username, Guid originBoxId)
+	{
+		var request = new PlayerCreateRequest
+		{
+			Id = playerId.ToString(),
+			Tag = username,
+			OriginId = originBoxId.ToString()
+		};
+
+		var result = await PostAsync<PlayerCreateRequest, PlayerDetailResponse>("/player/", request, 201);
+
+		if (result.IsSuccess)
+		{
+			LogInfo($"Player created successfully: {username} ({playerId})");
+			return Result<Guid>.Success(playerId);
+		}
+
+		LogError($"Failed to create player: {result.Error}");
+		return Result<Guid>.Failure(result.Error);
+	}
+
+	/// <summary>
+	/// Register box (physical terminal) with backend
+	/// Idempotent - safe to call multiple times
+	/// </summary>
+	public async Task<Result<Guid>> RegisterBoxAsync(Guid boxId, string locationName)
+	{
+		var request = new BoxCreateRequest
+		{
+			Id = boxId.ToString(),
+			Name = locationName,
+			Tag = locationName
+		};
+
+		var result = await PostAsync<BoxCreateRequest, BoxDetailResponse>("/box/", request, 201);
+
+		if (result.IsSuccess)
+		{
+			LogInfo($"Box registered successfully: {locationName} ({boxId})");
+			return Result<Guid>.Success(boxId);
+		}
+
+		// 409 Conflict means box already exists - treat as success
+		if (result.Error.Contains("409") || result.Error.Contains("Conflict"))
+		{
+			LogInfo($"Box already registered: {locationName} ({boxId})");
+			return Result<Guid>.Success(boxId);
+		}
+
+		LogError($"Failed to register box: {result.Error}");
+		return Result<Guid>.Failure(result.Error);
 	}
 
 	/// <summary>
@@ -340,11 +521,13 @@ public partial class EventService : AutoloadBase
 			throw new Exception($"Failed to connect to backend: {error}");
 
 		// Wait for connection (including DNS resolution)
+		// CRITICAL: Must check both Resolving and Connecting states
 		var attempts = 0;
 		while ((_httpClient.GetStatus() == Godot.HttpClient.Status.Resolving ||
 		        _httpClient.GetStatus() == Godot.HttpClient.Status.Connecting) &&
 		       attempts < 50)
 		{
+			// CRITICAL: Poll() advances the HttpClient state machine
 			_httpClient.Poll();
 			await DelayAsync(0.1f);
 			attempts++;
@@ -361,6 +544,7 @@ public partial class EventService : AutoloadBase
 
 		while (_httpClient.GetStatus() == Godot.HttpClient.Status.Requesting && attempts < maxAttempts)
 		{
+			// CRITICAL: Poll() processes the response
 			_httpClient.Poll();
 			await DelayAsync(POLL_INTERVAL_MS / 1000.0f);
 			attempts++;

@@ -37,17 +37,28 @@ public partial class LoginModal : Control
 
 	private UserManager _userManager;
 
+	// Processing state flags to prevent duplicate submissions
+	private bool _isLoginInProgress = false;
+	private bool _isCreateAccountInProgress = false;
+
+	// Cached StyleBox instances for performance
+	private StyleBoxFlat _validStyle;
+	private StyleBoxFlat _invalidStyle;
+	private StyleBoxFlat _incompleteStyle;
+	private StyleBoxFlat _noneStyle;
+
 	public override void _Ready()
 	{
 		_userManager = UserManager.GetAutoload();
-		
+
 		SetupModalLayout();
 		CreateModalUI();
+		InitializeValidationStyles();
 		ConnectSignals();
-		
+
 		// Start hidden
 		Visible = false;
-		
+
 		// LoginModal created and ready
 	}
 
@@ -237,6 +248,13 @@ public partial class LoginModal : Control
 		_createStatusLabel.AddThemeColorOverride("font_color", Colors.White);
 		_createStatusLabel.CustomMinimumSize = new Vector2(0, 30);
 		_createContainer.AddChild(_createStatusLabel);
+
+		// Create reusable username availability check timer
+		_usernameCheckTimer = new Timer();
+		_usernameCheckTimer.WaitTime = 0.5f; // 500ms debounce
+		_usernameCheckTimer.OneShot = true;
+		_usernameCheckTimer.Timeout += OnUsernameCheckTimeout;
+		AddChild(_usernameCheckTimer);
 	}
 
 	private void ConnectSignals()
@@ -386,6 +404,9 @@ public partial class LoginModal : Control
 		// Update visual feedback
 		var validationState = InputValidator.GetPhoneNumberValidationState(cleaned);
 		UpdateInputValidationStyle(_createPhoneInput, validationState);
+
+		// Update button state
+		UpdateCreateAccountButtonState();
 	}
 
 	private void OnCreatePhoneFocusExited()
@@ -415,6 +436,9 @@ public partial class LoginModal : Control
 		// Update visual feedback
 		var validationState = InputValidator.GetPinValidationState(cleaned);
 		UpdateInputValidationStyle(_createPinInput, validationState);
+
+		// Update button state
+		UpdateCreateAccountButtonState();
 	}
 
 	private void OnCreateUsernameChanged(string newText)
@@ -435,6 +459,9 @@ public partial class LoginModal : Control
 		var validationState = InputValidator.GetUsernameValidationState(cleaned);
 		UpdateInputValidationStyle(_createUsernameInput, validationState);
 
+		// Update button state
+		UpdateCreateAccountButtonState();
+
 		// Check username availability (debounced)
 		CheckUsernameAvailabilityDebounced(cleaned);
 	}
@@ -443,37 +470,14 @@ public partial class LoginModal : Control
 	{
 		if (input == null) return;
 
-		// Create style override based on validation state
-		var style = new StyleBoxFlat();
-
-		switch (state)
+		// Use cached StyleBox instances for better performance
+		StyleBoxFlat style = state switch
 		{
-			case InputValidator.ValidationState.Valid:
-				style.BgColor = new Color(0.2f, 0.4f, 0.2f, 1.0f); // Dark green
-				style.BorderColor = new Color(0.4f, 0.8f, 0.4f, 1.0f); // Light green border
-				break;
-			case InputValidator.ValidationState.Incomplete:
-				style.BgColor = new Color(0.3f, 0.3f, 0.2f, 1.0f); // Dark yellow
-				style.BorderColor = new Color(0.6f, 0.6f, 0.4f, 1.0f); // Light yellow border
-				break;
-			case InputValidator.ValidationState.Invalid:
-				style.BgColor = new Color(0.4f, 0.2f, 0.2f, 1.0f); // Dark red
-				style.BorderColor = new Color(0.8f, 0.4f, 0.4f, 1.0f); // Light red border
-				break;
-			default: // None
-				style.BgColor = new Color(0.2f, 0.2f, 0.2f, 1.0f); // Default dark
-				style.BorderColor = new Color(0.4f, 0.4f, 0.4f, 1.0f); // Default border
-				break;
-		}
-
-		style.BorderWidthTop = 2;
-		style.BorderWidthBottom = 2;
-		style.BorderWidthLeft = 2;
-		style.BorderWidthRight = 2;
-		style.CornerRadiusTopLeft = 4;
-		style.CornerRadiusTopRight = 4;
-		style.CornerRadiusBottomLeft = 4;
-		style.CornerRadiusBottomRight = 4;
+			InputValidator.ValidationState.Valid => _validStyle,
+			InputValidator.ValidationState.Incomplete => _incompleteStyle,
+			InputValidator.ValidationState.Invalid => _invalidStyle,
+			_ => _noneStyle
+		};
 
 		input.AddThemeStyleboxOverride("normal", style);
 	}
@@ -484,6 +488,127 @@ public partial class LoginModal : Control
 
 		// Remove the theme style override to return to default
 		input.RemoveThemeStyleboxOverride("normal");
+	}
+
+	/// <summary>
+	/// Initialize cached StyleBox instances for validation feedback (performance optimization)
+	/// </summary>
+	private void InitializeValidationStyles()
+	{
+		_validStyle = CreateStyleBox(
+			new Color(0.2f, 0.4f, 0.2f, 1.0f), // Dark green background
+			new Color(0.4f, 0.8f, 0.4f, 1.0f)  // Light green border
+		);
+
+		_incompleteStyle = CreateStyleBox(
+			new Color(0.3f, 0.3f, 0.2f, 1.0f), // Dark yellow background
+			new Color(0.6f, 0.6f, 0.4f, 1.0f)  // Light yellow border
+		);
+
+		_invalidStyle = CreateStyleBox(
+			new Color(0.4f, 0.2f, 0.2f, 1.0f), // Dark red background
+			new Color(0.8f, 0.4f, 0.4f, 1.0f)  // Light red border
+		);
+
+		_noneStyle = CreateStyleBox(
+			new Color(0.2f, 0.2f, 0.2f, 1.0f), // Default dark background
+			new Color(0.4f, 0.4f, 0.4f, 1.0f)  // Default border
+		);
+	}
+
+	/// <summary>
+	/// Create a StyleBoxFlat with specified colors and border settings
+	/// </summary>
+	private StyleBoxFlat CreateStyleBox(Color bgColor, Color borderColor)
+	{
+		var style = new StyleBoxFlat();
+		style.BgColor = bgColor;
+		style.BorderColor = borderColor;
+		style.BorderWidthTop = 2;
+		style.BorderWidthBottom = 2;
+		style.BorderWidthLeft = 2;
+		style.BorderWidthRight = 2;
+		style.CornerRadiusTopLeft = 4;
+		style.CornerRadiusTopRight = 4;
+		style.CornerRadiusBottomLeft = 4;
+		style.CornerRadiusBottomRight = 4;
+		return style;
+	}
+
+	/// <summary>
+	/// Enable or disable login UI controls (inputs, buttons)
+	/// </summary>
+	private void SetLoginUIEnabled(bool enabled)
+	{
+		if (_loginPhoneInput != null)
+		{
+			_loginPhoneInput.Editable = enabled;
+			_loginPhoneInput.Modulate = enabled ? Colors.White : new Color(0.7f, 0.7f, 0.7f);
+		}
+
+		if (_loginPinInput != null)
+		{
+			_loginPinInput.Editable = enabled;
+			_loginPinInput.Modulate = enabled ? Colors.White : new Color(0.7f, 0.7f, 0.7f);
+		}
+
+		if (_loginButton != null)
+		{
+			_loginButton.Disabled = !enabled;
+			_loginButton.Modulate = enabled ? Colors.White : new Color(0.5f, 0.5f, 0.5f);
+		}
+
+		if (_loginCancelButton != null)
+		{
+			_loginCancelButton.Disabled = !enabled;
+		}
+
+		// Prevent tab switching during processing
+		if (_tabContainer != null)
+		{
+			_tabContainer.TabsVisible = enabled;
+		}
+	}
+
+	/// <summary>
+	/// Enable or disable create account UI controls (inputs, buttons)
+	/// </summary>
+	private void SetCreateAccountUIEnabled(bool enabled)
+	{
+		if (_createPhoneInput != null)
+		{
+			_createPhoneInput.Editable = enabled;
+			_createPhoneInput.Modulate = enabled ? Colors.White : new Color(0.7f, 0.7f, 0.7f);
+		}
+
+		if (_createPinInput != null)
+		{
+			_createPinInput.Editable = enabled;
+			_createPinInput.Modulate = enabled ? Colors.White : new Color(0.7f, 0.7f, 0.7f);
+		}
+
+		if (_createUsernameInput != null)
+		{
+			_createUsernameInput.Editable = enabled;
+			_createUsernameInput.Modulate = enabled ? Colors.White : new Color(0.7f, 0.7f, 0.7f);
+		}
+
+		if (_createAccountButton != null)
+		{
+			_createAccountButton.Disabled = !enabled;
+			_createAccountButton.Modulate = enabled ? Colors.White : new Color(0.5f, 0.5f, 0.5f);
+		}
+
+		if (_createCancelButton != null)
+		{
+			_createCancelButton.Disabled = !enabled;
+		}
+
+		// Prevent tab switching during processing
+		if (_tabContainer != null)
+		{
+			_tabContainer.TabsVisible = enabled;
+		}
 	}
 
 	private void UpdateLoginButtonState()
@@ -497,14 +622,38 @@ public partial class LoginModal : Control
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		bool isPhoneValid = InputValidator.IsValidPhoneNumber(cleanedPhone);
 
-		// Validate PIN (relaxed in development mode)
+		// Validate PIN - always require 4 digits (no dev mode bypass)
 		var cleanedPin = InputValidator.CleanPin(pin);
-		bool isPinValid = GameHost.IsDevelopmentContext() ?
-			!string.IsNullOrEmpty(cleanedPin) : // In dev mode, any non-empty PIN is valid
-			InputValidator.IsValidPin(cleanedPin); // In production mode, requires 4 digits
+		bool isPinValid = InputValidator.IsValidPin(cleanedPin);
 
-		// Enable button only if both inputs are valid
-		_loginButton.Disabled = !(isPhoneValid && isPinValid);
+		// Enable button only if both inputs are valid and not currently processing
+		_loginButton.Disabled = !isPhoneValid || !isPinValid || _isLoginInProgress;
+	}
+
+	/// <summary>
+	/// Update create account button enabled state based on input validation
+	/// </summary>
+	private void UpdateCreateAccountButtonState()
+	{
+		if (_createAccountButton == null || _createPhoneInput == null ||
+		    _createPinInput == null || _createUsernameInput == null) return;
+
+		string phoneNumber = _createPhoneInput.Text.Trim();
+		string pin = _createPinInput.Text.Trim();
+		string username = _createUsernameInput.Text.Trim();
+
+		// Validate all inputs
+		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
+		bool isPhoneValid = InputValidator.IsValidPhoneNumber(cleanedPhone);
+
+		var cleanedPin = InputValidator.CleanPin(pin);
+		bool isPinValid = InputValidator.IsValidPin(cleanedPin);
+
+		var cleanedUsername = InputValidator.CleanUsername(username);
+		bool isUsernameValid = InputValidator.IsValidUsername(cleanedUsername);
+
+		// Enable button only if all inputs are valid and not currently processing
+		_createAccountButton.Disabled = !isPhoneValid || !isPinValid || !isUsernameValid || _isCreateAccountInProgress;
 	}
 
 	// Username availability checking with debouncing
@@ -515,25 +664,31 @@ public partial class LoginModal : Control
 	{
 		if (string.IsNullOrEmpty(username) || !InputValidator.IsValidUsername(username))
 		{
+			// Stop timer if username becomes invalid
+			if (_usernameCheckTimer != null && !_usernameCheckTimer.IsStopped())
+			{
+				_usernameCheckTimer.Stop();
+			}
 			return;
 		}
 
 		_lastUsernameToCheck = username;
 
-		// Cancel previous timer
+		// Reuse existing timer - stop and restart for debouncing
 		if (_usernameCheckTimer != null)
 		{
 			_usernameCheckTimer.Stop();
-			_usernameCheckTimer.QueueFree();
+			_usernameCheckTimer.Start();
 		}
+	}
 
-		// Create new timer for debouncing
-		_usernameCheckTimer = new Timer();
-		_usernameCheckTimer.WaitTime = 0.5f; // 500ms debounce
-		_usernameCheckTimer.OneShot = true;
-		_usernameCheckTimer.Timeout += () => CheckUsernameAvailabilityAsync(_lastUsernameToCheck);
-		AddChild(_usernameCheckTimer);
-		_usernameCheckTimer.Start();
+	/// <summary>
+	/// Called when username check debounce timer expires
+	/// </summary>
+	private void OnUsernameCheckTimeout()
+	{
+		// Perform the actual availability check
+		CheckUsernameAvailabilityAsync(_lastUsernameToCheck);
 	}
 
 	private async void CheckUsernameAvailabilityAsync(string username)
@@ -680,6 +835,9 @@ public partial class LoginModal : Control
 
 	private async void OnLoginPressed()
 	{
+		// Prevent re-entry - ignore if already processing
+		if (_isLoginInProgress) return;
+
 		if (_loginPhoneInput == null || _loginPinInput == null || _userManager == null)
 		{
 			ShowLoginStatusMessage("Login system not properly initialized", false);
@@ -697,9 +855,9 @@ public partial class LoginModal : Control
 			return;
 		}
 
-		// Validate PIN (relaxed in development mode)
+		// Validate PIN - always require 4 digits (no dev mode bypass)
 		var cleanedPin = InputValidator.CleanPin(pin);
-		if (!GameHost.IsDevelopmentContext() && !InputValidator.IsValidPin(cleanedPin))
+		if (!InputValidator.IsValidPin(cleanedPin))
 		{
 			ShowLoginStatusMessage("Please enter a valid 4-digit PIN", false);
 			return;
@@ -707,27 +865,48 @@ public partial class LoginModal : Control
 
 		try
 		{
+			// Set processing state and disable UI
+			_isLoginInProgress = true;
+			SetLoginUIEnabled(false);
+			UpdateLoginButtonState(); // Update button state to reflect processing flag
+
 			ShowLoginStatusMessage("Logging in...", false);
 
-			bool loginSuccess = await _userManager.LoginUserByPhoneAsync(cleanedPhone, cleanedPin);
-			if (loginSuccess)
+			var loginResult = await _userManager.LoginUserByPhoneAsync(cleanedPhone, cleanedPin);
+			if (loginResult.IsSuccess)
 			{
 				ShowLoginStatusMessage("Login successful!", true);
-				// Modal will be hidden by OnUserLoggedIn signal
+
+				// Delay to let user see success message before modal closes
+				await AutoloadBase.StaticDelayAsync(0.8f);
+
+				// Close modal explicitly (not via signal)
+				HideModal();
 			}
 			else
 			{
-				ShowLoginStatusMessage("Invalid phone number or PIN", false);
+				// Display specific error message from backend
+				ShowLoginStatusMessage(loginResult.Error, false);
 			}
 		}
 		catch (System.Exception ex)
 		{
 			ShowLoginStatusMessage($"Login error: {ex.Message}", false);
 		}
+		finally
+		{
+			// Always restore UI state, even on error
+			_isLoginInProgress = false;
+			SetLoginUIEnabled(true);
+			UpdateLoginButtonState();
+		}
 	}
 
 	private async void OnCreateAccountPressed()
 	{
+		// Prevent re-entry - ignore if already processing
+		if (_isCreateAccountInProgress) return;
+
 		if (_createPhoneInput == null || _createPinInput == null || _createUsernameInput == null || _userManager == null)
 		{
 			ShowCreateStatusMessage("Account creation system not properly initialized", false);
@@ -762,29 +941,109 @@ public partial class LoginModal : Control
 
 		try
 		{
+			// Set processing state and disable UI
+			_isCreateAccountInProgress = true;
+			SetCreateAccountUIEnabled(false);
+			UpdateCreateAccountButtonState(); // Update button state to reflect processing flag
+
+			// Stage 1: Validate all requirements (pessimistic validation)
+			ShowCreateStatusMessage("Validating account information...", false);
+
+			var validationResult = await _userManager.ValidatePlayerCreationAsync(cleanedPhone, cleanedPin, cleanedUsername);
+			if (!validationResult.IsSuccess)
+			{
+				ShowCreateStatusMessage($"Validation failed: {validationResult.Error}", false);
+				return;
+			}
+
+			// Check validation response
+			if (!validationResult.Value.Valid)
+			{
+				// Extract user-friendly error messages from validation errors
+				var errorMessages = new System.Collections.Generic.List<string>();
+				foreach (var error in validationResult.Value.Errors)
+				{
+					errorMessages.Add(MapValidationError(error));
+				}
+
+				var combinedMessage = string.Join("\n", errorMessages);
+				ShowCreateStatusMessage(combinedMessage, false);
+				return;
+			}
+
+			// Stage 2: All validation passed, create account
 			ShowCreateStatusMessage("Creating account...", false);
 
 			var result = await _userManager.CreateUserAccountAsync(cleanedPhone, cleanedPin, cleanedUsername);
 			if (result.IsSuccess)
 			{
+				// Stage 3: Success!
 				ShowCreateStatusMessage("Account created successfully! You can now login.", true);
+
+				// Delay to let user see success message
+				await AutoloadBase.StaticDelayAsync(1.0f);
 
 				// Switch to login tab and populate the phone number (formatted)
 				_tabContainer.CurrentTab = 0;
 				if (_loginPhoneInput != null)
 				{
 					_loginPhoneInput.Text = InputValidator.FormatPhoneNumberDisplay(cleanedPhone);
+					_loginPhoneInput.GrabFocus();
 				}
 			}
 			else
 			{
-				ShowCreateStatusMessage(result.Error, false);
+				ShowCreateStatusMessage(MapCreationError(result.Error), false);
 			}
 		}
 		catch (System.Exception ex)
 		{
 			ShowCreateStatusMessage($"Account creation error: {ex.Message}", false);
 		}
+		finally
+		{
+			// Always restore UI state, even on error
+			_isCreateAccountInProgress = false;
+			SetCreateAccountUIEnabled(true);
+			UpdateCreateAccountButtonState();
+		}
+	}
+
+	/// <summary>
+	/// Map validation error field to user-friendly message
+	/// </summary>
+	private string MapValidationError(ValidationErrorDetail error)
+	{
+		switch (error.Field)
+		{
+			case "origin_id":
+				return "System not properly registered. Please contact support.";
+			case "id":
+				return "This phone number is already registered. Please login instead.";
+			case "tag":
+				return $"Username '{error.Value}' is already taken. Please choose another.";
+			default:
+				return error.Message;
+		}
+	}
+
+	/// <summary>
+	/// Map backend error to user-friendly message
+	/// </summary>
+	private string MapCreationError(string error)
+	{
+		if (error.Contains("409") || error.Contains("already exists") || error.Contains("Conflict"))
+			return "An account with this phone number or username already exists. Please login instead.";
+		else if (error.Contains("timeout") || error.Contains("Timeout"))
+			return "Connection timeout - please check your network and try again.";
+		else if (error.Contains("400") || error.Contains("Bad Request"))
+			return "System not properly configured. Please contact support.";
+		else if (error.Contains("500") || error.Contains("Internal"))
+			return "Server error occurred. Please try again later.";
+		else if (error.Contains("unavailable") || error.Contains("not available"))
+			return "Service temporarily unavailable. Please try again later.";
+		else
+			return $"Account creation failed: {error}";
 	}
 
 	private void OnCancelPressed()
@@ -794,8 +1053,9 @@ public partial class LoginModal : Control
 
 	private void OnUserLoggedIn(string phoneNumber, string userName)
 	{
-		// Auto-hide modal on successful login
-		HideModal();
+		// Don't auto-hide modal - let OnLoginPressed() handle it after showing success message
+		// This prevents the race condition where modal closes before user sees "Login successful!"
+		GD.Print($"[LoginModal] User logged in: {userName} ({phoneNumber})");
 	}
 
 	private void OnUserLoggedOut(string phoneNumber)
@@ -806,25 +1066,61 @@ public partial class LoginModal : Control
 
 	public override void _ExitTree()
 	{
-		// Disconnect login tab signals
+		// Disconnect login tab button signals
 		if (GodotObject.IsInstanceValid(_loginButton))
 			_loginButton.Pressed -= OnLoginPressed;
 
 		if (GodotObject.IsInstanceValid(_loginCancelButton))
 			_loginCancelButton.Pressed -= OnCancelPressed;
 
-		// Disconnect create account tab signals
+		// Disconnect login input field signals
+		if (GodotObject.IsInstanceValid(_loginPhoneInput))
+		{
+			_loginPhoneInput.TextChanged -= OnLoginPhoneChanged;
+			_loginPhoneInput.FocusExited -= OnLoginPhoneFocusExited;
+		}
+
+		if (GodotObject.IsInstanceValid(_loginPinInput))
+		{
+			_loginPinInput.TextChanged -= OnLoginPinChanged;
+		}
+
+		// Disconnect create account tab button signals
 		if (GodotObject.IsInstanceValid(_createAccountButton))
 			_createAccountButton.Pressed -= OnCreateAccountPressed;
 
 		if (GodotObject.IsInstanceValid(_createCancelButton))
 			_createCancelButton.Pressed -= OnCancelPressed;
 
+		// Disconnect create account input field signals
+		if (GodotObject.IsInstanceValid(_createPhoneInput))
+		{
+			_createPhoneInput.TextChanged -= OnCreatePhoneChanged;
+			_createPhoneInput.FocusExited -= OnCreatePhoneFocusExited;
+		}
+
+		if (GodotObject.IsInstanceValid(_createPinInput))
+		{
+			_createPinInput.TextChanged -= OnCreatePinChanged;
+		}
+
+		if (GodotObject.IsInstanceValid(_createUsernameInput))
+		{
+			_createUsernameInput.TextChanged -= OnCreateUsernameChanged;
+		}
+
 		// Disconnect user manager signals
 		if (GodotObject.IsInstanceValid(_userManager))
 		{
 			_userManager.UserLoggedIn -= OnUserLoggedIn;
 			_userManager.UserLoggedOut -= OnUserLoggedOut;
+		}
+
+		// Clean up username check timer
+		if (GodotObject.IsInstanceValid(_usernameCheckTimer))
+		{
+			_usernameCheckTimer.Timeout -= OnUsernameCheckTimeout;
+			_usernameCheckTimer.QueueFree();
 		}
 
 		base._ExitTree();
