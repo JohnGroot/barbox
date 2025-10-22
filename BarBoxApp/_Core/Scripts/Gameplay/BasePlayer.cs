@@ -26,9 +26,9 @@ public abstract partial class BasePlayer : Node2D
 	public virtual void SetUserSession(UserSession userSession)
 	{
 		_userSession = userSession;
-		if (_userSession?.GlobalData != null)
+		if (_userSession != null)
 		{
-			PlayerName = _userSession.GlobalData.UserName;
+			PlayerName = _userSession.UserName;
 		}
 	}
 

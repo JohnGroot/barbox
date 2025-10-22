@@ -16,8 +16,8 @@ public partial class LocationManager : AutoloadBase
 	// Basic compatibility for existing code
 	public string GetCurrentLocationId()
 	{
-		var dataStore = DataStore.GetInstance();
-		return dataStore?.GetCurrentLocationId() ?? "unknown";
+		return System.Environment.GetEnvironmentVariable("BARBOX_LOCATION_ID") ??
+		       System.Environment.MachineName.ToLowerInvariant().Replace("-", "_");
 	}
 
 	public string CurrentLocationId => GetCurrentLocationId();

@@ -344,9 +344,6 @@ namespace BarBox.Games.MiningGame
 				_engine.StopMining();
 				
 			if (GodotObject.IsInstanceValid(_state))
-				// Use discard pattern for intentional fire-and-forget async call to avoid CS4014 warning
-				// Game end should not block on save completion - errors are handled within SaveDataAsync
-				_ = _state.SaveDataAsync(); // Fire-and-forget
 				
 			if (GodotObject.IsInstanceValid(_ui))
 				_ui.SetEnabled(false);
@@ -636,9 +633,7 @@ namespace BarBox.Games.MiningGame
 
 			try
 			{
-				// Fire-and-forget save before clearing state
-				if (GodotObject.IsInstanceValid(_state))
-					_ = _state.SaveDataAsync();
+			// Event-sourced persistence - no explicit save needed
 
 				StopGame();
 
@@ -670,9 +665,6 @@ namespace BarBox.Games.MiningGame
 					_engine.StopMining();
 					
 				if (GodotObject.IsInstanceValid(_state))
-					// Use discard pattern for intentional fire-and-forget async call to avoid CS4014 warning
-					// Node cleanup should not block on save completion - errors are handled within SaveDataAsync
-					_ = _state.SaveDataAsync(); // Fire-and-forget
 				
 				if (_userManager != null && GodotObject.IsInstanceValid(_userManager))
 				{
@@ -792,7 +784,6 @@ namespace BarBox.Games.MiningGame
 				// Auto-save every 30 seconds (replaces save timer)
 				if (_gameTime - _lastSaveTime >= AUTO_SAVE_INTERVAL)
 				{
-					_ = SaveDataAsync(); // Fire-and-forget
 					_lastSaveTime = _gameTime;
 					
 					if (_game.EnableDebugMode)
@@ -944,111 +935,18 @@ namespace BarBox.Games.MiningGame
 				// Get location template first
 				string currentLocationId = _game._locationManager?.CurrentLocationId ?? "default";
 				_locationTemplate = _game.GetLocationDataTemplate(currentLocationId);
-				
-				string phoneNumber = _game.GetCurrentUserPhoneNumber();
-				if (string.IsNullOrEmpty(phoneNumber))
-				{
-					CreateDefaultState();
-					return;
-				}
-				
-				var dataStore = DataStore.GetInstance();
-				if (dataStore == null)
-				{
-					GD.PrintErr("[MiningGame] DataStore not available, using default state");
-					CreateDefaultState();
-					return;
-				}
-				
-				try
-				{
-					// Load location-specific runtime state using DataStore extensions
-					var miningData = await DataStoreExtensions.GetMiningDataAsync(dataStore, phoneNumber);
 
-					// Check first-time bonus flag BEFORE loading state to avoid overwriting saved data
-					if (!miningData.HasClaimedFirstTimeBonus && _locationTemplate != null)
-					{
-						// First time at this location - apply starting bonus
-						_pendingGems = _locationTemplate.GetMaxCapacity(0, _game.Config);
-						_lastMiningTickTime = DateTime.UtcNow;
-						_upgradeLevels.Clear();
-						_firstTimeBonus = false; // Mark as claimed
+				// Event-sourced persistence - no DataStore loading
+				// Backend will rebuild state from events when needed
+				CreateDefaultState();
 
-						if (_game.EnableDebugMode)
-						{
-							GD.Print($"[GameState] First visit to location '{currentLocationId}' - applied starting bonus: {_pendingGems} gems");
-						}
-
-						// Save the first-time bonus flag (fire-and-forget is safe since ClearAllState no longer resets the flag)
-						_ = SaveDataAsync();
-					}
-					else
-					{
-						// Load saved state - user has been here before
-						_pendingGems = miningData.LocalGemsReady;
-						_lastMiningTickTime = miningData.LastMiningTick;
-						_firstTimeBonus = false;
-
-						// Convert string upgrade levels back to enum dictionary
-						_upgradeLevels.Clear();
-						foreach (var upgrade in miningData.Upgrades)
-						{
-							if (Enum.TryParse<UpgradeType>(upgrade.Key, out var upgradeType))
-							{
-								_upgradeLevels[upgradeType] = upgrade.Value;
-							}
-						}
-
-						if (_game.EnableDebugMode)
-						{
-							GD.Print($"[GameState] Loaded saved state: {_pendingGems} gems, {_upgradeLevels.Count} upgrades, last tick: {_lastMiningTickTime:yyyy-MM-dd HH:mm:ss}");
-						}
-					}
-					
-					// Load global mining data using DataStore
-					var globalResult = await dataStore.GetGlobalDataAsync(phoneNumber);
-					if (globalResult.IsSuccess)
-					{
-						_globalData = new BarBox.Games.MiningGame.MiningGlobalDataStore();
-						// Copy gems from DataStore format (already string-based)
-						foreach (var gem in globalResult.Value.Mining.Gems)
-						{
-							_globalData.Gems[gem.Key] = gem.Value;
-						}
-					}
-					else
-					{
-						_globalData = new BarBox.Games.MiningGame.MiningGlobalDataStore();
-						// Save initial global data structure
-						try
-						{
-							var newGlobalData = new DataStore.GlobalUserData
-							{
-								PhoneNumber = phoneNumber,
-								Mining = new MiningGlobalDataStore() // DataStore version
-							};
-							await dataStore.SetGlobalDataAsync(phoneNumber, newGlobalData);
-						}
-						catch (Exception ex)
-						{
-							// Thread-safe error logging via CallDeferred to main game class
-							_game.CallDeferred(MiningGame.MethodName.LogAsyncError, $"Failed to save initial global data: {ex.Message}");
-						}
-					}
-				}
-				catch (System.Exception ex)
-				{
-					// Thread-safe error logging via CallDeferred to main game class
-					_game.CallDeferred(MiningGame.MethodName.LogAsyncError, $"Failed to load user data: {ex.Message}");
-					_game.CallDeferred(MiningGame.MethodName.LogAsyncError, "Falling back to default state");
-					CreateDefaultState();
-				}
-				
 				// Process any mining ticks that are ready (handles offline progress automatically)
 				ProcessReadyMiningTicks();
 
 				// Invalidate cache so it gets rebuilt with new data
 				InvalidateCache();
+
+				await Task.CompletedTask;
 			}
 			
 			private void CreateDefaultState()
@@ -1089,45 +987,6 @@ namespace BarBox.Games.MiningGame
 				}
 			}
 			
-			private async Task SaveLocationStateAsync()
-			{
-				string phoneNumber = _game.GetCurrentUserPhoneNumber();
-				if (string.IsNullOrEmpty(phoneNumber))
-				{
-					return;
-				}
-				
-				var dataStore = DataStore.GetInstance();
-				if (dataStore == null) 
-				{
-					return;
-				}
-				
-				// Create DataStore-compatible local data using modern C# enum conversion
-				var miningLocalData = new MiningLocalData
-				{
-					LocalGemsReady = _pendingGems,
-					LastMiningTick = _lastMiningTickTime,
-					Upgrades = _upgradeLevels.ToDictionary(
-						kvp => kvp.Key.ToString(), // Modern enum to string
-						kvp => kvp.Value
-					),
-			HasClaimedFirstTimeBonus = !_firstTimeBonus // CRITICAL: Save explicit flag to prevent re-triggering
-				};
-				
-				try
-				{
-					// Use DataStore extension for clean save operation
-					await DataStoreExtensions.SetMiningDataAsync(dataStore, phoneNumber, miningLocalData);
-				}
-				catch (System.Exception ex)
-				{
-					// Thread-safe error logging via CallDeferred to main game class
-					_game.CallDeferred(MiningGame.MethodName.LogAsyncError, $"Failed to save location state: {ex.Message}");
-					throw; // Re-throw to let caller handle
-				}
-			}
-
 			public bool CanExtractGems() => IsExtractionReady;
 			
 			public bool CanPurchaseCredit()
@@ -1162,7 +1021,11 @@ namespace BarBox.Games.MiningGame
 				var maxCapacity = GetMaxCapacity();
 				bool wasAtCapacity = _pendingGems >= maxCapacity;
 
-				_globalData.AddGems(_locationTemplate.PrimaryGemType, _pendingGems);
+				int extractedAmount = _pendingGems;
+				GemType gemType = _locationTemplate.PrimaryGemType;
+
+				// Update local state
+				_globalData.AddGems(gemType, extractedAmount);
 				_pendingGems = 0;
 
 				// Only reset timer if mining was paused at capacity
@@ -1173,8 +1036,13 @@ namespace BarBox.Games.MiningGame
 				}
 				// else: keep current timer progress for continuous mining
 
-				// Fire-and-forget save - don't block UI
-				_ = SaveDataAsync();
+				// Emit event to backend
+				var miningEventService = _game.GetNodeOrNull<MiningEventService>("MiningEventService");
+				if (miningEventService != null)
+				{
+					_ = miningEventService.EmitExtractCompleteAsync(gemType, extractedAmount);
+				}
+
 				return true;
 			}
 			
@@ -1186,6 +1054,8 @@ namespace BarBox.Games.MiningGame
 				{
 					{ _locationTemplate.PrimaryGemType, _game.Config.CreditCost }
 				};
+
+				// Update local state
 				_globalData.SpendGems(cost);
 
 				// Actually add credit to user account
@@ -1194,21 +1064,35 @@ namespace BarBox.Games.MiningGame
 					_game._userManager?.AddCredits(CREDITS_PER_PURCHASE);
 				}
 
-				_ = SaveDataAsync(); // Fire-and-forget
+				// Emit event to backend
+				var miningEventService = _game.GetNodeOrNull<MiningEventService>("MiningEventService");
+				if (miningEventService != null)
+				{
+					_ = miningEventService.EmitCreditDepositAsync(_locationTemplate.PrimaryGemType, _game.Config.CreditCost, CREDITS_PER_PURCHASE);
+				}
+
 				return true;
 			}
 			
 			public bool PurchaseUpgrade(UpgradeType upgradeType)
 			{
 				if (!CanPurchaseUpgrade(upgradeType) || _locationTemplate == null) return false;
-				
+
 				int currentLevel = GetUpgradeLevel(upgradeType);
+				int newLevel = currentLevel + 1;
 				var cost = _game.Config.GetUpgradeCost(upgradeType, currentLevel, _locationTemplate.PrimaryGemType);
-				
+
+				// Update local state
 				_globalData.SpendGems(cost);
-				SetUpgradeLevel(upgradeType, currentLevel + 1);
-				
-				_ = SaveDataAsync(); // Fire-and-forget
+				SetUpgradeLevel(upgradeType, newLevel);
+
+				// Emit event to backend
+				var miningEventService = _game.GetNodeOrNull<MiningEventService>("MiningEventService");
+				if (miningEventService != null)
+				{
+					_ = miningEventService.EmitUpgradePurchaseAsync(upgradeType, newLevel, cost);
+				}
+
 				return true;
 			}
 			
@@ -1233,71 +1117,6 @@ namespace BarBox.Games.MiningGame
 				}
 			}
 
-			public async Task SaveDataAsync()
-			{
-				string phoneNumber = _game.GetCurrentUserPhoneNumber();
-				if (string.IsNullOrEmpty(phoneNumber))
-					return;
-				
-				var dataStore = DataStore.GetInstance();
-				if (dataStore == null) 
-					return;
-				
-				try
-				{
-					// Save local data (location-specific)
-					await SaveLocationStateAsync();
-					
-					// Save global data with extracted gems
-					if (_globalData != null)
-					{
-						var globalResult = await dataStore.GetGlobalDataAsync(phoneNumber);
-						if (globalResult.IsSuccess)
-						{
-							// Global data already exists, ensure Mining section is initialized
-							if (globalResult.Value.Mining == null)
-							{
-								globalResult.Value.Mining = new MiningGlobalDataStore();
-							}
-							
-							// CRITICAL: Copy extracted gems from _globalData to DataStore format
-							globalResult.Value.Mining.Gems = new Dictionary<string, int>(_globalData.Gems);
-							
-							await dataStore.SetGlobalDataAsync(phoneNumber, globalResult.Value);
-							
-							if (_game.EnableDebugMode)
-							{
-								var totalGems = _globalData.Gems.Sum(kvp => kvp.Value);
-								GD.Print($"[GameState] Global data saved - Total extracted gems: {totalGems}");
-							}
-						}
-					else
-					{
-						// Create new global data structure
-						var newGlobalData = new DataStore.GlobalUserData
-						{
-							PhoneNumber = phoneNumber,
-							Mining = new MiningGlobalDataStore()
-						};
-						
-						// Copy extracted gems to new structure
-						newGlobalData.Mining.Gems = new Dictionary<string, int>(_globalData.Gems);
-						
-						await dataStore.SetGlobalDataAsync(phoneNumber, newGlobalData);
-					}
-					}
-					
-					if (_game.EnableDebugMode)
-					{
-						GD.Print("[GameState] Data saved");
-					}
-				}
-				catch (System.Exception ex)
-				{
-					// Thread-safe error logging via CallDeferred to main game class
-					_game.CallDeferred(MiningGame.MethodName.LogAsyncError, $"Failed to save data: {ex.Message}");
-				}
-			}
 		}
 	}
 }

@@ -1114,14 +1114,13 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	private void TrackGlobalCompetitiveGame()
 	{
 		if (_sessionManager == null) return;
-		
+
 		var userSession = _sessionManager.GetPrimaryUserSession();
-		if (userSession?.GlobalData != null)
+		if (userSession != null)
 		{
-			// Carrom competitive games are tracked via wins/losses in CarromGameContext
-			var totalCarromGames = userSession.GlobalData.Carrom.GlobalWins + userSession.GlobalData.Carrom.GlobalLosses;
-			
-			GD.Print($"[CarromCompetitive] Tracking competitive game globally - Total carrom games: {totalCarromGames}");
+			// TODO: Event-sourced - carrom games tracked via backend events
+			// Backend will aggregate wins/losses from carrom/round_finish events
+			GD.Print($"[CarromCompetitive] Tracking competitive game for user {userSession.UserName}");
 		}
 		else
 		{

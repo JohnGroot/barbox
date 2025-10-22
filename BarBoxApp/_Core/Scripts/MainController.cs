@@ -200,9 +200,9 @@ public partial class MainController : Control
 
 		if (UserInfoLabel != null)
 		{
-			if (currentUserSession?.GlobalData != null)
+			if (currentUserSession != null)
 			{
-				UserInfoLabel.Text = $"User: {currentUserSession.GlobalData.UserName}\nCredits: {currentUserSession.GlobalData.GlobalCredits}";
+				UserInfoLabel.Text = $"User: {currentUserSession.UserName}\nCredits: {currentUserSession.Credits}";
 			}
 			else
 			{

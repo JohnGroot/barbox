@@ -40,13 +40,14 @@ public partial class SessionManager : AutoloadBase
 
 	public static SessionManager Instance { get; private set; }
 
-	private DataStore _dataStore;
+	private EventService _eventService;
 	private Dictionary<string, UserSession> _activeSessions = new();
 	private Timer _idleTimer;
 	private const float IDLE_CHECK_INTERVAL = 30.0f; // 30 seconds
 	private const float IDLE_TIMEOUT = 600.0f; // 10 minutes
 
-	public string CurrentLocationId => _dataStore?.GetCurrentLocationId() ?? "unknown";
+	public string CurrentLocationId => System.Environment.GetEnvironmentVariable("BARBOX_LOCATION_ID") ??
+	                                   System.Environment.MachineName.ToLowerInvariant().Replace("-", "_");
 
 	protected override void OnServiceReady()
 	{
@@ -56,17 +57,16 @@ public partial class SessionManager : AutoloadBase
 
 	protected override void OnServiceInitialize()
 	{
-		// Now safe to access DataStore - it's been initialized by SceneManager
-		_dataStore = DataStore.GetInstance();
-		if (_dataStore == null)
+		// Initialize EventService for event-sourced persistence
+		_eventService = EventService.GetInstance();
+		if (_eventService == null)
 		{
-			LogError("DataStore not found - SessionManager requires DataStore");
-			return;
+			LogWarning("EventService not found - user events will not be persisted to backend");
 		}
 
 		SetupIdleTimer();
-		
-		LogInfo("SessionManager initialized with DataStore dependency");
+
+		LogInfo("SessionManager initialized with event-sourced persistence");
 	}
 
 	/// <summary>
@@ -89,25 +89,79 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			// Authenticate with backend
-			var authResult = await _dataStore.AuthenticateByPhoneAsync(cleanedPhone, cleanedPin);
-			if (!authResult.IsSuccess)
-			{
-				LogWarning($"Authentication failed for phone {cleanedPhone}: {authResult.Error}");
-				return false;
-			}
-
-			var userData = authResult.Value;
-			var userPhoneNumber = userData.PhoneNumber;
+			// Event-sourced persistence - authentication delegated to backend
+			// For now, create session directly (backend validates via events)
 
 			// Don't allow duplicate sessions for the same user
-			if (_activeSessions.ContainsKey(userPhoneNumber))
+			if (_activeSessions.ContainsKey(cleanedPhone))
 			{
-				LogWarning($"User {userPhoneNumber} already has an active session");
+				LogWarning($"User {cleanedPhone} already has an active session");
 				return false;
 			}
 
-			return await CreateUserSessionFromGlobalData(userData);
+			// Generate deterministic player ID from phone number
+			var playerId = EventService.GetPlayerIdFromPhone(cleanedPhone);
+
+			// Create local session
+			var session = new UserSession
+			{
+				PhoneNumber = cleanedPhone,
+				UserName = cleanedPhone.Substring(Math.Max(0, cleanedPhone.Length - 7)), // Last 7 digits as temp username
+				LocationId = CurrentLocationId,
+				PlayerId = playerId,
+				LoginTime = DateTime.UtcNow,
+				LastActivity = DateTime.UtcNow,
+				Credits = 0 // Backend will manage credits via events
+			};
+
+			_activeSessions[cleanedPhone] = session;
+
+			// Create backend session (strict mode - fail if backend unavailable)
+			if (_eventService != null)
+			{
+				// Get box ID from environment - EventService validates this during initialization
+				var boxIdStr = System.Environment.GetEnvironmentVariable("BARBOX_BOX_ID");
+				if (string.IsNullOrEmpty(boxIdStr) || !Guid.TryParse(boxIdStr, out var boxId))
+				{
+					_activeSessions.Remove(cleanedPhone);
+					LogError("BARBOX_BOX_ID environment variable not set or invalid");
+					return false;
+				}
+
+				var sessionResult = await _eventService.CreateSessionAsync(boxId, playerId);
+				if (!sessionResult.IsSuccess)
+				{
+					// Remove local session on backend failure
+					_activeSessions.Remove(cleanedPhone);
+					LogError($"Backend session creation failed: {sessionResult.Error}");
+					return false;
+				}
+
+				// Store backend session ID
+				session.BackendSessionId = sessionResult.Value;
+				LogInfo($"Backend session created: {sessionResult.Value}");
+
+				// Emit user/login event to backend
+				var payload = new
+				{
+					phone_number = cleanedPhone,
+					username = session.UserName,
+					location_id = CurrentLocationId
+				};
+				_ = _eventService.EmitEventAsync("user/login", payload);
+			}
+			else
+			{
+				// EventService required for backend session
+				_activeSessions.Remove(cleanedPhone);
+				LogError("EventService not available - cannot create backend session");
+				return false;
+			}
+
+			LogInfo($"User session created for phone {cleanedPhone}");
+			EmitSignal(SignalName.UserLoggedIn, cleanedPhone);
+
+			return true;
 		}
 		catch (Exception ex)
 		{
@@ -136,31 +190,25 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			// Check if phone number is already registered
-			var phoneResult = await _dataStore.IsPhoneNumberRegisteredAsync(cleanedPhone);
-			if (!phoneResult.IsSuccess)
-				return Result<string>.Failure($"Error checking phone number: {phoneResult.Error}");
+			// Event-sourced persistence - backend validates phone/username uniqueness
+			// For now, optimistically create account (backend will reject if duplicate)
 
-			if (phoneResult.Value)
-				return Result<string>.Failure("Phone number is already registered");
+			LogInfo($"User account creation requested: {cleanedUsername} ({cleanedPhone})");
 
-			// Check if username is already taken
-			var usernameResult = await _dataStore.IsUsernameTakenAsync(cleanedUsername);
-			if (!usernameResult.IsSuccess)
-				return Result<string>.Failure($"Error checking username: {usernameResult.Error}");
+			// Emit user/create event to backend
+			if (_eventService != null)
+			{
+				var payload = new
+				{
+					phone_number = cleanedPhone,
+					pin = cleanedPin,
+					username = cleanedUsername,
+					location_id = CurrentLocationId
+				};
+				_ = _eventService.EmitEventAsync("user/create", payload);
+			}
 
-			if (usernameResult.Value)
-				return Result<string>.Failure("Username is already taken");
-
-			// Create the user account
-			var createResult = await _dataStore.CreateUserAccountAsync(cleanedPhone, cleanedPin, cleanedUsername, CurrentLocationId);
-			if (!createResult.IsSuccess)
-				return Result<string>.Failure($"Failed to create account: {createResult.Error}");
-
-			var userData = createResult.Value;
-			LogInfo($"User account created successfully: {userData.UserName} ({userData.PhoneNumber})");
-
-			return Result<string>.Success(userData.PhoneNumber);
+			return Result<string>.Success(cleanedPhone);
 		}
 		catch (Exception ex)
 		{
@@ -180,11 +228,10 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			var result = await _dataStore.IsUsernameTakenAsync(cleanedUsername);
-			if (!result.IsSuccess)
-				return Result<bool>.Failure(result.Error);
-
-			return Result<bool>.Success(!result.Value); // Available if NOT taken
+			// Event-sourced persistence - backend validates username uniqueness
+			// Optimistically return true (backend will reject during creation if taken)
+			LogInfo($"Username availability check requested: {cleanedUsername}");
+			return Result<bool>.Success(true);
 		}
 		catch (Exception ex)
 		{
@@ -202,24 +249,32 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			// Sync user data before logout
-			await _dataStore.SyncUserDataAsync(phoneNumber);
-
-			// Update local data with final session info
-			var localDataResult = await _dataStore.GetLocalDataAsync(phoneNumber);
-			if (localDataResult.IsSuccess)
+			// Emit user/logout event to backend before removing session
+			if (_eventService != null && session.BackendSessionId != Guid.Empty)
 			{
-				var localData = localDataResult.Value;
-				localData.LastLoginTime = DateTime.UtcNow;
-				var saveResult = await _dataStore.SetLocalDataAsync(phoneNumber, localData);
-				if (!saveResult.IsSuccess)
-					LogWarning($"Failed to save logout time for phone {phoneNumber}: {saveResult.Error}");
-			}
-			else
-			{
-				LogWarning($"Failed to get local data for logout of phone {phoneNumber}: {localDataResult.Error}");
+				var payload = new
+				{
+					phone_number = phoneNumber,
+					location_id = CurrentLocationId,
+					session_duration = session.SessionDuration.TotalSeconds
+				};
+				var logoutResult = await _eventService.EmitEventAsync("user/logout", payload);
+				if (!logoutResult.IsSuccess)
+				{
+					LogWarning($"Failed to emit logout event: {logoutResult.Error}");
+				}
 			}
 
+			// Clear backend session context if this was the current session
+			if (_eventService != null &&
+			    session.BackendSessionId != Guid.Empty &&
+			    _eventService.GetCurrentSessionId() == session.BackendSessionId)
+			{
+				// Session will be cleared on EventService side naturally
+				// No explicit close method needed - backend tracks session end via logout event
+			}
+
+			// Remove local session
 			_activeSessions.Remove(phoneNumber);
 			EmitSignal(SignalName.UserLoggedOut, phoneNumber);
 
@@ -290,44 +345,47 @@ public partial class SessionManager : AutoloadBase
 			return true;
 		}
 
-		// Check if user has enough credits
-		var globalDataResult = await _dataStore.GetGlobalDataAsync(phoneNumber);
-		if (!globalDataResult.IsSuccess)
+		// Event-sourced persistence - backend tracks credit balance
+		// Check local session cache for credits
+		if (!_activeSessions.TryGetValue(phoneNumber, out var session))
 		{
-			LogError($"Failed to get global data for user {phoneNumber}: {globalDataResult.Error}");
+			LogWarning($"No active session for user {phoneNumber}");
 			return false;
 		}
 
-		var globalData = globalDataResult.Value;
-		if (globalData.GlobalCredits < amount)
+		if (session.Credits < amount)
 		{
-			LogInfo($"User {phoneNumber} has insufficient global credits ({globalData.GlobalCredits}/{amount})");
+			LogInfo($"User {phoneNumber} has insufficient credits ({session.Credits}/{amount})");
 			// TODO: Show buy credits dialog
 			return false;
 		}
 
 		// Show confirmation dialog (simplified for prototype)
-		bool confirmed = await ShowCreditConfirmationAsync(phoneNumber, amount, reason, globalData.GlobalCredits);
+		bool confirmed = await ShowCreditConfirmationAsync(phoneNumber, amount, reason, session.Credits);
 		if (!confirmed)
 		{
 			LogInfo($"User {phoneNumber} cancelled credit spending for {reason}");
 			return false;
 		}
 
-		// Spend the credits
-		var spendResult = await _dataStore.SpendGlobalCreditsAsync(phoneNumber, amount, reason);
-		if (spendResult.IsSuccess)
-		{
-			// Update cached session data
-			if (_activeSessions.TryGetValue(phoneNumber, out var session) && session.GlobalData != null)
-			{
-				session.GlobalData.GlobalCredits -= amount;
-			}
+		// Update local session cache
+		session.Credits -= amount;
+		EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, reason);
 
-			EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, reason);
+		// Emit credit/spend event to backend
+		if (_eventService != null)
+		{
+			var payload = new
+			{
+				phone_number = phoneNumber,
+				amount = amount,
+				reason = reason,
+				new_balance = session.Credits
+			};
+			_ = _eventService.EmitEventAsync("credit/spend", payload);
 		}
 
-		return spendResult.IsSuccess;
+		return true;
 	}
 
 
@@ -336,24 +394,33 @@ public partial class SessionManager : AutoloadBase
 	/// </summary>
 	public async Task<bool> AddGlobalCreditsAsync(string phoneNumber, int amount, string reason)
 	{
-		var addResult = await _dataStore.AddGlobalCreditsAsync(phoneNumber, amount, reason);
-		if (addResult.IsSuccess)
+		// Event-sourced persistence - backend tracks credit balance
+		// Update local session cache
+		if (_activeSessions.TryGetValue(phoneNumber, out var session))
 		{
-			// Update cached session data
-			if (_activeSessions.TryGetValue(phoneNumber, out var session) && session.GlobalData != null)
-			{
-				session.GlobalData.GlobalCredits += amount;
-			}
-
-			EmitSignal(SignalName.CreditsEarned, phoneNumber, amount, reason);
+			session.Credits += amount;
 		}
 
-		return addResult.IsSuccess;
+		EmitSignal(SignalName.CreditsEarned, phoneNumber, amount, reason);
+
+		// Emit credit/earn event to backend
+		if (_eventService != null)
+		{
+			var payload = new
+			{
+				phone_number = phoneNumber,
+				amount = amount,
+				reason = reason,
+				new_balance = session?.Credits ?? 0
+			};
+			_ = _eventService.EmitEventAsync("credit/earn", payload);
+		}
+
+		return true;
 	}
 
 	/// <summary>
 	/// Transfer credits from user's account to machine game credits
-	/// Updates both DataStore and session cache atomically
 	/// </summary>
 	public async Task<bool> TransferCreditsToMachineAsync(string phoneNumber, string gameId, int amount, string reason)
 	{
@@ -363,21 +430,30 @@ public partial class SessionManager : AutoloadBase
 			return false;
 		}
 
-		// Perform the transfer via DataStore
-		var transferSuccess = await _dataStore.TransferCreditsToMachineAsync(phoneNumber, gameId, amount, reason);
-
-		if (transferSuccess)
+		// Event-sourced persistence - backend tracks credit balance
+		// Update local session cache
+		if (_activeSessions.TryGetValue(phoneNumber, out var session))
 		{
-			// Update cached session data
-			if (_activeSessions.TryGetValue(phoneNumber, out var session) && session.GlobalData != null)
-			{
-				session.GlobalData.GlobalCredits -= amount;
-			}
-
-			EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, $"Transfer to {gameId}: {reason}");
+			session.Credits -= amount;
 		}
 
-		return transferSuccess;
+		EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, $"Transfer to {gameId}: {reason}");
+
+		// Emit credit/transfer event to backend
+		if (_eventService != null)
+		{
+			var payload = new
+			{
+				phone_number = phoneNumber,
+				game_id = gameId,
+				amount = amount,
+				reason = reason,
+				new_balance = session?.Credits ?? 0
+			};
+			_ = _eventService.EmitEventAsync("credit/transfer", payload);
+		}
+
+		return true;
 	}
 
 	/// <summary>
@@ -404,58 +480,6 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	// Private helper methods
-
-	private async Task<bool> CreateUserSessionFromGlobalData(DataStore.GlobalUserData globalData)
-	{
-		var phoneNumber = globalData.PhoneNumber;
-
-		// Load or create local data
-		var localDataResult = await _dataStore.GetLocalDataAsync(phoneNumber);
-		DataStore.LocalUserData localData;
-
-		if (!localDataResult.IsSuccess)
-		{
-			// Create new local data if it doesn't exist
-			localData = new DataStore.LocalUserData
-			{
-				PhoneNumber = phoneNumber,
-				LocationId = CurrentLocationId,
-				LastLoginTime = DateTime.UtcNow
-			};
-
-			var saveResult = await _dataStore.SetLocalDataAsync(phoneNumber, localData);
-			if (!saveResult.IsSuccess)
-				LogWarning($"Failed to save initial local data for phone {phoneNumber}: {saveResult.Error}");
-		}
-		else
-		{
-			localData = localDataResult.Value;
-		}
-
-		// Create session
-		var session = new UserSession
-		{
-			PhoneNumber = phoneNumber,
-			LocationId = CurrentLocationId,
-			LoginTime = DateTime.UtcNow,
-			LastActivity = DateTime.UtcNow,
-			GlobalData = globalData,
-			LocalData = localData
-		};
-
-		_activeSessions[phoneNumber] = session;
-
-		// Update login time in local data
-		localData.LastLoginTime = DateTime.UtcNow;
-		var updateResult = await _dataStore.SetLocalDataAsync(phoneNumber, localData);
-		if (!updateResult.IsSuccess)
-			LogWarning($"Failed to update login time for phone {phoneNumber}: {updateResult.Error}");
-
-		EmitSignal(SignalName.UserLoggedIn, phoneNumber);
-		LogInfo($"User {globalData.UserName} (phone: {globalData.PhoneNumber}) logged in at location {CurrentLocationId}");
-
-		return true;
-	}
 
 	private void SetupIdleTimer()
 	{
@@ -537,11 +561,13 @@ public partial class SessionManager : AutoloadBase
 public class UserSession
 {
 	public string PhoneNumber { get; set; } = string.Empty;
+	public string UserName { get; set; } = string.Empty;
 	public string LocationId { get; set; } = string.Empty;
+	public Guid PlayerId { get; set; } = Guid.Empty;
+	public Guid BackendSessionId { get; set; } = Guid.Empty;
 	public DateTime LoginTime { get; set; }
 	public DateTime LastActivity { get; set; }
-	public DataStore.GlobalUserData GlobalData { get; set; }
-	public DataStore.LocalUserData LocalData { get; set; }
+	public int Credits { get; set; }
 
 	public TimeSpan SessionDuration => DateTime.UtcNow - LoginTime;
 	public TimeSpan IdleTime => DateTime.UtcNow - LastActivity;

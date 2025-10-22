@@ -28,9 +28,9 @@ public partial class SceneManager : AutoloadBase
 		LogInfo("Initializing all services in dependency order...");
 
 		// Phase 1: Core Data Services (no dependencies)
-		InitializeService("DataStore", () => DataStore.GetInstance()?.Initialize());
+		// DataStore removed - event-sourced persistence via EventService
 
-		// Phase 2: Services that depend on DataStore
+		// Phase 2: Services that depend on EventService
 		InitializeService("SessionManager", () => SessionManager.GetInstance()?.Initialize());
 		InitializeService("PaymentService", () => PaymentService.GetInstance()?.Initialize());
 		InitializeService("LocationManager", () => LocationManager.GetAutoload()?.Initialize());

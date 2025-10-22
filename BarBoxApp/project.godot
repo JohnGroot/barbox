@@ -19,7 +19,6 @@ config/icon="res://icon.svg"
 
 SceneManager="*res://_Core/Scripts/Services/SceneManager.cs"
 GameRegistry="*res://_Core/Scripts/Autoloads/GameRegistry.cs"
-DataStore="*res://_Core/Scripts/Autoloads/DataStore.cs"
 SessionManager="*res://_Core/Scripts/Autoloads/SessionManager.cs"
 GameHost="*res://_Core/Scripts/Autoloads/GameHost.cs"
 InputManager="*res://_Core/Scripts/Autoloads/InputManager.cs"

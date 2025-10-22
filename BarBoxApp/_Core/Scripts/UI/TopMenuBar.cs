@@ -286,13 +286,13 @@ public partial class TopMenuBar : Control
 
 		if (_userInfoLabel != null)
 		{
-			if (isLoggedIn && session.GlobalData != null)
+			if (isLoggedIn && session!= null)
 			{
-				string displayName = !string.IsNullOrEmpty(session.GlobalData.UserName)
-					? session.GlobalData.UserName
+				string displayName = !string.IsNullOrEmpty(session.UserName)
+					? session.UserName
 					: "Player"; // Privacy-safe fallback - never expose phone numbers
 
-				_userInfoLabel.Text = $"{displayName}\n{session.GlobalData.GlobalCredits} Credits";
+				_userInfoLabel.Text = $"{displayName}\n{session.Credits} Credits";
 			}
 			else
 			{

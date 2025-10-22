@@ -13,16 +13,16 @@ public partial class PlayerSession : RefCounted
 	{
 		PlayerId = playerId;
 		UserSession = userSession;
-		PlayerName = userSession?.GlobalData?.UserName ?? playerId;
+		PlayerName = userSession?.UserName ?? playerId;
 		SessionStartTime = (float)Time.GetUnixTimeFromSystem();
 	}
 
 	public void SetUserSession(UserSession userSession)
 	{
 		UserSession = userSession;
-		if (userSession?.GlobalData != null)
+		if (userSession != null)
 		{
-			PlayerName = userSession.GlobalData.UserName;
+			PlayerName = userSession.UserName;
 		}
 	}
 
@@ -38,7 +38,7 @@ public partial class PlayerSession : RefCounted
 
 	public int GetCredits()
 	{
-		return UserSession?.GlobalData?.GlobalCredits ?? 0;
+		return UserSession?.Credits ?? 0;
 	}
 
 	public override string ToString()

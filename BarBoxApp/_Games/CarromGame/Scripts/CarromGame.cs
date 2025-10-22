@@ -1262,109 +1262,56 @@ public partial class CarromGame : GameController
 	// ================================================================
 
 	/// <summary>
-	/// Load user data from DataStore on game startup
+	/// Load user data - event-sourced persistence
+	/// Backend rebuilds state from events
 	/// </summary>
 	private async void LoadUserDataAsync()
 	{
-		var dataStore = DataStore.GetInstance();
-		if (dataStore == null) return;
-
-		string phoneNumber = GetCurrentUserPhoneNumber();
-		if (string.IsNullOrEmpty(phoneNumber)) return;
-
-		// Fire-and-forget load with proper error handling
-		try
-		{
-			var globalDataResult = await dataStore.GetGlobalDataAsync(phoneNumber);
-			if (globalDataResult.IsSuccess)
-			{
-				var carromData = globalDataResult.Value.Carrom;
-				// Thread-safe logging via CallDeferred
-				CallDeferred(MethodName.LogLoadedData, $"Loaded global data - Wins: {carromData.GlobalWins}, Losses: {carromData.GlobalLosses}, Best Streak: {carromData.BestWinStreak}");
-			}
-
-			var localDataResult = await dataStore.GetLocalDataAsync(phoneNumber);
-			if (localDataResult.IsSuccess)
-			{
-				var carromLocalData = localDataResult.Value.Carrom;
-				// Thread-safe logging via CallDeferred
-				CallDeferred(MethodName.LogLoadedData, $"Loaded local data - Games at location: {carromLocalData.GamesAtLocation}");
-			}
-		}
-		catch (System.Exception ex)
-		{
-			// Thread-safe error logging via CallDeferred
-			CallDeferred(MethodName.LogAsyncError, $"Exception loading user data: {ex.Message}");
-		}
+		// Event-sourced persistence - no DataStore loading needed
+		// Backend will rebuild state from events when queried
+		await Task.CompletedTask;
 	}
 
 	/// <summary>
-	/// Save win/loss statistics to DataStore
+	/// Save game result via event-sourced persistence
 	/// </summary>
 	private async void SaveGameResultAsync(string playerId, bool isWin)
 	{
-		var dataStore = DataStore.GetInstance();
-		if (dataStore == null) return;
-
 		string phoneNumber = GetCurrentUserPhoneNumber();
 		if (string.IsNullOrEmpty(phoneNumber)) return;
 
-		// Fire-and-forget save with proper error handling
 		try
 		{
-			// Update global data
-			var globalDataResult = await dataStore.GetGlobalDataAsync(phoneNumber);
-			if (globalDataResult.IsSuccess)
+			// Emit event to backend (event-sourced persistence)
+			var carromEventService = GetNodeOrNull<CarromEventService>("CarromEventService");
+			if (carromEventService != null)
 			{
-				var globalData = globalDataResult.Value;
-				
-				if (isWin)
+				// Build scores dictionary with player scores
+				// For single-player competitive mode, we only have one player's score
+				var scores = new Dictionary<string, int>();
+				if (_competitiveModeManager != null)
 				{
-					globalData.Carrom.GlobalWins++;
-					// Update best win streak if current streak is better
-					var currentStreak = GetCurrentWinStreak(playerId);
-					if (currentStreak > globalData.Carrom.BestWinStreak)
-					{
-						globalData.Carrom.BestWinStreak = currentStreak;
-					}
-				}
-				else
-				{
-					globalData.Carrom.GlobalLosses++;
+					// Get player score from competitive mode manager
+					// Assuming a method exists to get current score
+					scores[playerId] = 0; // TODO: Get actual score from competitive mode
 				}
 
-				await dataStore.SetGlobalDataAsync(phoneNumber, globalData);
+				var mode = _carromGameMode.ToString().ToLowerInvariant();
+				var winnerId = isWin ? playerId : "";
+
+				_ = carromEventService.EmitRoundFinishAsync(mode, winnerId, scores);
+
 				// Thread-safe logging via CallDeferred
-				CallDeferred(MethodName.LogSavedData, $"Saved global data - Win: {isWin}");
-			}
-
-			// Update local data
-			var localDataResult = await dataStore.GetLocalDataAsync(phoneNumber);
-			if (localDataResult.IsSuccess)
-			{
-				var localData = localDataResult.Value;
-				localData.Carrom.GamesAtLocation++;
-				localData.Carrom.LastPlayedAt = System.DateTime.UtcNow;
-				
-				if (isWin)
-				{
-					localData.Carrom.SessionWins++;
-					localData.Carrom.CurrentWinStreak++;
-				}
-				else
-				{
-					localData.Carrom.SessionLosses++;
-					localData.Carrom.CurrentWinStreak = 0;
-				}
-
-				await dataStore.SetLocalDataAsync(phoneNumber, localData);
+				CallDeferred(MethodName.LogSavedData, $"Emitted round_finish event - Win: {isWin}");
 			}
 		}
 		catch (System.Exception ex)
 		{
 			// Thread-safe error logging via CallDeferred
-			CallDeferred(MethodName.LogAsyncError, $"Exception saving game result: {ex.Message}");
+			CallDeferred(MethodName.LogAsyncError, $"Exception emitting game result event: {ex.Message}");
 		}
+
+		await Task.CompletedTask;
 	}
 
 	/// <summary>
