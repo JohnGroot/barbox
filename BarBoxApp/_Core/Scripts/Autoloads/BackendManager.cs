@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 public partial class BackendManager : AutoloadBase
 {
 	private const string BACKEND_START_SCRIPT = "/Users/johngroot/Dev/barbox/BarBoxServices/scripts/dev.sh";
-	private const string BACKEND_HEALTH_URL = "http://localhost:8000/api/health";
+	private const string BACKEND_HEALTH_URL = "http://localhost:8000/alive";
 	private const int BACKEND_PORT = 8000;
 	private const float STARTUP_TIMEOUT_SECONDS = 10.0f;
 	private const float HEALTH_CHECK_INTERVAL_SECONDS = 0.5f;
@@ -128,7 +128,7 @@ public partial class BackendManager : AutoloadBase
 
 			// Make health check request
 			var headers = new[] { "User-Agent: BarBox-Client/1.0" };
-			var requestError = _healthCheckClient.Request(HttpClient.Method.Get, "/api/health", headers);
+			var requestError = _healthCheckClient.Request(HttpClient.Method.Get, "/alive", headers);
 			if (requestError != Error.Ok)
 				return false;
 

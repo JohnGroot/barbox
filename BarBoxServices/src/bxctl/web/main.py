@@ -19,6 +19,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="BXCTL API", version="0.1.0", lifespan=lifespan)
 
+
+@app.get("/alive")
+async def health_check() -> dict:
+    """Simple health check endpoint for service availability."""
+    return {"status": "alive"}
+
+
 routers = (
     player.router,
     box.router,
