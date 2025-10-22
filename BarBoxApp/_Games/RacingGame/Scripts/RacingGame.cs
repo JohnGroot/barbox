@@ -491,71 +491,49 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Save global high score for racing game using direct DataStore integration
-	/// Tracks best times globally with modern C# patterns and fire-and-forget saves
+	/// Save race completion via event-sourced backend
+	/// Emits racing/race_finish event instead of CRUD operation
 	/// </summary>
 	private async Task SaveGlobalHighScore(string playerId, float totalTime)
 	{
-		if (string.IsNullOrEmpty(playerId) || totalTime <= 0.0f) 
+		if (string.IsNullOrEmpty(playerId) || totalTime <= 0.0f)
 			return;
-		
-		var dataStore = DataStore.GetInstance();
-		if (dataStore == null)
+
+		// Get RacingEventService (should be added as child node)
+		var racingEventService = GetNodeOrNull<RacingEventService>("RacingEventService");
+		if (racingEventService == null)
 		{
-			GD.PrintErr("[RacingGame] DataStore not available for saving high score");
+			GD.PrintErr("[RacingGame] RacingEventService not found - cannot save race");
 			return;
 		}
-		
-		// Fire-and-forget save with proper error handling
+
+		// Fire-and-forget event emission with proper error handling
 		try
 		{
-			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-			if (!globalDataResult.IsSuccess)
-			{
-				GD.PrintErr($"[RacingGame] Failed to get global data: {globalDataResult.Error}");
-				return;
-			}
-			
-			var globalData = globalDataResult.Value;
-			
 			// Create complete race entry with comprehensive timing data
 			var raceEntry = new RaceEntry(
 				RaceId: RaceDatabase.GenerateRaceId(),
 				Date: DateTime.Now,
 				TrackId: _currentTrackId,
 				PlayerId: playerId,
-				Username: globalData.UserName,
+				Username: "", // Backend will populate from player_id
 				TotalLaps: _targetLaps,
 				TotalTime: totalTime,
 				LapTimes: GetPlayerLapTimes(playerId).ToArray(),
 				Checkpoints: GetPlayerCheckpointTimes(playerId)
 			);
 
-			// Add race entry to database
-			globalData.RaceDb.AddRaceEntry(raceEntry);
-
-			// Save updated database
-			var saveResult = await dataStore.SetGlobalDataAsync(playerId, globalData);
-			if (saveResult.IsSuccess)
+			// Emit race finish event to backend
+			var result = await racingEventService.EmitRaceFinishAsync(raceEntry);
+			if (result.IsSuccess)
 			{
-				// Check if this was a new best time
-				float currentBestTime = globalData.RaceDb.GetBestRaceTime(_currentTrackId, _targetLaps);
-				bool isNewBest = Mathf.Abs(currentBestTime - totalTime) < 0.001f;
-
-				// Thread-safe logging via CallDeferred
-				if (isNewBest)
-				{
-					CallDeferred(MethodName.LogHighScoreSaved, totalTime, $"{_currentTrackId}_{_targetLaps}laps");
-				}
-				else
-				{
-					CallDeferred(MethodName.LogRaceSaved, totalTime, _currentTrackId);
-				}
+				// Event successfully submitted - backend will handle aggregation
+				CallDeferred(MethodName.LogRaceSaved, totalTime, _currentTrackId);
 			}
 			else
 			{
 				// Thread-safe error logging via CallDeferred
-				CallDeferred(MethodName.LogHighScoreError, saveResult.Error);
+				CallDeferred(MethodName.LogHighScoreError, result.Error);
 			}
 		}
 		catch (System.Exception ex)
@@ -608,43 +586,36 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Save best lap time for racing game using direct DataStore integration
+	/// Emit lap complete event to backend
+	/// Individual lap times are tracked via events and aggregated by backend
 	/// </summary>
 	private async Task SaveBestLapTime(string playerId, float lapTime)
 	{
 		if (string.IsNullOrEmpty(playerId) || lapTime <= 0.0f) return;
-		
-		var dataStore = DataStore.GetInstance();
-		if (dataStore == null) return;
-		
-		// Fire-and-forget save with proper error handling
+
+		// Get RacingEventService
+		var racingEventService = GetNodeOrNull<RacingEventService>("RacingEventService");
+		if (racingEventService == null) return;
+
+		// Fire-and-forget lap complete event emission
 		try
 		{
-			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-			if (!globalDataResult.IsSuccess) return;
-			
-			var globalData = globalDataResult.Value;
-			
-			// Note: Individual lap times are now saved as part of complete race entries
-			// This method is called during races but actual persistence happens only on race completion
-			// Check current best lap time for comparison
-			float currentBestLapTime = globalData.RaceDb.GetBestLapTime(_currentTrackId);
+			var currentLap = GetPlayerCurrentLap(playerId);
+			var checkpoints = GetPlayerCheckpointTimes(playerId);
 
-			// Check if this is a new best lap time (0 means no time recorded)
-			bool isNewBest = currentBestLapTime == 0f || currentBestLapTime > lapTime;
+			// Emit lap complete event
+			var result = await racingEventService.EmitLapCompleteAsync(currentLap, lapTime, checkpoints);
 
-			if (isNewBest)
+			if (result.IsSuccess)
 			{
-				// Log the potential new best lap time (will be saved on race completion)
+				// Log potential best lap (backend will determine if it's actually best)
 				CallDeferred(MethodName.LogPotentialBestLap, lapTime, _currentTrackId);
 			}
-
-			// No immediate save - lap times are persisted only when race completes
 		}
 		catch (System.Exception ex)
 		{
 			// Thread-safe error logging via CallDeferred
-			CallDeferred(MethodName.LogAsyncError, $"Exception accessing lap time data: {ex.Message}");
+			CallDeferred(MethodName.LogAsyncError, $"Exception emitting lap complete event: {ex.Message}");
 		}
 	}
 
@@ -1584,97 +1555,32 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Show global high scores using direct DataStore integration
+	/// Show global high scores from backend leaderboard
+	/// TODO: Implement HTTP GET to backend leaderboard endpoint
 	/// </summary>
 	private async void ShowGlobalHighScores()
 	{
-		// Use the actual phone number from session as player ID for high scores
-		var playerId = GetCurrentPlayerPhoneNumber();
-		
-		var dataStore = DataStore.GetInstance();
-		if (dataStore == null)
-		{
-			ShowHighScoresFallback();
-			return;
-		}
-		
+		// TODO: Query backend for racing/leaderboard
+		// For now, show placeholder message
+		var racingEventService = GetNodeOrNull<RacingEventService>("RacingEventService");
+
 		try
 		{
-			// Get global data to extract racing scores
-			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-			
-			// Check if object is still valid after await
-			if (!IsInstanceValid(this))
-				return;
-				
-			if (!globalDataResult.IsSuccess)
-			{
-				ShowHighScoresFallback();
-				return;
-			}
-			
-			// Build high score display from global data
-			var highScores = new System.Text.StringBuilder("🏁 RACING HIGH SCORES 🏁\n\n");
-			
-			// Get racing best times from typed properties
-			var racingData = globalDataResult.Value.RaceDb;
-			var allBestTimes = new List<(string track, float time, string type, string username)>();
+			GD.Print("🏁 RACING HIGH SCORES 🏁\n\n" +
+			         "Leaderboards coming soon!\n" +
+			         "Your race times are being tracked.\n\n" +
+			         "TODO: Query GET /game/racing/leaderboard endpoint");
 
-			// Add best times from all tracks
-			var tracksWithRaces = racingData.GetTracksWithRaces();
-			foreach (var trackId in tracksWithRaces)
-			{
-				// Add best lap time for this track
-				var bestLapEntry = racingData.GetBestLapTimeEntry(trackId);
-				if (bestLapEntry != null && bestLapEntry.LapTimes.Any(lap => lap > 0f))
-				{
-					var bestLapTime = bestLapEntry.LapTimes.Where(lap => lap > 0f).Min();
-					allBestTimes.Add((trackId, bestLapTime, "Best Lap", bestLapEntry.Username));
-				}
-
-				// Add best race times for different lap counts
-				for (int laps = 1; laps <= 10; laps++)
-				{
-					var bestRaceEntry = racingData.GetBestRaceTimeEntry(trackId, laps);
-					if (bestRaceEntry != null && bestRaceEntry.TotalTime > 0f)
-					{
-						allBestTimes.Add((trackId, bestRaceEntry.TotalTime, $"Best Race ({laps} laps)", bestRaceEntry.Username));
-					}
-				}
-			}
-			
-			var racingScores = allBestTimes
-				.OrderBy(x => x.time) // Lower times are better
-				.Take(10); // Top 10
-			
-			if (racingScores.Any())
-			{
-				foreach (var score in racingScores)
-				{
-					var username = string.IsNullOrEmpty(score.username) ? "Unknown" : score.username;
-					highScores.AppendLine($"{score.track} - {score.type}: {username} - {score.time:F3}s");
-				}
-				
-				// Add total races completed
-				if (racingData.TotalRacesCompleted > 0)
-				{
-					highScores.AppendLine($"\nTotal Races Completed: {racingData.TotalRacesCompleted}");
-				}
-			}
-			else
-			{
-				highScores.AppendLine("No high scores yet!");
-				highScores.AppendLine("Complete some races to set records.");
-			}
-			
-			GD.Print(highScores.ToString());
+			// TODO: When implemented:
+			// var leaderboardResult = await racingEventService.GetLeaderboardAsync(_currentTrackId, "best_race", _targetLaps);
+			// if (leaderboardResult.IsSuccess) { ... display leaderboard ... }
 		}
 		catch (System.Exception ex)
 		{
 			GD.PrintErr($"[RacingGame] Exception showing high scores: {ex.Message}");
 			ShowHighScoresFallback();
 		}
-		
+
 		// Return to previous state after brief delay
 		CreateAutoCleanupTimer(5.0f, () => {
 			if (GetGameMode() == GameMode.Practice)

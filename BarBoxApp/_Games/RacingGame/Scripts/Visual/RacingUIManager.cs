@@ -1442,65 +1442,8 @@ namespace BarBox.Games.Racing
 
 			if (playerId != null)
 			{
-				var dataStore = DataStore.GetInstance();
-				if (dataStore != null)
-				{
-					var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-
-					// Check if overlay is still valid after await
-					if (_raceCompleteOverlay == null || !IsInstanceValid(this))
-						return;
-
-					if (globalDataResult.IsSuccess)
-					{
-						var racingData = globalDataResult.Value.RaceDb;
-
-						// Get all race times for this track (different lap counts)
-						var allRaceTimes = new List<(float time, string username, int laps)>();
-
-						// Get best race times for various lap counts
-						for (int laps = 1; laps <= 10; laps++)
-						{
-							var raceEntry = racingData.GetBestRaceTimeEntry(trackId, laps);
-							if (raceEntry != null && raceEntry.TotalTime > 0f)
-							{
-								allRaceTimes.Add((raceEntry.TotalTime, raceEntry.Username, laps));
-							}
-						}
-
-						// Sort all times and create leaderboard entries
-						var sortedTimes = allRaceTimes.OrderBy(x => x.time).ToList();
-
-						for (int i = 0; i < sortedTimes.Count; i++)
-						{
-							var (time, username, laps) = sortedTimes[i];
-
-							highScores.Add(new LeaderboardEntry
-							{
-								TrackId = trackId,
-								TrackName = trackName,
-								Time = time,
-								Type = "Race",
-								Laps = laps,
-								Username = !string.IsNullOrEmpty(username) ? username : "Player",
-								IsCurrentPlayer = username == globalDataResult.Value.UserName ||
-												 username == playerId ||
-												 (string.IsNullOrEmpty(username) && playerId != null)
-							});
-						}
-
-						// Calculate player position based on final time
-						if (finalTime > 0f)
-						{
-							var betterTimes = allRaceTimes.Count(x => x.time < finalTime);
-							playerPosition = betterTimes + 1;
-
-							// Check if this is a new high score
-							var previousBest = racingData.GetBestRaceTime(trackId, 3); // Assume 3 laps for most races
-							isNewHighScore = previousBest == 0f || finalTime < previousBest;
-						}
-					}
-				}
+				// TODO: Event-sourced - backend handles data persistence
+				// TODO: Event-sourced - backend handles data persistence
 			}
 
 			// If no data loaded, show empty state
@@ -1817,37 +1760,9 @@ namespace BarBox.Games.Racing
 				return;
 			}
 
-			var dataStore = DataStore.GetInstance();
-			if (dataStore == null)
-			{
-				UpdateLeaderboardFallback(trackId);
-				return;
-			}
-
-			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-			
-			// Check if overlay is still valid after await
-			if (_tracksLeaderboardOverlay == null || !IsInstanceValid(this))
-				return;
-				
-			if (!globalDataResult.IsSuccess)
-			{
-				UpdateLeaderboardFallback(trackId);
-				return;
-			}
-			
-			var racingData = globalDataResult.Value.RaceDb;
-			var lapEntries = new List<LeaderboardEntry>();
-			var raceEntries = new List<LeaderboardEntry>();
-
-			// Extract track-specific times using both new and legacy key formats
-			// Pass the username from global data as fallback
-			string fallbackUsername = globalDataResult.Value.UserName;
-			ExtractTrackLeaderboardEntries(racingData, trackId, playerId, lapEntries, raceEntries, fallbackUsername);
-			
-			// Update UI on main thread
-			var callable = Callable.From(() => UpdateLeaderboardUI(trackId, lapEntries, raceEntries));
-			callable.CallDeferred();
+			// TODO: Event-sourced - backend handles data persistence
+			// For now, use fallback (backend will provide leaderboard data via events)
+			UpdateLeaderboardFallback(trackId);
 		}
 		catch (System.Exception ex)
 		{
@@ -2002,9 +1917,9 @@ namespace BarBox.Games.Racing
 				if (currentSession != null)
 				{
 					// First, try to get username from cached GlobalData if available
-					if (currentSession.GlobalData != null && !string.IsNullOrEmpty(currentSession.GlobalData.UserName))
+					if (!string.IsNullOrEmpty(currentSession.UserName))
 					{
-						return currentSession.GlobalData.UserName;
+						return currentSession.UserName;
 					}
 
 					// Privacy-safe fallback - never expose phone numbers in display
@@ -2133,30 +2048,11 @@ namespace BarBox.Games.Racing
 			};
 		}
 
+		// TODO: Event-sourced - backend handles data persistence
+		// For now, return basic metadata (backend will provide enhanced data via events)
 		try
 		{
-			var dataStore = DataStore.GetInstance();
-			if (dataStore == null)
-				return enhancedMetadata;
-
-			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-			if (!globalDataResult.IsSuccess)
-				return enhancedMetadata;
-
-			var racingData = globalDataResult.Value.RaceDb;
-			
-			// Enhance each track with score data
-			foreach (var track in enhancedMetadata.Values)
-			{
-				// Get best race time (use default laps)
-				track.BestRaceTime = racingData.GetBestRaceTime(track.TrackId, track.DefaultLaps);
-
-				// Mark if player has scores
-				track.HasPlayerScores = track.BestRaceTime > 0f;
-
-				// Get total race count for this track
-				track.RaceCount = racingData.GetRaceCountForTrack(track.TrackId);
-			}
+			// No score enhancement available yet - backend will aggregate from racing events
 		}
 		catch (System.Exception ex)
 		{
