@@ -16,7 +16,7 @@ public partial class BackendManager : AutoloadBase
 	private const float HEALTH_CHECK_INTERVAL_SECONDS = 0.5f;
 
 	private bool _isBackendRunning = false;
-	private HttpClient _healthCheckClient;
+	private Godot.HttpClient _healthCheckClient;
 
 	[Signal] public delegate void BackendReadyEventHandler();
 	[Signal] public delegate void BackendStartFailedEventHandler(string error);
@@ -31,7 +31,7 @@ public partial class BackendManager : AutoloadBase
 	protected override async void OnServiceInitialize()
 	{
 		LogInfo("BackendManager initializing...");
-		_healthCheckClient = new HttpClient();
+		_healthCheckClient = new Godot.HttpClient();
 		await EnsureBackendRunningAsync();
 	}
 
@@ -66,6 +66,20 @@ public partial class BackendManager : AutoloadBase
 			{
 				var errorMsg = $"Backend start script failed with exit code {exitCode}";
 				LogError(errorMsg);
+
+				// Check if backend is already running (script may fail if already started)
+				// Reset HTTP client for fresh health check
+				_healthCheckClient?.Close();
+				_healthCheckClient = new Godot.HttpClient();
+
+				if (await IsBackendHealthyAsync())
+				{
+					_isBackendRunning = true;
+					LogInfo("Backend already running and healthy");
+					CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.BackendReady);
+					return;
+				}
+
 				CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.BackendStartFailed, errorMsg);
 				return;
 			}
@@ -107,48 +121,53 @@ public partial class BackendManager : AutoloadBase
 		try
 		{
 			// Connect if needed
-			if (_healthCheckClient.GetStatus() != HttpClient.Status.Connected &&
-			    _healthCheckClient.GetStatus() != HttpClient.Status.Connecting)
+			if (_healthCheckClient.GetStatus() != Godot.HttpClient.Status.Connected &&
+			    _healthCheckClient.GetStatus() != Godot.HttpClient.Status.Connecting)
 			{
-				var error = _healthCheckClient.ConnectToHost("localhost", BACKEND_PORT);
+				var error = _healthCheckClient.ConnectToHost("127.0.0.1", BACKEND_PORT);
 				if (error != Error.Ok)
 					return false;
 			}
 
-			// Wait for connection
+			// Wait for connection (including DNS resolution)
 			var attempts = 0;
-			while (_healthCheckClient.GetStatus() == HttpClient.Status.Connecting && attempts < 20)
+			while ((_healthCheckClient.GetStatus() == Godot.HttpClient.Status.Resolving ||
+			        _healthCheckClient.GetStatus() == Godot.HttpClient.Status.Connecting) &&
+			       attempts < 20)
 			{
+				_healthCheckClient.Poll();
 				await DelayAsync(0.05f);
 				attempts++;
 			}
 
-			if (_healthCheckClient.GetStatus() != HttpClient.Status.Connected)
+			if (_healthCheckClient.GetStatus() != Godot.HttpClient.Status.Connected)
 				return false;
 
 			// Make health check request
 			var headers = new[] { "User-Agent: BarBox-Client/1.0" };
-			var requestError = _healthCheckClient.Request(HttpClient.Method.Get, "/alive", headers);
+			var requestError = _healthCheckClient.Request(Godot.HttpClient.Method.Get, "/alive", headers);
 			if (requestError != Error.Ok)
 				return false;
 
 			// Poll for response
 			var pollAttempts = 0;
-			while (_healthCheckClient.GetStatus() == HttpClient.Status.Requesting && pollAttempts < 100)
+			while (_healthCheckClient.GetStatus() == Godot.HttpClient.Status.Requesting && pollAttempts < 100)
 			{
+				_healthCheckClient.Poll();
 				await DelayAsync(0.01f);
 				pollAttempts++;
 			}
 
-			if (_healthCheckClient.GetStatus() != HttpClient.Status.Body &&
-			    _healthCheckClient.GetStatus() != HttpClient.Status.Connected)
+			if (_healthCheckClient.GetStatus() != Godot.HttpClient.Status.Body &&
+			    _healthCheckClient.GetStatus() != Godot.HttpClient.Status.Connected)
 				return false;
 
 			var responseCode = _healthCheckClient.GetResponseCode();
 			return responseCode == 200;
 		}
-		catch
+		catch (Exception ex)
 		{
+			LogError($"Backend health check failed: {ex.Message}");
 			return false;
 		}
 	}

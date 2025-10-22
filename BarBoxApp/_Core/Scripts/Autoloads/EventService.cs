@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 /// </summary>
 public partial class EventService : AutoloadBase
 {
-	private const string BASE_URL = "http://localhost:8000";
+	private const string BASE_URL = "http://127.0.0.1:8000";
 	private const int BACKEND_PORT = 8000;
 	private const int REQUEST_TIMEOUT_MS = 5000;
 	private const int POLL_INTERVAL_MS = 10;
@@ -335,14 +335,17 @@ public partial class EventService : AutoloadBase
 		if (_httpClient.GetStatus() == Godot.HttpClient.Status.Connected)
 			return;
 
-		var error = _httpClient.ConnectToHost("localhost", BACKEND_PORT);
+		var error = _httpClient.ConnectToHost("127.0.0.1", BACKEND_PORT);
 		if (error != Error.Ok)
 			throw new Exception($"Failed to connect to backend: {error}");
 
-		// Wait for connection
+		// Wait for connection (including DNS resolution)
 		var attempts = 0;
-		while (_httpClient.GetStatus() == Godot.HttpClient.Status.Connecting && attempts < 50)
+		while ((_httpClient.GetStatus() == Godot.HttpClient.Status.Resolving ||
+		        _httpClient.GetStatus() == Godot.HttpClient.Status.Connecting) &&
+		       attempts < 50)
 		{
+			_httpClient.Poll();
 			await DelayAsync(0.1f);
 			attempts++;
 		}
@@ -358,6 +361,7 @@ public partial class EventService : AutoloadBase
 
 		while (_httpClient.GetStatus() == Godot.HttpClient.Status.Requesting && attempts < maxAttempts)
 		{
+			_httpClient.Poll();
 			await DelayAsync(POLL_INTERVAL_MS / 1000.0f);
 			attempts++;
 		}
@@ -368,22 +372,32 @@ public partial class EventService : AutoloadBase
 
 	private string GetLocationId()
 	{
+		var locationManager = LocationManager.GetAutoload();
+		if (locationManager != null && locationManager.IsConfigLoaded)
+		{
+			return locationManager.LocationId;
+		}
+
+		// Fallback for rare edge cases
 		return System.Environment.GetEnvironmentVariable("BARBOX_LOCATION_ID") ??
 		       System.Environment.MachineName.ToLowerInvariant().Replace("-", "_");
 	}
 
 	private Guid GetBoxId()
 	{
-		var boxIdStr = System.Environment.GetEnvironmentVariable("BARBOX_BOX_ID");
-		if (string.IsNullOrEmpty(boxIdStr))
+		var locationManager = LocationManager.GetAutoload();
+		if (locationManager != null && locationManager.IsConfigLoaded)
 		{
-			throw new Exception("BARBOX_BOX_ID environment variable is required");
+			return locationManager.BoxId;
 		}
 
+		// Fallback validation
+		var boxIdStr = System.Environment.GetEnvironmentVariable("BARBOX_BOX_ID");
+		if (string.IsNullOrEmpty(boxIdStr))
+			throw new Exception("BARBOX_BOX_ID environment variable is required");
+
 		if (!Guid.TryParse(boxIdStr, out var boxId))
-		{
 			throw new Exception($"BARBOX_BOX_ID must be a valid GUID, got: {boxIdStr}");
-		}
 
 		return boxId;
 	}
