@@ -211,6 +211,122 @@ public partial class EventService : AutoloadBase
 	/// </summary>
 	public string GetCurrentLocationId() => _locationId;
 
+	/// <summary>
+	/// Execute GET query against backend API
+	/// </summary>
+	public async Task<Result<TResponse>> QueryAsync<TResponse>(
+		string endpoint,
+		Dictionary<string, string> queryParams = null
+	) where TResponse : class
+	{
+		if (!_isInitialized)
+			return Result<TResponse>.Failure("EventService not initialized");
+
+		try
+		{
+			await EnsureConnectedAsync();
+
+			var url = endpoint;
+			if (queryParams != null && queryParams.Count > 0)
+			{
+				var query = string.Join("&",
+					queryParams.Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
+				url = $"{endpoint}?{query}";
+			}
+
+			var headers = new[]
+			{
+				"User-Agent: BarBox-Client/1.0",
+				"Accept: application/json"
+			};
+
+			var error = _httpClient.Request(HttpClient.Method.Get, url, headers);
+			if (error != Error.Ok)
+				return Result<TResponse>.Failure($"Query request failed: {error}");
+
+			await WaitForResponseAsync();
+
+			var responseCode = _httpClient.GetResponseCode();
+			if (responseCode != 200)
+				return Result<TResponse>.Failure($"Query failed with code {responseCode}");
+
+			var bodyBytes = _httpClient.GetResponseBody();
+			var bodyText = Encoding.UTF8.GetString(bodyBytes);
+
+			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
+			return Result<TResponse>.Success(response);
+		}
+		catch (Exception ex)
+		{
+			return Result<TResponse>.Failure($"Query exception: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Check if username is available for registration
+	/// </summary>
+	public async Task<Result<bool>> IsUsernameAvailableAsync(string username)
+	{
+		var result = await QueryAsync<UsernameAvailabilityResponse>(
+			$"/player/username/{Uri.EscapeDataString(username)}/available",
+			null
+		);
+
+		if (result.IsSuccess)
+			return Result<bool>.Success(result.Value.IsAvailable);
+
+		return Result<bool>.Failure(result.Error);
+	}
+
+	/// <summary>
+	/// Get player's credit balance for current location
+	/// </summary>
+	public async Task<Result<int>> GetPlayerCreditsAsync(Guid playerId)
+	{
+		var locationId = GetCurrentLocationId();
+		var result = await QueryAsync<PlayerCreditsResponse>(
+			$"/player/{playerId}/credits",
+			new Dictionary<string, string> { { "location_id", locationId } }
+		);
+
+		if (result.IsSuccess)
+			return Result<int>.Success(result.Value.Credits);
+
+		return Result<int>.Failure(result.Error);
+	}
+
+	/// <summary>
+	/// Emit credit earn event to backend
+	/// </summary>
+	public async Task<Result<bool>> AddCreditsAsync(Guid playerId, int amount, string reason = "")
+	{
+		var payload = new
+		{
+			player_id = playerId.ToString(),
+			location_id = GetCurrentLocationId(),
+			amount = amount,
+			reason = reason
+		};
+
+		return await EmitEventAsync("credit/earn", payload);
+	}
+
+	/// <summary>
+	/// Emit credit spend event to backend
+	/// </summary>
+	public async Task<Result<bool>> SpendCreditsAsync(Guid playerId, int amount, string reason = "")
+	{
+		var payload = new
+		{
+			player_id = playerId.ToString(),
+			location_id = GetCurrentLocationId(),
+			amount = amount,
+			reason = reason
+		};
+
+		return await EmitEventAsync("credit/spend", payload);
+	}
+
 	// Private helper methods
 
 	private async Task EnsureConnectedAsync()

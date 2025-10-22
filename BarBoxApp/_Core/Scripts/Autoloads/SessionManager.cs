@@ -220,22 +220,36 @@ public partial class SessionManager : AutoloadBase
 	/// <summary>
 	/// Check if a username is available for registration
 	/// </summary>
-	public Task<Result<bool>> IsUsernameAvailableAsync(string username)
+	public async Task<Result<bool>> IsUsernameAvailableAsync(string username)
 	{
 		var cleanedUsername = InputValidator.CleanUsername(username);
 		if (!InputValidator.IsValidUsername(cleanedUsername))
-			return Task.FromResult(Result<bool>.Failure("Invalid username format"));
+			return Result<bool>.Failure("Invalid username format");
 
 		try
 		{
-			// Event-sourced persistence - backend validates username uniqueness
-			// Optimistically return true (backend will reject during creation if taken)
-			LogInfo($"Username availability check requested: {cleanedUsername}");
-			return Task.FromResult(Result<bool>.Success(true));
+			if (_eventService == null)
+			{
+				// Fallback to optimistic validation if backend unavailable
+				LogWarning("EventService not available, optimistically allowing username");
+				return Result<bool>.Success(true);
+			}
+
+			var result = await _eventService.IsUsernameAvailableAsync(cleanedUsername);
+			if (result.IsSuccess)
+			{
+				LogInfo($"Username '{cleanedUsername}' availability: {result.Value}");
+				return Result<bool>.Success(result.Value);
+			}
+			else
+			{
+				LogWarning($"Failed to check username: {result.Error}");
+				return Result<bool>.Failure(result.Error);
+			}
 		}
 		catch (Exception ex)
 		{
-			return Task.FromResult(Result<bool>.Failure($"Error checking username availability: {ex.Message}"));
+			return Result<bool>.Failure($"Error checking username availability: {ex.Message}");
 		}
 	}
 
@@ -392,68 +406,104 @@ public partial class SessionManager : AutoloadBase
 	/// <summary>
 	/// Add credits to user account
 	/// </summary>
-	public Task<bool> AddGlobalCreditsAsync(string phoneNumber, int amount, string reason)
+	public async Task<bool> AddGlobalCreditsAsync(string phoneNumber, int amount, string reason = "")
 	{
-		// Event-sourced persistence - backend tracks credit balance
-		// Update local session cache
-		if (_activeSessions.TryGetValue(phoneNumber, out var session))
+		if (amount <= 0)
 		{
-			session.Credits += amount;
+			LogWarning("Cannot add non-positive credits");
+			return false;
 		}
 
-		EmitSignal(SignalName.CreditsEarned, phoneNumber, amount, reason);
-
-		// Emit credit/earn event to backend
-		if (_eventService != null)
+		try
 		{
-			var payload = new
+			var playerId = EventService.GetPlayerIdFromPhone(phoneNumber);
+
+			if (_eventService != null)
 			{
-				phone_number = phoneNumber,
-				amount = amount,
-				reason = reason,
-				new_balance = session?.Credits ?? 0
-			};
-			_ = _eventService.EmitEventAsync("credit/earn", payload);
-		}
+				var result = await _eventService.AddCreditsAsync(playerId, amount, reason);
+				if (result.IsSuccess)
+				{
+					LogInfo($"Added {amount} credits for {phoneNumber}");
 
-		return Task.FromResult(true);
+					// Update local session cache if available
+					if (_activeSessions.TryGetValue(phoneNumber, out var session))
+					{
+						session.Credits += amount;
+					}
+
+					EmitSignal(SignalName.CreditsEarned, phoneNumber, amount, reason);
+					return true;
+				}
+				else
+				{
+					LogError($"Failed to add credits: {result.Error}");
+					return false;
+				}
+			}
+			else
+			{
+				LogWarning("EventService not available, cannot sync credits");
+				return false;
+			}
+		}
+		catch (Exception ex)
+		{
+			LogError($"Error adding credits: {ex.Message}");
+			return false;
+		}
 	}
 
 	/// <summary>
 	/// Transfer credits from user's account to machine game credits
 	/// </summary>
-	public Task<bool> TransferCreditsToMachineAsync(string phoneNumber, string gameId, int amount, string reason)
+	public async Task<bool> TransferCreditsToMachineAsync(string phoneNumber, string gameId, int amount, string reason = "")
 	{
+		if (amount <= 0) return false;
+
 		if (!IsUserLoggedIn(phoneNumber))
 		{
 			LogWarning($"User {phoneNumber} not logged in for credit transfer");
-			return Task.FromResult(false);
+			return false;
 		}
 
-		// Event-sourced persistence - backend tracks credit balance
-		// Update local session cache
-		if (_activeSessions.TryGetValue(phoneNumber, out var session))
+		try
 		{
-			session.Credits -= amount;
-		}
+			var playerId = EventService.GetPlayerIdFromPhone(phoneNumber);
 
-		EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, $"Transfer to {gameId}: {reason}");
-
-		// Emit credit/transfer event to backend
-		if (_eventService != null)
-		{
-			var payload = new
+			if (_eventService != null)
 			{
-				phone_number = phoneNumber,
-				game_id = gameId,
-				amount = amount,
-				reason = reason,
-				new_balance = session?.Credits ?? 0
-			};
-			_ = _eventService.EmitEventAsync("credit/transfer", payload);
-		}
+				// Query current balance
+				var balanceResult = await _eventService.GetPlayerCreditsAsync(playerId);
+				if (!balanceResult.IsSuccess || balanceResult.Value < amount)
+				{
+					LogWarning($"Insufficient credits: has {balanceResult.Value}, needs {amount}");
+					return false;
+				}
 
-		return Task.FromResult(true);
+				// Spend credits
+				var spendResult = await _eventService.SpendCreditsAsync(playerId, amount, $"Transfer to {gameId}: {reason}");
+				if (spendResult.IsSuccess)
+				{
+					LogInfo($"Transferred {amount} credits for {phoneNumber}");
+
+					// Update local session cache if available
+					if (_activeSessions.TryGetValue(phoneNumber, out var session))
+					{
+						session.Credits -= amount;
+					}
+
+					EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, $"Transfer to {gameId}: {reason}");
+					return true;
+				}
+			}
+
+			return false;
+		}
+		catch (Exception ex)
+		{
+			LogError($"Error transferring credits: {ex.Message}");
+			return false;
+		}
 	}
 
 	/// <summary>

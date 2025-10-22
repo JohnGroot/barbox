@@ -177,3 +177,16 @@ class CarromLeaderboardEntry(BaseModel):
 class CarromLeaderboardResponse(BaseModel):
     metric: str  # "total_score" or "total_wins"
     leaderboard: list[CarromLeaderboardEntry]
+
+
+# ============= CORE PLAYER STRUCTURES =============
+
+class UsernameAvailabilityResponse(BaseModel):
+    username: str
+    is_available: bool
+
+
+class PlayerCreditsResponse(BaseModel):
+    player_id: UUID
+    location_id: str
+    credits: int
