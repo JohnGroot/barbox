@@ -96,14 +96,95 @@ public partial class MiningEventService : Node
 		if (_eventService == null)
 			return Result<MiningInventoryData>.Failure("EventService not initialized");
 
-		// For now, the backend inventory query is not implemented yet
-		// Once the backend is fully deployed, this will make an HTTP GET request to:
-		// GET /game/mining/player/{playerId}/inventory
-		//
-		// This will return aggregated gem inventory from all mining/extract_complete events
-		// For the initial migration, we'll keep using local state and emit events alongside
-		await Task.Delay(1);
-		return Result<MiningInventoryData>.Failure("Backend inventory query not yet implemented - using local state");
+		try
+		{
+			var httpClient = new HttpClient();
+
+			// Connect to backend
+			var error = httpClient.ConnectToHost("localhost", 8000);
+			if (error != Error.Ok)
+				return Result<MiningInventoryData>.Failure($"Connection failed: {error}");
+
+			// Wait for connection
+			var attempts = 0;
+			while (httpClient.GetStatus() == HttpClient.Status.Connecting && attempts < 50)
+			{
+				await AutoloadBase.StaticDelayAsync(0.1f);
+				attempts++;
+			}
+
+			if (httpClient.GetStatus() != HttpClient.Status.Connected)
+				return Result<MiningInventoryData>.Failure("Connection timeout");
+
+			// Make HTTP GET request
+			var headers = new[]
+			{
+				"User-Agent: BarBox-Client/1.0",
+				"Accept: application/json"
+			};
+
+			error = httpClient.Request(
+				HttpClient.Method.Get,
+				$"/game/mining/player/{playerId}/inventory",
+				headers
+			);
+
+			if (error != Error.Ok)
+			{
+				httpClient.Close();
+				return Result<MiningInventoryData>.Failure($"Request failed: {error}");
+			}
+
+			// Wait for response
+			attempts = 0;
+			while (httpClient.GetStatus() == HttpClient.Status.Requesting && attempts < 500)
+			{
+				await AutoloadBase.StaticDelayAsync(0.01f);
+				attempts++;
+			}
+
+			if (httpClient.GetStatus() == HttpClient.Status.Requesting)
+			{
+				httpClient.Close();
+				return Result<MiningInventoryData>.Failure("Request timeout");
+			}
+
+			var responseCode = httpClient.GetResponseCode();
+			if (responseCode != 200)
+			{
+				httpClient.Close();
+				return Result<MiningInventoryData>.Failure($"Server returned {responseCode}");
+			}
+
+			var responseBody = httpClient.GetResponseBodyAsString();
+			httpClient.Close();
+
+			// Parse JSON response
+			var json = Json.ParseString(responseBody);
+			if (json == null)
+				return Result<MiningInventoryData>.Failure("Failed to parse response");
+
+			var jsonDict = json.AsGodotDictionary();
+
+			var inventoryData = new MiningInventoryData
+			{
+				PlayerId = Guid.Parse(jsonDict["player_id"].AsString()),
+				LastUpdated = DateTime.Parse(jsonDict["last_updated"].AsString()),
+				Gems = new Dictionary<string, int>()
+			};
+
+			var gemsDict = jsonDict["gems"].AsGodotDictionary();
+			foreach (var key in gemsDict.Keys)
+			{
+				inventoryData.Gems[key.AsString()] = gemsDict[key].AsInt32();
+			}
+
+			return Result<MiningInventoryData>.Success(inventoryData);
+		}
+		catch (Exception ex)
+		{
+			return Result<MiningInventoryData>.Failure($"Exception: {ex.Message}");
+		}
 	}
 }
 

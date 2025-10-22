@@ -79,10 +79,128 @@ public partial class RacingEventService : Node
 		int? laps = null,
 		int limit = 10)
 	{
-		// TODO: Implement HTTP GET to /game/racing/leaderboard
-		// For now, return placeholder
-		await Task.Delay(1);
-		return Result<RacingLeaderboardData>.Failure("Not implemented");
+		if (_eventService == null)
+			return Result<RacingLeaderboardData>.Failure("EventService not initialized");
+
+		try
+		{
+			var httpClient = new HttpClient();
+
+			// Connect to backend
+			var error = httpClient.ConnectToHost("localhost", 8000);
+			if (error != Error.Ok)
+				return Result<RacingLeaderboardData>.Failure($"Connection failed: {error}");
+
+			// Wait for connection
+			var attempts = 0;
+			while (httpClient.GetStatus() == HttpClient.Status.Connecting && attempts < 50)
+			{
+				await AutoloadBase.StaticDelayAsync(0.1f);
+				attempts++;
+			}
+
+			if (httpClient.GetStatus() != HttpClient.Status.Connected)
+				return Result<RacingLeaderboardData>.Failure("Connection timeout");
+
+			// Build query string
+			var query = $"track_id={trackId}&metric={metric}&limit={limit}";
+			if (laps.HasValue)
+				query += $"&laps={laps.Value}";
+
+			// Make HTTP GET request
+			var headers = new[]
+			{
+				"User-Agent: BarBox-Client/1.0",
+				"Accept: application/json"
+			};
+
+			error = httpClient.Request(
+				HttpClient.Method.Get,
+				$"/game/racing/leaderboard?{query}",
+				headers
+			);
+
+			if (error != Error.Ok)
+			{
+				httpClient.Close();
+				return Result<RacingLeaderboardData>.Failure($"Request failed: {error}");
+			}
+
+			// Wait for response
+			attempts = 0;
+			while (httpClient.GetStatus() == HttpClient.Status.Requesting && attempts < 500)
+			{
+				await AutoloadBase.StaticDelayAsync(0.01f);
+				attempts++;
+			}
+
+			if (httpClient.GetStatus() == HttpClient.Status.Requesting)
+			{
+				httpClient.Close();
+				return Result<RacingLeaderboardData>.Failure("Request timeout");
+			}
+
+			var responseCode = httpClient.GetResponseCode();
+			if (responseCode != 200)
+			{
+				httpClient.Close();
+				return Result<RacingLeaderboardData>.Failure($"Server returned {responseCode}");
+			}
+
+			var responseBody = httpClient.GetResponseBodyAsString();
+			httpClient.Close();
+
+			// Parse JSON response
+			var json = Json.ParseString(responseBody);
+			if (json == null)
+				return Result<RacingLeaderboardData>.Failure("Failed to parse response");
+
+			var jsonDict = json.AsGodotDictionary();
+
+			var leaderboardData = new RacingLeaderboardData
+			{
+				TrackId = jsonDict["track_id"].AsString(),
+				Metric = jsonDict["metric"].AsString(),
+				Leaderboard = new List<RacingLeaderboardEntry>()
+			};
+
+			var leaderboardArray = jsonDict["leaderboard"].AsGodotArray();
+			foreach (var entry in leaderboardArray)
+			{
+				var entryDict = entry.AsGodotDictionary();
+
+				var leaderboardEntry = new RacingLeaderboardEntry
+				{
+					PlayerId = Guid.Parse(entryDict["player_id"].AsString()),
+					Username = entryDict["username"].AsString(),
+					MetricValue = (float)entryDict["metric_value"].AsDouble(),
+					EntryDate = DateTime.Parse(entryDict["entry_date"].AsString())
+				};
+
+				// Parse lap_times if present
+				if (entryDict.ContainsKey("lap_times") && entryDict["lap_times"].VariantType != Variant.Type.Nil)
+				{
+					var lapTimesJson = entryDict["lap_times"].AsString();
+					var lapTimesArray = Json.ParseString(lapTimesJson)?.AsGodotArray();
+					if (lapTimesArray != null)
+					{
+						leaderboardEntry.LapTimes = new float[lapTimesArray.Count];
+						for (int i = 0; i < lapTimesArray.Count; i++)
+						{
+							leaderboardEntry.LapTimes[i] = (float)lapTimesArray[i].AsDouble();
+						}
+					}
+				}
+
+				leaderboardData.Leaderboard.Add(leaderboardEntry);
+			}
+
+			return Result<RacingLeaderboardData>.Success(leaderboardData);
+		}
+		catch (Exception ex)
+		{
+			return Result<RacingLeaderboardData>.Failure($"Exception: {ex.Message}");
+		}
 	}
 }
 

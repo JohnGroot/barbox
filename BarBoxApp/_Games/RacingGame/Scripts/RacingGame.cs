@@ -1556,24 +1556,61 @@ public partial class RacingGame : GameController
 
 	/// <summary>
 	/// Show global high scores from backend leaderboard
-	/// TODO: Implement HTTP GET to backend leaderboard endpoint
 	/// </summary>
 	private async void ShowGlobalHighScores()
 	{
-		// TODO: Query backend for racing/leaderboard
-		// For now, show placeholder message
 		var racingEventService = GetNodeOrNull<RacingEventService>("RacingEventService");
 
 		try
 		{
-			GD.Print("🏁 RACING HIGH SCORES 🏁\n\n" +
-			         "Leaderboards coming soon!\n" +
-			         "Your race times are being tracked.\n\n" +
-			         "TODO: Query GET /game/racing/leaderboard endpoint");
+			if (racingEventService == null)
+			{
+				GD.PrintErr("[RacingGame] RacingEventService not found, showing fallback");
+				ShowHighScoresFallback();
+				return;
+			}
 
-			// TODO: When implemented:
-			// var leaderboardResult = await racingEventService.GetLeaderboardAsync(_currentTrackId, "best_race", _targetLaps);
-			// if (leaderboardResult.IsSuccess) { ... display leaderboard ... }
+			// Query backend for racing leaderboard
+			var leaderboardResult = await racingEventService.GetLeaderboardAsync(_currentTrackId, "best_race", _targetLaps);
+
+			if (leaderboardResult.IsSuccess)
+			{
+				var leaderboard = leaderboardResult.Value;
+
+				// Build leaderboard display
+				var scoreText = "🏁 RACING HIGH SCORES 🏁\n\n";
+				scoreText += $"Track: {leaderboard.TrackId}\n";
+				scoreText += $"Mode: {leaderboard.Metric}\n\n";
+
+				if (leaderboard.Leaderboard.Count == 0)
+				{
+					scoreText += "No scores yet - be the first!\n";
+				}
+				else
+				{
+					scoreText += "Rank | Player          | Time\n";
+					scoreText += "-----+----------------+--------\n";
+
+					int rank = 1;
+					foreach (var entry in leaderboard.Leaderboard)
+					{
+						var playerName = entry.Username.Length > 14
+							? entry.Username.Substring(0, 14)
+							: entry.Username.PadRight(14);
+						var timeStr = FormatTime(entry.MetricValue);
+
+						scoreText += $" {rank,2}  | {playerName} | {timeStr}\n";
+						rank++;
+					}
+				}
+
+				GD.Print(scoreText);
+			}
+			else
+			{
+				GD.PrintErr($"[RacingGame] Failed to fetch leaderboard: {leaderboardResult.Error}");
+				ShowHighScoresFallback();
+			}
 		}
 		catch (System.Exception ex)
 		{
