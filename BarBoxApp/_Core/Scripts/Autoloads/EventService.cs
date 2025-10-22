@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -22,7 +23,7 @@ public partial class EventService : AutoloadBase
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase
 	};
 
-	private HttpClient _httpClient;
+	private Godot.HttpClient _httpClient;
 	private string _locationId;
 	private Guid _boxId;
 	private Guid _currentSessionId;
@@ -42,7 +43,7 @@ public partial class EventService : AutoloadBase
 
 	protected override void OnServiceInitialize()
 	{
-		_httpClient = new HttpClient();
+		_httpClient = new Godot.HttpClient();
 		_locationId = GetLocationId();
 
 		try
@@ -105,7 +106,7 @@ public partial class EventService : AutoloadBase
 			};
 
 			var error = _httpClient.Request(
-				HttpClient.Method.Put,
+				Godot.HttpClient.Method.Put,
 				$"/box/{boxId}/session/{sessionId}",
 				headers
 			);
@@ -167,7 +168,7 @@ public partial class EventService : AutoloadBase
 			};
 
 			var error = _httpClient.Request(
-				HttpClient.Method.Post,
+				Godot.HttpClient.Method.Post,
 				$"/box/session/{_currentSessionId}",
 				headers,
 				json
@@ -240,7 +241,7 @@ public partial class EventService : AutoloadBase
 				"Accept: application/json"
 			};
 
-			var error = _httpClient.Request(HttpClient.Method.Get, url, headers);
+			var error = _httpClient.Request(Godot.HttpClient.Method.Get, url, headers);
 			if (error != Error.Ok)
 				return Result<TResponse>.Failure($"Query request failed: {error}");
 
@@ -250,8 +251,8 @@ public partial class EventService : AutoloadBase
 			if (responseCode != 200)
 				return Result<TResponse>.Failure($"Query failed with code {responseCode}");
 
-			var bodyBytes = _httpClient.GetResponseBody();
-			var bodyText = Encoding.UTF8.GetString(bodyBytes);
+			var bodyBytes = _httpClient.ReadResponseBodyChunk();
+			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
 			return Result<TResponse>.Success(response);
@@ -331,7 +332,7 @@ public partial class EventService : AutoloadBase
 
 	private async Task EnsureConnectedAsync()
 	{
-		if (_httpClient.GetStatus() == HttpClient.Status.Connected)
+		if (_httpClient.GetStatus() == Godot.HttpClient.Status.Connected)
 			return;
 
 		var error = _httpClient.ConnectToHost("localhost", BACKEND_PORT);
@@ -340,13 +341,13 @@ public partial class EventService : AutoloadBase
 
 		// Wait for connection
 		var attempts = 0;
-		while (_httpClient.GetStatus() == HttpClient.Status.Connecting && attempts < 50)
+		while (_httpClient.GetStatus() == Godot.HttpClient.Status.Connecting && attempts < 50)
 		{
 			await DelayAsync(0.1f);
 			attempts++;
 		}
 
-		if (_httpClient.GetStatus() != HttpClient.Status.Connected)
+		if (_httpClient.GetStatus() != Godot.HttpClient.Status.Connected)
 			throw new Exception("Connection timeout");
 	}
 
@@ -355,7 +356,7 @@ public partial class EventService : AutoloadBase
 		var attempts = 0;
 		var maxAttempts = REQUEST_TIMEOUT_MS / POLL_INTERVAL_MS;
 
-		while (_httpClient.GetStatus() == HttpClient.Status.Requesting && attempts < maxAttempts)
+		while (_httpClient.GetStatus() == Godot.HttpClient.Status.Requesting && attempts < maxAttempts)
 		{
 			await DelayAsync(POLL_INTERVAL_MS / 1000.0f);
 			attempts++;
