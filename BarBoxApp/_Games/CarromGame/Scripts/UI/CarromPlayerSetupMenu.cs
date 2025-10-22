@@ -588,7 +588,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	/// <summary>
 	/// Show the player setup menu
 	/// </summary>
-	public async void ShowMenu(int playerCount, int costPerGame)
+	public void ShowMenu(int playerCount, int costPerGame)
 	{
 		_playerCount = playerCount;
 		_costPerGame = costPerGame;
@@ -1164,7 +1164,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		EmitSignal(SignalName.MenuCancelled);
 	}
 
-	private async void OnStartGamePressed()
+	private void OnStartGamePressed()
 	{
 		if (_tableCredits < _costPerGame)
 			return;

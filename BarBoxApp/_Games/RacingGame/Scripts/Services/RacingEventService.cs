@@ -147,15 +147,18 @@ public partial class RacingEventService : Node
 				return Result<RacingLeaderboardData>.Failure($"Server returned {responseCode}");
 			}
 
-			var responseBody = httpClient.GetResponseBodyAsString();
+			// Read response body
+			var responseBodyBytes = httpClient.ReadResponseBodyChunk();
 			httpClient.Close();
+
+			var responseBody = responseBodyBytes.GetStringFromUtf8();
 
 			// Parse JSON response
 			var json = Json.ParseString(responseBody);
-			if (json == null)
+			if (json.Obj == null)
 				return Result<RacingLeaderboardData>.Failure("Failed to parse response");
 
-			var jsonDict = json.AsGodotDictionary();
+			var jsonDict = ((Variant)json.Obj).AsGodotDictionary();
 
 			var leaderboardData = new RacingLeaderboardData
 			{
@@ -181,9 +184,10 @@ public partial class RacingEventService : Node
 				if (entryDict.ContainsKey("lap_times") && entryDict["lap_times"].VariantType != Variant.Type.Nil)
 				{
 					var lapTimesJson = entryDict["lap_times"].AsString();
-					var lapTimesArray = Json.ParseString(lapTimesJson)?.AsGodotArray();
-					if (lapTimesArray != null)
+					var lapTimesResult = Json.ParseString(lapTimesJson);
+					if (lapTimesResult.Obj != null)
 					{
+						var lapTimesArray = ((Variant)lapTimesResult.Obj).AsGodotArray();
 						leaderboardEntry.LapTimes = new float[lapTimesArray.Count];
 						for (int i = 0; i < lapTimesArray.Count; i++)
 						{

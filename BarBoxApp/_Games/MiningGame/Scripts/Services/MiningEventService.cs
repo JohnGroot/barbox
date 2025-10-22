@@ -156,15 +156,18 @@ public partial class MiningEventService : Node
 				return Result<MiningInventoryData>.Failure($"Server returned {responseCode}");
 			}
 
-			var responseBody = httpClient.GetResponseBodyAsString();
+			// Read response body
+			var responseBodyBytes = httpClient.ReadResponseBodyChunk();
 			httpClient.Close();
+
+			var responseBody = responseBodyBytes.GetStringFromUtf8();
 
 			// Parse JSON response
 			var json = Json.ParseString(responseBody);
-			if (json == null)
+			if (json.Obj == null)
 				return Result<MiningInventoryData>.Failure("Failed to parse response");
 
-			var jsonDict = json.AsGodotDictionary();
+			var jsonDict = ((Variant)json.Obj).AsGodotDictionary();
 
 			var inventoryData = new MiningInventoryData
 			{

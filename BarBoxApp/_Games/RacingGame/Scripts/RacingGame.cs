@@ -2180,4 +2180,14 @@ public partial class RacingGame : GameController
 			return 1.0f; // GO state
 		}
 	}
+
+	/// <summary>
+	/// Format time in MM:SS.mmm format
+	/// </summary>
+	private string FormatTime(float timeSeconds)
+	{
+		int minutes = (int)(timeSeconds / 60.0f);
+		float seconds = timeSeconds % 60.0f;
+		return $"{minutes:00}:{seconds:00.000}";
+	}
 }

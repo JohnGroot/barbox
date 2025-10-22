@@ -1424,7 +1424,7 @@ namespace BarBox.Games.Racing
 	/// <summary>
 	/// Load race complete data asynchronously with high scores and player position calculation
 	/// </summary>
-	private async void LoadRaceCompleteDataAsync(string trackId, float finalTime)
+	private void LoadRaceCompleteDataAsync(string trackId, float finalTime)
 	{
 		if (_raceCompleteOverlay == null)
 			return;
@@ -1746,7 +1746,7 @@ namespace BarBox.Games.Racing
 	/// <summary>
 	/// Load leaderboard data from DataStore for a specific track
 	/// </summary>
-	private async void LoadLeaderboardDataAsync(string trackId)
+	private void LoadLeaderboardDataAsync(string trackId)
 	{
 		try
 		{
@@ -2030,10 +2030,10 @@ namespace BarBox.Games.Racing
 	/// <summary>
 	/// Enhance track metadata with player's best scores from DataStore
 	/// </summary>
-	private async Task<Dictionary<string, TrackMetadata>> EnhanceTrackMetadataWithScores(Dictionary<string, TrackMetadata> baseMetadata, string playerId)
+	private Task<Dictionary<string, TrackMetadata>> EnhanceTrackMetadataWithScores(Dictionary<string, TrackMetadata> baseMetadata, string playerId)
 	{
 		var enhancedMetadata = new Dictionary<string, TrackMetadata>();
-		
+
 		// Copy base metadata
 		foreach (var kvp in baseMetadata)
 		{
@@ -2059,7 +2059,7 @@ namespace BarBox.Games.Racing
 			GD.PrintErr($"[RacingUIManager] Exception enhancing track metadata: {ex.Message}");
 		}
 
-		return enhancedMetadata;
+		return Task.FromResult(enhancedMetadata);
 	}
 
 	/// <summary>

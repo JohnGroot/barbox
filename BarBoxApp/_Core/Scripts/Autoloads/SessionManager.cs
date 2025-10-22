@@ -173,20 +173,20 @@ public partial class SessionManager : AutoloadBase
 	/// <summary>
 	/// Create a new user account with phone number authentication
 	/// </summary>
-	public async Task<Result<string>> CreateUserAccountAsync(string phoneNumber, string pin, string username)
+	public Task<Result<string>> CreateUserAccountAsync(string phoneNumber, string pin, string username)
 	{
 		// Validate inputs
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
-			return Result<string>.Failure("Invalid phone number format");
+			return Task.FromResult(Result<string>.Failure("Invalid phone number format"));
 
 		var cleanedPin = InputValidator.CleanPin(pin);
 		if (!InputValidator.IsValidPin(cleanedPin))
-			return Result<string>.Failure("PIN must be exactly 4 digits");
+			return Task.FromResult(Result<string>.Failure("PIN must be exactly 4 digits"));
 
 		var cleanedUsername = InputValidator.CleanUsername(username);
 		if (!InputValidator.IsValidUsername(cleanedUsername))
-			return Result<string>.Failure("Username must be 1-7 characters, alphanumeric and underscore only");
+			return Task.FromResult(Result<string>.Failure("Username must be 1-7 characters, alphanumeric and underscore only"));
 
 		try
 		{
@@ -208,34 +208,34 @@ public partial class SessionManager : AutoloadBase
 				_ = _eventService.EmitEventAsync("user/create", payload);
 			}
 
-			return Result<string>.Success(cleanedPhone);
+			return Task.FromResult(Result<string>.Success(cleanedPhone));
 		}
 		catch (Exception ex)
 		{
 			LogError($"Error creating user account: {ex.Message}");
-			return Result<string>.Failure($"Account creation failed: {ex.Message}");
+			return Task.FromResult(Result<string>.Failure($"Account creation failed: {ex.Message}"));
 		}
 	}
 
 	/// <summary>
 	/// Check if a username is available for registration
 	/// </summary>
-	public async Task<Result<bool>> IsUsernameAvailableAsync(string username)
+	public Task<Result<bool>> IsUsernameAvailableAsync(string username)
 	{
 		var cleanedUsername = InputValidator.CleanUsername(username);
 		if (!InputValidator.IsValidUsername(cleanedUsername))
-			return Result<bool>.Failure("Invalid username format");
+			return Task.FromResult(Result<bool>.Failure("Invalid username format"));
 
 		try
 		{
 			// Event-sourced persistence - backend validates username uniqueness
 			// Optimistically return true (backend will reject during creation if taken)
 			LogInfo($"Username availability check requested: {cleanedUsername}");
-			return Result<bool>.Success(true);
+			return Task.FromResult(Result<bool>.Success(true));
 		}
 		catch (Exception ex)
 		{
-			return Result<bool>.Failure($"Error checking username availability: {ex.Message}");
+			return Task.FromResult(Result<bool>.Failure($"Error checking username availability: {ex.Message}"));
 		}
 	}
 
@@ -392,7 +392,7 @@ public partial class SessionManager : AutoloadBase
 	/// <summary>
 	/// Add credits to user account
 	/// </summary>
-	public async Task<bool> AddGlobalCreditsAsync(string phoneNumber, int amount, string reason)
+	public Task<bool> AddGlobalCreditsAsync(string phoneNumber, int amount, string reason)
 	{
 		// Event-sourced persistence - backend tracks credit balance
 		// Update local session cache
@@ -416,18 +416,18 @@ public partial class SessionManager : AutoloadBase
 			_ = _eventService.EmitEventAsync("credit/earn", payload);
 		}
 
-		return true;
+		return Task.FromResult(true);
 	}
 
 	/// <summary>
 	/// Transfer credits from user's account to machine game credits
 	/// </summary>
-	public async Task<bool> TransferCreditsToMachineAsync(string phoneNumber, string gameId, int amount, string reason)
+	public Task<bool> TransferCreditsToMachineAsync(string phoneNumber, string gameId, int amount, string reason)
 	{
 		if (!IsUserLoggedIn(phoneNumber))
 		{
 			LogWarning($"User {phoneNumber} not logged in for credit transfer");
-			return false;
+			return Task.FromResult(false);
 		}
 
 		// Event-sourced persistence - backend tracks credit balance
@@ -453,7 +453,7 @@ public partial class SessionManager : AutoloadBase
 			_ = _eventService.EmitEventAsync("credit/transfer", payload);
 		}
 
-		return true;
+		return Task.FromResult(true);
 	}
 
 	/// <summary>
