@@ -76,6 +76,67 @@ public partial class SessionManager : AutoloadBase
 		LogInfo("SessionManager initialized with event-sourced persistence");
 	}
 
+	public override void _Notification(int what)
+	{
+		if (what == NotificationWMCloseRequest)
+		{
+			// Intercept application shutdown to properly logout all users
+			GetTree().AutoAcceptQuit = false;
+			_ = ShutdownGracefullyAsync();
+		}
+	}
+
+	/// <summary>
+	/// Gracefully shutdown by logging out all active users with timeout
+	/// </summary>
+	private async Task ShutdownGracefullyAsync()
+	{
+		try
+		{
+			LogInfo("SessionManager: Beginning graceful shutdown...");
+
+			var phoneNumbers = GetActivePhoneNumbers();
+			if (phoneNumbers.Length == 0)
+			{
+				LogInfo("SessionManager: No active sessions to cleanup");
+				GetTree().Quit();
+				return;
+			}
+
+			LogInfo($"SessionManager: Logging out {phoneNumbers.Length} active user(s)...");
+
+			// Create logout tasks for all active users
+			var logoutTasks = new List<Task<bool>>();
+			foreach (var phoneNumber in phoneNumbers)
+			{
+				logoutTasks.Add(LogoutUserAsync(phoneNumber));
+			}
+
+			// Wait for all logouts with 5-second timeout
+			var allLogoutsTask = Task.WhenAll(logoutTasks);
+			var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
+			var completedTask = await Task.WhenAny(allLogoutsTask, timeoutTask);
+
+			if (completedTask == timeoutTask)
+			{
+				GD.PushWarning("SessionManager: Logout timeout during shutdown - some sessions may not have completed logout");
+			}
+			else
+			{
+				LogInfo("SessionManager: All user sessions logged out successfully");
+			}
+
+			// Proceed with shutdown
+			GetTree().Quit();
+		}
+		catch (System.Exception ex)
+		{
+			GD.PushError($"SessionManager: Error during graceful shutdown: {ex.Message}");
+			// Proceed with shutdown even if error occurred
+			GetTree().Quit();
+		}
+	}
+
 	/// <summary>
 	/// Authenticate and log in a user by phone number and PIN
 	/// Returns Result with UserSession on success or specific error message on failure
@@ -691,7 +752,9 @@ public partial class SessionManager : AutoloadBase
 
 	protected override void OnServiceDestroyed()
 	{
-		// Logout all users before shutdown
+		GD.PushWarning("SessionManager: OnServiceDestroyed() called - graceful shutdown notification may have been missed");
+
+		// Logout all users before shutdown (fallback path - fire and forget)
 		var phoneNumbers = GetActivePhoneNumbers();
 		foreach (var phoneNumber in phoneNumbers)
 		{
@@ -700,7 +763,7 @@ public partial class SessionManager : AutoloadBase
 
 		_idleTimer?.Stop();
 		_idleTimer?.QueueFree();
-		
+
 		Instance = null;
 	}
 }
