@@ -18,6 +18,9 @@ public partial class EventService : AutoloadBase
 	private const int REQUEST_TIMEOUT_MS = 5000;
 	private const int POLL_INTERVAL_MS = 10;
 
+	// Enable detailed HTTP lifecycle logging for debugging connection issues
+	private const bool DEBUG_HTTP_LIFECYCLE = false;
+
 	private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
 	{
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -122,6 +125,9 @@ public partial class EventService : AutoloadBase
 
 		try
 		{
+			if (DEBUG_HTTP_LIFECYCLE)
+				LogInfo($"[HTTP] CreateSession - Starting for player {playerId}");
+
 			// Connect to backend
 			await EnsureConnectedAsync();
 
@@ -131,6 +137,9 @@ public partial class EventService : AutoloadBase
 				$"Player-Id: {playerId}",
 				"User-Agent: BarBox-Client/1.0"
 			};
+
+			if (DEBUG_HTTP_LIFECYCLE)
+				LogInfo($"[HTTP] CreateSession - Sending PUT request to /box/{boxId}/session/{sessionId}");
 
 			var error = _httpClient.Request(
 				Godot.HttpClient.Method.Put,
@@ -144,8 +153,16 @@ public partial class EventService : AutoloadBase
 			await WaitForResponseAsync();
 
 			var responseCode = _httpClient.GetResponseCode();
+
+			if (DEBUG_HTTP_LIFECYCLE)
+				LogInfo($"[HTTP] CreateSession - Received response code: {responseCode}");
+
 			if (responseCode != 202)
+			{
+				// Close connection to allow recovery on next request
+				_httpClient.Close();
 				return Result<Guid>.Failure($"Session creation failed with code {responseCode}");
+			}
 
 			// Store current session
 			_currentSessionId = sessionId;
@@ -158,6 +175,11 @@ public partial class EventService : AutoloadBase
 		}
 		catch (Exception ex)
 		{
+			if (DEBUG_HTTP_LIFECYCLE)
+				LogError($"[HTTP] CreateSession - Exception: {ex.Message}");
+
+			// Close connection on exception to ensure clean state
+			_httpClient.Close();
 			return Result<Guid>.Failure($"Session creation exception: {ex.Message}");
 		}
 	}
@@ -354,6 +376,63 @@ public partial class EventService : AutoloadBase
 	}
 
 	/// <summary>
+	/// Execute PUT request against backend API with JSON body
+	/// </summary>
+	public async Task<Result<TResponse>> PutAsync<TRequest, TResponse>(
+		string endpoint,
+		TRequest requestBody,
+		int expectedStatusCode = 200
+	) where TResponse : class
+	{
+		if (!_isInitialized)
+			return Result<TResponse>.Failure("EventService not initialized");
+
+		try
+		{
+			await EnsureConnectedAsync();
+
+			var json = JsonSerializer.Serialize(requestBody, JsonOptions);
+
+			var headers = new[]
+			{
+				"User-Agent: BarBox-Client/1.0",
+				"Accept: application/json",
+				"Content-Type: application/json"
+			};
+
+			var error = _httpClient.Request(Godot.HttpClient.Method.Put, endpoint, headers, json);
+			if (error != Error.Ok)
+				return Result<TResponse>.Failure($"PUT request failed: {error}");
+
+			await WaitForResponseAsync();
+
+			var responseCode = _httpClient.GetResponseCode();
+			if (responseCode != expectedStatusCode)
+			{
+				var errorBytes = _httpClient.ReadResponseBodyChunk();
+				var errorText = errorBytes.GetStringFromUtf8();
+
+				// Close connection to allow recovery on next request
+				_httpClient.Close();
+
+				return Result<TResponse>.Failure($"PUT failed with code {responseCode}: {errorText}");
+			}
+
+			var bodyBytes = _httpClient.ReadResponseBodyChunk();
+			var bodyText = bodyBytes.GetStringFromUtf8();
+
+			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
+			return Result<TResponse>.Success(response);
+		}
+		catch (Exception ex)
+		{
+			// Close connection on exception to ensure clean state
+			_httpClient.Close();
+			return Result<TResponse>.Failure($"PUT exception: {ex.Message}");
+		}
+	}
+
+	/// <summary>
 	/// Check if username is available for registration
 	/// </summary>
 	public async Task<Result<bool>> IsUsernameAvailableAsync(string username)
@@ -441,18 +520,16 @@ public partial class EventService : AutoloadBase
 			Tag = locationName
 		};
 
-		var result = await PostAsync<BoxCreateRequest, BoxDetailResponse>("/box/", request, 201);
+		// Use PUT for idempotent box registration
+		var result = await PutAsync<BoxCreateRequest, BoxDetailResponse>(
+			$"/box/{boxId}",
+			request,
+			200
+		);
 
 		if (result.IsSuccess)
 		{
-			LogInfo($"Box registered successfully: {locationName} ({boxId})");
-			return Result<Guid>.Success(boxId);
-		}
-
-		// 409 Conflict means box already exists - treat as success
-		if (result.Error.Contains("409") || result.Error.Contains("Conflict"))
-		{
-			LogInfo($"Box already registered: {locationName} ({boxId})");
+			LogInfo($"Box registered/verified: {locationName} ({boxId})");
 			return Result<Guid>.Success(boxId);
 		}
 
@@ -513,45 +590,95 @@ public partial class EventService : AutoloadBase
 
 	private async Task EnsureConnectedAsync()
 	{
-		if (_httpClient.GetStatus() == Godot.HttpClient.Status.Connected)
+		_httpClient.Poll();
+		var currentStatus = _httpClient.GetStatus();
+
+		if (DEBUG_HTTP_LIFECYCLE)
+			LogInfo($"[HTTP] EnsureConnected - Initial status: {currentStatus}");
+
+		// Connection is ready for new requests
+		if (currentStatus == Godot.HttpClient.Status.Connected)
+		{
+			if (DEBUG_HTTP_LIFECYCLE)
+				LogInfo("[HTTP] Connection ready for reuse (keep-alive)");
 			return;
+		}
+
+		// Handle intermediate states from previous requests
+		if (currentStatus == Godot.HttpClient.Status.Body)
+		{
+			if (DEBUG_HTTP_LIFECYCLE)
+				LogInfo("[HTTP] Cleaning up unconsumed response body from previous request");
+
+			// Previous response body not consumed - read and discard it
+			_httpClient.ReadResponseBodyChunk();
+
+			// Poll to see if we transition back to Connected
+			_httpClient.Poll();
+			currentStatus = _httpClient.GetStatus();
+
+			if (currentStatus == Godot.HttpClient.Status.Connected)
+			{
+				if (DEBUG_HTTP_LIFECYCLE)
+					LogInfo("[HTTP] Connection recovered to Connected state after cleanup");
+				return; // Now ready for reuse
+			}
+		}
+
+		// If still not in a good state, close and reconnect
+		if (currentStatus != Godot.HttpClient.Status.Disconnected)
+		{
+			if (DEBUG_HTTP_LIFECYCLE)
+				LogInfo($"[HTTP] Closing stale connection (status: {currentStatus})");
+
+			_httpClient.Close();
+			await DelayAsync(0.01f); // Brief delay for clean close
+		}
+
+		// Establish new connection
+		if (DEBUG_HTTP_LIFECYCLE)
+			LogInfo("[HTTP] Establishing new connection to 127.0.0.1:8000");
 
 		var error = _httpClient.ConnectToHost("127.0.0.1", BACKEND_PORT);
 		if (error != Error.Ok)
 			throw new Exception($"Failed to connect to backend: {error}");
 
-		// Wait for connection (including DNS resolution)
-		// CRITICAL: Must check both Resolving and Connecting states
-		var attempts = 0;
-		while ((_httpClient.GetStatus() == Godot.HttpClient.Status.Resolving ||
-		        _httpClient.GetStatus() == Godot.HttpClient.Status.Connecting) &&
-		       attempts < 50)
-		{
-			// CRITICAL: Poll() advances the HttpClient state machine
-			_httpClient.Poll();
-			await DelayAsync(0.1f);
-			attempts++;
-		}
-
-		if (_httpClient.GetStatus() != Godot.HttpClient.Status.Connected)
+		// Use aggressive polling utility - exits immediately when connected
+		bool connected = await _httpClient.PollUntilConnectedAsync(timeoutSeconds: 5.0f);
+		if (!connected)
 			throw new Exception("Connection timeout");
+
+		if (DEBUG_HTTP_LIFECYCLE)
+			LogInfo("[HTTP] New connection established successfully");
 	}
 
 	private async Task WaitForResponseAsync()
 	{
-		var attempts = 0;
-		var maxAttempts = REQUEST_TIMEOUT_MS / POLL_INTERVAL_MS;
-
-		while (_httpClient.GetStatus() == Godot.HttpClient.Status.Requesting && attempts < maxAttempts)
+		if (DEBUG_HTTP_LIFECYCLE)
 		{
-			// CRITICAL: Poll() processes the response
 			_httpClient.Poll();
-			await DelayAsync(POLL_INTERVAL_MS / 1000.0f);
-			attempts++;
+			var statusBeforeWait = _httpClient.GetStatus();
+			LogInfo($"[HTTP] WaitForResponse - Status before wait: {statusBeforeWait}");
 		}
 
-		if (attempts >= maxAttempts)
-			throw new Exception("Request timeout");
+		// Use aggressive polling utility - exits immediately when response ready
+		bool ready = await _httpClient.PollUntilResponseReadyAsync(
+			timeoutSeconds: REQUEST_TIMEOUT_MS / 1000.0f
+		);
+
+		if (!ready)
+		{
+			_httpClient.Poll();
+			var finalStatus = _httpClient.GetStatus();
+			throw new Exception($"Request timeout (final status: {finalStatus})");
+		}
+
+		if (DEBUG_HTTP_LIFECYCLE)
+		{
+			_httpClient.Poll();
+			var statusAfterWait = _httpClient.GetStatus();
+			LogInfo($"[HTTP] WaitForResponse - Status after wait: {statusAfterWait}");
+		}
 	}
 
 	private string GetLocationId()

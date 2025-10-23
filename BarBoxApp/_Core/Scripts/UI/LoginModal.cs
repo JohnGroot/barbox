@@ -844,27 +844,27 @@ public partial class LoginModal : Control
 			return;
 		}
 
-		string phoneNumber = _loginPhoneInput.Text.Trim();
-		string pin = _loginPinInput.Text.Trim();
-
-		// Validate phone number
-		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
-		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
-		{
-			ShowLoginStatusMessage("Please enter a valid 10-digit phone number", false);
-			return;
-		}
-
-		// Validate PIN - always require 4 digits (no dev mode bypass)
-		var cleanedPin = InputValidator.CleanPin(pin);
-		if (!InputValidator.IsValidPin(cleanedPin))
-		{
-			ShowLoginStatusMessage("Please enter a valid 4-digit PIN", false);
-			return;
-		}
-
 		try
 		{
+			string phoneNumber = _loginPhoneInput.Text.Trim();
+			string pin = _loginPinInput.Text.Trim();
+
+			// Validate phone number
+			var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
+			if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
+			{
+				ShowLoginStatusMessage("Please enter a valid 10-digit phone number", false);
+				return;
+			}
+
+			// Validate PIN - always require 4 digits (no dev mode bypass)
+			var cleanedPin = InputValidator.CleanPin(pin);
+			if (!InputValidator.IsValidPin(cleanedPin))
+			{
+				ShowLoginStatusMessage("Please enter a valid 4-digit PIN", false);
+				return;
+			}
+
 			// Set processing state and disable UI
 			_isLoginInProgress = true;
 			SetLoginUIEnabled(false);
@@ -878,7 +878,7 @@ public partial class LoginModal : Control
 				ShowLoginStatusMessage("Login successful!", true);
 
 				// Delay to let user see success message before modal closes
-				await AutoloadBase.StaticDelayAsync(0.8f);
+				await AutoloadBase.StaticDelayAsync(0.5f);
 
 				// Close modal explicitly (not via signal)
 				HideModal();
@@ -913,34 +913,34 @@ public partial class LoginModal : Control
 			return;
 		}
 
-		string phoneNumber = _createPhoneInput.Text.Trim();
-		string pin = _createPinInput.Text.Trim();
-		string username = _createUsernameInput.Text.Trim();
-
-		// Validate inputs
-		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
-		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
-		{
-			ShowCreateStatusMessage("Please enter a valid 10-digit phone number", false);
-			return;
-		}
-
-		var cleanedPin = InputValidator.CleanPin(pin);
-		if (!InputValidator.IsValidPin(cleanedPin))
-		{
-			ShowCreateStatusMessage("Please enter a valid 4-digit PIN", false);
-			return;
-		}
-
-		var cleanedUsername = InputValidator.CleanUsername(username);
-		if (!InputValidator.IsValidUsername(cleanedUsername))
-		{
-			ShowCreateStatusMessage("Username must be 1-7 characters, alphanumeric and underscore only", false);
-			return;
-		}
-
 		try
 		{
+			string phoneNumber = _createPhoneInput.Text.Trim();
+			string pin = _createPinInput.Text.Trim();
+			string username = _createUsernameInput.Text.Trim();
+
+			// Validate inputs
+			var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
+			if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
+			{
+				ShowCreateStatusMessage("Please enter a valid 10-digit phone number", false);
+				return;
+			}
+
+			var cleanedPin = InputValidator.CleanPin(pin);
+			if (!InputValidator.IsValidPin(cleanedPin))
+			{
+				ShowCreateStatusMessage("Please enter a valid 4-digit PIN", false);
+				return;
+			}
+
+			var cleanedUsername = InputValidator.CleanUsername(username);
+			if (!InputValidator.IsValidUsername(cleanedUsername))
+			{
+				ShowCreateStatusMessage("Username must be 1-7 characters, alphanumeric and underscore only", false);
+				return;
+			}
+
 			// Set processing state and disable UI
 			_isCreateAccountInProgress = true;
 			SetCreateAccountUIEnabled(false);
@@ -981,7 +981,7 @@ public partial class LoginModal : Control
 				ShowCreateStatusMessage("Account created successfully! You can now login.", true);
 
 				// Delay to let user see success message
-				await AutoloadBase.StaticDelayAsync(1.0f);
+				await AutoloadBase.StaticDelayAsync(0.7f);
 
 				// Switch to login tab and populate the phone number (formatted)
 				_tabContainer.CurrentTab = 0;

@@ -14,14 +14,28 @@ logger = get_logger()
 router = APIRouter(prefix="/box")
 
 
-@router.post("/", status_code=201)
-async def create_box(
-    new_box: structures.BoxCreate,
+@router.put("/{box_id}", status_code=200)
+async def register_box(
+    box_id: UUID,
+    box_data: structures.BoxCreate,
     db_service: dependencies.Database,
 ) -> structures.BoxDetail:
+    # Check if box already exists
+    result = await db_service.session.execute(
+        select(db.defs.Box).where(db.defs.Box.id == box_id)
+    )
+    existing_box = result.scalar_one_or_none()
+
+    if existing_box is not None:
+        # Box already exists - return existing (idempotent)
+        logger.info("box_already_registered", box_id=str(box_id))
+        return structures.BoxDetail.model_validate(existing_box, from_attributes=True)
+
+    # Box doesn't exist - create it
+    logger.info("registering_new_box", box_id=str(box_id), name=box_data.name)
     return await db_service.create(
         target=db.defs.Box,
-        data=new_box,
+        data=box_data,
         read_as=structures.BoxDetail,
     )
 
