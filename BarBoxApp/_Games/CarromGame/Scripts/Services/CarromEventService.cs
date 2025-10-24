@@ -6,27 +6,25 @@ using System.Threading.Tasks;
 /// <summary>
 /// Carrom game-specific event service
 /// Provides type-safe methods for emitting carrom events
+/// Inherits validation and error handling from GameEventServiceBase
 /// </summary>
-public partial class CarromEventService : Node
+public class CarromEventService : GameEventServiceBase
 {
-	private EventService _eventService;
-
-	public override void _Ready()
+	public CarromEventService(EventService eventService = null) : base(eventService)
 	{
-		_eventService = EventService.GetInstance();
-		if (_eventService == null)
-		{
-			GD.PrintErr("CarromEventService: EventService not found");
-		}
 	}
 
 	/// <summary>
-	/// Emit round start event
+	/// Emit round start event with validation
 	/// </summary>
 	public async Task<Result<bool>> EmitRoundStartAsync(string mode, string[] playerIds)
 	{
-		if (_eventService == null)
-			return Result<bool>.Failure("EventService not initialized");
+		// Input validation
+		if (string.IsNullOrEmpty(mode))
+			return Result<bool>.Failure("Game mode is required");
+
+		if (playerIds == null || playerIds.Length == 0)
+			return Result<bool>.Failure("At least one player is required");
 
 		var payload = new
 		{
@@ -34,16 +32,20 @@ public partial class CarromEventService : Node
 			players = playerIds
 		};
 
-		return await _eventService.EmitEventAsync("carrom/round_start", payload);
+		return await EmitEventSafeAsync("carrom/round_start", payload);
 	}
 
 	/// <summary>
-	/// Emit piece pocketed event
+	/// Emit piece pocketed event with validation
 	/// </summary>
 	public async Task<Result<bool>> EmitPiecePocketedAsync(string pieceType, int playerIndex, int points)
 	{
-		if (_eventService == null)
-			return Result<bool>.Failure("EventService not initialized");
+		// Input validation
+		if (string.IsNullOrEmpty(pieceType))
+			return Result<bool>.Failure("Piece type is required");
+
+		if (playerIndex < 0)
+			return Result<bool>.Failure("Invalid player index");
 
 		var payload = new
 		{
@@ -52,19 +54,23 @@ public partial class CarromEventService : Node
 			points = points
 		};
 
-		return await _eventService.EmitEventAsync("carrom/piece_pocketed", payload);
+		return await EmitEventSafeAsync("carrom/piece_pocketed", payload);
 	}
 
 	/// <summary>
-	/// Emit round finish event
+	/// Emit round finish event with validation
 	/// </summary>
 	public async Task<Result<bool>> EmitRoundFinishAsync(
 		string mode,
 		string winnerId,
 		Dictionary<string, int> scores)
 	{
-		if (_eventService == null)
-			return Result<bool>.Failure("EventService not initialized");
+		// Input validation
+		if (string.IsNullOrEmpty(mode))
+			return Result<bool>.Failure("Game mode is required");
+
+		if (scores == null || scores.Count == 0)
+			return Result<bool>.Failure("Score data is required");
 
 		var payload = new
 		{
@@ -73,94 +79,40 @@ public partial class CarromEventService : Node
 			scores = scores
 		};
 
-		return await _eventService.EmitEventAsync("carrom/round_finish", payload);
+		return await EmitEventSafeAsync("carrom/round_finish", payload);
 	}
 
 	/// <summary>
-	/// Get carrom leaderboard from backend
+	/// Get carrom leaderboard from backend using shared HTTP helper
 	/// </summary>
 	public async Task<Result<CarromLeaderboardData>> GetLeaderboardAsync(
 		string metric = "total_score",
 		int limit = 10)
 	{
-		if (_eventService == null)
-			return Result<CarromLeaderboardData>.Failure("EventService not initialized");
+		// Input validation
+		if (limit < 1 || limit > 100)
+			return Result<CarromLeaderboardData>.Failure("Limit must be between 1 and 100");
 
 		try
 		{
-			var httpClient = new HttpClient();
-
-			// Connect to backend
-			var error = httpClient.ConnectToHost("localhost", 8000);
-			if (error != Error.Ok)
-				return Result<CarromLeaderboardData>.Failure($"Connection failed: {error}");
-
-			// Wait for connection
-			var attempts = 0;
-			while (httpClient.GetStatus() == HttpClient.Status.Connecting && attempts < 50)
+			// Build query parameters
+			var queryParams = new Dictionary<string, string>
 			{
-				await AutoloadBase.StaticDelayAsync(0.1f);
-				attempts++;
-			}
-
-			if (httpClient.GetStatus() != HttpClient.Status.Connected)
-				return Result<CarromLeaderboardData>.Failure("Connection timeout");
-
-			// Build query string
-			var query = $"metric={metric}&limit={limit}";
-
-			// Make HTTP GET request
-			var headers = new[]
-			{
-				"User-Agent: BarBox-Client/1.0",
-				"Accept: application/json"
+				{ "metric", metric },
+				{ "limit", limit.ToString() }
 			};
 
-			error = httpClient.Request(
-				HttpClient.Method.Get,
-				$"/game/carrom/leaderboard?{query}",
-				headers
-			);
+			// Use shared HTTP helper - handles connection, polling, timeouts
+			var responseResult = await QueryBackendRawAsync("/game/carrom/leaderboard", queryParams);
+			if (!responseResult.IsSuccess)
+				return Result<CarromLeaderboardData>.Failure(responseResult.Error);
 
-			if (error != Error.Ok)
-			{
-				httpClient.Close();
-				return Result<CarromLeaderboardData>.Failure($"Request failed: {error}");
-			}
+			// Parse JSON response using base class helper
+			var parseResult = ParseJsonResponse(responseResult.Value);
+			if (!parseResult.IsSuccess)
+				return Result<CarromLeaderboardData>.Failure(parseResult.Error);
 
-			// Wait for response
-			attempts = 0;
-			while (httpClient.GetStatus() == HttpClient.Status.Requesting && attempts < 500)
-			{
-				await AutoloadBase.StaticDelayAsync(0.01f);
-				attempts++;
-			}
-
-			if (httpClient.GetStatus() == HttpClient.Status.Requesting)
-			{
-				httpClient.Close();
-				return Result<CarromLeaderboardData>.Failure("Request timeout");
-			}
-
-			var responseCode = httpClient.GetResponseCode();
-			if (responseCode != 200)
-			{
-				httpClient.Close();
-				return Result<CarromLeaderboardData>.Failure($"Server returned {responseCode}");
-			}
-
-			// Read response body
-			var responseBodyBytes = httpClient.ReadResponseBodyChunk();
-			httpClient.Close();
-
-			var responseBody = responseBodyBytes.GetStringFromUtf8();
-
-			// Parse JSON response
-			var json = Json.ParseString(responseBody);
-			if (json.Obj == null)
-				return Result<CarromLeaderboardData>.Failure("Failed to parse response");
-
-			var jsonDict = ((Variant)json.Obj).AsGodotDictionary();
+			var jsonDict = parseResult.Value;
 
 			var leaderboardData = new CarromLeaderboardData
 			{
@@ -191,9 +143,15 @@ public partial class CarromEventService : Node
 
 			return Result<CarromLeaderboardData>.Success(leaderboardData);
 		}
-		catch (Exception ex)
+		catch (FormatException ex)
 		{
-			return Result<CarromLeaderboardData>.Failure($"Exception: {ex.Message}");
+			LogError($"Invalid data format in leaderboard response: {ex.Message}");
+			return Result<CarromLeaderboardData>.Failure("Invalid server response format");
+		}
+		catch (System.Exception ex)
+		{
+			LogError($"Unexpected error retrieving leaderboard: {ex.Message}");
+			return Result<CarromLeaderboardData>.Failure("Unable to retrieve leaderboard data");
 		}
 	}
 }

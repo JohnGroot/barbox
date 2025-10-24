@@ -1,57 +1,94 @@
 using Godot;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using BarBox.Games.Racing;
 
 /// <summary>
 /// Racing game-specific event service
 /// Provides type-safe methods for emitting racing events
+/// Inherits validation and error handling from GameEventServiceBase
 /// </summary>
-public partial class RacingEventService : Node
+public class RacingEventService : GameEventServiceBase
 {
-	private EventService _eventService;
-
-	public override void _Ready()
+	public RacingEventService(EventService eventService = null) : base(eventService)
 	{
-		_eventService = EventService.GetInstance();
-		if (_eventService == null)
-		{
-			GD.PrintErr("RacingEventService: EventService not found");
-		}
 	}
 
 	/// <summary>
-	/// Emit lap complete event
+	/// Emit lap complete event with validation
 	/// </summary>
-	public async Task<Result<bool>> EmitLapCompleteAsync(int lapNum, float lapTime, CheckpointTime[] checkpoints)
+	public async Task<Result<bool>> EmitLapCompleteAsync(string trackId, int lapNum, float lapTime, CheckpointTime[] checkpoints)
 	{
-		if (_eventService == null)
-			return Result<bool>.Failure("EventService not initialized");
+		// Input validation
+		if (string.IsNullOrEmpty(trackId))
+			return Result<bool>.Failure("Track ID is required");
+
+		if (lapNum < 1)
+			return Result<bool>.Failure("Invalid lap number");
+
+		if (lapTime < 0)
+			return Result<bool>.Failure("Invalid lap time");
+
+		if (checkpoints == null || checkpoints.Length == 0)
+			return Result<bool>.Failure("No checkpoint data provided");
+
+		// Convert checkpoints array to anonymous objects manually (avoid Linq)
+		var checkpointArray = new object[checkpoints.Length];
+		for (int i = 0; i < checkpoints.Length; i++)
+		{
+			checkpointArray[i] = new
+			{
+				index = checkpoints[i].Index,
+				time = checkpoints[i].Time,
+				gap = checkpoints[i].Gap
+			};
+		}
 
 		var payload = new
 		{
+			track_id = trackId,
 			lap_num = lapNum,
 			lap_time = lapTime,
-			checkpoints = checkpoints.Select(c => new
-			{
-				index = c.Index,
-				time = c.Time,
-				gap = c.Gap
-			}).ToArray()
+			checkpoints = checkpointArray
 		};
 
-		return await _eventService.EmitEventAsync("racing/lap_complete", payload);
+		return await EmitEventSafeAsync("racing/lap_complete", payload);
 	}
 
 	/// <summary>
-	/// Emit race finish event
+	/// Emit race finish event with validation
 	/// </summary>
 	public async Task<Result<bool>> EmitRaceFinishAsync(RaceEntry raceEntry)
 	{
-		if (_eventService == null)
-			return Result<bool>.Failure("EventService not initialized");
+		// Input validation
+		if (raceEntry == null)
+			return Result<bool>.Failure("Race entry cannot be null");
+
+		if (string.IsNullOrEmpty(raceEntry.TrackId))
+			return Result<bool>.Failure("Track ID is required");
+
+		if (raceEntry.TotalTime < 0)
+			return Result<bool>.Failure("Invalid total time");
+
+		if (raceEntry.TotalLaps < 1)
+			return Result<bool>.Failure("Invalid lap count");
+
+		// Convert checkpoints array manually if not null (avoid Linq)
+		object[] checkpointArray = null;
+		if (raceEntry.Checkpoints != null)
+		{
+			checkpointArray = new object[raceEntry.Checkpoints.Length];
+			for (int i = 0; i < raceEntry.Checkpoints.Length; i++)
+			{
+				checkpointArray[i] = new
+				{
+					index = raceEntry.Checkpoints[i].Index,
+					time = raceEntry.Checkpoints[i].Time,
+					gap = raceEntry.Checkpoints[i].Gap
+				};
+			}
+		}
 
 		var payload = new
 		{
@@ -59,19 +96,14 @@ public partial class RacingEventService : Node
 			total_time = raceEntry.TotalTime,
 			total_laps = raceEntry.TotalLaps,
 			lap_times = raceEntry.LapTimes,
-			checkpoints = raceEntry.Checkpoints?.Select(c => new
-			{
-				index = c.Index,
-				time = c.Time,
-				gap = c.Gap
-			}).ToArray()
+			checkpoints = checkpointArray
 		};
 
-		return await _eventService.EmitEventAsync("racing/race_finish", payload);
+		return await EmitEventSafeAsync("racing/race_finish", payload);
 	}
 
 	/// <summary>
-	/// Get racing leaderboard from backend
+	/// Get racing leaderboard from backend using shared HTTP helper
 	/// </summary>
 	public async Task<Result<RacingLeaderboardData>> GetLeaderboardAsync(
 		string trackId,
@@ -79,86 +111,37 @@ public partial class RacingEventService : Node
 		int? laps = null,
 		int limit = 10)
 	{
-		if (_eventService == null)
-			return Result<RacingLeaderboardData>.Failure("EventService not initialized");
+		// Input validation
+		if (string.IsNullOrEmpty(trackId))
+			return Result<RacingLeaderboardData>.Failure("Track ID is required");
+
+		if (limit < 1 || limit > 100)
+			return Result<RacingLeaderboardData>.Failure("Limit must be between 1 and 100");
 
 		try
 		{
-			var httpClient = new HttpClient();
-
-			// Connect to backend
-			var error = httpClient.ConnectToHost("localhost", 8000);
-			if (error != Error.Ok)
-				return Result<RacingLeaderboardData>.Failure($"Connection failed: {error}");
-
-			// Wait for connection
-			var attempts = 0;
-			while (httpClient.GetStatus() == HttpClient.Status.Connecting && attempts < 50)
+			// Build query parameters
+			var queryParams = new Dictionary<string, string>
 			{
-				await AutoloadBase.StaticDelayAsync(0.1f);
-				attempts++;
-			}
-
-			if (httpClient.GetStatus() != HttpClient.Status.Connected)
-				return Result<RacingLeaderboardData>.Failure("Connection timeout");
-
-			// Build query string
-			var query = $"track_id={trackId}&metric={metric}&limit={limit}";
-			if (laps.HasValue)
-				query += $"&laps={laps.Value}";
-
-			// Make HTTP GET request
-			var headers = new[]
-			{
-				"User-Agent: BarBox-Client/1.0",
-				"Accept: application/json"
+				{ "track_id", trackId },
+				{ "metric", metric },
+				{ "limit", limit.ToString() }
 			};
 
-			error = httpClient.Request(
-				HttpClient.Method.Get,
-				$"/game/racing/leaderboard?{query}",
-				headers
-			);
+			if (laps.HasValue)
+				queryParams["laps"] = laps.Value.ToString();
 
-			if (error != Error.Ok)
-			{
-				httpClient.Close();
-				return Result<RacingLeaderboardData>.Failure($"Request failed: {error}");
-			}
+			// Use shared HTTP helper - handles connection, polling, timeouts
+			var responseResult = await QueryBackendRawAsync("/game/racing/leaderboard", queryParams);
+			if (!responseResult.IsSuccess)
+				return Result<RacingLeaderboardData>.Failure(responseResult.Error);
 
-			// Wait for response
-			attempts = 0;
-			while (httpClient.GetStatus() == HttpClient.Status.Requesting && attempts < 500)
-			{
-				await AutoloadBase.StaticDelayAsync(0.01f);
-				attempts++;
-			}
+			// Parse JSON response using base class helper
+			var parseResult = ParseJsonResponse(responseResult.Value);
+			if (!parseResult.IsSuccess)
+				return Result<RacingLeaderboardData>.Failure(parseResult.Error);
 
-			if (httpClient.GetStatus() == HttpClient.Status.Requesting)
-			{
-				httpClient.Close();
-				return Result<RacingLeaderboardData>.Failure("Request timeout");
-			}
-
-			var responseCode = httpClient.GetResponseCode();
-			if (responseCode != 200)
-			{
-				httpClient.Close();
-				return Result<RacingLeaderboardData>.Failure($"Server returned {responseCode}");
-			}
-
-			// Read response body
-			var responseBodyBytes = httpClient.ReadResponseBodyChunk();
-			httpClient.Close();
-
-			var responseBody = responseBodyBytes.GetStringFromUtf8();
-
-			// Parse JSON response
-			var json = Json.ParseString(responseBody);
-			if (json.Obj == null)
-				return Result<RacingLeaderboardData>.Failure("Failed to parse response");
-
-			var jsonDict = ((Variant)json.Obj).AsGodotDictionary();
+			var jsonDict = parseResult.Value;
 
 			var leaderboardData = new RacingLeaderboardData
 			{
@@ -201,9 +184,15 @@ public partial class RacingEventService : Node
 
 			return Result<RacingLeaderboardData>.Success(leaderboardData);
 		}
-		catch (Exception ex)
+		catch (FormatException ex)
 		{
-			return Result<RacingLeaderboardData>.Failure($"Exception: {ex.Message}");
+			LogError($"Invalid data format in leaderboard response: {ex.Message}");
+			return Result<RacingLeaderboardData>.Failure("Invalid server response format");
+		}
+		catch (System.Exception ex)
+		{
+			LogError($"Unexpected error retrieving leaderboard: {ex.Message}");
+			return Result<RacingLeaderboardData>.Failure("Unable to retrieve leaderboard data");
 		}
 	}
 }

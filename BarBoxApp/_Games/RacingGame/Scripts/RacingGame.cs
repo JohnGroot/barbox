@@ -95,18 +95,21 @@ public partial class RacingGame : GameController
 	// ================================================================
 	// PRIVATE FIELDS - RACING LOGIC
 	// ================================================================
-	
+
 	// Racing timing system
 	private RacingTimingSystem _timingSystem;
-	
+
 	// Track validation system
 	private RacingTrackValidationSystem _trackValidationSystem;
-	
+
 	// Camera controller
 	private RacingCameraController _cameraController;
-	
+
 	// Racing car controller
 	private RacingCar _racingCar;
+
+	// Event service
+	private RacingEventService _racingEventService;
 
 	// ================================================================
 	// PRIVATE FIELDS - TRACK AND WORLD SYSTEMS
@@ -155,6 +158,9 @@ public partial class RacingGame : GameController
 		// _Ready() starting
 		GameId = "racing_game";
 		SetGameMode(GameMode.Practice); // Start in practice mode
+
+		// Initialize event service
+		_racingEventService = new RacingEventService();
 
 		// Initialize systems - no special context handling needed
 		// Login is required for data persistence, but games work without it
@@ -499,9 +505,8 @@ public partial class RacingGame : GameController
 		if (string.IsNullOrEmpty(playerId) || totalTime <= 0.0f)
 			return;
 
-		// Get RacingEventService (should be added as child node)
-		var racingEventService = GetNodeOrNull<RacingEventService>("RacingEventService");
-		if (racingEventService == null)
+		// Check RacingEventService availability
+		if (_racingEventService == null)
 		{
 			GD.PrintErr("[RacingGame] RacingEventService not found - cannot save race");
 			return;
@@ -524,7 +529,7 @@ public partial class RacingGame : GameController
 			);
 
 			// Emit race finish event to backend
-			var result = await racingEventService.EmitRaceFinishAsync(raceEntry);
+			var result = await _racingEventService.EmitRaceFinishAsync(raceEntry);
 			if (result.IsSuccess)
 			{
 				// Event successfully submitted - backend will handle aggregation
@@ -593,9 +598,8 @@ public partial class RacingGame : GameController
 	{
 		if (string.IsNullOrEmpty(playerId) || lapTime <= 0.0f) return;
 
-		// Get RacingEventService
-		var racingEventService = GetNodeOrNull<RacingEventService>("RacingEventService");
-		if (racingEventService == null) return;
+		// Check RacingEventService availability
+		if (_racingEventService == null) return;
 
 		// Fire-and-forget lap complete event emission
 		try
@@ -603,8 +607,8 @@ public partial class RacingGame : GameController
 			var currentLap = GetPlayerCurrentLap(playerId);
 			var checkpoints = GetPlayerCheckpointTimes(playerId);
 
-			// Emit lap complete event
-			var result = await racingEventService.EmitLapCompleteAsync(currentLap, lapTime, checkpoints);
+			// Emit lap complete event with track ID
+			var result = await _racingEventService.EmitLapCompleteAsync(_currentTrackId, currentLap, lapTime, checkpoints);
 
 			if (result.IsSuccess)
 			{
@@ -1559,11 +1563,9 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private async void ShowGlobalHighScores()
 	{
-		var racingEventService = GetNodeOrNull<RacingEventService>("RacingEventService");
-
 		try
 		{
-			if (racingEventService == null)
+			if (_racingEventService == null)
 			{
 				GD.PrintErr("[RacingGame] RacingEventService not found, showing fallback");
 				ShowHighScoresFallback();
@@ -1571,7 +1573,7 @@ public partial class RacingGame : GameController
 			}
 
 			// Query backend for racing leaderboard
-			var leaderboardResult = await racingEventService.GetLeaderboardAsync(_currentTrackId, "best_race", _targetLaps);
+			var leaderboardResult = await _racingEventService.GetLeaderboardAsync(_currentTrackId, "best_race", _targetLaps);
 
 			if (leaderboardResult.IsSuccess)
 			{

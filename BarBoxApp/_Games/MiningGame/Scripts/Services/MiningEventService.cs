@@ -7,27 +7,26 @@ using BarBox.Games.MiningGame;
 /// <summary>
 /// Mining game-specific event service
 /// Provides type-safe methods for emitting mining events
+/// Inherits validation and error handling from GameEventServiceBase
 /// </summary>
-public partial class MiningEventService : Node
+public class MiningEventService : GameEventServiceBase
 {
-	private EventService _eventService;
-
-	public override void _Ready()
+	public MiningEventService(EventService eventService = null) : base(eventService)
 	{
-		_eventService = EventService.GetInstance();
-		if (_eventService == null)
-		{
-			GD.PrintErr("MiningEventService: EventService not found");
-		}
 	}
 
 	/// <summary>
-	/// Emit extraction complete event
+	/// Emit extraction complete event with validation
 	/// </summary>
 	public async Task<Result<bool>> EmitExtractCompleteAsync(GemType gemType, int quantity)
 	{
+		// Input validation
+		if (quantity < 1)
+			return Result<bool>.Failure("Quantity must be at least 1");
+
+		// Check EventService availability (required for location_id)
 		if (_eventService == null)
-			return Result<bool>.Failure("EventService not initialized");
+			return Result<bool>.Failure("Event service not available");
 
 		var payload = new
 		{
@@ -36,19 +35,23 @@ public partial class MiningEventService : Node
 			location_id = _eventService.GetCurrentLocationId()
 		};
 
-		return await _eventService.EmitEventAsync("mining/extract_complete", payload);
+		return await EmitEventSafeAsync("mining/extract_complete", payload);
 	}
 
 	/// <summary>
-	/// Emit upgrade purchase event
+	/// Emit upgrade purchase event with validation
 	/// </summary>
 	public async Task<Result<bool>> EmitUpgradePurchaseAsync(
 		UpgradeType upgradeType,
 		int level,
 		Dictionary<GemType, int> cost)
 	{
-		if (_eventService == null)
-			return Result<bool>.Failure("EventService not initialized");
+		// Input validation
+		if (level < 1)
+			return Result<bool>.Failure("Level must be at least 1");
+
+		if (cost == null || cost.Count == 0)
+			return Result<bool>.Failure("Upgrade cost is required");
 
 		// Convert cost dictionary to string keys
 		var costDict = new Dictionary<string, int>();
@@ -64,19 +67,23 @@ public partial class MiningEventService : Node
 			cost = costDict
 		};
 
-		return await _eventService.EmitEventAsync("mining/upgrade_purchase", payload);
+		return await EmitEventSafeAsync("mining/upgrade_purchase", payload);
 	}
 
 	/// <summary>
-	/// Emit credit deposit event when gems are spent for credits
+	/// Emit credit deposit event when gems are spent for credits with validation
 	/// </summary>
 	public async Task<Result<bool>> EmitCreditDepositAsync(
 		GemType gemType,
 		int gemsSpent,
 		int creditsEarned)
 	{
-		if (_eventService == null)
-			return Result<bool>.Failure("EventService not initialized");
+		// Input validation
+		if (gemsSpent < 1)
+			return Result<bool>.Failure("Gems spent must be at least 1");
+
+		if (creditsEarned < 1)
+			return Result<bool>.Failure("Credits earned must be at least 1");
 
 		var payload = new
 		{
@@ -85,89 +92,31 @@ public partial class MiningEventService : Node
 			credits_earned = creditsEarned
 		};
 
-		return await _eventService.EmitEventAsync("mining/credit_deposit", payload);
+		return await EmitEventSafeAsync("mining/credit_deposit", payload);
 	}
 
 	/// <summary>
-	/// Get player's global mining inventory from backend
+	/// Get player's global mining inventory from backend using shared HTTP helper
 	/// </summary>
 	public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid playerId)
 	{
-		if (_eventService == null)
-			return Result<MiningInventoryData>.Failure("EventService not initialized");
+		// Input validation
+		if (playerId == Guid.Empty)
+			return Result<MiningInventoryData>.Failure("Player ID is required");
 
 		try
 		{
-			var httpClient = new HttpClient();
+			// Use shared HTTP helper - handles connection, polling, timeouts
+			var responseResult = await QueryBackendRawAsync($"/game/mining/player/{playerId}/inventory");
+			if (!responseResult.IsSuccess)
+				return Result<MiningInventoryData>.Failure(responseResult.Error);
 
-			// Connect to backend
-			var error = httpClient.ConnectToHost("localhost", 8000);
-			if (error != Error.Ok)
-				return Result<MiningInventoryData>.Failure($"Connection failed: {error}");
+			// Parse JSON response using base class helper
+			var parseResult = ParseJsonResponse(responseResult.Value);
+			if (!parseResult.IsSuccess)
+				return Result<MiningInventoryData>.Failure(parseResult.Error);
 
-			// Wait for connection
-			var attempts = 0;
-			while (httpClient.GetStatus() == HttpClient.Status.Connecting && attempts < 50)
-			{
-				await AutoloadBase.StaticDelayAsync(0.1f);
-				attempts++;
-			}
-
-			if (httpClient.GetStatus() != HttpClient.Status.Connected)
-				return Result<MiningInventoryData>.Failure("Connection timeout");
-
-			// Make HTTP GET request
-			var headers = new[]
-			{
-				"User-Agent: BarBox-Client/1.0",
-				"Accept: application/json"
-			};
-
-			error = httpClient.Request(
-				HttpClient.Method.Get,
-				$"/game/mining/player/{playerId}/inventory",
-				headers
-			);
-
-			if (error != Error.Ok)
-			{
-				httpClient.Close();
-				return Result<MiningInventoryData>.Failure($"Request failed: {error}");
-			}
-
-			// Wait for response
-			attempts = 0;
-			while (httpClient.GetStatus() == HttpClient.Status.Requesting && attempts < 500)
-			{
-				await AutoloadBase.StaticDelayAsync(0.01f);
-				attempts++;
-			}
-
-			if (httpClient.GetStatus() == HttpClient.Status.Requesting)
-			{
-				httpClient.Close();
-				return Result<MiningInventoryData>.Failure("Request timeout");
-			}
-
-			var responseCode = httpClient.GetResponseCode();
-			if (responseCode != 200)
-			{
-				httpClient.Close();
-				return Result<MiningInventoryData>.Failure($"Server returned {responseCode}");
-			}
-
-			// Read response body
-			var responseBodyBytes = httpClient.ReadResponseBodyChunk();
-			httpClient.Close();
-
-			var responseBody = responseBodyBytes.GetStringFromUtf8();
-
-			// Parse JSON response
-			var json = Json.ParseString(responseBody);
-			if (json.Obj == null)
-				return Result<MiningInventoryData>.Failure("Failed to parse response");
-
-			var jsonDict = ((Variant)json.Obj).AsGodotDictionary();
+			var jsonDict = parseResult.Value;
 
 			var inventoryData = new MiningInventoryData
 			{
@@ -184,9 +133,15 @@ public partial class MiningEventService : Node
 
 			return Result<MiningInventoryData>.Success(inventoryData);
 		}
-		catch (Exception ex)
+		catch (FormatException ex)
 		{
-			return Result<MiningInventoryData>.Failure($"Exception: {ex.Message}");
+			LogError($"Invalid data format in inventory response: {ex.Message}");
+			return Result<MiningInventoryData>.Failure("Invalid server response format");
+		}
+		catch (System.Exception ex)
+		{
+			LogError($"Unexpected error retrieving inventory: {ex.Message}");
+			return Result<MiningInventoryData>.Failure("Unable to retrieve inventory data");
 		}
 	}
 }
