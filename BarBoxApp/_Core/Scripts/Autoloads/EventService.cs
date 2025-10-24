@@ -319,6 +319,63 @@ public partial class EventService : AutoloadBase
 	}
 
 	/// <summary>
+	/// Execute GET query against backend API, returning raw JSON string
+	/// Used by game event services for custom JSON parsing
+	/// </summary>
+	public async Task<Result<string>> QueryRawAsync(
+		string endpoint,
+		Dictionary<string, string> queryParams = null
+	)
+	{
+		if (!_isInitialized)
+			return Result<string>.Failure("EventService not initialized");
+
+		try
+		{
+			await EnsureConnectedAsync();
+
+			var url = endpoint;
+			if (queryParams != null && queryParams.Count > 0)
+			{
+				var query = string.Join("&",
+					queryParams.Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
+				url = $"{endpoint}?{query}";
+			}
+
+			var headers = new[]
+			{
+				"User-Agent: BarBox-Client/1.0",
+				"Accept: application/json"
+			};
+
+			var error = _httpClient.Request(Godot.HttpClient.Method.Get, url, headers);
+			if (error != Error.Ok)
+				return Result<string>.Failure($"Query request failed: {error}");
+
+			await WaitForResponseAsync();
+
+			var responseCode = _httpClient.GetResponseCode();
+			if (responseCode != 200)
+			{
+				// Close connection to allow recovery on next request
+				_httpClient.Close();
+				return Result<string>.Failure($"Query failed with code {responseCode}");
+			}
+
+			var bodyBytes = _httpClient.ReadResponseBodyChunk();
+			var bodyText = bodyBytes.GetStringFromUtf8();
+
+			return Result<string>.Success(bodyText);
+		}
+		catch (Exception ex)
+		{
+			// Close connection on exception to ensure clean state
+			_httpClient.Close();
+			return Result<string>.Failure($"Query exception: {ex.Message}");
+		}
+	}
+
+	/// <summary>
 	/// Execute POST request against backend API with JSON body
 	/// </summary>
 	public async Task<Result<TResponse>> PostAsync<TRequest, TResponse>(

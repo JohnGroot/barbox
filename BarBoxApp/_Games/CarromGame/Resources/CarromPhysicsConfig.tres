@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="CarromPhysicsConfig" load_steps=2 format=3 uid="uid://dqa1j8i4cv7rx"]
 
-[ext_resource type="Script" uid="uid://dkfvhygsky5l7" path="res://_Games/CarromGame/Scripts/Logic/CarromPhysicsConfig.cs" id="1_y0unv"]
+[ext_resource type="Script" uid="uid://cse3adl1tcefo" path="res://_Games/CarromGame/Scripts/Logic/CarromPhysicsConfig.cs" id="1_y0unv"]
 
 [resource]
 script = ExtResource("1_y0unv")

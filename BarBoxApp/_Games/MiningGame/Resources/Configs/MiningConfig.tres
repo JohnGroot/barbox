@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="MiningGameConfig" load_steps=7 format=3 uid="uid://b1i5oh72e5nmu"]
 
-[ext_resource type="Script" uid="uid://bnxvy7e0u3oyo" path="res://_Games/MiningGame/Scripts/MiningGameConfig.cs" id="1_4cb8l"]
-[ext_resource type="Script" uid="uid://f6v2hfvt3443" path="res://_Games/MiningGame/Scripts/Data/UpgradeCostData.cs" id="2_upgrade"]
+[ext_resource type="Script" uid="uid://cs5gsntq07owb" path="res://_Games/MiningGame/Scripts/MiningGameConfig.cs" id="1_4cb8l"]
+[ext_resource type="Script" uid="uid://cry6ae4v6lhyx" path="res://_Games/MiningGame/Scripts/Data/UpgradeCostData.cs" id="2_upgrade"]
 
 [sub_resource type="Resource" id="Resource_5oul5"]
 script = ExtResource("2_upgrade")

@@ -40,10 +40,11 @@ namespace BarBox.Games.MiningGame
 		// ================================================================
 		// PRIVATE FIELDS
 		// ================================================================
-		
+
 		private MiningGameUI _ui;
 		private GameEngine _engine;
 		private GameState _state;
+		private MiningEventService _miningEventService;
 
 		// Platform services
 		private GameHost _gameHost;
@@ -67,7 +68,10 @@ namespace BarBox.Games.MiningGame
 		protected override void InitializeGame()
 		{
 			base.InitializeGame();
-			
+
+			// Initialize event service
+			_miningEventService = new MiningEventService();
+
 			DetectAndAdaptToContext();
 			InitializeComponents();
 			
@@ -1037,10 +1041,9 @@ namespace BarBox.Games.MiningGame
 				// else: keep current timer progress for continuous mining
 
 				// Emit event to backend
-				var miningEventService = _game.GetNodeOrNull<MiningEventService>("MiningEventService");
-				if (miningEventService != null)
+				if (_game._miningEventService != null)
 				{
-					_ = miningEventService.EmitExtractCompleteAsync(gemType, extractedAmount);
+					_ = _game._miningEventService.EmitExtractCompleteAsync(gemType, extractedAmount);
 				}
 
 				return true;
@@ -1065,10 +1068,9 @@ namespace BarBox.Games.MiningGame
 				}
 
 				// Emit event to backend
-				var miningEventService = _game.GetNodeOrNull<MiningEventService>("MiningEventService");
-				if (miningEventService != null)
+				if (_game._miningEventService != null)
 				{
-					_ = miningEventService.EmitCreditDepositAsync(_locationTemplate.PrimaryGemType, _game.Config.CreditCost, CREDITS_PER_PURCHASE);
+					_ = _game._miningEventService.EmitCreditDepositAsync(_locationTemplate.PrimaryGemType, _game.Config.CreditCost, CREDITS_PER_PURCHASE);
 				}
 
 				return true;
@@ -1087,10 +1089,9 @@ namespace BarBox.Games.MiningGame
 				SetUpgradeLevel(upgradeType, newLevel);
 
 				// Emit event to backend
-				var miningEventService = _game.GetNodeOrNull<MiningEventService>("MiningEventService");
-				if (miningEventService != null)
+				if (_game._miningEventService != null)
 				{
-					_ = miningEventService.EmitUpgradePurchaseAsync(upgradeType, newLevel, cost);
+					_ = _game._miningEventService.EmitUpgradePurchaseAsync(upgradeType, newLevel, cost);
 				}
 
 				return true;

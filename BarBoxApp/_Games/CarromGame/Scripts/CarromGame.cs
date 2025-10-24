@@ -59,7 +59,8 @@ public partial class CarromGame : GameController
 	private CarromGameMode _carromGameMode = CarromGameMode.Practice;
 	private CarromBoard _board;
 	private CarromInputController _inputController;
-	
+	private CarromEventService _carromEventService;
+
 	// Managers
 	private CarromPracticeModeManager _practiceModeManager;
 	private CarromCompetitiveModeManager _competitiveModeManager;
@@ -93,12 +94,15 @@ public partial class CarromGame : GameController
 		GameId = "carrom_game";
 		SetGameMode(GameMode.Practice); // Start in practice mode
 
+		// Initialize event service
+		_carromEventService = new CarromEventService();
+
 		// Initialize physics config
 		if (PhysicsConfig == null)
 		{
 			PhysicsConfig = new CarromPhysicsConfig();
 		}
-		
+
 		// Initialize systems in explicit order
 		SetupBoard();
 		SetupCameraController();
@@ -1283,8 +1287,7 @@ public partial class CarromGame : GameController
 		try
 		{
 			// Emit event to backend (event-sourced persistence)
-			var carromEventService = GetNodeOrNull<CarromEventService>("CarromEventService");
-			if (carromEventService != null)
+			if (_carromEventService != null)
 			{
 				// Build scores dictionary with player scores
 				// For single-player competitive mode, we only have one player's score
@@ -1299,7 +1302,7 @@ public partial class CarromGame : GameController
 				var mode = _carromGameMode.ToString().ToLowerInvariant();
 				var winnerId = isWin ? playerId : "";
 
-				_ = carromEventService.EmitRoundFinishAsync(mode, winnerId, scores);
+				_ = _carromEventService.EmitRoundFinishAsync(mode, winnerId, scores);
 
 				// Thread-safe logging via CallDeferred
 				CallDeferred(MethodName.LogSavedData, $"Emitted round_finish event - Win: {isWin}");
