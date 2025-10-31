@@ -22,16 +22,16 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (string.IsNullOrEmpty(trackId))
-			return Result<bool>.Failure("Track ID is required");
+			return Result<bool>.Failure(ValidationMessages.Required("Track ID"));
 
 		if (lapNum < 1)
-			return Result<bool>.Failure("Invalid lap number");
+			return Result<bool>.Failure(ValidationMessages.MinValue("Lap number", 1));
 
 		if (lapTime < 0)
-			return Result<bool>.Failure("Invalid lap time");
+			return Result<bool>.Failure(ValidationMessages.MinValue("Lap time", 0));
 
 		if (checkpoints == null || checkpoints.Length == 0)
-			return Result<bool>.Failure("No checkpoint data provided");
+			return Result<bool>.Failure(ValidationMessages.Required("Checkpoint data"));
 
 		// Convert checkpoints array to anonymous objects manually (avoid Linq)
 		var checkpointArray = new object[checkpoints.Length];
@@ -63,16 +63,16 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (raceEntry == null)
-			return Result<bool>.Failure("Race entry cannot be null");
+			return Result<bool>.Failure(ValidationMessages.Required("Race entry"));
 
 		if (string.IsNullOrEmpty(raceEntry.TrackId))
-			return Result<bool>.Failure("Track ID is required");
+			return Result<bool>.Failure(ValidationMessages.Required("Track ID"));
 
 		if (raceEntry.TotalTime < 0)
-			return Result<bool>.Failure("Invalid total time");
+			return Result<bool>.Failure(ValidationMessages.MinValue("Total time", 0));
 
 		if (raceEntry.TotalLaps < 1)
-			return Result<bool>.Failure("Invalid lap count");
+			return Result<bool>.Failure(ValidationMessages.MinValue("Lap count", 1));
 
 		// Convert checkpoints array manually if not null (avoid Linq)
 		object[] checkpointArray = null;
@@ -103,8 +103,19 @@ public class RacingEventService : GameEventServiceBase
 	}
 
 	/// <summary>
-	/// Get racing leaderboard from backend using shared HTTP helper
+	/// Get racing leaderboard from backend
+	/// Aggregates best times from racing events for specified track and metric
 	/// </summary>
+	/// <param name="trackId">Track identifier (e.g., "gocart_track")</param>
+	/// <param name="metric">Leaderboard metric: "best_lap" or "best_race"</param>
+	/// <param name="laps">Required for "best_race" metric (number of laps for the race)</param>
+	/// <param name="limit">Maximum number of entries to return (1-100)</param>
+	/// <returns>Result containing leaderboard data or error message</returns>
+	/// <remarks>
+	/// For "best_lap": Returns fastest single lap time per player
+	/// For "best_race": Returns fastest complete race time, optionally filtered by lap count
+	/// Leaderboard includes lap times array for "best_race" metric
+	/// </remarks>
 	public async Task<Result<RacingLeaderboardData>> GetLeaderboardAsync(
 		string trackId,
 		string metric = "best_race",
@@ -113,87 +124,93 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (string.IsNullOrEmpty(trackId))
-			return Result<RacingLeaderboardData>.Failure("Track ID is required");
+			return Result<RacingLeaderboardData>.Failure(ValidationMessages.Required("Track ID"));
 
-		if (limit < 1 || limit > 100)
-			return Result<RacingLeaderboardData>.Failure("Limit must be between 1 and 100");
+		var limitValidation = ValidateLeaderboardLimit(limit);
+		if (!limitValidation.IsSuccess)
+			return Result<RacingLeaderboardData>.Failure(limitValidation.Error);
 
-		try
+		// Build query parameters
+		var queryParams = new Dictionary<string, string>
 		{
-			// Build query parameters
-			var queryParams = new Dictionary<string, string>
+			{ "track_id", trackId },
+			{ "metric", metric },
+			{ "limit", limit.ToString() }
+		};
+
+		if (laps.HasValue)
+			queryParams["laps"] = laps.Value.ToString();
+
+		return await QueryBackendAsync(
+			"/game/racing/leaderboard",
+			queryParams,
+			jsonDict => ParseLeaderboardData(jsonDict, metric)
+		);
+	}
+
+	private Result<RacingLeaderboardData> ParseLeaderboardData(Godot.Collections.Dictionary jsonDict, string metric)
+	{
+		if (!jsonDict.ContainsKey(JsonFieldNames.TrackId))
+			return Result<RacingLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.TrackId}");
+
+		if (!jsonDict.ContainsKey(JsonFieldNames.Metric))
+			return Result<RacingLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.Metric}");
+
+		if (!jsonDict.ContainsKey(JsonFieldNames.Leaderboard))
+			return Result<RacingLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.Leaderboard}");
+
+		var leaderboardData = new RacingLeaderboardData
+		{
+			TrackId = jsonDict[JsonFieldNames.TrackId].AsString(),
+			Metric = jsonDict[JsonFieldNames.Metric].AsString(),
+			Leaderboard = new List<RacingLeaderboardEntry>()
+		};
+
+		var leaderboardArray = jsonDict[JsonFieldNames.Leaderboard].AsGodotArray();
+		foreach (var entry in leaderboardArray)
+		{
+			var entryDict = entry.AsGodotDictionary();
+
+			var playerIdResult = JsonParsingHelpers.ParseGuid(entryDict, JsonFieldNames.PlayerId);
+			var entryDateResult = JsonParsingHelpers.ParseDateTime(entryDict, JsonFieldNames.EntryDate);
+
+			if (!playerIdResult.IsSuccess) return Result<RacingLeaderboardData>.Failure(playerIdResult.Error);
+			if (!entryDateResult.IsSuccess) return Result<RacingLeaderboardData>.Failure(entryDateResult.Error);
+
+			if (!entryDict.ContainsKey(JsonFieldNames.Username))
+				return Result<RacingLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.Username}");
+
+			if (!entryDict.ContainsKey(JsonFieldNames.MetricValue))
+				return Result<RacingLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.MetricValue}");
+
+			var leaderboardEntry = new RacingLeaderboardEntry
 			{
-				{ "track_id", trackId },
-				{ "metric", metric },
-				{ "limit", limit.ToString() }
+				PlayerId = playerIdResult.Value,
+				Username = entryDict[JsonFieldNames.Username].AsString(),
+				MetricValue = (float)entryDict[JsonFieldNames.MetricValue].AsDouble(),
+				EntryDate = entryDateResult.Value
 			};
 
-			if (laps.HasValue)
-				queryParams["laps"] = laps.Value.ToString();
-
-			// Use shared HTTP helper - handles connection, polling, timeouts
-			var responseResult = await QueryBackendRawAsync("/game/racing/leaderboard", queryParams);
-			if (!responseResult.IsSuccess)
-				return Result<RacingLeaderboardData>.Failure(responseResult.Error);
-
-			// Parse JSON response using base class helper
-			var parseResult = ParseJsonResponse(responseResult.Value);
-			if (!parseResult.IsSuccess)
-				return Result<RacingLeaderboardData>.Failure(parseResult.Error);
-
-			var jsonDict = parseResult.Value;
-
-			var leaderboardData = new RacingLeaderboardData
+			// Parse lap_times if present (only for best_race metric)
+			if (!JsonParsingHelpers.IsNullOrMissing(entryDict, JsonFieldNames.LapTimes))
 			{
-				TrackId = jsonDict["track_id"].AsString(),
-				Metric = jsonDict["metric"].AsString(),
-				Leaderboard = new List<RacingLeaderboardEntry>()
-			};
-
-			var leaderboardArray = jsonDict["leaderboard"].AsGodotArray();
-			foreach (var entry in leaderboardArray)
-			{
-				var entryDict = entry.AsGodotDictionary();
-
-				var leaderboardEntry = new RacingLeaderboardEntry
+				var lapTimesJson = entryDict[JsonFieldNames.LapTimes].AsString();
+				var lapTimesResult = Json.ParseString(lapTimesJson);
+				if (lapTimesResult.Obj != null)
 				{
-					PlayerId = Guid.Parse(entryDict["player_id"].AsString()),
-					Username = entryDict["username"].AsString(),
-					MetricValue = (float)entryDict["metric_value"].AsDouble(),
-					EntryDate = DateTime.Parse(entryDict["entry_date"].AsString())
-				};
-
-				// Parse lap_times if present
-				if (entryDict.ContainsKey("lap_times") && entryDict["lap_times"].VariantType != Variant.Type.Nil)
-				{
-					var lapTimesJson = entryDict["lap_times"].AsString();
-					var lapTimesResult = Json.ParseString(lapTimesJson);
-					if (lapTimesResult.Obj != null)
+					var lapTimesArray = ((Variant)lapTimesResult.Obj).AsGodotArray();
+					leaderboardEntry.LapTimes = new float[lapTimesArray.Count];
+					for (int i = 0; i < lapTimesArray.Count; i++)
 					{
-						var lapTimesArray = ((Variant)lapTimesResult.Obj).AsGodotArray();
-						leaderboardEntry.LapTimes = new float[lapTimesArray.Count];
-						for (int i = 0; i < lapTimesArray.Count; i++)
-						{
-							leaderboardEntry.LapTimes[i] = (float)lapTimesArray[i].AsDouble();
-						}
+						leaderboardEntry.LapTimes[i] = (float)lapTimesArray[i].AsDouble();
 					}
 				}
-
-				leaderboardData.Leaderboard.Add(leaderboardEntry);
 			}
 
-			return Result<RacingLeaderboardData>.Success(leaderboardData);
+			leaderboardData.Leaderboard.Add(leaderboardEntry);
 		}
-		catch (FormatException ex)
-		{
-			LogError($"Invalid data format in leaderboard response: {ex.Message}");
-			return Result<RacingLeaderboardData>.Failure("Invalid server response format");
-		}
-		catch (System.Exception ex)
-		{
-			LogError($"Unexpected error retrieving leaderboard: {ex.Message}");
-			return Result<RacingLeaderboardData>.Failure("Unable to retrieve leaderboard data");
-		}
+
+		return Result<RacingLeaderboardData>.Success(leaderboardData);
 	}
 }
 

@@ -22,7 +22,7 @@ public class MiningEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (quantity < 1)
-			return Result<bool>.Failure("Quantity must be at least 1");
+			return Result<bool>.Failure(ValidationMessages.MinValue("Quantity", 1));
 
 		// Check EventService availability (required for location_id)
 		if (_eventService == null)
@@ -57,13 +57,13 @@ public class MiningEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (level < 1)
-			return Result<bool>.Failure("Level must be at least 1");
+			return Result<bool>.Failure(ValidationMessages.MinValue("Level", 1));
 
 		if (cost == null || cost.Count == 0)
-			return Result<bool>.Failure("Upgrade cost is required");
+			return Result<bool>.Failure(ValidationMessages.Required("Upgrade cost"));
 
 		if (string.IsNullOrEmpty(locationId))
-			return Result<bool>.Failure("Location ID is required");
+			return Result<bool>.Failure(ValidationMessages.Required("Location ID"));
 
 		// Convert cost dictionary to string keys
 		var costDict = new Dictionary<string, int>();
@@ -93,10 +93,10 @@ public class MiningEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (gemsSpent < 1)
-			return Result<bool>.Failure("Gems spent must be at least 1");
+			return Result<bool>.Failure(ValidationMessages.MinValue("Gems spent", 1));
 
 		if (creditsEarned < 1)
-			return Result<bool>.Failure("Credits earned must be at least 1");
+			return Result<bool>.Failure(ValidationMessages.MinValue("Credits earned", 1));
 
 		var payload = new
 		{
@@ -115,10 +115,10 @@ public class MiningEventService : GameEventServiceBase
 {
 	// Input validation
 	if (string.IsNullOrEmpty(locationId))
-		return Result<bool>.Failure("Location ID is required");
+		return Result<bool>.Failure(ValidationMessages.Required("Location ID"));
 
 	if (pendingGems < 0)
-		return Result<bool>.Failure("Pending gems cannot be negative");
+		return Result<bool>.Failure(ValidationMessages.MinValue("Pending gems", 0));
 
 	var payload = new
 	{
@@ -137,11 +137,13 @@ public class MiningEventService : GameEventServiceBase
 	public async Task<Result<Guid>> CreateSessionAsync(Guid boxId, Guid playerId)
 	{
 		// Input validation
-		if (boxId == Guid.Empty)
-			return Result<Guid>.Failure("Box ID is required");
+		var boxValidation = ValidateGuid(boxId, "Box ID");
+		if (!boxValidation.IsSuccess)
+			return Result<Guid>.Failure(boxValidation.Error);
 
-		if (playerId == Guid.Empty)
-			return Result<Guid>.Failure("Player ID is required");
+		var playerValidation = ValidateGuid(playerId, "Player ID");
+		if (!playerValidation.IsSuccess)
+			return Result<Guid>.Failure(playerValidation.Error);
 
 		if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
 			return Result<Guid>.Failure("Event service not available");
@@ -158,203 +160,186 @@ public class MiningEventService : GameEventServiceBase
 	}
 
 /// <summary>
-/// Get player's global mining inventory from backend using shared HTTP helper
+/// Get player's global mining inventory from backend
+/// Aggregates all extracted gems minus spent gems from upgrades/credits
 /// </summary>
+/// <param name="playerId">Player UUID to query inventory for</param>
+/// <returns>Result containing inventory data or error message</returns>
+/// <remarks>
+/// Inventory is calculated as: extracted gems - upgrade costs - credit deposits
+/// Returns only gem types with positive quantities
+/// </remarks>
 public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid playerId)
 	{
 		// Input validation
-		if (playerId == Guid.Empty)
-			return Result<MiningInventoryData>.Failure("Player ID is required");
+		var validation = ValidateGuid(playerId, "Player ID");
+		if (!validation.IsSuccess)
+			return Result<MiningInventoryData>.Failure(validation.Error);
 
-		try
+		return await QueryBackendAsync(
+			$"/game/mining/player/{playerId}/inventory",
+			null,
+			ParseInventoryData
+		);
+	}
+
+	private Result<MiningInventoryData> ParseInventoryData(Godot.Collections.Dictionary jsonDict)
+	{
+		var playerIdResult = JsonParsingHelpers.ParseGuid(jsonDict, JsonFieldNames.PlayerId);
+		var lastUpdatedResult = JsonParsingHelpers.ParseDateTime(jsonDict, JsonFieldNames.LastUpdated);
+		var gemsResult = JsonParsingHelpers.ParseIntDictionary(jsonDict, JsonFieldNames.Gems);
+
+		if (!playerIdResult.IsSuccess) return Result<MiningInventoryData>.Failure(playerIdResult.Error);
+		if (!lastUpdatedResult.IsSuccess) return Result<MiningInventoryData>.Failure(lastUpdatedResult.Error);
+		if (!gemsResult.IsSuccess) return Result<MiningInventoryData>.Failure(gemsResult.Error);
+
+		return Result<MiningInventoryData>.Success(new MiningInventoryData
 		{
-			// Use shared HTTP helper - handles connection, polling, timeouts
-			var responseResult = await QueryBackendRawAsync($"/game/mining/player/{playerId}/inventory");
-			if (!responseResult.IsSuccess)
-				return Result<MiningInventoryData>.Failure(responseResult.Error);
-
-			// Parse JSON response using base class helper
-			var parseResult = ParseJsonResponse(responseResult.Value);
-			if (!parseResult.IsSuccess)
-				return Result<MiningInventoryData>.Failure(parseResult.Error);
-
-			var jsonDict = parseResult.Value;
-
-			var inventoryData = new MiningInventoryData
-			{
-				PlayerId = Guid.Parse(jsonDict["player_id"].AsString()),
-				LastUpdated = DateTime.Parse(jsonDict["last_updated"].AsString()),
-				Gems = new Dictionary<string, int>()
-			};
-
-			Variant gemsVariant = jsonDict["gems"];
-			var gemsDict = gemsVariant.AsGodotDictionary();
-			foreach (var key in gemsDict.Keys)
-			{
-				inventoryData.Gems[key.AsString()] = gemsDict[key].AsInt32();
-			}
-
-			return Result<MiningInventoryData>.Success(inventoryData);
-		}
-		catch (FormatException ex)
-		{
-			LogError($"Invalid data format in inventory response: {ex.Message}");
-			return Result<MiningInventoryData>.Failure("Invalid server response format");
-		}
-		catch (System.Exception ex)
-		{
-			LogError($"Unexpected error retrieving inventory: {ex.Message}");
-			return Result<MiningInventoryData>.Failure("Unable to retrieve inventory data");
-		}
+			PlayerId = playerIdResult.Value,
+			LastUpdated = lastUpdatedResult.Value,
+			Gems = gemsResult.Value
+		});
 	}
 
 	/// <summary>
-	/// Get player's upgrade levels from backend using shared HTTP helper
+	/// Get player's upgrade levels from backend
+	/// Returns the current level for each purchased upgrade type
 	/// </summary>
+	/// <param name="playerId">Player UUID to query upgrades for</param>
+	/// <returns>Result containing upgrade data or error message</returns>
+	/// <remarks>
+	/// Upgrade levels are tracked globally across all locations
+	/// Only returns upgrade types that have been purchased (level > 0)
+	/// </remarks>
 	public async Task<Result<MiningUpgradesData>> GetPlayerUpgradesAsync(Guid playerId)
 	{
 		// Input validation
-		if (playerId == Guid.Empty)
-			return Result<MiningUpgradesData>.Failure("Player ID is required");
+		var validation = ValidateGuid(playerId, "Player ID");
+		if (!validation.IsSuccess)
+			return Result<MiningUpgradesData>.Failure(validation.Error);
 
-		try
+		return await QueryBackendAsync(
+			$"/game/mining/player/{playerId}/upgrades",
+			null,
+			ParseUpgradesData
+		);
+	}
+
+	private Result<MiningUpgradesData> ParseUpgradesData(Godot.Collections.Dictionary jsonDict)
+	{
+		var playerIdResult = JsonParsingHelpers.ParseGuid(jsonDict, JsonFieldNames.PlayerId);
+		var lastUpdatedResult = JsonParsingHelpers.ParseDateTime(jsonDict, JsonFieldNames.LastUpdated);
+		var upgradesResult = JsonParsingHelpers.ParseIntDictionary(jsonDict, JsonFieldNames.Upgrades);
+
+		if (!playerIdResult.IsSuccess) return Result<MiningUpgradesData>.Failure(playerIdResult.Error);
+		if (!lastUpdatedResult.IsSuccess) return Result<MiningUpgradesData>.Failure(lastUpdatedResult.Error);
+		if (!upgradesResult.IsSuccess) return Result<MiningUpgradesData>.Failure(upgradesResult.Error);
+
+		return Result<MiningUpgradesData>.Success(new MiningUpgradesData
 		{
-			// Use shared HTTP helper
-			var responseResult = await QueryBackendRawAsync($"/game/mining/player/{playerId}/upgrades");
-			if (!responseResult.IsSuccess)
-				return Result<MiningUpgradesData>.Failure(responseResult.Error);
-
-			// Parse JSON response using base class helper
-			var parseResult = ParseJsonResponse(responseResult.Value);
-			if (!parseResult.IsSuccess)
-				return Result<MiningUpgradesData>.Failure(parseResult.Error);
-
-			var jsonDict = parseResult.Value;
-
-			var upgradesData = new MiningUpgradesData
-			{
-				PlayerId = Guid.Parse(jsonDict["player_id"].AsString()),
-				LastUpdated = DateTime.Parse(jsonDict["last_updated"].AsString()),
-				Upgrades = new Dictionary<string, int>()
-			};
-
-			Variant upgradesVariant = jsonDict["upgrades"];
-			var upgradesDict = upgradesVariant.AsGodotDictionary();
-			foreach (var key in upgradesDict.Keys)
-			{
-				upgradesData.Upgrades[key.AsString()] = upgradesDict[key].AsInt32();
-			}
-
-			return Result<MiningUpgradesData>.Success(upgradesData);
-		}
-		catch (FormatException ex)
-		{
-			LogError($"Invalid data format in upgrades response: {ex.Message}");
-			return Result<MiningUpgradesData>.Failure("Invalid server response format");
-		}
-		catch (System.Exception ex)
-		{
-			LogError($"Unexpected error retrieving upgrades: {ex.Message}");
-			return Result<MiningUpgradesData>.Failure("Unable to retrieve upgrade data");
-		}
+			PlayerId = playerIdResult.Value,
+			LastUpdated = lastUpdatedResult.Value,
+			Upgrades = upgradesResult.Value
+		});
 	}
 
 	/// <summary>
-	/// Get player's last mining timestamp for a location from backend
+	/// Get player's last mining timestamp for a specific location
+	/// Used to calculate offline gem accumulation when player returns
 	/// </summary>
+	/// <param name="playerId">Player UUID to query timestamp for</param>
+	/// <param name="locationId">Location identifier (e.g., "mining_cave_1")</param>
+	/// <returns>Result containing timestamp data or error message</returns>
+	/// <remarks>
+	/// Timestamps are location-specific to support different mining areas
+	/// Updated by mining/tick_update events during active gameplay
+	/// </remarks>
 	public async Task<Result<MiningTimestampData>> GetPlayerMiningTimestampAsync(Guid playerId, string locationId)
 	{
 		// Input validation
-		if (playerId == Guid.Empty)
-			return Result<MiningTimestampData>.Failure("Player ID is required");
+		var validation = ValidateGuid(playerId, "Player ID");
+		if (!validation.IsSuccess)
+			return Result<MiningTimestampData>.Failure(validation.Error);
 
 		if (string.IsNullOrEmpty(locationId))
-			return Result<MiningTimestampData>.Failure("Location ID is required");
+			return Result<MiningTimestampData>.Failure(ValidationMessages.Required("Location ID"));
 
-		try
+		var queryParams = new Dictionary<string, string> { ["location_id"] = locationId };
+		return await QueryBackendAsync(
+			$"/game/mining/player/{playerId}/mining_timestamp",
+			queryParams,
+			ParseTimestampData
+		);
+	}
+
+	private Result<MiningTimestampData> ParseTimestampData(Godot.Collections.Dictionary jsonDict)
+	{
+		var playerIdResult = JsonParsingHelpers.ParseGuid(jsonDict, JsonFieldNames.PlayerId);
+		var lastMiningTimeResult = JsonParsingHelpers.ParseDateTime(jsonDict, JsonFieldNames.LastMiningTime);
+
+		if (!playerIdResult.IsSuccess) return Result<MiningTimestampData>.Failure(playerIdResult.Error);
+		if (!lastMiningTimeResult.IsSuccess) return Result<MiningTimestampData>.Failure(lastMiningTimeResult.Error);
+
+		if (!jsonDict.ContainsKey(JsonFieldNames.LocationId))
+			return Result<MiningTimestampData>.Failure($"Missing required field: {JsonFieldNames.LocationId}");
+
+		return Result<MiningTimestampData>.Success(new MiningTimestampData
 		{
-			// Query with location_id as query parameter
-			var queryParams = new Dictionary<string, string> { ["location_id"] = locationId };
-			var responseResult = await QueryBackendRawAsync($"/game/mining/player/{playerId}/mining_timestamp", queryParams);
-			if (!responseResult.IsSuccess)
-				return Result<MiningTimestampData>.Failure(responseResult.Error);
-
-			// Parse JSON response using base class helper
-			var parseResult = ParseJsonResponse(responseResult.Value);
-			if (!parseResult.IsSuccess)
-				return Result<MiningTimestampData>.Failure(parseResult.Error);
-
-			var jsonDict = parseResult.Value;
-
-			var timestampData = new MiningTimestampData
-			{
-				PlayerId = Guid.Parse(jsonDict["player_id"].AsString()),
-				LocationId = jsonDict["location_id"].AsString(),
-				LastMiningTime = DateTime.Parse(jsonDict["last_mining_time"].AsString())
-			};
-
-			return Result<MiningTimestampData>.Success(timestampData);
-		}
-		catch (FormatException ex)
-		{
-			LogError($"Invalid data format in timestamp response: {ex.Message}");
-			return Result<MiningTimestampData>.Failure("Invalid server response format");
-		}
-		catch (System.Exception ex)
-		{
-			LogError($"Unexpected error retrieving mining timestamp: {ex.Message}");
-			return Result<MiningTimestampData>.Failure("Unable to retrieve timestamp data");
-		}
+			PlayerId = playerIdResult.Value,
+			LocationId = jsonDict[JsonFieldNames.LocationId].AsString(),
+			LastMiningTime = lastMiningTimeResult.Value
+		});
 	}
 
 	/// <summary>
 	/// Get player's mining metadata from backend
+	/// Includes bonus status and lifetime event statistics
 	/// </summary>
+	/// <param name="playerId">Player UUID to query metadata for</param>
+	/// <returns>Result containing metadata or error message</returns>
+	/// <remarks>
+	/// Metadata tracks player engagement and bonus eligibility
+	/// HasReceivedBonus is used for one-time first-play rewards
+	/// Event timestamps help track player activity patterns
+	/// </remarks>
 	public async Task<Result<MiningMetadataData>> GetPlayerMetadataAsync(Guid playerId)
 	{
 		// Input validation
-		if (playerId == Guid.Empty)
-			return Result<MiningMetadataData>.Failure("Player ID is required");
+		var validation = ValidateGuid(playerId, "Player ID");
+		if (!validation.IsSuccess)
+			return Result<MiningMetadataData>.Failure(validation.Error);
 
-		try
+		return await QueryBackendAsync(
+			$"/game/mining/player/{playerId}/metadata",
+			null,
+			ParseMetadataData
+		);
+	}
+
+	private Result<MiningMetadataData> ParseMetadataData(Godot.Collections.Dictionary jsonDict)
+	{
+		var playerIdResult = JsonParsingHelpers.ParseGuid(jsonDict, JsonFieldNames.PlayerId);
+		var firstEventTimeResult = JsonParsingHelpers.ParseNullableDateTime(jsonDict, JsonFieldNames.FirstEventTime);
+		var lastEventTimeResult = JsonParsingHelpers.ParseNullableDateTime(jsonDict, JsonFieldNames.LastEventTime);
+
+		if (!playerIdResult.IsSuccess) return Result<MiningMetadataData>.Failure(playerIdResult.Error);
+		if (!firstEventTimeResult.IsSuccess) return Result<MiningMetadataData>.Failure(firstEventTimeResult.Error);
+		if (!lastEventTimeResult.IsSuccess) return Result<MiningMetadataData>.Failure(lastEventTimeResult.Error);
+
+		if (!jsonDict.ContainsKey(JsonFieldNames.HasReceivedBonus))
+			return Result<MiningMetadataData>.Failure($"Missing required field: {JsonFieldNames.HasReceivedBonus}");
+
+		if (!jsonDict.ContainsKey(JsonFieldNames.TotalEvents))
+			return Result<MiningMetadataData>.Failure($"Missing required field: {JsonFieldNames.TotalEvents}");
+
+		return Result<MiningMetadataData>.Success(new MiningMetadataData
 		{
-			// Use shared HTTP helper
-			var responseResult = await QueryBackendRawAsync($"/game/mining/player/{playerId}/metadata");
-			if (!responseResult.IsSuccess)
-				return Result<MiningMetadataData>.Failure(responseResult.Error);
-
-			// Parse JSON response using base class helper
-			var parseResult = ParseJsonResponse(responseResult.Value);
-			if (!parseResult.IsSuccess)
-				return Result<MiningMetadataData>.Failure(parseResult.Error);
-
-			var jsonDict = parseResult.Value;
-
-			var metadataData = new MiningMetadataData
-			{
-				PlayerId = Guid.Parse(jsonDict["player_id"].AsString()),
-				HasReceivedBonus = jsonDict["has_received_bonus"].AsBool(),
-				TotalEvents = jsonDict["total_events"].AsInt32(),
-				FirstEventTime = jsonDict.ContainsKey("first_event_time") && jsonDict["first_event_time"].VariantType != Godot.Variant.Type.Nil
-					? DateTime.Parse(jsonDict["first_event_time"].AsString())
-					: (DateTime?)null,
-				LastEventTime = jsonDict.ContainsKey("last_event_time") && jsonDict["last_event_time"].VariantType != Godot.Variant.Type.Nil
-					? DateTime.Parse(jsonDict["last_event_time"].AsString())
-					: (DateTime?)null
-			};
-
-			return Result<MiningMetadataData>.Success(metadataData);
-		}
-		catch (FormatException ex)
-		{
-			LogError($"Invalid data format in metadata response: {ex.Message}");
-			return Result<MiningMetadataData>.Failure("Invalid server response format");
-		}
-		catch (System.Exception ex)
-		{
-			LogError($"Unexpected error retrieving metadata: {ex.Message}");
-			return Result<MiningMetadataData>.Failure("Unable to retrieve metadata");
-		}
+			PlayerId = playerIdResult.Value,
+			HasReceivedBonus = jsonDict[JsonFieldNames.HasReceivedBonus].AsBool(),
+			TotalEvents = jsonDict[JsonFieldNames.TotalEvents].AsInt32(),
+			FirstEventTime = firstEventTimeResult.Value,
+			LastEventTime = lastEventTimeResult.Value
+		});
 	}
 
 	/// <summary>
@@ -363,11 +348,12 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 	public async Task<Result<bool>> EmitFirstTimeBonusAsync(Guid playerId, string locationId, int bonusAmount)
 	{
 		// Input validation
-		if (playerId == Guid.Empty)
-			return Result<bool>.Failure("Player ID is required");
+		var validation = ValidateGuid(playerId, "Player ID");
+		if (!validation.IsSuccess)
+			return Result<bool>.Failure(validation.Error);
 
 		if (bonusAmount < 1)
-			return Result<bool>.Failure("Bonus amount must be at least 1");
+			return Result<bool>.Failure(ValidationMessages.MinValue("Bonus amount", 1));
 
 		var payload = new
 		{
