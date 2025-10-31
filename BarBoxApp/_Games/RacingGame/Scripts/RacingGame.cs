@@ -160,7 +160,7 @@ public partial class RacingGame : GameController
 		SetGameMode(GameMode.Practice); // Start in practice mode
 
 		// Initialize event service
-		_racingEventService = new RacingEventService();
+		_racingEventService = new RacingEventService(EventService.GetInstance());
 
 		// Initialize systems - no special context handling needed
 		// Login is required for data persistence, but games work without it

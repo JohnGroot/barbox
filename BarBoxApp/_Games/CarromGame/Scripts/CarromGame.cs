@@ -95,7 +95,7 @@ public partial class CarromGame : GameController
 		SetGameMode(GameMode.Practice); // Start in practice mode
 
 		// Initialize event service
-		_carromEventService = new CarromEventService();
+		_carromEventService = new CarromEventService(EventService.GetInstance());
 
 		// Initialize physics config
 		if (PhysicsConfig == null)

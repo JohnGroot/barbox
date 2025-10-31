@@ -70,7 +70,7 @@ namespace BarBox.Games.MiningGame
 			base.InitializeGame();
 
 			// Initialize event service
-			_miningEventService = new MiningEventService();
+			_miningEventService = new MiningEventService(EventService.GetInstance());
 
 			DetectAndAdaptToContext();
 			InitializeComponents();
