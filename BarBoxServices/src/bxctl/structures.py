@@ -56,6 +56,7 @@ SessionEventType = Literal[
     "mining/extract_complete",
     "mining/upgrade_purchase",
     "mining/credit_deposit",
+    "mining/tick_update",
     # Carrom game events
     "carrom/round_start",
     "carrom/piece_pocketed",
@@ -157,6 +158,26 @@ class MiningInventoryResponse(BaseModel):
     player_id: UUID
     gems: dict[str, int]  # {gem_type: quantity}
     last_updated: datetime
+
+
+class MiningUpgradesResponse(BaseModel):
+    player_id: UUID
+    upgrades: dict[str, int]  # {upgrade_type: level}
+    last_updated: datetime
+
+
+class MiningTimestampResponse(BaseModel):
+    player_id: UUID
+    location_id: str
+    last_mining_time: datetime
+
+
+class MiningMetadataResponse(BaseModel):
+    player_id: UUID
+    has_received_bonus: bool
+    total_events: int
+    first_event_time: datetime | None
+    last_event_time: datetime | None
 
 
 # ============= CARROM GAME STRUCTURES =============
