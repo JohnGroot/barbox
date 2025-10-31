@@ -72,7 +72,7 @@ public class GameEventServiceBase
 		if (json.Obj == null)
 			return Result<Godot.Collections.Dictionary>.Failure("Failed to parse JSON response");
 
-		var jsonDict = ((Variant)json.Obj).AsGodotDictionary();
+		var jsonDict = json.AsGodotDictionary();
 		return Result<Godot.Collections.Dictionary>.Success(jsonDict);
 	}
 
