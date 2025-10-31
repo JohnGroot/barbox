@@ -14,10 +14,12 @@ class _Settings(BaseSettings):
     - ENV: Environment mode (local/test/prod), defaults to "local"
     - SQLITE_PATH: Path to SQLite database file, defaults to "app.db"
     - REDIS_URL: Redis connection URL (for future use)
+    - DROP_DB_ON_STARTUP: Drop and recreate database on startup (defaults to False)
     """
     env: Environment = "local"
     sqlite_path: str = "app.db"
     redis_url: str = ""
+    drop_db_on_startup: bool = False
 
     @property
     def db_url(self) -> str:
@@ -35,6 +37,10 @@ class _Settings(BaseSettings):
     def is_dev_mode(self) -> bool:
         """Check if running in local development environment"""
         return self.env == "local"
+
+    def should_drop_database(self) -> bool:
+        """Check if database should be dropped on startup (only in dev mode with explicit flag)"""
+        return self.is_dev_mode() and self.drop_db_on_startup
 
 
 @cache

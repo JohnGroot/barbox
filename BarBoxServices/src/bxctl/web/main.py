@@ -5,6 +5,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from structlog import get_logger
 
+from bxctl import env
 from bxctl.db.connectivity import engine
 from bxctl.db.defs import Base
 
@@ -15,10 +16,20 @@ logger = get_logger()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    settings = env.acquire()
+
     async with engine.begin() as conn:
+        # Optional: Drop database for clean testing
+        if settings.should_drop_database():
+            logger.info("Development mode: Dropping and recreating database")
+            await conn.run_sync(Base.metadata.drop_all)
+
+        # Always create missing tables
         await conn.run_sync(Base.metadata.create_all)
+        logger.info(f"Database ready in {settings.env} mode (drop_on_startup={settings.drop_db_on_startup})")
+
         yield
-        # Database persists across restarts - no drop_all
+        # No cleanup on shutdown - preserve data
 
 
 app = FastAPI(title="BXCTL API", version="0.1.0", lifespan=lifespan)
