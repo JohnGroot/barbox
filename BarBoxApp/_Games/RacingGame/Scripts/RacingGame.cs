@@ -497,7 +497,7 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Save race completion via event-sourced backend
+	/// Save race completion via event-sourced backend with retry logic
 	/// Emits racing/race_finish event instead of CRUD operation
 	/// </summary>
 	private async Task SaveGlobalHighScore(string playerId, float totalTime)
@@ -512,39 +512,108 @@ public partial class RacingGame : GameController
 			return;
 		}
 
-		// Fire-and-forget event emission with proper error handling
+		// Create complete race entry with comprehensive timing data
+		var raceEntry = new RaceEntry(
+			RaceId: RaceDatabase.GenerateRaceId(),
+			Date: DateTime.UtcNow,
+			TrackId: _currentTrackId,
+			PlayerId: playerId,
+			Username: "", // Backend will populate from player_id
+			TotalLaps: _targetLaps,
+			TotalTime: totalTime,
+			LapTimes: GetPlayerLapTimes(playerId).ToArray(),
+			Checkpoints: GetPlayerCheckpointTimes(playerId)
+		);
+
+		// Retry logic with exponential backoff
+		const int MAX_RETRIES = 3;
+		for (int attempt = 1; attempt <= MAX_RETRIES; attempt++)
+		{
+			try
+			{
+				var result = await _racingEventService.EmitRaceFinishAsync(raceEntry);
+				if (result.IsSuccess)
+				{
+					CallDeferred(MethodName.LogRaceSaved, totalTime, _currentTrackId);
+					return; // SUCCESS - exit retry loop
+				}
+				else
+				{
+					GD.PrintErr($"[RacingGame] Race save attempt {attempt} failed: {result.Error}");
+
+					if (attempt < MAX_RETRIES)
+					{
+						await Task.Delay(1000 * attempt); // Exponential backoff
+					}
+					else
+					{
+						// Final retry failed - log for potential offline queue implementation
+						CallDeferred(MethodName.LogHighScoreError, $"Failed after {MAX_RETRIES} attempts: {result.Error}");
+						GD.Print($"[RacingGame] Race data could be queued for offline sync: Track={_currentTrackId}, Time={totalTime}");
+					}
+				}
+			}
+			catch (System.Exception ex)
+			{
+				GD.PrintErr($"[RacingGame] Exception on attempt {attempt}: {ex.Message}");
+				if (attempt == MAX_RETRIES)
+				{
+					CallDeferred(MethodName.LogAsyncError, $"Exception after {MAX_RETRIES} attempts: {ex.Message}");
+				}
+				else
+				{
+					await Task.Delay(1000 * attempt); // Wait before retry
+				}
+			}
+		}
+	}
+
+	/// <summary>
+	/// Save partial race data when race is abandoned mid-way
+	/// Preserves lap times and progress for incomplete races
+	/// </summary>
+	private async Task SavePartialRaceData(string playerId, string reason)
+	{
+		if (string.IsNullOrEmpty(playerId))
+			return;
+
+		// Check RacingEventService availability
+		if (_racingEventService == null)
+		{
+			GD.PrintErr("[RacingGame] RacingEventService not found - cannot save partial race");
+			return;
+		}
+
+		// Only save if player has completed at least partial progress
+		var lapTimes = GetPlayerLapTimes(playerId);
+		var completedLaps = GetPlayerCurrentLap(playerId);
+
+		// Don't save if no progress made
+		if (lapTimes.Count == 0 && completedLaps == 0)
+			return;
+
 		try
 		{
-			// Create complete race entry with comprehensive timing data
-			var raceEntry = new RaceEntry(
-				RaceId: RaceDatabase.GenerateRaceId(),
-				Date: DateTime.Now,
-				TrackId: _currentTrackId,
-				PlayerId: playerId,
-				Username: "", // Backend will populate from player_id
-				TotalLaps: _targetLaps,
-				TotalTime: totalTime,
-				LapTimes: GetPlayerLapTimes(playerId).ToArray(),
-				Checkpoints: GetPlayerCheckpointTimes(playerId)
+			var result = await _racingEventService.EmitRaceAbandonedAsync(
+				_currentTrackId,
+				playerId,
+				completedLaps,
+				lapTimes.ToArray(),
+				reason
 			);
 
-			// Emit race finish event to backend
-			var result = await _racingEventService.EmitRaceFinishAsync(raceEntry);
 			if (result.IsSuccess)
 			{
-				// Event successfully submitted - backend will handle aggregation
-				CallDeferred(MethodName.LogRaceSaved, totalTime, _currentTrackId);
+				GD.Print($"[RacingGame] Partial race data saved - Laps: {completedLaps}, Reason: {reason}");
 			}
 			else
 			{
-				// Thread-safe error logging via CallDeferred
-				CallDeferred(MethodName.LogHighScoreError, result.Error);
+				GD.PrintErr($"[RacingGame] Failed to save partial race data: {result.Error}");
 			}
 		}
 		catch (System.Exception ex)
 		{
-			// Thread-safe error logging via CallDeferred
-			CallDeferred(MethodName.LogAsyncError, $"Exception saving high score: {ex.Message}");
+			GD.PrintErr($"[RacingGame] Exception saving partial race data: {ex.Message}");
 		}
 	}
 	
@@ -624,12 +693,59 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Handle user login - refresh UI to enable time trial button
+	/// Handle user login - refresh UI to enable time trial button and register first play
 	/// </summary>
-	private void OnUserLoggedIn(string phoneNumber, string userName)
+	private async void OnUserLoggedIn(string phoneNumber, string userName)
 	{
+		// Register player on first play (idempotent - safe to call multiple times)
+		await RegisterFirstPlayAsync(phoneNumber, userName);
+
 		// Just update UI - no cache manipulation needed
 		UpdateUI();
+	}
+
+	/// <summary>
+	/// Register player in backend on first play
+	/// </summary>
+	private async Task RegisterFirstPlayAsync(string phoneNumber, string userName)
+	{
+		try
+		{
+			// Get box ID from LocationManager (matching SessionManager pattern)
+			var locationManager = LocationManager.GetAutoload();
+			if (locationManager == null || !locationManager.IsConfigLoaded)
+			{
+				GD.PrintErr("[RacingGame] LocationManager not available or config not loaded");
+				return;
+			}
+
+			var boxId = locationManager.BoxId;
+
+			// Convert phone number to player ID (using EventService static method)
+			var playerId = EventService.GetPlayerIdFromPhone(phoneNumber);
+
+			// Call backend to register first play
+			var registerResult = await _racingEventService.RegisterFirstPlayAsync(
+				playerId,
+				userName,
+				boxId
+			);
+
+			if (registerResult.IsSuccess)
+			{
+				GD.Print($"[RacingGame] Player {userName} ({playerId}) registered successfully");
+			}
+			else
+			{
+				// Log error but don't fail - game should continue to work
+				GD.PrintErr($"[RacingGame] Failed to register first play for {userName}: {registerResult.Error}");
+			}
+		}
+		catch (System.Exception ex)
+		{
+			// Log error but don't fail - game should continue to work
+			GD.PrintErr($"[RacingGame] Exception during first play registration: {ex.Message}");
+		}
 	}
 
 	/// <summary>
@@ -1347,26 +1463,36 @@ public partial class RacingGame : GameController
 	/// Handle track switch request from UI manager
 	/// </summary>
 	/// <param name="trackIndex">Index of track to switch to</param>
-	private void OnTrackSwitchRequested(int trackIndex)
+	private async void OnTrackSwitchRequested(int trackIndex)
 	{
-		if (IsGameActive() && GetGameMode() == GameMode.TimeTrial) 
+		if (IsGameActive() && GetGameMode() == GameMode.TimeTrial)
 		{
 			return; // Don't allow track switching during time trial
 		}
-		
+
+		// Save partial race data if in active time trial
+		if (IsGameActive() && GetGameMode() == GameMode.TimeTrial)
+		{
+			var playerId = GetCurrentPlayerPhoneNumber();
+			if (playerId != null)
+			{
+				await SavePartialRaceData(playerId, "track_switch");
+			}
+		}
+
 		// Set track loading state to disable input
 		_timingSystem?.SetTrackLoading();
-		
+
 		// End current race/practice session
 		if (IsGameActive())
 		{
 			EndGame();
 		}
-		
+
 		_currentTrackIndex = trackIndex;
 		LoadTrack(trackIndex);
 		_uiManager?.SetCurrentTrackIndex(trackIndex);
-		
+
 		// Restart practice mode with new track
 		StartPractice();
 	}
@@ -1726,6 +1852,16 @@ public partial class RacingGame : GameController
 						ResumeGame();
 					}
 					return;
+				}
+
+				// User confirmed - save partial race data before exiting
+				if (IsGameActive() && GetGameMode() == GameMode.TimeTrial)
+				{
+					var playerId = GetCurrentPlayerPhoneNumber();
+					if (playerId != null)
+					{
+						await SavePartialRaceData(playerId, "menu_exit");
+					}
 				}
 			}
 

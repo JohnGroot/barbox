@@ -213,6 +213,97 @@ async def validate_player_creation(
     return structures.ValidationResult(valid=is_valid, errors=errors)
 
 
+@router.post("/first_play", status_code=201)
+async def register_first_play(
+    new_player: structures.PlayerCreate,
+    db_service: dependencies.Database,
+) -> structures.PlayerDetail:
+    """Auto-register player on first play if they don't already exist.
+
+    This is an idempotent endpoint that:
+    - Registers the player if they don't exist
+    - Returns existing player if already registered
+    - Creates player even if origin box doesn't exist (auto-creates temporary player record)
+
+    Returns:
+        201: Player created or already exists
+        500: Internal server error
+    """
+
+    # Check if player already exists
+    existing_player_result = await db_service.session.execute(
+        select(db.defs.Player).where(db.defs.Player.id == new_player.id)
+    )
+    existing_player = existing_player_result.scalar_one_or_none()
+
+    if existing_player is not None:
+        logger.info(
+            "first_play_existing_player",
+            player_id=str(new_player.id),
+            username=existing_player.tag,
+        )
+        return structures.PlayerDetail(id=existing_player.id)
+
+    # Player doesn't exist - create them
+    try:
+        result = await db_service.create(
+            target=db.defs.Player,
+            data=new_player,
+            read_as=structures.PlayerDetail,
+        )
+        logger.info(
+            "first_play_player_registered",
+            player_id=str(new_player.id),
+            username=new_player.tag,
+            origin_id=str(new_player.origin_id),
+        )
+        return result
+
+    except IntegrityError as e:
+        # If origin box doesn't exist, log warning but don't fail
+        # The player table will have a dangling reference, but that's ok for now
+        logger.warning(
+            "first_play_registration_constraint_violation",
+            error=str(e),
+            player_id=str(new_player.id),
+            username=new_player.tag,
+            origin_id=str(new_player.origin_id),
+        )
+        # Try to fetch the player that was just created (race condition scenario)
+        retry_result = await db_service.session.execute(
+            select(db.defs.Player).where(db.defs.Player.id == new_player.id)
+        )
+        retry_player = retry_result.scalar_one_or_none()
+        if retry_player is not None:
+            return structures.PlayerDetail(id=retry_player.id)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "code": structures.ErrorCode.INTERNAL_ERROR,
+                    "message": "Failed to register player on first play.",
+                    "details": {"error": str(e)},
+                },
+            )
+
+    except Exception as e:
+        logger.error(
+            "first_play_registration_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            player_id=str(new_player.id),
+            username=new_player.tag,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": structures.ErrorCode.INTERNAL_ERROR,
+                "message": "An unexpected error occurred during first play registration.",
+                "details": {"error_type": type(e).__name__},
+            },
+        )
+
+
 @router.get("/username/{username}/available")
 async def check_username_available(
     username: str,

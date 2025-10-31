@@ -235,6 +235,17 @@ public partial class EventService : AutoloadBase
 			var responseCode = _httpClient.GetResponseCode();
 			if (responseCode == 201)
 			{
+				// Consume response body to transition back to Connected state (keep-alive)
+				// This prevents POST-then-GET state interference by clearing the Body state
+				var responseBody = _httpClient.ReadResponseBodyChunk();
+
+				if (DEBUG_HTTP_LIFECYCLE)
+				{
+					LogInfo($"[HTTP] POST succeeded, consumed {responseBody.Length} bytes");
+					_httpClient.Poll();
+					LogInfo($"[HTTP] Status after response read: {_httpClient.GetStatus()}");
+				}
+
 				CallDeferred(MethodName.EmitSignal, SignalName.EventSubmitted, _currentSessionId.ToString(), eventType);
 				return Result<bool>.Success(true);
 			}
@@ -355,15 +366,68 @@ public partial class EventService : AutoloadBase
 			await WaitForResponseAsync();
 
 			var responseCode = _httpClient.GetResponseCode();
-			if (responseCode != 200)
-			{
-				// Close connection to allow recovery on next request
-				_httpClient.Close();
-				return Result<string>.Failure($"Query failed with code {responseCode}");
-			}
-
 			var bodyBytes = _httpClient.ReadResponseBodyChunk();
 			var bodyText = bodyBytes.GetStringFromUtf8();
+
+			if (responseCode != 200)
+			{
+				// Extract backend error details for better debugging
+				var errorMessage = $"Query failed with code {responseCode}";
+
+				// Try to parse backend error structure
+				if (!string.IsNullOrEmpty(bodyText))
+				{
+					try
+					{
+						var parseResult = Json.ParseString(bodyText);
+						if (parseResult.Obj != null)
+						{
+							var errorDict = parseResult.AsGodotDictionary();
+
+							// Extract structured error fields
+							var code = errorDict.GetValueOrDefault("code", "UNKNOWN").ToString();
+							var message = errorDict.GetValueOrDefault("message", bodyText).ToString();
+							var requestId = errorDict.GetValueOrDefault("request_id", "N/A").ToString();
+
+							// Build comprehensive error message
+							errorMessage = $"HTTP {responseCode} [{code}]: {message}";
+
+							// Log full error details for debugging
+							GD.PrintErr($"[EventService] Backend error:");
+							GD.PrintErr($"  Status: {responseCode}");
+							GD.PrintErr($"  Code: {code}");
+							GD.PrintErr($"  Message: {message}");
+							GD.PrintErr($"  Request ID: {requestId}");
+							if (errorDict.ContainsKey("details"))
+							{
+								GD.PrintErr($"  Details: {errorDict["details"]}");
+							}
+							GD.PrintErr($"  Endpoint: {endpoint}");
+						}
+						else
+						{
+							// Failed to parse JSON, use raw body
+							errorMessage = $"Query failed with code {responseCode}: {bodyText}";
+							GD.PrintErr($"[EventService] HTTP {responseCode} error (raw): {bodyText}");
+						}
+					}
+					catch (Exception parseEx)
+					{
+						// Parsing failed, use raw error
+						errorMessage = $"Query failed with code {responseCode}: {bodyText}";
+						GD.PrintErr($"[EventService] Failed to parse error response: {parseEx.Message}");
+						GD.PrintErr($"[EventService] Raw error: {bodyText}");
+					}
+				}
+				else
+				{
+					GD.PrintErr($"[EventService] HTTP {responseCode} with empty response body");
+				}
+
+				// Close connection to allow recovery on next request
+				_httpClient.Close();
+				return Result<string>.Failure(errorMessage);
+			}
 
 			return Result<string>.Success(bodyText);
 		}
@@ -418,8 +482,25 @@ public partial class EventService : AutoloadBase
 				return Result<TResponse>.Failure($"POST failed with code {responseCode}: {errorText}");
 			}
 
+			// Ensure response body is fully received (Godot HttpClient timing issue)
+			_httpClient.Poll();
+			await DelayAsync(0.05f);
+			_httpClient.Poll();
+
 			var bodyBytes = _httpClient.ReadResponseBodyChunk();
 			var bodyText = bodyBytes.GetStringFromUtf8();
+
+			if (DEBUG_HTTP_LIFECYCLE)
+			{
+				LogInfo($"[HTTP] PostAsync response: code={responseCode}, bodyLength={bodyBytes.Length}");
+			}
+
+			// Validate body before deserializing
+			if (string.IsNullOrEmpty(bodyText))
+			{
+				_httpClient.Close();
+				return Result<TResponse>.Failure($"POST returned {responseCode} with empty response body");
+			}
 
 			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
 			return Result<TResponse>.Success(response);
@@ -667,10 +748,21 @@ public partial class EventService : AutoloadBase
 			if (DEBUG_HTTP_LIFECYCLE)
 				LogInfo("[HTTP] Cleaning up unconsumed response body from previous request");
 
-			// Previous response body not consumed - read and discard it
-			_httpClient.ReadResponseBodyChunk();
+			// Fully consume response body - may be chunked, requiring multiple reads
+			int totalBytesDiscarded = 0;
+			while (_httpClient.GetStatus() == Godot.HttpClient.Status.Body)
+			{
+				var chunk = _httpClient.ReadResponseBodyChunk();
+				if (chunk.Length == 0)
+					break; // No more data available
 
-			// Poll to see if we transition back to Connected
+				totalBytesDiscarded += chunk.Length;
+			}
+
+			if (DEBUG_HTTP_LIFECYCLE && totalBytesDiscarded > 0)
+				LogInfo($"[HTTP] Discarded {totalBytesDiscarded} bytes of unconsumed response data");
+
+			// Poll to advance state machine after full consumption
 			_httpClient.Poll();
 			currentStatus = _httpClient.GetStatus();
 
