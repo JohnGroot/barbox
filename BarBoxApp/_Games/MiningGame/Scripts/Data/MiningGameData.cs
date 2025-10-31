@@ -83,20 +83,4 @@ namespace BarBox.Games.MiningGame
 		}
 	}
 
-	// ============= LOCAL DATA =============
-
-	/// <summary>
-	/// Mining game local data structure for DataStore integration.
-	/// Matches the format expected by DataStore.LocalUserData.Mining property.
-	/// </summary>
-	[Serializable]
-	public class MiningLocalData
-	{
-		public int LocalGemsReady { get; set; } = 0;
-		public DateTime LastMiningTick { get; set; } = DateTime.UtcNow; // Initialize to current time to avoid default(DateTime) issues
-		public Dictionary<string, int> Upgrades { get; set; } = new(); // upgrade_type -> level
-		public bool HasClaimedFirstTimeBonus { get; set; } = false; // Explicit first-time tracking
-	}
-
-
 }

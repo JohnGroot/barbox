@@ -53,7 +53,7 @@ namespace BarBox.Games.MiningGame
 
 		// Context detection
 		private bool _isProductionContext;
-		private string _playerId;
+		private Guid _playerId;
 		
 		// Race condition prevention
 		private bool _isProcessingUserChange = false;
@@ -95,13 +95,14 @@ namespace BarBox.Games.MiningGame
 			{
 				_isProductionContext = true;
 				var playerSession = _gameHost.GetPlayerSession("default");
-				_playerId = playerSession?.PlayerId ?? _gameHost.GetCurrentPlayerId();
+				var playerIdString = playerSession?.PlayerId ?? _gameHost.GetCurrentPlayerId();
+				_playerId = Guid.TryParse(playerIdString, out var parsedId) ? parsedId : Guid.Empty;
 			}
 			else
 			{
 				_isProductionContext = false;
 				// No auto-login or dev_player - require actual user login for data persistence
-				_playerId = null;
+				_playerId = Guid.Empty;
 				EnableDebugMode = true;
 			}
 
@@ -279,7 +280,7 @@ namespace BarBox.Games.MiningGame
 				if (string.IsNullOrEmpty(GetCurrentUserPhoneNumber()) && _isProductionContext)
 				{
 					GD.PrintErr("[MiningGame] Cannot start: No user logged in");
-					
+
 					// Ensure UI shows disabled state for no-user scenario
 					if (GodotObject.IsInstanceValid(_ui))
 					{
@@ -288,12 +289,53 @@ namespace BarBox.Games.MiningGame
 					}
 					return;
 				}
-				
+
+				// CREATE BACKEND SESSION - CRITICAL FOR EVENT PERSISTENCE
+				if (_isProductionContext && _miningEventService != null)
+				{
+					var locationManager = _locationManager;
+					if (locationManager != null && GodotObject.IsInstanceValid(locationManager))
+					{
+						var boxId = locationManager.BoxId;
+						var phoneNumber = GetCurrentUserPhoneNumber();
+
+						if (!string.IsNullOrEmpty(phoneNumber))
+						{
+							// Get player ID from session manager
+							var sessionManager = SessionManager.GetInstance();
+							var currentSession = sessionManager?.GetPrimaryUserSession();
+
+							if (currentSession?.PlayerId != null && currentSession.PlayerId != Guid.Empty)
+							{
+								var playerId = currentSession.PlayerId;
+
+								GD.Print($"[MiningGame] Creating backend session for player {playerId} at box {boxId}");
+
+								var sessionResult = await _miningEventService.CreateSessionAsync(boxId, playerId);
+								if (!sessionResult.IsSuccess)
+								{
+									GD.PrintErr($"[MiningGame] WARNING: Failed to create backend session: {sessionResult.Error}");
+									GD.PrintErr($"[MiningGame] Game will continue but persistence may not work");
+									// Continue anyway - game can work in offline mode
+								}
+								else
+								{
+									GD.Print($"[MiningGame] Backend session created successfully: {sessionResult.Value}");
+								}
+							}
+							else
+							{
+								GD.PrintErr("[MiningGame] WARNING: Cannot create backend session - no valid player ID");
+							}
+						}
+					}
+				}
+
 				// Load user data first, then start mining after data is ready
 				if (!string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 				{
 					await _state.LoadUserDataAsync();
-					
+
 					// Check if components are still valid after await
 					if (!GodotObject.IsInstanceValid(this) || !GodotObject.IsInstanceValid(_engine))
 						return;
@@ -473,7 +515,13 @@ namespace BarBox.Games.MiningGame
 			// Fall back to first available location
 			if (_locationDataRegistry.Count > 0)
 			{
-				var fallback = _locationDataRegistry.Values.First();
+			// Use foreach for cold path initialization
+			MiningLocationData fallback = null;
+			foreach (var location in _locationDataRegistry.Values)
+			{
+				fallback = location;
+				break;
+			}
 				if (EnableDebugMode)
 				{
 					GD.Print($"[MiningGame] Using fallback location '{fallback.LocationId}' instead of '{locationId}'");
@@ -788,12 +836,16 @@ namespace BarBox.Games.MiningGame
 				// Auto-save every 30 seconds (replaces save timer)
 				if (_gameTime - _lastSaveTime >= AUTO_SAVE_INTERVAL)
 				{
-					_lastSaveTime = _gameTime;
-					
-					if (_game.EnableDebugMode)
-					{
-						GD.Print("[GameState] Auto-save completed");
-					}
+				_lastSaveTime = _gameTime;
+
+				// Emit mining tick event to backend
+				if (_game._miningEventService != null)
+				{
+					var locationId = _game._locationManager?.CurrentLocationId ?? "default";
+					_ = EmitMiningTickSafeAsync(locationId, _pendingGems);
+				}
+
+				GD.Print("[GameState] Auto-save: tick event emitted");
 				}
 			}
 			
@@ -909,10 +961,7 @@ namespace BarBox.Games.MiningGame
 				{
 					_pendingGems += actualTicks * gemsPerTick;
 					
-					if (_game.EnableDebugMode)
-					{
-						GD.Print($"[GameState] Processed {actualTicks} mining ticks: +{actualTicks * gemsPerTick} gems, Total: {_pendingGems}/{maxCapacity}");
-					}
+					GD.Print($"[GameState] Processed {actualTicks} mining ticks: +{actualTicks * gemsPerTick} gems, Total: {_pendingGems}/{maxCapacity}");
 					
 					// Only advance timestamp when we actually processed ticks
 					var miningInterval = GetMiningTickTime();
@@ -927,68 +976,222 @@ namespace BarBox.Games.MiningGame
 			{
 				_lastMiningTickTime = DateTime.UtcNow;
 				
-				if (_game.EnableDebugMode)
-				{
-					GD.Print("[GameState] Mining timer reset to current time");
-				}
+				GD.Print("[GameState] Mining timer reset to current time");
 			}
 			
 			
-			public async Task LoadUserDataAsync()
+		public async Task LoadUserDataAsync()
+		{
+			GD.Print("[GameState] === LoadUserDataAsync START ===");
+
+			// Get location template first
+			string currentLocationId = _game._locationManager?.CurrentLocationId ?? "default";
+			_locationTemplate = _game.GetLocationDataTemplate(currentLocationId);
+			GD.Print($"[GameState] Location: {currentLocationId}");
+
+			// Get current user phone number
+			var phoneNumber = _game.GetCurrentUserPhoneNumber();
+			GD.Print($"[GameState] Phone number: {(string.IsNullOrEmpty(phoneNumber) ? "NONE" : phoneNumber)}");
+
+			if (!string.IsNullOrEmpty(phoneNumber))
 			{
-				// Get location template first
-				string currentLocationId = _game._locationManager?.CurrentLocationId ?? "default";
-				_locationTemplate = _game.GetLocationDataTemplate(currentLocationId);
+				GD.Print("[GameState] User is logged in, attempting backend data load...");
 
-				// Event-sourced persistence - no DataStore loading
-				// Backend will rebuild state from events when needed
+				// Get player ID from session manager
+				var sessionManager = SessionManager.GetInstance();
+				GD.Print($"[GameState] SessionManager instance: {(sessionManager != null ? "FOUND" : "NULL")}");
+
+				var currentSession = sessionManager?.GetPrimaryUserSession();
+				GD.Print($"[GameState] Current session: {(currentSession != null ? "FOUND" : "NULL")}");
+
+				if (currentSession?.PlayerId != null && currentSession.PlayerId != Guid.Empty)
+				{
+					var playerId = currentSession.PlayerId;
+					GD.Print($"[GameState] Valid Player ID: {playerId}");
+
+					// Check backend health before attempting to load
+					var backendManager = BackendManager.GetInstance();
+					bool isBackendHealthy = backendManager?.IsBackendRunning() ?? false;
+					GD.Print($"[GameState] Backend health check: {(isBackendHealthy ? "HEALTHY" : "UNAVAILABLE")}");
+
+					if (!isBackendHealthy)
+					{
+						if (GameHost.IsProductionContext())
+						{
+							// Production: Backend is REQUIRED for logged-in users
+							GD.PrintErr("[GameState] CRITICAL ERROR: Backend is unavailable in production mode!");
+							GD.PrintErr("[GameState] Cannot load user data without backend connection.");
+							GD.PrintErr("[GameState] Please ensure the backend service is running and healthy.");
+
+							// Show error to user
+							_game._ui?.ShowError(
+								"Service Unavailable",
+								"Unable to connect to game server.\nPlease try again later or contact support if the issue persists."
+							);
+
+							// Create minimal default state to prevent crashes
+							CreateDefaultState();
+							return; // Skip processing - user should see an error
+						}
+						else
+						{
+							// Development: Fallback gracefully with warning
+							GD.PushWarning("[GameState] Backend unavailable in development mode - using default state");
+							GD.Print("[GameState] To test with backend data, ensure backend is running (sh scripts/dev.sh)");
+							CreateDefaultState();
+						}
+					}
+					else
+					{
+						// Backend is healthy - try to load state
+						GD.Print("[GameState] Calling TryLoadStateFromBackend...");
+						bool stateLoaded = await TryLoadStateFromBackend(playerId, currentLocationId);
+						GD.Print($"[GameState] TryLoadStateFromBackend result: {(stateLoaded ? "SUCCESS" : "FAILED")}");
+
+						if (!stateLoaded)
+						{
+							// First-time player or backend error - create default state
+							GD.Print("[GameState] Backend load failed - creating default state");
+							CreateDefaultState();
+						}
+						else
+						{
+							GD.Print("[GameState] Backend data loaded successfully!");
+						}
+					}
+				}
+				else
+				{
+					// No valid player ID - create default state
+					GD.Print("[GameState] No valid player ID - creating default state");
+					CreateDefaultState();
+				}
+			}
+			else
+			{
+				// No user logged in - create default state for development/testing
+				GD.Print("[GameState] No user logged in - creating default state (dev/test mode)");
 				CreateDefaultState();
+			}
 
-				// Process any mining ticks that are ready (handles offline progress automatically)
-				ProcessReadyMiningTicks();
+			// Process any mining ticks that are ready (handles offline progress automatically)
+			GD.Print("[GameState] Processing ready mining ticks...");
+			ProcessReadyMiningTicks();
 
-				// Invalidate cache so it gets rebuilt with new data
-				InvalidateCache();
+			// Invalidate cache so it gets rebuilt with new data
+			InvalidateCache();
+			GD.Print("[GameState] === LoadUserDataAsync COMPLETE ===");
+		}
 
-				await Task.CompletedTask;
+
+			/// <summary>
+			/// Attempt to load state from backend using event aggregation
+			/// </summary>
+			private async Task<bool> TryLoadStateFromBackend(Guid playerId, string locationId)
+			{
+					GD.Print($"[GameState] === TryLoadStateFromBackend START === Player: {playerId}, Location: {locationId}");
+
+				try
+				{
+					// Load global inventory (gems extracted - gems spent)
+					var inventoryResult = await _game._miningEventService.GetPlayerInventoryAsync(playerId);
+					if (inventoryResult.IsSuccess)
+					{
+						_globalData = new MiningGlobalDataStore();
+						foreach (var kvp in inventoryResult.Value.Gems)
+						{
+							if (Enum.TryParse<GemType>(kvp.Key, true, out var gemType))
+							{
+								_globalData.AddGems(gemType, kvp.Value);
+							}
+						}
+
+						GD.Print($"[GameState] Loaded inventory: {string.Join(", ", inventoryResult.Value.Gems.Select(g => $"{g.Key}={g.Value}"))}");
+					}
+					else
+					{
+						// No inventory found - new player
+						_globalData = new MiningGlobalDataStore();
+
+						GD.Print($"[GameState] No inventory found (new player): {inventoryResult.Error}");
+					}
+
+					// Load upgrade levels
+					var upgradesResult = await _game._miningEventService.GetPlayerUpgradesAsync(playerId);
+					if (upgradesResult.IsSuccess)
+					{
+						_upgradeLevels = new Dictionary<UpgradeType, int>();
+						foreach (var kvp in upgradesResult.Value.Upgrades)
+						{
+							if (Enum.TryParse<UpgradeType>(kvp.Key, true, out var upgradeType))
+							{
+								_upgradeLevels[upgradeType] = kvp.Value;
+							}
+						}
+
+						_firstTimeBonus = false; // Has upgrades = not first time
+
+						GD.Print($"[GameState] Loaded upgrades: {string.Join(", ", upgradesResult.Value.Upgrades.Select(u => $"{u.Key}={u.Value}"))}");
+					}
+					else
+					{
+						// No upgrades found - new player
+						_upgradeLevels = new Dictionary<UpgradeType, int>();
+						_firstTimeBonus = true;
+
+						GD.Print($"[GameState] No upgrades found (new player): {upgradesResult.Error}");
+					}
+
+					// Load last mining timestamp for offline progress
+					var timestampResult = await _game._miningEventService.GetPlayerMiningTimestampAsync(playerId, locationId);
+					if (timestampResult.IsSuccess)
+					{
+						_lastMiningTickTime = timestampResult.Value.LastMiningTime;
+
+						var elapsed = (DateTime.UtcNow - _lastMiningTickTime).TotalMinutes;
+						GD.Print($"[GameState] Loaded mining timestamp: {_lastMiningTickTime:yyyy-MM-dd HH:mm:ss} ({elapsed:F1} minutes ago)");
+					}
+					else
+					{
+						// No timestamp found - start fresh
+						_lastMiningTickTime = DateTime.UtcNow;
+
+						GD.Print($"[GameState] No timestamp found (new location): {timestampResult.Error}");
+					}
+
+					// Check first-time bonus status from metadata
+					var metadataResult = await _game._miningEventService.GetPlayerMetadataAsync(playerId);
+					if (metadataResult.IsSuccess)
+					{
+						_firstTimeBonus = !metadataResult.Value.HasReceivedBonus;
+
+						GD.Print($"[GameState] Loaded metadata: HasBonus={metadataResult.Value.HasReceivedBonus}, TotalEvents={metadataResult.Value.TotalEvents}");
+					}
+
+					// Initialize pending gems to 0 (location-specific state starts fresh)
+					_pendingGems = 0;
+
+					return true;
+				}
+				catch (System.Exception ex)
+				{
+					GD.PrintErr($"[GameState] Error loading state from backend: {ex.Message}");
+					return false;
+				}
 			}
 			
 			private void CreateDefaultState()
 			{
+				GD.Print("[GameState] Creating minimal default state (dev/test mode only)");
+
 				_pendingGems = 0;
 				_upgradeLevels = new Dictionary<UpgradeType, int>();
-				_firstTimeBonus = true;
-				
-				// Check if we have a valid user - only give bonuses for actual users
-				bool hasValidUser = !string.IsNullOrEmpty(_game.GetCurrentUserPhoneNumber());
-				
-				// First-time bonus: only for actual logged-in users, not "no user" state
-				if (_locationTemplate != null && _firstTimeBonus && hasValidUser)
-				{
-					_pendingGems = _locationTemplate.GetMaxCapacity(0, _game.Config); // Start at level 0
-					_firstTimeBonus = false;
-					
-					// Don't start mining timer when at full capacity from first-time bonus
-					// Initialize mining timer for new users
-					_lastMiningTickTime = DateTime.UtcNow;
-				}
-				
 				_globalData = new MiningGlobalDataStore();
-				
-				// Debug resources: only for actual users in debug mode, not "no user" state
-				if (_game.EnableDebugMode && hasValidUser)
-				{
-					// Give some debug resources
-					_globalData.AddGems(GemType.Amethyst, 500);
-					_globalData.AddGems(GemType.Diamond, 200);
-				}
-				
-				if (_game.EnableDebugMode)
-				{
-					var phoneNumber = _game.GetCurrentUserPhoneNumber();
-					GD.Print($"[GameState] Default state created - User: {(hasValidUser ? phoneNumber : "None")}, " +
-						$"StartingGems: {_pendingGems}, DebugResources: {(hasValidUser ? "Added" : "Skipped")}");
-				}
+				_firstTimeBonus = true;
+				_lastMiningTickTime = DateTime.UtcNow;
+
+				// Note: First-time bonuses should be granted via backend events
+				// Note: Debug resources should be granted via backend events
 			}
 			
 			public bool CanExtractGems() => IsExtractionReady;
@@ -1040,10 +1243,20 @@ namespace BarBox.Games.MiningGame
 				}
 				// else: keep current timer progress for continuous mining
 
-				// Emit event to backend
+				// Emit event to backend with error logging
 				if (_game._miningEventService != null)
 				{
-					_ = _game._miningEventService.EmitExtractCompleteAsync(gemType, extractedAmount);
+					var emitTask = _game._miningEventService.EmitExtractCompleteAsync(gemType, extractedAmount);
+
+					// Fire and forget, but log failures for debugging
+					_ = Task.Run(async () =>
+					{
+						var result = await emitTask;
+						if (!result.IsSuccess)
+						{
+							GD.PrintErr($"[GameState] Failed to emit extraction event: {result.Error}");
+						}
+					});
 				}
 
 				return true;
@@ -1091,7 +1304,8 @@ namespace BarBox.Games.MiningGame
 				// Emit event to backend
 				if (_game._miningEventService != null)
 				{
-					_ = _game._miningEventService.EmitUpgradePurchaseAsync(upgradeType, newLevel, cost);
+					var locationId = _game._locationManager?.CurrentLocationId ?? "default";
+					_ = _game._miningEventService.EmitUpgradePurchaseAsync(upgradeType, newLevel, cost, locationId);
 				}
 
 				return true;
@@ -1112,11 +1326,27 @@ namespace BarBox.Games.MiningGame
 				// Reset calculated values cache
 				InvalidateCache();
 
-				if (_game.EnableDebugMode)
+				GD.Print("[GameState] All state cleared - ready for new user");
+			}
+
+		/// <summary>
+		/// Helper method to emit mining tick events with error handling
+		/// </summary>
+		private async Task EmitMiningTickSafeAsync(string locationId, int pendingGems)
+		{
+			try
+			{
+				var result = await _game._miningEventService.EmitMiningTickAsync(locationId, pendingGems);
+				if (!result.IsSuccess)
 				{
-					GD.Print("[GameState] All state cleared - ready for new user");
+					GD.PrintErr($"[GameState] Failed to emit mining tick: {result.Error}");
 				}
 			}
+			catch (System.Exception ex)
+			{
+				GD.PrintErr($"[GameState] Error emitting mining tick: {ex.Message}");
+			}
+		}
 
 		}
 	}

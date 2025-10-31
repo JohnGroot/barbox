@@ -464,7 +464,84 @@ namespace BarBox.Games.MiningGame
 		{
 			Modulate = Colors.White;
 		}
-		
+
+		/// <summary>
+		/// Display an error message overlay to the user.
+		/// Creates a semi-transparent popup with the error message and a dismiss button.
+		/// </summary>
+		public void ShowError(string errorTitle, string errorMessage)
+		{
+			GD.Print($"[MiningGameUI] ShowError called: {errorTitle} - {errorMessage}");
+
+			// Create error overlay
+			var errorOverlay = new ColorRect();
+			errorOverlay.Name = "ErrorOverlay";
+			errorOverlay.Color = new Color(0, 0, 0, 0.8f); // Semi-transparent black
+			errorOverlay.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+			errorOverlay.ZIndex = 100; // Ensure it's on top
+
+			// Create error panel
+			var errorPanel = new PanelContainer();
+			errorPanel.SetAnchorsPreset(Control.LayoutPreset.Center);
+			errorPanel.CustomMinimumSize = new Vector2(500, 300);
+
+			// Create content container
+			var contentContainer = new VBoxContainer();
+			contentContainer.AddThemeConstantOverride("separation", 20);
+
+			// Error title
+			var titleLabel = new Label();
+			titleLabel.Text = errorTitle;
+			titleLabel.AddThemeFontSizeOverride("font_size", 32);
+			titleLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.3f, 0.3f)); // Red
+			titleLabel.HorizontalAlignment = HorizontalAlignment.Center;
+
+			// Error message
+			var messageLabel = new Label();
+			messageLabel.Text = errorMessage;
+			messageLabel.AddThemeFontSizeOverride("font_size", 20);
+			messageLabel.AddThemeColorOverride("font_color", GetTextColor());
+			messageLabel.HorizontalAlignment = HorizontalAlignment.Center;
+			messageLabel.AutowrapMode = TextServer.AutowrapMode.Word;
+			messageLabel.CustomMinimumSize = new Vector2(450, 0);
+
+			// Dismiss button
+			var dismissButton = new Button();
+			dismissButton.Text = "OK";
+			dismissButton.CustomMinimumSize = new Vector2(200, 60);
+			dismissButton.AddThemeFontSizeOverride("font_size", 24);
+
+			// Add spacer to push button to bottom
+			var spacer = new Control();
+			spacer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+
+			// Center button container
+			var buttonContainer = new HBoxContainer();
+			buttonContainer.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+			buttonContainer.AddChild(dismissButton);
+			buttonContainer.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+
+			// Assemble content
+			contentContainer.AddChild(titleLabel);
+			contentContainer.AddChild(messageLabel);
+			contentContainer.AddChild(spacer);
+			contentContainer.AddChild(buttonContainer);
+
+			errorPanel.AddChild(contentContainer);
+			errorOverlay.AddChild(errorPanel);
+
+			// Connect dismiss button
+			dismissButton.Pressed += () => {
+				errorOverlay.QueueFree();
+				GD.Print("[MiningGameUI] Error overlay dismissed");
+			};
+
+			// Add to scene tree
+			AddChild(errorOverlay);
+
+			GD.Print("[MiningGameUI] Error overlay created and displayed");
+		}
+
 		public override void _Process(double delta)
 		{
 			if (!_isEnabled)
