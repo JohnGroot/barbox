@@ -16,6 +16,7 @@ from sqlalchemy.orm import (
 
 type JsonObject = dict[str, Any]
 type JsonArray = list[JsonObject]
+type PlayerIdArray = list[str]  # JSON array of player UUID strings
 
 
 class PkMixin:
@@ -36,6 +37,7 @@ class Base(PkMixin, MappedAsDataclass, DeclarativeBase):
     type_annotation_map = {  # noqa: RUF012
         JsonObject: sqlite.JSON,
         JsonArray: sqlite.JSON,
+        PlayerIdArray: sqlite.JSON,
     }
 
 
@@ -65,7 +67,8 @@ class Player(Base):
 
 class BoxSession(Base):
     box_id: Mapped[BoxFk]
-    player_id: Mapped[Annotated[UUID, fk_to(Player)]]
+    host_player_id: Mapped[Annotated[UUID, fk_to(Player)]]  # Primary player who created session
+    player_ids: Mapped[PlayerIdArray]  # All players (single-player: ["uuid"], multi-player: ["uuid1", "uuid2", ...])
     start_time: Mapped[datetime]
     end_time: Mapped[datetime | None]
     events: Mapped[list["BoxSessionEvent"]] = relationship(back_populates="session")

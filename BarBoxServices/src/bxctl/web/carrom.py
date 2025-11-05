@@ -28,68 +28,101 @@ async def get_carrom_leaderboard(
 
     if metric == "total_score":
         # Aggregate total scores from carrom/round_finish events
-        # Score is stored in payload.scores[player_id]
+        # Use json_each() to unnest player_ids array and extract each player's score
         sql = """
+        WITH player_sessions AS (
+            SELECT
+                bs.id as session_id,
+                json_extract(player_data.value, '$') as player_id
+            FROM box_session bs,
+                 json_each(bs.player_ids) as player_data
+        )
         SELECT
-            bs.player_id,
+            ps.player_id,
             p.tag as username,
             SUM(
                 CAST(
                     json_extract(
                         bse.payload,
-                        '$.scores.' || bs.player_id
+                        '$.scores.' || ps.player_id
                     ) AS INTEGER
                 )
-            ) as total_score
-        FROM box_session_event bse
-        JOIN box_session bs ON bse.session_id = bs.id
-        JOIN player p ON bs.player_id = p.id
+            ) as total_score,
+            MAX(bse.timestamp) as entry_date
+        FROM player_sessions ps
+        JOIN box_session_event bse ON bse.session_id = ps.session_id
+        JOIN player p ON p.id = ps.player_id
         WHERE bse.type = 'carrom/round_finish'
-        GROUP BY bs.player_id, p.tag
+        GROUP BY ps.player_id, p.tag
         ORDER BY total_score DESC
         LIMIT :limit
         """
 
         result = await db_service.get_many_raw(sql, {"limit": limit})
 
-        leaderboard = [
-            structures.CarromLeaderboardEntry(
-                player_id=UUID(str(row[0])),
-                username=row[1],
-                total_score=row[2],
-            )
-            for row in result.tuples()
-        ]
+        leaderboard = []
+        for row in result.tuples():
+            try:
+                entry = structures.CarromLeaderboardEntry(
+                    player_id=UUID(str(row[0])) if row[0] else UUID('00000000-0000-0000-0000-000000000000'),
+                    username=row[1] if row[1] else "Unknown",
+                    total_score=row[2],
+                    entry_date=row[3],
+                )
+                leaderboard.append(entry)
+            except Exception as e:
+                # Log but don't crash - skip this problematic entry
+                print(f"[ERROR] Failed to parse leaderboard entry: row={row}, error={e}")
+                import traceback
+                traceback.print_exc()
+                continue
 
     elif metric == "total_wins":
         # Count wins from carrom/round_finish events where winner = player_id
+        # Use json_each() to unnest player_ids array
         sql = """
+        WITH player_sessions AS (
+            SELECT
+                bs.id as session_id,
+                json_extract(player_data.value, '$') as player_id
+            FROM box_session bs,
+                 json_each(bs.player_ids) as player_data
+        )
         SELECT
-            bs.player_id,
+            ps.player_id,
             p.tag as username,
             COUNT(*) as total_wins,
-            0 as total_score
-        FROM box_session_event bse
-        JOIN box_session bs ON bse.session_id = bs.id
-        JOIN player p ON bs.player_id = p.id
+            0 as total_score,
+            MAX(bse.timestamp) as entry_date
+        FROM player_sessions ps
+        JOIN box_session_event bse ON bse.session_id = ps.session_id
+        JOIN player p ON p.id = ps.player_id
         WHERE bse.type = 'carrom/round_finish'
-        AND json_extract(bse.payload, '$.winner') = bs.player_id
-        GROUP BY bs.player_id, p.tag
+        AND json_extract(bse.payload, '$.winner') = ps.player_id
+        GROUP BY ps.player_id, p.tag
         ORDER BY total_wins DESC
         LIMIT :limit
         """
 
         result = await db_service.get_many_raw(sql, {"limit": limit})
 
-        leaderboard = [
-            structures.CarromLeaderboardEntry(
-                player_id=UUID(str(row[0])),
-                username=row[1],
-                total_score=row[3],  # Not used for wins metric
-                total_wins=row[2],
-            )
-            for row in result.tuples()
-        ]
+        leaderboard = []
+        for row in result.tuples():
+            try:
+                entry = structures.CarromLeaderboardEntry(
+                    player_id=UUID(str(row[0])) if row[0] else UUID('00000000-0000-0000-0000-000000000000'),
+                    username=row[1] if row[1] else "Unknown",
+                    total_score=row[3],  # Not used for wins metric
+                    total_wins=row[2],
+                    entry_date=row[4],
+                )
+                leaderboard.append(entry)
+            except Exception as e:
+                # Log but don't crash - skip this problematic entry
+                print(f"[ERROR] Failed to parse leaderboard entry: row={row}, error={e}")
+                import traceback
+                traceback.print_exc()
+                continue
     else:
         # Invalid metric
         leaderboard = []

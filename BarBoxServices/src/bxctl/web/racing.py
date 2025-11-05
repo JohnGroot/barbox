@@ -75,18 +75,19 @@ async def get_racing_leaderboard(
         if metric == "best_lap":
             # Aggregate best lap times from racing/lap_complete events
             # LEFT JOIN player to handle cases where player hasn't been registered yet
+            # Use host_player_id for single-player games
             sql = """
             SELECT
-                bs.player_id,
-                COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.player_id, 1, 8)) as username,
+                bs.host_player_id,
+                COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.host_player_id, 1, 8)) as username,
                 MIN(CAST(json_extract(bse.payload, '$.lap_time') AS REAL)) as metric_value,
                 MAX(bse.timestamp) as entry_date
             FROM box_session_event bse
             JOIN box_session bs ON bse.session_id = bs.id
-            LEFT JOIN player p ON bs.player_id = p.id
+            LEFT JOIN player p ON bs.host_player_id = p.id
             WHERE bse.type = 'racing/lap_complete'
             AND json_extract(bse.payload, '$.track_id') = :track_id
-            GROUP BY bs.player_id, COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.player_id, 1, 8))
+            GROUP BY bs.host_player_id, COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.host_player_id, 1, 8))
             ORDER BY metric_value ASC
             LIMIT :limit
             """
@@ -105,41 +106,43 @@ async def get_racing_leaderboard(
         elif metric == "best_race":
             # Aggregate best race times from racing/race_finish events
             # LEFT JOIN player to handle cases where player hasn't been registered yet
+            # Use host_player_id for single-player games
             if laps is None:
                 # If laps not specified, get best overall time regardless of lap count
                 sql = """
                 SELECT
-                    bs.player_id,
-                    COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.player_id, 1, 8)) as username,
+                    bs.host_player_id,
+                    COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.host_player_id, 1, 8)) as username,
                     MIN(CAST(json_extract(bse.payload, '$.total_time') AS REAL)) as metric_value,
                     MAX(bse.timestamp) as entry_date,
                     json_extract(bse.payload, '$.lap_times') as lap_times
                 FROM box_session_event bse
                 JOIN box_session bs ON bse.session_id = bs.id
-                LEFT JOIN player p ON bs.player_id = p.id
+                LEFT JOIN player p ON bs.host_player_id = p.id
                 WHERE bse.type = 'racing/race_finish'
                 AND json_extract(bse.payload, '$.track_id') = :track_id
-                GROUP BY bs.player_id, COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.player_id, 1, 8))
+                GROUP BY bs.host_player_id, COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.host_player_id, 1, 8))
                 ORDER BY metric_value ASC
                 LIMIT :limit
                 """
                 result = await db_service.get_many_raw(sql, {"track_id": track_id, "limit": limit})
             else:
                 # Filter by specific lap count
+                # Use host_player_id for single-player games
                 sql = """
                 SELECT
-                    bs.player_id,
-                    COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.player_id, 1, 8)) as username,
+                    bs.host_player_id,
+                    COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.host_player_id, 1, 8)) as username,
                     MIN(CAST(json_extract(bse.payload, '$.total_time') AS REAL)) as metric_value,
                     MAX(bse.timestamp) as entry_date,
                     json_extract(bse.payload, '$.lap_times') as lap_times
                 FROM box_session_event bse
                 JOIN box_session bs ON bse.session_id = bs.id
-                LEFT JOIN player p ON bs.player_id = p.id
+                LEFT JOIN player p ON bs.host_player_id = p.id
                 WHERE bse.type = 'racing/race_finish'
                 AND json_extract(bse.payload, '$.track_id') = :track_id
                 AND CAST(json_extract(bse.payload, '$.total_laps') AS INTEGER) = :laps
-                GROUP BY bs.player_id, COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.player_id, 1, 8))
+                GROUP BY bs.host_player_id, COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.host_player_id, 1, 8))
                 ORDER BY metric_value ASC
                 LIMIT :limit
                 """

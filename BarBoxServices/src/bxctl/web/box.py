@@ -1,7 +1,8 @@
+import json
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Header, status
+from fastapi import APIRouter, Header, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 from structlog import get_logger
@@ -47,14 +48,53 @@ async def create_box_session(
     player_id: Annotated[UUID, Header()],
     db_service: dependencies.Database,
     now: dependencies.Now,
+    player_ids: Annotated[str | None, Query()] = None,  # Optional JSON array of player IDs for multiplayer
 ) -> structures.Identifiable:
+    """
+    Create a game session for single or multiple players.
+
+    For single-player games (Racing, Mining):
+    - Pass player_id via header only
+    - player_ids will be set to [player_id]
+
+    For multiplayer games (Carrom):
+    - Pass player_ids as JSON array via query parameter: ?player_ids=["uuid1","uuid2","uuid3"]
+    - First player in array becomes host_player_id
+    """
+    # Determine player list
+    if player_ids is not None:
+        # Multiplayer: Parse JSON array of player IDs
+        try:
+            player_id_list = json.loads(player_ids)
+            if not isinstance(player_id_list, list) or len(player_id_list) == 0:
+                raise ValueError("player_ids must be a non-empty array")
+            host_id = UUID(player_id_list[0])  # First player is host
+        except (json.JSONDecodeError, ValueError, IndexError) as e:
+            logger.error("invalid_player_ids", error=str(e), player_ids=player_ids)
+            # Fall back to single player from header
+            player_id_list = [str(player_id)]
+            host_id = player_id
+    else:
+        # Single-player: Use player from header
+        player_id_list = [str(player_id)]
+        host_id = player_id
+
+    logger.info(
+        "creating_session",
+        session_id=str(session_id),
+        box_id=str(box_id),
+        host_player_id=str(host_id),
+        player_count=len(player_id_list),
+    )
+
     await db_service.create(
         target=db.defs.BoxSession,
         data={
             "id": session_id,
             "box_id": box_id,
+            "host_player_id": host_id,
+            "player_ids": player_id_list,
             "start_time": now,
-            "player_id": player_id,
         },
     )
     return structures.Identifiable(id=session_id)
