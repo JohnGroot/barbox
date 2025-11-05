@@ -35,7 +35,7 @@ async def get_player_mining_inventory(
             MAX(bse.timestamp) as last_extraction
         FROM box_session_event bse
         JOIN box_session bs ON bse.session_id = bs.id
-        WHERE bs.player_id = :player_id
+        WHERE bs.host_player_id = :player_id
         AND bse.type = 'mining/extract_complete'
         GROUP BY gem_type
     ),
@@ -46,7 +46,7 @@ async def get_player_mining_inventory(
             MAX(bse.timestamp) as last_spend
         FROM box_session_event bse
         JOIN box_session bs ON bse.session_id = bs.id
-        WHERE bs.player_id = :player_id
+        WHERE bs.host_player_id = :player_id
         AND bse.type = 'mining/credit_deposit'
         GROUP BY gem_type
     ),
@@ -58,7 +58,7 @@ async def get_player_mining_inventory(
         FROM box_session_event bse
         JOIN box_session bs ON bse.session_id = bs.id,
         json_each(bse.payload, '$.cost')
-        WHERE bs.player_id = :player_id
+        WHERE bs.host_player_id = :player_id
         AND bse.type = 'mining/upgrade_purchase'
         GROUP BY gem_type
     )
@@ -122,7 +122,7 @@ async def get_player_mining_upgrades(
         MAX(bse.timestamp) as last_updated
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
-    WHERE bs.player_id = :player_id
+    WHERE bs.host_player_id = :player_id
     AND bse.type = 'mining/upgrade_purchase'
     GROUP BY upgrade_type
     """
@@ -175,7 +175,7 @@ async def get_player_mining_timestamp(
     SELECT MAX(bse.timestamp) as last_mining_time
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
-    WHERE bs.player_id = :player_id
+    WHERE bs.host_player_id = :player_id
     AND json_extract(bse.payload, '$.location_id') = :location_id
     AND bse.type IN ('mining/extract_complete', 'mining/upgrade_purchase')
     """
@@ -222,7 +222,7 @@ async def get_player_mining_metadata(
         SUM(CASE WHEN bse.type = 'mining/first_time_bonus' THEN 1 ELSE 0 END) as bonus_count
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
-    WHERE bs.player_id = :player_id
+    WHERE bs.host_player_id = :player_id
     AND bse.type LIKE 'mining/%'
     """
 
