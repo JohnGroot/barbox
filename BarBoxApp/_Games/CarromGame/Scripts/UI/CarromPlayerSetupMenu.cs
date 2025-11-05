@@ -625,6 +625,36 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		Visible = false;
 	}
 
+	/// <summary>
+	/// Get list of player IDs (Guids) for all logged-in players
+	/// Used for backend multiplayer session creation
+	/// </summary>
+	public System.Guid[] GetLoggedInPlayerIds()
+	{
+		if (_sessionManager == null)
+			return System.Array.Empty<System.Guid>();
+
+		var playerIds = new List<System.Guid>();
+
+		// Iterate through slots in order
+		for (int i = 0; i < _playerCount; i++)
+		{
+			if (_slotToPhoneNumber.TryGetValue(i, out var phoneNumber))
+			{
+				// Get session to retrieve player ID
+				var session = _sessionManager.GetUserSession(phoneNumber);
+				if (session != null)
+				{
+					// Generate player ID from phone number (deterministic UUID)
+					var playerId = EventService.GetPlayerIdFromPhone(phoneNumber);
+					playerIds.Add(playerId);
+				}
+			}
+		}
+
+		return playerIds.ToArray();
+	}
+
 	private void CreateModalUI()
 	{
 		// Semi-transparent background overlay

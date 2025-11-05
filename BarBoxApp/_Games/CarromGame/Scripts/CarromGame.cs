@@ -2156,8 +2156,50 @@ public partial class CarromGame : GameController
 	/// <summary>
 	/// Handle player setup menu game start request
 	/// </summary>
-	private void OnPlayerSetupMenuGameStartRequested()
+	private async void OnPlayerSetupMenuGameStartRequested()
 	{
+		// Get logged-in player IDs from the setup menu
+		var playerIds = _playerSetupMenu?.GetLoggedInPlayerIds();
+
+		// Create backend multiplayer session if we have multiple players
+		if (playerIds != null && playerIds.Length >= 2)
+		{
+			// Get box ID from LocationManager
+			var locationManager = LocationManager.GetAutoload();
+			if (locationManager != null && locationManager.IsConfigLoaded)
+			{
+				var boxId = locationManager.BoxId;
+
+				// Create multiplayer session via CarromEventService
+				var sessionResult = await _carromEventService.CreateMultiplayerSessionAsync(boxId, playerIds);
+
+				if (!sessionResult.IsSuccess)
+				{
+					GD.PrintErr($"[CarromGame] Failed to create multiplayer session: {sessionResult.Error}");
+
+					// Show error notification
+					_notificationSystem?.ShowNotification(
+						NotificationType.Foul,
+						$"Session creation failed: {sessionResult.Error}",
+						duration: 3.0f
+					);
+
+					// Return to player setup menu
+					return;
+				}
+
+				GD.Print($"[CarromGame] Multiplayer session created successfully: {sessionResult.Value}");
+			}
+			else
+			{
+				GD.PrintErr("[CarromGame] LocationManager not available - cannot create backend session");
+			}
+		}
+		else
+		{
+			GD.PrintErr($"[CarromGame] Invalid player count for multiplayer session: {playerIds?.Length ?? 0}");
+		}
+
 		// Use the stored player count from when the menu was shown
 		StartCompetitiveModeInternal(_pendingPlayerCount);
 	}

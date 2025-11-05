@@ -21,10 +21,10 @@ public class CarromEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (string.IsNullOrEmpty(mode))
-			return Result<bool>.Failure("Game mode is required");
+			return Result<bool>.Failure(ValidationMessages.Required("Game mode"));
 
 		if (playerIds == null || playerIds.Length == 0)
-			return Result<bool>.Failure("At least one player is required");
+			return Result<bool>.Failure(ValidationMessages.Required("Player IDs"));
 
 		var payload = new
 		{
@@ -42,10 +42,10 @@ public class CarromEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (string.IsNullOrEmpty(pieceType))
-			return Result<bool>.Failure("Piece type is required");
+			return Result<bool>.Failure(ValidationMessages.Required("Piece type"));
 
 		if (playerIndex < 0)
-			return Result<bool>.Failure("Invalid player index");
+			return Result<bool>.Failure(ValidationMessages.MinValue("Player index", 0));
 
 		var payload = new
 		{
@@ -67,10 +67,10 @@ public class CarromEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (string.IsNullOrEmpty(mode))
-			return Result<bool>.Failure("Game mode is required");
+			return Result<bool>.Failure(ValidationMessages.Required("Game mode"));
 
 		if (scores == null || scores.Count == 0)
-			return Result<bool>.Failure("Score data is required");
+			return Result<bool>.Failure(ValidationMessages.Required("Score data"));
 
 		var payload = new
 		{
@@ -83,6 +83,68 @@ public class CarromEventService : GameEventServiceBase
 	}
 
 	/// <summary>
+	/// Create a new backend session for the carrom game
+	/// </summary>
+	public async Task<Result<Guid>> CreateSessionAsync(Guid boxId, Guid playerId)
+	{
+		// Input validation
+		var boxValidation = ValidateGuid(boxId, "Box ID");
+		if (!boxValidation.IsSuccess)
+			return Result<Guid>.Failure(boxValidation.Error);
+
+		var playerValidation = ValidateGuid(playerId, "Player ID");
+		if (!playerValidation.IsSuccess)
+			return Result<Guid>.Failure(playerValidation.Error);
+
+		if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
+			return Result<Guid>.Failure("Event service not available");
+
+		// Delegate to EventService
+		var result = await _eventService.CreateSessionAsync(boxId, playerId);
+
+		if (result.IsSuccess)
+			LogInfo($"Carrom session created: {result.Value}");
+		else
+			LogError($"Failed to create carrom session: {result.Error}");
+
+		return result;
+	}
+
+	/// <summary>
+	/// Create multiplayer game session when "Start Game" is clicked.
+	/// Called AFTER all players have logged in during preparation screen.
+	/// </summary>
+	/// <param name="boxId">Box identifier</param>
+	/// <param name="playerIds">Array of 2-4 player IDs</param>
+	/// <returns>Result containing session ID if successful</returns>
+	public async Task<Result<Guid>> CreateMultiplayerSessionAsync(Guid boxId, Guid[] playerIds)
+	{
+		// Input validation
+		var boxValidation = ValidateGuid(boxId, "Box ID");
+		if (!boxValidation.IsSuccess)
+			return Result<Guid>.Failure(boxValidation.Error);
+
+		if (playerIds == null || playerIds.Length < 2 || playerIds.Length > 4)
+			return Result<Guid>.Failure(ValidationMessages.RangeError("Player count", 2, 4));
+
+		if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
+			return Result<Guid>.Failure("Event service not available");
+
+		// Create session with all players via EventService
+		var sessionId = Guid.NewGuid();
+		var result = await _eventService.CreateSessionWithPlayersAsync(boxId, sessionId, playerIds);
+
+		if (result.IsSuccess)
+			LogInfo($"Multiplayer session created: {sessionId} with {playerIds.Length} players");
+		else
+			LogError($"Failed to create multiplayer session: {result.Error}");
+
+		return result.IsSuccess
+			? Result<Guid>.Success(sessionId)
+			: Result<Guid>.Failure(result.Error);
+	}
+
+	/// <summary>
 	/// Get carrom leaderboard from backend using shared HTTP helper
 	/// </summary>
 	public async Task<Result<CarromLeaderboardData>> GetLeaderboardAsync(
@@ -90,69 +152,73 @@ public class CarromEventService : GameEventServiceBase
 		int limit = 10)
 	{
 		// Input validation
-		if (limit < 1 || limit > 100)
-			return Result<CarromLeaderboardData>.Failure("Limit must be between 1 and 100");
+		var limitValidation = ValidateLeaderboardLimit(limit);
+		if (!limitValidation.IsSuccess)
+			return Result<CarromLeaderboardData>.Failure(limitValidation.Error);
 
-		try
+		// Build query parameters
+		var queryParams = new Dictionary<string, string>
 		{
-			// Build query parameters
-			var queryParams = new Dictionary<string, string>
+			{ JsonFieldNames.Metric, metric },
+			{ "limit", limit.ToString() }
+		};
+
+		return await QueryBackendAsync(
+			"/game/carrom/leaderboard",
+			queryParams,
+			jsonDict => ParseLeaderboardData(jsonDict)
+		);
+	}
+
+	private Result<CarromLeaderboardData> ParseLeaderboardData(Godot.Collections.Dictionary jsonDict)
+	{
+		if (!jsonDict.ContainsKey(JsonFieldNames.Metric))
+			return Result<CarromLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.Metric}");
+
+		if (!jsonDict.ContainsKey(JsonFieldNames.Leaderboard))
+			return Result<CarromLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.Leaderboard}");
+
+		var leaderboardData = new CarromLeaderboardData
+		{
+			Metric = jsonDict[JsonFieldNames.Metric].AsString(),
+			Leaderboard = new List<CarromLeaderboardEntry>()
+		};
+
+		var leaderboardArray = jsonDict[JsonFieldNames.Leaderboard].AsGodotArray();
+		foreach (var entry in leaderboardArray)
+		{
+			var entryDict = entry.AsGodotDictionary();
+
+			var playerIdResult = JsonParsingHelpers.ParseGuid(entryDict, JsonFieldNames.PlayerId);
+			var entryDateResult = JsonParsingHelpers.ParseDateTime(entryDict, JsonFieldNames.EntryDate);
+
+			if (!playerIdResult.IsSuccess) return Result<CarromLeaderboardData>.Failure(playerIdResult.Error);
+			if (!entryDateResult.IsSuccess) return Result<CarromLeaderboardData>.Failure(entryDateResult.Error);
+
+			if (!entryDict.ContainsKey(JsonFieldNames.Username))
+				return Result<CarromLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.Username}");
+
+			if (!entryDict.ContainsKey(JsonFieldNames.TotalScore))
+				return Result<CarromLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.TotalScore}");
+
+			var leaderboardEntry = new CarromLeaderboardEntry
 			{
-				{ "metric", metric },
-				{ "limit", limit.ToString() }
+				PlayerId = playerIdResult.Value,
+				Username = entryDict[JsonFieldNames.Username].AsString(),
+				TotalScore = entryDict[JsonFieldNames.TotalScore].AsInt32(),
+				EntryDate = entryDateResult.Value
 			};
 
-			// Use shared HTTP helper - handles connection, polling, timeouts
-			var responseResult = await QueryBackendRawAsync("/game/carrom/leaderboard", queryParams);
-			if (!responseResult.IsSuccess)
-				return Result<CarromLeaderboardData>.Failure(responseResult.Error);
-
-			// Parse JSON response using base class helper
-			var parseResult = ParseJsonResponse(responseResult.Value);
-			if (!parseResult.IsSuccess)
-				return Result<CarromLeaderboardData>.Failure(parseResult.Error);
-
-			var jsonDict = parseResult.Value;
-
-			var leaderboardData = new CarromLeaderboardData
+			// Parse total_wins if present (nullable field)
+			if (!JsonParsingHelpers.IsNullOrMissing(entryDict, JsonFieldNames.TotalWins))
 			{
-				Metric = jsonDict["metric"].AsString(),
-				Leaderboard = new List<CarromLeaderboardEntry>()
-			};
-
-			var leaderboardArray = jsonDict["leaderboard"].AsGodotArray();
-			foreach (var entry in leaderboardArray)
-			{
-				var entryDict = entry.AsGodotDictionary();
-
-				var leaderboardEntry = new CarromLeaderboardEntry
-				{
-					PlayerId = Guid.Parse(entryDict["player_id"].AsString()),
-					Username = entryDict["username"].AsString(),
-					TotalScore = entryDict["total_score"].AsInt32()
-				};
-
-				// Parse total_wins if present
-				if (entryDict.ContainsKey("total_wins") && entryDict["total_wins"].VariantType != Variant.Type.Nil)
-				{
-					leaderboardEntry.TotalWins = entryDict["total_wins"].AsInt32();
-				}
-
-				leaderboardData.Leaderboard.Add(leaderboardEntry);
+				leaderboardEntry.TotalWins = entryDict[JsonFieldNames.TotalWins].AsInt32();
 			}
 
-			return Result<CarromLeaderboardData>.Success(leaderboardData);
+			leaderboardData.Leaderboard.Add(leaderboardEntry);
 		}
-		catch (FormatException ex)
-		{
-			LogError($"Invalid data format in leaderboard response: {ex.Message}");
-			return Result<CarromLeaderboardData>.Failure("Invalid server response format");
-		}
-		catch (System.Exception ex)
-		{
-			LogError($"Unexpected error retrieving leaderboard: {ex.Message}");
-			return Result<CarromLeaderboardData>.Failure("Unable to retrieve leaderboard data");
-		}
+
+		return Result<CarromLeaderboardData>.Success(leaderboardData);
 	}
 }
 
@@ -174,4 +240,5 @@ public class CarromLeaderboardEntry
 	public string Username { get; set; }
 	public int TotalScore { get; set; }
 	public int? TotalWins { get; set; }
+	public DateTime EntryDate { get; set; }
 }
