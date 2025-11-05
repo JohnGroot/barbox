@@ -90,3 +90,4 @@ __pycache__/
 
 # sqlite
 app.db
+BarBoxServices/app.db.ready
