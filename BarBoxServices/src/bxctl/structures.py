@@ -96,8 +96,10 @@ class Score(SessionEventBase):
 
 class BoxSession(Identifiable):
     box_id: UUID
-    player_id: UUID
+    host_player_id: UUID
+    player_ids: list[str]  # JSON array of player UUID strings
     start_time: Annotated[datetime, Field(default_factory=datetime.now)]
+    end_time: datetime | None = None
     events: Annotated[
         list[SessionEventBase],
         Field(default_factory=lambda: [BeginPlay()]),
@@ -193,6 +195,7 @@ class CarromLeaderboardEntry(BaseModel):
     username: str
     total_score: int
     total_wins: int | None = None
+    entry_date: datetime
 
 
 class CarromLeaderboardResponse(BaseModel):
