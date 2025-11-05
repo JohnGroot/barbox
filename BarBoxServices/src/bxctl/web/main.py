@@ -1,8 +1,10 @@
+import asyncio
+import pathlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from structlog import get_logger
 
@@ -14,10 +16,17 @@ from . import box, carrom, game, mining, player, racing, test
 
 logger = get_logger()
 
+# Readiness signaling - set after full initialization
+_ready_event = asyncio.Event()
+READY_FILE = pathlib.Path("app.db.ready")
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = env.acquire()
+
+    # Remove stale ready file from previous run
+    READY_FILE.unlink(missing_ok=True)
 
     async with engine.begin() as conn:
         # Optional: Drop database for clean testing
@@ -29,8 +38,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await conn.run_sync(Base.metadata.create_all)
         logger.info(f"Database ready in {settings.env} mode (drop_on_startup={settings.drop_db_on_startup})")
 
-        yield
-        # No cleanup on shutdown - preserve data
+    # Signal that application is fully initialized and ready to serve traffic
+    _ready_event.set()
+    READY_FILE.write_text("ready")
+    logger.info("Application ready to serve traffic - readiness signaled")
+
+    yield
+
+    # Cleanup ready file on shutdown
+    READY_FILE.unlink(missing_ok=True)
+    logger.info("Application shutting down - ready file removed")
 
 
 app = FastAPI(title="BXCTL API", version="0.1.0", lifespan=lifespan)
@@ -71,7 +88,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 	logger.error(
 		"unhandled_exception",
 		request_id=request_id,
-		path=request.path,
+		path=request.url.path,
 		method=request.method,
 		error=str(exc),
 		error_type=type(exc).__name__,
@@ -90,7 +107,24 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.get("/alive")
 async def health_check() -> dict:
-    """Simple health check endpoint for service availability."""
+    """
+    Health check endpoint - only returns OK when fully initialized and ready.
+
+    Returns 503 Service Unavailable when:
+    - Application is still starting up
+    - Database initialization in progress
+
+    Returns 200 OK when:
+    - Database schema has been created
+    - All initialization is complete
+    - Application can safely handle traffic
+    """
+    if not _ready_event.is_set():
+        raise HTTPException(
+            status_code=503,
+            detail="Service unavailable - application is still initializing"
+        )
+
     return {"status": "alive"}
 
 
