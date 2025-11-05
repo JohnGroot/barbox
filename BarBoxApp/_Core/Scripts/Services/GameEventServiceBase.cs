@@ -161,6 +161,10 @@ public class GameEventServiceBase
 
 		// Racing-specific fields
 		public const string LapTimes = "lap_times";
+
+		// Carrom-specific fields
+		public const string TotalScore = "total_score";
+		public const string TotalWins = "total_wins";
 	}
 
 	#endregion

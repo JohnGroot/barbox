@@ -7,26 +7,18 @@ using System.Threading.Tasks;
 /// Ensures backend is running before game operations
 /// Blocks app initialization if backend fails to start
 ///
-/// REFERENCE IMPLEMENTATION: HttpClient Persistent Connection Pattern
-/// This class demonstrates the correct pattern for reusing HttpClient across requests.
-/// Key requirements when using Godot's HttpClient:
-/// 1. Always call Poll() in wait loops - advances the state machine
-/// 2. Check both Resolving and Connecting states - DNS resolution is separate
-/// 3. Use "127.0.0.1" not "localhost" - avoids DNS lookup delays
-/// 4. Use DelayAsync() not Task.Delay() - respects game pause states
-///
-/// See IsBackendHealthyAsync() method (lines 119-173) for complete implementation.
+/// Uses file-based readiness signaling for fast, reliable backend status detection.
+/// The backend writes 'app.db.ready' file when fully initialized (database schema created).
+/// This avoids HTTP complexity and provides immediate, zero-overhead status checks.
 /// </summary>
 public partial class BackendManager : AutoloadBase
 {
 	private const string BACKEND_START_SCRIPT = "/Users/johngroot/Dev/barbox/BarBoxServices/scripts/dev.sh";
-	private const string BACKEND_HEALTH_URL = "http://localhost:8000/alive";
-	private const int BACKEND_PORT = 8000;
+	private const string BACKEND_READY_FILE = "/Users/johngroot/Dev/barbox/BarBoxServices/app.db.ready";
 	private const float STARTUP_TIMEOUT_SECONDS = 10.0f;
-	private const float HEALTH_CHECK_INTERVAL_SECONDS = 0.5f;
+	private const float READINESS_CHECK_INTERVAL_SECONDS = 0.1f; // Fast polling (file check is cheap)
 
 	private bool _isBackendRunning = false;
-	private Godot.HttpClient _healthCheckClient;
 
 	[Signal] public delegate void BackendReadyEventHandler();
 	[Signal] public delegate void BackendStartFailedEventHandler(string error);
@@ -41,8 +33,65 @@ public partial class BackendManager : AutoloadBase
 	protected override async void OnServiceInitialize()
 	{
 		LogInfo("BackendManager initializing...");
-		_healthCheckClient = new Godot.HttpClient();
 		await EnsureBackendRunningAsync();
+	}
+
+	/// <summary>
+	/// Check if backend is ready via file-based signaling
+	/// </summary>
+	private bool IsBackendReady()
+	{
+		return FileAccess.FileExists(BACKEND_READY_FILE);
+	}
+
+	/// <summary>
+	/// Check if a port is in use using lsof
+	/// </summary>
+	private bool IsPortInUse(int port)
+	{
+		try
+		{
+			var output = new Godot.Collections.Array();
+			var exitCode = OS.Execute("lsof", new string[] { "-i", $":{port}" }, output, true);
+
+			// lsof returns 0 if processes found, 1 if none found
+			return exitCode == 0 && output.Count > 0;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Kill process using a specific port
+	/// </summary>
+	private void KillProcessOnPort(int port)
+	{
+		try
+		{
+			var output = new Godot.Collections.Array();
+
+			// Get PID of process on port
+			OS.Execute("sh", new string[] {
+				"-c",
+				$"lsof -ti :{port}"
+			}, output, true);
+
+			if (output.Count > 0)
+			{
+				var pid = output[0].ToString().Trim();
+				if (!string.IsNullOrEmpty(pid))
+				{
+					LogWarning($"Killing stale process {pid} on port {port}");
+					OS.Execute("kill", new string[] { pid }, new Godot.Collections.Array(), false);
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			LogError($"Failed to kill process on port {port}: {ex.Message}");
+		}
 	}
 
 	/// <summary>
@@ -52,13 +101,22 @@ public partial class BackendManager : AutoloadBase
 	{
 		try
 		{
-			// Check if already running
-			if (await IsBackendHealthyAsync())
+			// Check if already running via ready file
+			if (IsBackendReady())
 			{
-				LogInfo("Backend already running and healthy");
+				LogInfo("Backend already running and ready");
 				_isBackendRunning = true;
 				CallDeferred(MethodName.EmitSignal, SignalName.BackendReady);
 				return;
+			}
+
+			// Check for stale process (port in use but no ready file)
+			const int BACKEND_PORT = 8000;
+			if (IsPortInUse(BACKEND_PORT) && !IsBackendReady())
+			{
+				LogWarning($"Port {BACKEND_PORT} in use but backend not ready - cleaning up stale process");
+				KillProcessOnPort(BACKEND_PORT);
+				await DelayAsync(1.0f); // Wait for port to be released
 			}
 
 			// Attempt to start backend
@@ -74,44 +132,39 @@ public partial class BackendManager : AutoloadBase
 
 			if (exitCode != 0)
 			{
-				var errorMsg = $"Backend start script failed with exit code {exitCode}";
-				LogError(errorMsg);
-
 				// Check if backend is already running (script may fail if already started)
-				// Reset HTTP client for fresh health check
-				_healthCheckClient?.Close();
-				_healthCheckClient = new Godot.HttpClient();
-
-				if (await IsBackendHealthyAsync())
+				if (IsBackendReady())
 				{
 					_isBackendRunning = true;
-					LogInfo("Backend already running and healthy");
+					LogInfo("Backend already running and ready");
 					CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.BackendReady);
 					return;
 				}
 
+				var errorMsg = $"Backend start script failed with exit code {exitCode}";
+				LogError(errorMsg);
 				CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.BackendStartFailed, errorMsg);
 				return;
 			}
 
-			LogInfo("Backend startup script executed, waiting for health check...");
+			LogInfo("Backend startup script executed, waiting for ready signal...");
 
-			// Wait for backend to become healthy
+			// Poll for ready file (much faster than HTTP - 10x per second)
 			var startTime = Time.GetTicksMsec();
 			while (Time.GetTicksMsec() - startTime < STARTUP_TIMEOUT_SECONDS * 1000)
 			{
-				if (await IsBackendHealthyAsync())
+				if (IsBackendReady())
 				{
 					_isBackendRunning = true;
-					LogInfo("Backend started successfully and is healthy");
+					LogInfo("Backend started successfully and is ready");
 					CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.BackendReady);
 					return;
 				}
 
-				await DelayAsync(HEALTH_CHECK_INTERVAL_SECONDS);
+				await DelayAsync(READINESS_CHECK_INTERVAL_SECONDS);
 			}
 
-			var timeoutMsg = $"Backend failed to become healthy within {STARTUP_TIMEOUT_SECONDS}s";
+			var timeoutMsg = $"Backend failed to become ready within {STARTUP_TIMEOUT_SECONDS}s";
 			LogError(timeoutMsg);
 			CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.BackendStartFailed, timeoutMsg);
 		}
@@ -120,70 +173,6 @@ public partial class BackendManager : AutoloadBase
 			var errorMsg = $"Backend startup exception: {ex.Message}";
 			LogError(errorMsg);
 			CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.BackendStartFailed, errorMsg);
-		}
-	}
-
-	/// <summary>
-	/// Check if backend is healthy via health endpoint
-	/// </summary>
-	private async Task<bool> IsBackendHealthyAsync()
-	{
-		try
-		{
-			// Connect if needed
-			if (_healthCheckClient.GetStatus() != Godot.HttpClient.Status.Connected &&
-			    _healthCheckClient.GetStatus() != Godot.HttpClient.Status.Connecting)
-			{
-				// Use 127.0.0.1 instead of "localhost" to avoid DNS lookup delays
-				var error = _healthCheckClient.ConnectToHost("127.0.0.1", BACKEND_PORT);
-				if (error != Error.Ok)
-					return false;
-			}
-
-			// Wait for connection (including DNS resolution)
-			// CRITICAL: Must check both Resolving and Connecting states
-			var attempts = 0;
-			while ((_healthCheckClient.GetStatus() == Godot.HttpClient.Status.Resolving ||
-			        _healthCheckClient.GetStatus() == Godot.HttpClient.Status.Connecting) &&
-			       attempts < 20)
-			{
-				// CRITICAL: Poll() advances the HttpClient state machine
-				_healthCheckClient.Poll();
-				// Use DelayAsync() not Task.Delay() - respects game pause
-				await DelayAsync(0.05f);
-				attempts++;
-			}
-
-			if (_healthCheckClient.GetStatus() != Godot.HttpClient.Status.Connected)
-				return false;
-
-			// Make health check request
-			var headers = new[] { "User-Agent: BarBox-Client/1.0" };
-			var requestError = _healthCheckClient.Request(Godot.HttpClient.Method.Get, "/alive", headers);
-			if (requestError != Error.Ok)
-				return false;
-
-			// Poll for response
-			var pollAttempts = 0;
-			while (_healthCheckClient.GetStatus() == Godot.HttpClient.Status.Requesting && pollAttempts < 100)
-			{
-				// CRITICAL: Poll() processes the response
-				_healthCheckClient.Poll();
-				await DelayAsync(0.01f);
-				pollAttempts++;
-			}
-
-			if (_healthCheckClient.GetStatus() != Godot.HttpClient.Status.Body &&
-			    _healthCheckClient.GetStatus() != Godot.HttpClient.Status.Connected)
-				return false;
-
-			var responseCode = _healthCheckClient.GetResponseCode();
-			return responseCode == 200;
-		}
-		catch (Exception ex)
-		{
-			LogError($"Backend health check failed: {ex.Message}");
-			return false;
 		}
 	}
 
@@ -201,9 +190,6 @@ public partial class BackendManager : AutoloadBase
 	{
 		// Backend runs as separate process, don't kill it on app shutdown
 		// It will auto-restart when app restarts
-
-		_healthCheckClient?.Close();
-		_healthCheckClient = null;
 
 		Instance = null;
 	}
