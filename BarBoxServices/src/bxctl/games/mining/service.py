@@ -1,25 +1,23 @@
+"""Business logic and database queries for Mining game."""
+
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter
+from bxctl.db import service as db_service
 
-from bxctl import structures
-
-from . import dependencies
-
-router = APIRouter(prefix="/game/mining")
+from . import schemas
 
 
-@router.get("/player/{player_id}/inventory")
 async def get_player_mining_inventory(
+    db: db_service.CRUD,
     player_id: UUID,
-    db_service: dependencies.Database,
-) -> structures.MiningInventoryResponse:
+) -> schemas.MiningInventoryResponse:
     """
     Get player's global mining inventory aggregated from events.
     Calculates: (extracted gems - spent gems from credits/upgrades)
 
     Args:
+        db: Database CRUD service
         player_id: Player UUID
 
     Returns:
@@ -73,7 +71,7 @@ async def get_player_mining_inventory(
     GROUP BY e.gem_type
     """
 
-    result = await db_service.get_many_raw(sql, {"player_id": player_id.hex})
+    result = await db.get_many_raw(sql, {"player_id": player_id.hex})
 
     # Build gems dictionary
     gems = {}
@@ -92,22 +90,22 @@ async def get_player_mining_inventory(
             if row_timestamp > last_updated:
                 last_updated = row_timestamp
 
-    return structures.MiningInventoryResponse(
+    return schemas.MiningInventoryResponse(
         player_id=player_id,
         gems=gems,
         last_updated=last_updated,
     )
 
 
-@router.get("/player/{player_id}/upgrades")
 async def get_player_mining_upgrades(
+    db: db_service.CRUD,
     player_id: UUID,
-    db_service: dependencies.Database,
-) -> structures.MiningUpgradesResponse:
+) -> schemas.MiningUpgradesResponse:
     """
     Get player's upgrade levels aggregated from mining/upgrade_purchase events.
 
     Args:
+        db: Database CRUD service
         player_id: Player UUID
 
     Returns:
@@ -127,7 +125,7 @@ async def get_player_mining_upgrades(
     GROUP BY upgrade_type
     """
 
-    result = await db_service.get_many_raw(sql, {"player_id": player_id.hex})
+    result = await db.get_many_raw(sql, {"player_id": player_id.hex})
 
     # Build upgrades dictionary
     upgrades = {}
@@ -146,25 +144,25 @@ async def get_player_mining_upgrades(
             if row_timestamp > last_updated:
                 last_updated = row_timestamp
 
-    return structures.MiningUpgradesResponse(
+    return schemas.MiningUpgradesResponse(
         player_id=player_id,
         upgrades=upgrades,
         last_updated=last_updated,
     )
 
 
-@router.get("/player/{player_id}/mining_timestamp")
 async def get_player_mining_timestamp(
+    db: db_service.CRUD,
     player_id: UUID,
     location_id: str,
-    db_service: dependencies.Database,
-) -> structures.MiningTimestampResponse:
+) -> schemas.MiningTimestampResponse:
     """
     Get last mining timestamp for player at specific location.
 
     Args:
+        db: Database CRUD service
         player_id: Player UUID
-        location_id: Location identifier (query parameter)
+        location_id: Location identifier
 
     Returns:
         Last mining time for offline progress calculation
@@ -180,7 +178,7 @@ async def get_player_mining_timestamp(
     AND bse.type IN ('mining/extract_complete', 'mining/upgrade_purchase')
     """
 
-    result = await db_service.get_many_raw(sql, {
+    result = await db.get_many_raw(sql, {
         "player_id": player_id.hex,
         "location_id": location_id
     })
@@ -191,22 +189,22 @@ async def get_player_mining_timestamp(
     else:
         last_mining_time = datetime.now(UTC)
 
-    return structures.MiningTimestampResponse(
+    return schemas.MiningTimestampResponse(
         player_id=player_id,
         location_id=location_id,
         last_mining_time=last_mining_time,
     )
 
 
-@router.get("/player/{player_id}/metadata")
 async def get_player_mining_metadata(
+    db: db_service.CRUD,
     player_id: UUID,
-    db_service: dependencies.Database,
-) -> structures.MiningMetadataResponse:
+) -> schemas.MiningMetadataResponse:
     """
     Get player mining metadata (first-time bonus status, statistics).
 
     Args:
+        db: Database CRUD service
         player_id: Player UUID
 
     Returns:
@@ -226,7 +224,7 @@ async def get_player_mining_metadata(
     AND bse.type LIKE 'mining/%'
     """
 
-    result = await db_service.get_many_raw(sql, {"player_id": player_id.hex})
+    result = await db.get_many_raw(sql, {"player_id": player_id.hex})
     row = result.first()
 
     if row:
@@ -240,7 +238,7 @@ async def get_player_mining_metadata(
         last_event_time = None
         bonus_count = 0
 
-    return structures.MiningMetadataResponse(
+    return schemas.MiningMetadataResponse(
         player_id=player_id,
         has_received_bonus=bonus_count > 0,
         total_events=total_events,

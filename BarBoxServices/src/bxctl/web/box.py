@@ -9,6 +9,7 @@ from sqlalchemy.orm import joinedload
 from structlog import get_logger
 
 from bxctl import db, structures
+from bxctl.games import validation as game_validation
 
 from . import dependencies
 
@@ -215,12 +216,74 @@ async def add_session_event(
     db_service: dependencies.Database,
     now: dependencies.Now,
 ) -> structures.Identifiable:
+    """
+    Add an event to a session with payload validation.
+
+    Events are validated against game-specific schemas when available.
+    Unknown event types are rejected to prevent typos and data corruption.
+    """
+    # Validate event type
+    if not game_validation.is_valid_event_type(event.type):
+        logger.warning(
+            "invalid_event_type",
+            event_type=event.type,
+            session_id=str(session_id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "message": f"Unknown event type: '{event.type}'",
+                "details": {
+                    "event_type": event.type,
+                    "valid_event_types": game_validation.get_all_event_types(),
+                },
+            },
+        )
+
+    # Validate payload if schema exists
+    is_valid, error_msg, validated_payload = game_validation.validate_event_payload(
+        event.type, event.payload
+    )
+
+    if not is_valid:
+        logger.warning(
+            "invalid_event_payload",
+            event_type=event.type,
+            session_id=str(session_id),
+            error=error_msg,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "message": f"Invalid payload for event type '{event.type}': {error_msg}",
+                "details": {"event_type": event.type},
+            },
+        )
+
+    # Use validated payload if available, otherwise original
+    final_payload = validated_payload if validated_payload is not None else event.payload
+
     new_id = uuid4()
     await db_service.create(
         target=db.defs.BoxSessionEvent,
-        data=event.model_dump()
-        | {"session_id": session_id, "id": new_id, "timestamp": now},
+        data={
+            "id": new_id,
+            "session_id": session_id,
+            "type": event.type,
+            "timestamp": now,
+            "payload": final_payload,
+        },
     )
+
+    logger.info(
+        "session_event_created",
+        event_id=str(new_id),
+        session_id=str(session_id),
+        event_type=event.type,
+    )
+
     return structures.Identifiable(id=new_id)
 
 

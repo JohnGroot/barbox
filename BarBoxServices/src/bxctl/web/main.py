@@ -12,7 +12,11 @@ from bxctl import env
 from bxctl.db.connectivity import engine
 from bxctl.db.defs import Base
 
-from . import box, carrom, game, mining, player, racing, test
+from bxctl.games.carrom import router as carrom_router
+from bxctl.games.mining import router as mining_router
+from bxctl.games.racing import router as racing_router
+
+from . import box, game, player, test
 
 logger = get_logger()
 
@@ -132,10 +136,16 @@ routers = (
     player.router,
     box.router,
     game.router,
-    racing.router,
-    mining.router,
-    carrom.router,
     test.router,  # Test endpoints (only available in dev/test modes)
 )
 for router in routers:
+    app.include_router(router)
+
+# Game routers from embedded game modules
+game_routers = (
+    carrom_router.router,
+    racing_router.router,
+    mining_router.router,
+)
+for router in game_routers:
     app.include_router(router)

@@ -112,101 +112,11 @@ class BoxSession(Identifiable):
     ]
 
 
-# ============= RACING GAME STRUCTURES =============
-
-class CheckpointData(BaseModel):
-    index: int
-    time: float
-    gap: float
-
-
-class RacingLapCompletePayload(BaseModel):
-    lap_num: int
-    lap_time: float
-    checkpoints: list[CheckpointData]
-
-
-class RacingRaceFinishPayload(BaseModel):
-    track_id: str
-    total_time: float
-    total_laps: int
-    lap_times: list[float]
-    checkpoints: list[CheckpointData] | None = None
-
-
-class RacingLeaderboardEntry(BaseModel):
-    player_id: UUID
-    username: str
-    metric_value: float  # lap time or race time
-    entry_date: datetime
-    lap_times: list[float] | None = None
-
-
-class RacingLeaderboardResponse(BaseModel):
-    track_id: str
-    metric: str  # "best_lap" or "best_race"
-    leaderboard: list[RacingLeaderboardEntry]
-
-
-# ============= MINING GAME STRUCTURES =============
-
-class MiningExtractCompletePayload(BaseModel):
-    gem_type: str  # "ruby", "sapphire", etc.
-    quantity: int
-    location_id: str
-
-
-class MiningUpgradePurchasePayload(BaseModel):
-    upgrade_type: str  # "capacity", "mining_speed", "mining_amount"
-    level: int
-    cost: dict[str, int]  # {gem_type: quantity}
-
-
-class MiningInventoryResponse(BaseModel):
-    player_id: UUID
-    gems: dict[str, int]  # {gem_type: quantity}
-    last_updated: datetime
-
-
-class MiningUpgradesResponse(BaseModel):
-    player_id: UUID
-    upgrades: dict[str, int]  # {upgrade_type: level}
-    last_updated: datetime
-
-
-class MiningTimestampResponse(BaseModel):
-    player_id: UUID
-    location_id: str
-    last_mining_time: datetime
-
-
-class MiningMetadataResponse(BaseModel):
-    player_id: UUID
-    has_received_bonus: bool
-    total_events: int
-    first_event_time: datetime | None
-    last_event_time: datetime | None
-
-
-# ============= CARROM GAME STRUCTURES =============
-
-class CarromRoundFinishPayload(BaseModel):
-    mode: Literal["practice", "competitive"]
-    winner: str  # player_id
-    scores: dict[str, int]  # {player_id: score}
-
-
-class CarromLeaderboardEntry(BaseModel):
-    player_id: UUID
-    username: str
-    total_score: int
-    total_wins: int | None = None
-    entry_date: datetime
-
-
-class CarromLeaderboardResponse(BaseModel):
-    metric: str  # "total_score" or "total_wins"
-    leaderboard: list[CarromLeaderboardEntry]
+# ============= GAME STRUCTURES =============
+# Note: Game-specific structures have been moved to their respective game modules:
+# - Racing: bxctl.games.racing.schemas
+# - Mining: bxctl.games.mining.schemas
+# - Carrom: bxctl.games.carrom.schemas
 
 
 # ============= CORE PLAYER STRUCTURES =============

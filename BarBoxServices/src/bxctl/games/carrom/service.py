@@ -1,24 +1,22 @@
+"""Business logic and database queries for Carrom game."""
+
 from uuid import UUID
 
-from fastapi import APIRouter
+from bxctl.db import service as db_service
 
-from bxctl import structures
-
-from . import dependencies
-
-router = APIRouter(prefix="/game/carrom")
+from . import schemas
 
 
-@router.get("/leaderboard")
 async def get_carrom_leaderboard(
-    db_service: dependencies.Database,
+    db: db_service.CRUD,
     metric: str = "total_score",
     limit: int = 10,
-) -> structures.CarromLeaderboardResponse:
+) -> schemas.CarromLeaderboardResponse:
     """
     Get carrom leaderboard aggregated from carrom/round_finish events.
 
     Args:
+        db: Database CRUD service
         metric: "total_score" or "total_wins"
         limit: Maximum number of entries to return
 
@@ -58,12 +56,12 @@ async def get_carrom_leaderboard(
         LIMIT :limit
         """
 
-        result = await db_service.get_many_raw(sql, {"limit": limit})
+        result = await db.get_many_raw(sql, {"limit": limit})
 
         leaderboard = []
         for row in result.tuples():
             try:
-                entry = structures.CarromLeaderboardEntry(
+                entry = schemas.CarromLeaderboardEntry(
                     player_id=UUID(str(row[0])) if row[0] else UUID('00000000-0000-0000-0000-000000000000'),
                     username=row[1] if row[1] else "Unknown",
                     total_score=row[2],
@@ -104,12 +102,12 @@ async def get_carrom_leaderboard(
         LIMIT :limit
         """
 
-        result = await db_service.get_many_raw(sql, {"limit": limit})
+        result = await db.get_many_raw(sql, {"limit": limit})
 
         leaderboard = []
         for row in result.tuples():
             try:
-                entry = structures.CarromLeaderboardEntry(
+                entry = schemas.CarromLeaderboardEntry(
                     player_id=UUID(str(row[0])) if row[0] else UUID('00000000-0000-0000-0000-000000000000'),
                     username=row[1] if row[1] else "Unknown",
                     total_score=row[3],  # Not used for wins metric
@@ -127,7 +125,7 @@ async def get_carrom_leaderboard(
         # Invalid metric
         leaderboard = []
 
-    return structures.CarromLeaderboardResponse(
+    return schemas.CarromLeaderboardResponse(
         metric=metric,
         leaderboard=leaderboard,
     )

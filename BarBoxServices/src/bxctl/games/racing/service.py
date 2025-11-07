@@ -1,67 +1,27 @@
-import json
+"""Business logic and database queries for Racing game."""
+
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 
-from bxctl import structures
+from bxctl.db import service as db_service
+from bxctl.games import common
 
-from . import dependencies
-
-router = APIRouter(prefix="/game/racing")
-
-
-def _parse_lap_times(value) -> list[float] | None:
-	"""
-	Parse lap_times from SQL result, handling both JSON strings and already-parsed lists.
-
-	SQLite's json_extract() returns:
-	- Parsed Python list/dict for JSON objects/arrays
-	- String for JSON strings
-	- None for SQL NULL
-	"""
-	if value is None:
-		return None
-
-	# Already parsed by SQLite - return as-is
-	if isinstance(value, list):
-		try:
-			return [float(x) for x in value]
-		except (ValueError, TypeError) as e:
-			print(f"[ERROR] Failed to convert lap_times list elements to float: {value} - {e}")
-			return None
-
-	# JSON string - parse it
-	if isinstance(value, str):
-		if not value or value == "null":
-			return None
-		try:
-			parsed = json.loads(value)
-			if isinstance(parsed, list):
-				return [float(x) for x in parsed]
-			else:
-				print(f"[WARNING] Parsed lap_times is not a list: {type(parsed)} - {parsed}")
-				return None
-		except (json.JSONDecodeError, ValueError, TypeError) as e:
-			print(f"[ERROR] Failed to parse lap_times JSON: {value} - {e}")
-			return None
-
-	# Unexpected type
-	print(f"[WARNING] Unexpected lap_times type: {type(value)} - {value}")
-	return None
+from . import schemas
 
 
-@router.get("/leaderboard")
 async def get_racing_leaderboard(
+    db: db_service.CRUD,
     track_id: str,
-    db_service: dependencies.Database,
     metric: str = "best_race",
     laps: int | None = None,
     limit: int = 10,
-) -> structures.RacingLeaderboardResponse:
+) -> schemas.RacingLeaderboardResponse:
     """
     Get racing leaderboard aggregated from racing/race_finish events.
 
     Args:
+        db: Database CRUD service
         track_id: Track identifier (e.g. "gocart_track")
         metric: "best_lap" or "best_race"
         laps: Required for best_race metric (number of laps for the race)
@@ -91,10 +51,10 @@ async def get_racing_leaderboard(
             ORDER BY metric_value ASC
             LIMIT :limit
             """
-            result = await db_service.get_many_raw(sql, {"track_id": track_id, "limit": limit})
+            result = await db.get_many_raw(sql, {"track_id": track_id, "limit": limit})
 
             leaderboard = [
-                structures.RacingLeaderboardEntry(
+                schemas.RacingLeaderboardEntry(
                     player_id=UUID(str(row[0])) if row[0] else UUID('00000000-0000-0000-0000-000000000000'),
                     username=row[1] if row[1] else "Unknown",
                     metric_value=row[2],
@@ -125,7 +85,7 @@ async def get_racing_leaderboard(
                 ORDER BY metric_value ASC
                 LIMIT :limit
                 """
-                result = await db_service.get_many_raw(sql, {"track_id": track_id, "limit": limit})
+                result = await db.get_many_raw(sql, {"track_id": track_id, "limit": limit})
             else:
                 # Filter by specific lap count
                 # Use host_player_id for single-player games
@@ -146,7 +106,7 @@ async def get_racing_leaderboard(
                 ORDER BY metric_value ASC
                 LIMIT :limit
                 """
-                result = await db_service.get_many_raw(
+                result = await db.get_many_raw(
                     sql, {"track_id": track_id, "laps": laps, "limit": limit}
                 )
 
@@ -154,12 +114,12 @@ async def get_racing_leaderboard(
             leaderboard = []
             for row in result.tuples():
                 try:
-                    entry = structures.RacingLeaderboardEntry(
+                    entry = schemas.RacingLeaderboardEntry(
                         player_id=UUID(str(row[0])) if row[0] else UUID('00000000-0000-0000-0000-000000000000'),
                         username=row[1] if row[1] else "Unknown",
                         metric_value=row[2],
                         entry_date=row[3],
-                        lap_times=_parse_lap_times(row[4]) if len(row) > 4 else None,
+                        lap_times=common.parse_float_list(row[4]) if len(row) > 4 else None,
                     )
                     leaderboard.append(entry)
                 except Exception as e:
@@ -172,7 +132,7 @@ async def get_racing_leaderboard(
             # Invalid metric
             leaderboard = []
 
-        return structures.RacingLeaderboardResponse(
+        return schemas.RacingLeaderboardResponse(
             track_id=track_id,
             metric=metric,
             leaderboard=leaderboard,
