@@ -130,35 +130,6 @@ public class MiningEventService : GameEventServiceBase
 	return await EmitEventSafeAsync("mining/tick_update", payload);
 }
 
-	/// <summary>
-	/// Create backend session for mining game events
-	/// REQUIRED before any events can be emitted
-	/// </summary>
-	public async Task<Result<Guid>> CreateSessionAsync(Guid boxId, Guid playerId)
-	{
-		// Input validation
-		var boxValidation = ValidateGuid(boxId, "Box ID");
-		if (!boxValidation.IsSuccess)
-			return Result<Guid>.Failure(boxValidation.Error);
-
-		var playerValidation = ValidateGuid(playerId, "Player ID");
-		if (!playerValidation.IsSuccess)
-			return Result<Guid>.Failure(playerValidation.Error);
-
-		if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
-			return Result<Guid>.Failure("Event service not available");
-
-		// Delegate to EventService
-		var result = await _eventService.CreateSessionAsync(boxId, playerId);
-
-		if (result.IsSuccess)
-			LogInfo($"Mining session created: {result.Value}");
-		else
-			LogError($"Failed to create mining session: {result.Error}");
-
-		return result;
-	}
-
 /// <summary>
 /// Get player's global mining inventory from backend
 /// Aggregates all extracted gems minus spent gems from upgrades/credits

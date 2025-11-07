@@ -44,6 +44,8 @@ namespace BarBox.Games.MiningGame
 		private MiningGameUI _ui;
 		private GameEngine _engine;
 		private GameState _state;
+		private EventService _eventService;
+		private Guid _activitySessionId;
 		private MiningEventService _miningEventService;
 
 		// Platform services
@@ -69,8 +71,9 @@ namespace BarBox.Games.MiningGame
 		{
 			base.InitializeGame();
 
-			// Initialize event service
-			_miningEventService = new MiningEventService(EventService.GetInstance());
+			// Initialize event services
+			_eventService = EventService.GetInstance();
+			_miningEventService = new MiningEventService(_eventService);
 
 			DetectAndAdaptToContext();
 			InitializeComponents();
@@ -291,7 +294,7 @@ namespace BarBox.Games.MiningGame
 				}
 
 				// CREATE BACKEND SESSION - CRITICAL FOR EVENT PERSISTENCE
-				if (_isProductionContext && _miningEventService != null)
+				if (_isProductionContext && _eventService != null)
 				{
 					var locationManager = _locationManager;
 					if (locationManager != null && GodotObject.IsInstanceValid(locationManager))
@@ -311,7 +314,12 @@ namespace BarBox.Games.MiningGame
 
 								GD.Print($"[MiningGame] Creating backend session for player {playerId} at box {boxId}");
 
-								var sessionResult = await _miningEventService.CreateSessionAsync(boxId, playerId);
+								var sessionResult = await _eventService.CreateActivitySessionAsync(
+									boxId: boxId,
+									playerId: playerId,
+									gameTag: "mining",
+									playerIds: null  // Single-player game
+								);
 								if (!sessionResult.IsSuccess)
 								{
 									GD.PrintErr($"[MiningGame] WARNING: Failed to create backend session: {sessionResult.Error}");
@@ -320,7 +328,8 @@ namespace BarBox.Games.MiningGame
 								}
 								else
 								{
-									GD.Print($"[MiningGame] Backend session created successfully: {sessionResult.Value}");
+									_activitySessionId = sessionResult.Value;
+									GD.Print($"[MiningGame] Backend session created successfully: {_activitySessionId}");
 								}
 							}
 							else
@@ -712,12 +721,18 @@ namespace BarBox.Games.MiningGame
 		{
 			if (what == NotificationExitTree)
 			{
+				// Close activity session if active
+				if (_activitySessionId != Guid.Empty && _eventService != null)
+				{
+					_ = _eventService.CloseActivitySessionAsync(_activitySessionId);
+				}
+
 				// Cleanup
 				if (GodotObject.IsInstanceValid(_engine))
 					_engine.StopMining();
-					
+
 				if (GodotObject.IsInstanceValid(_state))
-				
+
 				if (_userManager != null && GodotObject.IsInstanceValid(_userManager))
 				{
 					_userManager.UserLoggedIn -= OnUserLoggedIn;

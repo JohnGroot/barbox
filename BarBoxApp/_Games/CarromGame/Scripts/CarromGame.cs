@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -59,7 +60,8 @@ public partial class CarromGame : GameController
 	private CarromGameMode _carromGameMode = CarromGameMode.Practice;
 	private CarromBoard _board;
 	private CarromInputController _inputController;
-	private CarromEventService _carromEventService;
+	private EventService _eventService;
+	private Guid _activitySessionId;
 
 	// Managers
 	private CarromPracticeModeManager _practiceModeManager;
@@ -95,7 +97,7 @@ public partial class CarromGame : GameController
 		SetGameMode(GameMode.Practice); // Start in practice mode
 
 		// Initialize event service
-		_carromEventService = new CarromEventService(EventService.GetInstance());
+		_eventService = EventService.GetInstance();
 
 		// Initialize physics config
 		if (PhysicsConfig == null)
@@ -1287,7 +1289,7 @@ public partial class CarromGame : GameController
 		try
 		{
 			// Emit event to backend (event-sourced persistence)
-			if (_carromEventService != null)
+			if (_eventService != null)
 			{
 				// Build scores dictionary with player scores
 				// For single-player competitive mode, we only have one player's score
@@ -1302,7 +1304,8 @@ public partial class CarromGame : GameController
 				var mode = _carromGameMode.ToString().ToLowerInvariant();
 				var winnerId = isWin ? playerId : "";
 
-				_ = _carromEventService.EmitRoundFinishAsync(mode, winnerId, scores);
+				var payload = new { mode = mode, winner = winnerId, scores = scores };
+			_ = _eventService.EmitEventAsync("carrom/round_finish", payload);
 
 				// Thread-safe logging via CallDeferred
 				CallDeferred(MethodName.LogSavedData, $"Emitted round_finish event - Win: {isWin}");
@@ -2170,8 +2173,14 @@ public partial class CarromGame : GameController
 			{
 				var boxId = locationManager.BoxId;
 
-				// Create multiplayer session via CarromEventService
-				var sessionResult = await _carromEventService.CreateMultiplayerSessionAsync(boxId, playerIds);
+				// Create multiplayer activity session using new API
+				var playerIdStrings = playerIds.Select(id => id.ToString()).ToList();
+				var sessionResult = await _eventService.CreateActivitySessionAsync(
+					boxId: boxId,
+					playerId: playerIds[0], // Host player
+					gameTag: "carrom",
+					playerIds: playerIdStrings
+				);
 
 				if (!sessionResult.IsSuccess)
 				{
@@ -2188,7 +2197,8 @@ public partial class CarromGame : GameController
 					return;
 				}
 
-				GD.Print($"[CarromGame] Multiplayer session created successfully: {sessionResult.Value}");
+				_activitySessionId = sessionResult.Value;
+				GD.Print($"[CarromGame] Multiplayer session created successfully: {_activitySessionId}");
 			}
 			else
 			{
@@ -2216,6 +2226,12 @@ public partial class CarromGame : GameController
 	public override void _ExitTree()
 	{
 		base._ExitTree();
+
+		// Close activity session if active
+		if (_activitySessionId != Guid.Empty && _eventService != null)
+		{
+			_ = _eventService.CloseActivitySessionAsync(_activitySessionId);
+		}
 
 		// Clean up signals and references
 		if (_board != null && GodotObject.IsInstanceValid(_board))
