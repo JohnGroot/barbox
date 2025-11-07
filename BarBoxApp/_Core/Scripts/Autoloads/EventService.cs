@@ -87,25 +87,45 @@ public partial class EventService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Create new gameplay session
-	/// Call this when player logs in or starts a game
+	/// Create new activity session (game launch → exit) with game tag
+	/// This is the NEW recommended method that replaces CreateSessionAsync
 	/// </summary>
-	public async Task<Result<Guid>> CreateSessionAsync(Guid boxId, Guid playerId)
+	/// <param name="boxId">Box identifier</param>
+	/// <param name="playerId">Player identifier (host for multiplayer)</param>
+	/// <param name="gameTag">Game identifier (e.g., "carrom", "racing", "mining")</param>
+	/// <param name="playerIds">Optional: Array of all player IDs for multiplayer</param>
+	/// <returns>Result with created session ID</returns>
+	public async Task<Result<Guid>> CreateActivitySessionAsync(
+		Guid boxId,
+		Guid playerId,
+		string gameTag,
+		List<string> playerIds = null)
 	{
 		if (!_isInitialized)
 			return Result<Guid>.Failure("EventService not initialized - backend not ready");
+
+		if (string.IsNullOrEmpty(gameTag))
+			return Result<Guid>.Failure("game_tag is required");
 
 		var sessionId = Guid.NewGuid();
 
 		try
 		{
 			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateSession - Starting for player {playerId}");
+				LogInfo($"[HTTP] CreateActivitySession - Starting for game '{gameTag}'");
 
-			// Connect to backend
 			await EnsureConnectedAsync();
 
-			// Create session via PUT /box/{boxId}/session/{sessionId}
+			// Build URL with required game_tag
+			var url = $"/box/{boxId}/session/{sessionId}?game_tag={Uri.EscapeDataString(gameTag)}";
+
+			// Add player_ids for multiplayer
+			if (playerIds != null && playerIds.Count > 1)
+			{
+				var playerIdsJson = JsonSerializer.Serialize(playerIds);
+				url += $"&player_ids={Uri.EscapeDataString(playerIdsJson)}";
+			}
+
 			var headers = new[]
 			{
 				$"Player-Id: {playerId}",
@@ -113,93 +133,7 @@ public partial class EventService : AutoloadBase
 			};
 
 			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateSession - Sending PUT request to /box/{boxId}/session/{sessionId}");
-
-			var error = _httpClient.Request(
-				Godot.HttpClient.Method.Put,
-				$"/box/{boxId}/session/{sessionId}",
-				headers
-			);
-
-			if (error != Error.Ok)
-				return Result<Guid>.Failure($"Session creation request failed: {error}");
-
-			await WaitForResponseAsync();
-
-			var responseCode = _httpClient.GetResponseCode();
-
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateSession - Received response code: {responseCode}");
-
-			if (responseCode != 202)
-			{
-				// Close connection to allow recovery on next request
-				_httpClient.Close();
-				return Result<Guid>.Failure($"Session creation failed with code {responseCode}");
-			}
-
-			// Store current session
-			_currentSessionId = sessionId;
-			_currentBoxId = boxId;
-
-			LogInfo($"Session created: {sessionId}");
-			CallDeferred(MethodName.EmitSignal, SignalName.SessionCreated, sessionId.ToString());
-
-			return Result<Guid>.Success(sessionId);
-		}
-		catch (Exception ex)
-		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogError($"[HTTP] CreateSession - Exception: {ex.Message}");
-
-			// Close connection on exception to ensure clean state
-			_httpClient.Close();
-			return Result<Guid>.Failure($"Session creation exception: {ex.Message}");
-		}
-	}
-
-	/// <summary>
-	/// Create new multiplayer gameplay session with multiple players
-	/// Call this when multiplayer game starts (e.g., Carrom with 2-4 players)
-	/// </summary>
-	/// <param name="boxId">Box identifier</param>
-	/// <param name="sessionId">Session identifier (should be pre-generated)</param>
-	/// <param name="playerIds">Array of player IDs (2-4 players)</param>
-	/// <returns>Result indicating success or failure</returns>
-	public async Task<Result<bool>> CreateSessionWithPlayersAsync(Guid boxId, Guid sessionId, Guid[] playerIds)
-	{
-		if (!_isInitialized)
-			return Result<bool>.Failure("EventService not initialized - backend not ready");
-
-		if (playerIds == null || playerIds.Length == 0)
-			return Result<bool>.Failure("Player IDs array cannot be null or empty");
-
-		try
-		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateSessionWithPlayers - Starting for {playerIds.Length} players");
-
-			// Connect to backend
-			await EnsureConnectedAsync();
-
-			// Serialize player IDs as JSON array for query parameter
-			var playerIdsJson = JsonSerializer.Serialize(playerIds.Select(p => p.ToString()).ToArray());
-			var encodedPlayerIds = Uri.EscapeDataString(playerIdsJson);
-
-			// First player is host, included in header for backward compatibility
-			var hostPlayerId = playerIds[0];
-
-			// Create session via PUT /box/{boxId}/session/{sessionId}?player_ids=["uuid1","uuid2",...]
-			var headers = new[]
-			{
-				$"Player-Id: {hostPlayerId}",
-				"User-Agent: BarBox-Client/1.0"
-			};
-
-			var url = $"/box/{boxId}/session/{sessionId}?player_ids={encodedPlayerIds}";
-
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateSessionWithPlayers - Sending PUT request to {url}");
+				LogInfo($"[HTTP] CreateActivitySession - PUT {url}");
 
 			var error = _httpClient.Request(
 				Godot.HttpClient.Method.Put,
@@ -208,39 +142,102 @@ public partial class EventService : AutoloadBase
 			);
 
 			if (error != Error.Ok)
-				return Result<bool>.Failure($"Multiplayer session creation request failed: {error}");
+				return Result<Guid>.Failure($"Activity session creation request failed: {error}");
 
 			await WaitForResponseAsync();
 
 			var responseCode = _httpClient.GetResponseCode();
 
 			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateSessionWithPlayers - Received response code: {responseCode}");
+				LogInfo($"[HTTP] CreateActivitySession - Response code: {responseCode}");
 
 			if (responseCode != 202)
 			{
-				// Close connection to allow recovery on next request
 				_httpClient.Close();
-				return Result<bool>.Failure($"Multiplayer session creation failed with code {responseCode}");
+				return Result<Guid>.Failure($"Activity session creation failed with code {responseCode}");
 			}
 
-			// Store current session
 			_currentSessionId = sessionId;
 			_currentBoxId = boxId;
 
-			LogInfo($"Multiplayer session created: {sessionId} with {playerIds.Length} players");
+			LogInfo($"Activity session created: {sessionId} (game: {gameTag})");
 			CallDeferred(MethodName.EmitSignal, SignalName.SessionCreated, sessionId.ToString());
+
+			return Result<Guid>.Success(sessionId);
+		}
+		catch (Exception ex)
+		{
+			if (DEBUG_HTTP_LIFECYCLE)
+				LogError($"[HTTP] CreateActivitySession - Exception: {ex.Message}");
+
+			_httpClient.Close();
+			return Result<Guid>.Failure($"Activity session creation exception: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Close an activity session (game exit)
+	/// Call this when game ends to properly set end_time on backend
+	/// </summary>
+	/// <param name="sessionId">Session identifier to close</param>
+	/// <returns>Result indicating success or failure</returns>
+	public async Task<Result<bool>> CloseActivitySessionAsync(Guid sessionId)
+	{
+		if (!_isInitialized)
+			return Result<bool>.Failure("EventService not initialized - backend not ready");
+
+		try
+		{
+			if (DEBUG_HTTP_LIFECYCLE)
+				LogInfo($"[HTTP] CloseActivitySession - Closing session {sessionId}");
+
+			await EnsureConnectedAsync();
+
+			var url = $"/box/session/{sessionId}/close";
+			var headers = new[] { "User-Agent: BarBox-Client/1.0" };
+
+			if (DEBUG_HTTP_LIFECYCLE)
+				LogInfo($"[HTTP] CloseActivitySession - POST {url}");
+
+			var error = _httpClient.Request(
+				Godot.HttpClient.Method.Post,
+				url,
+				headers
+			);
+
+			if (error != Error.Ok)
+				return Result<bool>.Failure($"Session close request failed: {error}");
+
+			await WaitForResponseAsync();
+
+			var responseCode = _httpClient.GetResponseCode();
+
+			if (DEBUG_HTTP_LIFECYCLE)
+				LogInfo($"[HTTP] CloseActivitySession - Response code: {responseCode}");
+
+			if (responseCode != 200)
+			{
+				_httpClient.Close();
+				return Result<bool>.Failure($"Session close failed with code {responseCode}");
+			}
+
+			// Clear current session if it was the one we just closed
+			if (_currentSessionId == sessionId)
+			{
+				_currentSessionId = Guid.Empty;
+			}
+
+			LogInfo($"Activity session closed: {sessionId}");
 
 			return Result<bool>.Success(true);
 		}
 		catch (Exception ex)
 		{
 			if (DEBUG_HTTP_LIFECYCLE)
-				LogError($"[HTTP] CreateSessionWithPlayers - Exception: {ex.Message}");
+				LogError($"[HTTP] CloseActivitySession - Exception: {ex.Message}");
 
-			// Close connection on exception to ensure clean state
 			_httpClient.Close();
-			return Result<bool>.Failure($"Multiplayer session creation exception: {ex.Message}");
+			return Result<bool>.Failure($"Session close exception: {ex.Message}");
 		}
 	}
 

@@ -29,8 +29,8 @@ class PlayerCreate(Identifiable, Tagged):
     origin_id: UUID
 
 
-class PlayerDetail(Identifiable):
-    pass
+class PlayerDetail(Identifiable, Tagged):
+    origin_id: UUID
 
 
 class GameCreate(Named, Tagged):
@@ -94,10 +94,16 @@ class Score(SessionEventBase):
     type: Literal["play/score"]
 
 
+class BoxSessionDetail(Identifiable):
+    """Minimal session response for creation endpoints"""
+    game_tag: str
+
+
 class BoxSession(Identifiable):
     box_id: UUID
     host_player_id: UUID
     player_ids: list[str]  # JSON array of player UUID strings
+    game_tag: str  # Game type identifier (e.g., "carrom", "racing", "mining")
     start_time: Annotated[datetime, Field(default_factory=datetime.now)]
     end_time: datetime | None = None
     events: Annotated[

@@ -2,8 +2,9 @@ import json
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Header, Query, status
+from fastapi import APIRouter, Header, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from structlog import get_logger
 
@@ -13,6 +14,108 @@ from . import dependencies
 
 logger = get_logger()
 router = APIRouter(prefix="/box")
+
+
+@router.post("/", status_code=201)
+async def create_box(
+    new_box: structures.BoxCreate,
+    db_service: dependencies.Database,
+) -> structures.BoxDetail:
+    """Create a new box.
+
+    Standard creation endpoint for test suites and API clients.
+    Validates that:
+    - Box ID is unique
+    - Box tag (identifier) is unique
+
+    Returns:
+        201: Box created successfully
+        409: Box already exists (duplicate ID or tag)
+        500: Internal server error
+
+    For idempotent box registration, use PUT /box/{box_id} instead.
+    """
+
+    # Check if box already exists (either by ID or tag)
+    existing_box_result = await db_service.session.execute(
+        select(db.defs.Box).where(
+            (db.defs.Box.id == new_box.id) | (db.defs.Box.tag == new_box.tag)
+        )
+    )
+    existing_box = existing_box_result.scalar_one_or_none()
+
+    if existing_box is not None:
+        logger.info(
+            "box_creation_duplicate",
+            box_id=str(new_box.id),
+            existing_id=str(existing_box.id),
+            tag=new_box.tag,
+            existing_tag=existing_box.tag,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": structures.ErrorCode.DUPLICATE_RESOURCE,
+                "message": (
+                    f"Box already exists with {'ID' if existing_box.id == new_box.id else 'tag'} "
+                    f"'{new_box.id if existing_box.id == new_box.id else new_box.tag}'."
+                ),
+                "details": {
+                    "conflict_field": "id" if existing_box.id == new_box.id else "tag",
+                    "conflict_value": str(new_box.id) if existing_box.id == new_box.id else new_box.tag,
+                },
+            },
+        )
+
+    # Attempt to create box
+    try:
+        result = await db_service.create(
+            target=db.defs.Box,
+            data=new_box,
+            read_as=structures.BoxDetail,
+        )
+        logger.info(
+            "box_created",
+            box_id=str(new_box.id),
+            name=new_box.name,
+            tag=new_box.tag,
+        )
+        return result
+
+    except IntegrityError as e:
+        # Catch any database constraint violations that weren't caught above
+        logger.error(
+            "box_creation_integrity_error",
+            error=str(e),
+            box_id=str(new_box.id),
+            tag=new_box.tag,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": structures.ErrorCode.UNIQUE_CONSTRAINT,
+                "message": "Box creation failed due to a constraint violation.",
+                "details": {"error": str(e.orig) if hasattr(e, 'orig') else str(e)},
+            },
+        )
+
+    except Exception as e:
+        # Catch unexpected errors
+        logger.error(
+            "box_creation_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            box_id=str(new_box.id),
+            tag=new_box.tag,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": structures.ErrorCode.INTERNAL_ERROR,
+                "message": "An unexpected error occurred during box creation.",
+                "details": {"error_type": type(e).__name__},
+            },
+        )
 
 
 @router.put("/{box_id}", status_code=200)
@@ -46,19 +149,22 @@ async def create_box_session(
     box_id: UUID,
     session_id: UUID,
     player_id: Annotated[UUID, Header()],
+    game_tag: Annotated[str, Query()],  # Required: Game type identifier
     db_service: dependencies.Database,
     now: dependencies.Now,
     player_ids: Annotated[str | None, Query()] = None,  # Optional JSON array of player IDs for multiplayer
-) -> structures.Identifiable:
+) -> structures.BoxSessionDetail:
     """
     Create a game session for single or multiple players.
 
     For single-player games (Racing, Mining):
     - Pass player_id via header only
+    - Pass game_tag as query parameter: ?game_tag=racing
     - player_ids will be set to [player_id]
 
     For multiplayer games (Carrom):
     - Pass player_ids as JSON array via query parameter: ?player_ids=["uuid1","uuid2","uuid3"]
+    - Pass game_tag as query parameter: ?game_tag=carrom
     - First player in array becomes host_player_id
     """
     # Determine player list
@@ -85,6 +191,7 @@ async def create_box_session(
         box_id=str(box_id),
         host_player_id=str(host_id),
         player_count=len(player_id_list),
+        game_tag=game_tag,
     )
 
     await db_service.create(
@@ -94,10 +201,11 @@ async def create_box_session(
             "box_id": box_id,
             "host_player_id": host_id,
             "player_ids": player_id_list,
+            "game_tag": game_tag,
             "start_time": now,
         },
     )
-    return structures.Identifiable(id=session_id)
+    return structures.BoxSessionDetail(id=session_id, game_tag=game_tag)
 
 
 @router.post("/session/{session_id}", status_code=status.HTTP_201_CREATED)
@@ -114,6 +222,31 @@ async def add_session_event(
         | {"session_id": session_id, "id": new_id, "timestamp": now},
     )
     return structures.Identifiable(id=new_id)
+
+
+@router.post("/session/{session_id}/close", status_code=status.HTTP_200_OK)
+async def close_box_session(
+    session_id: UUID,
+    db_service: dependencies.Database,
+    now: dependencies.Now,
+) -> structures.Identifiable:
+    """
+    Close an activity session by setting end_time.
+
+    Call this when a game exits to properly close the session.
+    """
+    from sqlalchemy import update
+
+    logger.info("closing_session", session_id=str(session_id))
+
+    await db_service.session.execute(
+        update(db.defs.BoxSession)
+        .where(db.defs.BoxSession.id == session_id)
+        .values(end_time=now)
+    )
+    await db_service.session.commit()
+
+    return structures.Identifiable(id=session_id)
 
 
 @router.get("/session/{session_id}", response_model=structures.BoxSession)

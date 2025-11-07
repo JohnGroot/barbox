@@ -185,41 +185,9 @@ public partial class SessionManager : AutoloadBase
 
 			_activeSessions[cleanedPhone] = session;
 
-			// Create backend session (strict mode - fail if backend unavailable)
+			// Emit user/login event for analytics (ActivitySession created by games, not login)
 			if (_eventService != null)
 			{
-				// Get box ID from LocationManager
-				var locationManager = LocationManager.GetAutoload();
-				if (locationManager == null || !locationManager.IsConfigLoaded)
-				{
-					_activeSessions.Remove(cleanedPhone);
-					LogError("LocationManager not available or config not loaded");
-					return Result<UserSession>.Failure("System configuration error - please contact support");
-				}
-
-				var boxId = locationManager.BoxId;
-
-				var sessionResult = await _eventService.CreateSessionAsync(boxId, playerId);
-				if (!sessionResult.IsSuccess)
-				{
-					// Remove local session on backend failure
-					_activeSessions.Remove(cleanedPhone);
-					LogError($"Backend session creation failed: {sessionResult.Error}");
-
-					// Provide specific error messages based on backend response
-					if (sessionResult.Error.Contains("not initialized") || sessionResult.Error.Contains("not ready"))
-						return Result<UserSession>.Failure("Authentication service unavailable - please try again later");
-					else if (sessionResult.Error.Contains("timeout") || sessionResult.Error.Contains("Timeout"))
-						return Result<UserSession>.Failure("Connection timeout - please check your network and try again");
-					else
-						return Result<UserSession>.Failure($"Login failed: {sessionResult.Error}");
-				}
-
-				// Store backend session ID
-				session.BackendSessionId = sessionResult.Value;
-				LogInfo($"Backend session created: {sessionResult.Value}");
-
-				// Emit user/login event to backend
 				var payload = new
 				{
 					phone_number = cleanedPhone,
@@ -230,10 +198,7 @@ public partial class SessionManager : AutoloadBase
 			}
 			else
 			{
-				// EventService required for backend session
-				_activeSessions.Remove(cleanedPhone);
-				LogError("EventService not available - cannot create backend session");
-				return Result<UserSession>.Failure("Authentication service unavailable - please try again later");
+				LogWarning("EventService not available - login event will not be persisted");
 			}
 
 			LogInfo($"User session created for phone {cleanedPhone}");
@@ -424,8 +389,8 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			// Emit user/logout event to backend before removing session
-			if (_eventService != null && session.BackendSessionId != Guid.Empty)
+			// Emit user/logout event for analytics
+			if (_eventService != null)
 			{
 				var payload = new
 				{
@@ -438,15 +403,6 @@ public partial class SessionManager : AutoloadBase
 				{
 					LogWarning($"Failed to emit logout event: {logoutResult.Error}");
 				}
-			}
-
-			// Clear backend session context if this was the current session
-			if (_eventService != null &&
-			    session.BackendSessionId != Guid.Empty &&
-			    _eventService.GetCurrentSessionId() == session.BackendSessionId)
-			{
-				// Session will be cleared on EventService side naturally
-				// No explicit close method needed - backend tracks session end via logout event
 			}
 
 			// Remove local session
@@ -770,6 +726,7 @@ public partial class SessionManager : AutoloadBase
 
 /// <summary>
 /// User session data structure
+/// Represents authentication session (login → logout), not gameplay session
 /// </summary>
 public class UserSession
 {
@@ -777,7 +734,6 @@ public class UserSession
 	public string UserName { get; set; } = string.Empty;
 	public string LocationId { get; set; } = string.Empty;
 	public Guid PlayerId { get; set; } = Guid.Empty;
-	public Guid BackendSessionId { get; set; } = Guid.Empty;
 	public DateTime LoginTime { get; set; }
 	public DateTime LastActivity { get; set; }
 	public int Credits { get; set; }

@@ -17,8 +17,17 @@ public partial class MainController : Control
 	
 	public override void _Ready()
 	{
+		// Check for test mode
+		var args = OS.GetCmdlineArgs();
+		if (System.Array.IndexOf(args, "--run-tests") >= 0)
+		{
+			// Load test runner instead of main UI
+			GetTree().ChangeSceneToFile("res://Tests/TestRunner.tscn");
+			return;
+		}
+
 		// MainController _Ready() starting
-		
+
 		// Get SceneManager reference to check if services are ready
 		_sceneManager = SceneManager.GetAutoload();
 		if (_sceneManager == null)
@@ -26,7 +35,7 @@ public partial class MainController : Control
 			GD.PrintErr("[MainController] CRITICAL: SceneManager not available");
 			return;
 		}
-		
+
 		// Check if services are already initialized
 		if (_sceneManager.AreServicesReady())
 		{
