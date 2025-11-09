@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Threading.Tasks;
 
 /// <summary>
@@ -15,7 +16,7 @@ public partial class PaymentService : AutoloadBase
 	}
 
 	private IPaymentService _currentProvider;
-	private SessionManager _sessionManager;
+	private CreditService _creditService;
 
 	protected override void OnServiceReady()
 	{
@@ -24,10 +25,10 @@ public partial class PaymentService : AutoloadBase
 
 	protected override void OnServiceInitialize()
 	{
-		_sessionManager = SessionManager.GetInstance();
-		if (_sessionManager == null)
+		_creditService = CreditService.Instance;
+		if (_creditService == null)
 		{
-			LogError("SessionManager not found - PaymentService requires SessionManager");
+			LogError("CreditService not found - PaymentService requires CreditService");
 			return;
 		}
 
@@ -48,7 +49,7 @@ public partial class PaymentService : AutoloadBase
 	/// <summary>
 	/// Process a credit pack purchase and add credits to user account
 	/// </summary>
-	public async Task<PaymentResult> PurchaseCreditsAsync(string userId, CreditPack creditPack)
+	public async Task<PaymentResult> PurchaseCreditsAsync(Guid playerId, CreditPack creditPack)
 	{
 		if (_currentProvider == null)
 		{
@@ -56,42 +57,76 @@ public partial class PaymentService : AutoloadBase
 			return PaymentResult.Failure("Payment service not available");
 		}
 
-		if (_sessionManager == null)
+		if (_creditService == null)
 		{
-			LogError("SessionManager not available for credit addition");
-			return PaymentResult.Failure("Session service not available");
+			LogError("CreditService not available for credit addition");
+			return PaymentResult.Failure("Credit service not available");
+		}
+
+		// CRITICAL: Check EventService readiness BEFORE processing payment
+		// This prevents charging users when credits cannot be added
+		var eventService = EventService.GetInstance();
+		if (eventService == null || !eventService.IsReady)
+		{
+			var diagnostics = $"EventService exists: {eventService != null}";
+			if (eventService != null)
+			{
+				diagnostics += $", EventService ready: {eventService.IsReady}";
+			}
+
+			LogError($"Cannot process credit purchase - EventService not ready");
+			LogError($"Diagnostics: {diagnostics}");
+
+			return PaymentResult.Failure(
+				$"Credit system temporarily unavailable (EventService not ready). {diagnostics}"
+			);
 		}
 
 		try
 		{
-			LogInfo($"Processing purchase for user {userId}: {creditPack.DisplayName}");
+			LogInfo($"Processing purchase for player {playerId}: {creditPack.DisplayName}");
 
-			// Process payment through provider
-			var paymentResult = await _currentProvider.ProcessPurchaseAsync(userId, creditPack);
+			// NOW safe to process payment - we know credits can be added
+			var paymentResult = await _currentProvider.ProcessPurchaseAsync(playerId.ToString(), creditPack);
 
 			if (!paymentResult.IsSuccess)
 			{
-				LogWarning($"Payment failed for user {userId}: {paymentResult.ErrorMessage}");
+				LogWarning($"Payment failed for player {playerId}: {paymentResult.ErrorMessage}");
 				return paymentResult;
 			}
 
-			// Add credits to user account
-			var creditsAdded = await _sessionManager.AddGlobalCreditsAsync(userId, creditPack.Credits,
+			// Add credits to user account via CreditService
+			var addResult = await _creditService.AddAsync(playerId, creditPack.Credits,
 				$"Credit purchase - Transaction: {paymentResult.TransactionId}");
 
-			if (!creditsAdded)
+			if (!addResult.IsSuccess)
 			{
-				LogError($"Failed to add credits for user {userId} after successful payment {paymentResult.TransactionId}");
-				// TODO: In production, this would trigger a refund or manual intervention
-				return PaymentResult.Failure("Failed to add credits to account");
+				// This should be VERY rare now - we already checked EventService before payment
+				// But we log diagnostics in case of race conditions
+				var diagnostics = $"EventService exists: {eventService != null}";
+				if (eventService != null)
+				{
+					diagnostics += $", EventService ready: {eventService.IsReady}";
+				}
+
+				LogError($"CRITICAL: Failed to add credits for player {playerId} after successful payment {paymentResult.TransactionId}");
+				LogError($"Diagnostics: {diagnostics}");
+				LogError($"Error: {addResult.Error}");
+				LogError("This requires manual intervention for refund");
+
+				// TODO: In production, queue for automatic refund processing
+				return PaymentResult.Failure(
+					$"Payment processed but credit addition failed. Transaction ID: {paymentResult.TransactionId}. " +
+					$"Please contact support for resolution."
+				);
 			}
 
-			LogInfo($"Purchase completed for user {userId}: {creditPack.Credits} credits added (Transaction: {paymentResult.TransactionId})");
+			LogInfo($"Purchase completed for player {playerId}: {creditPack.Credits} credits added, new balance: {addResult.Value} (Transaction: {paymentResult.TransactionId})");
 			return paymentResult;
 		}
 		catch (System.Exception ex)
 		{
-			LogError($"Error processing purchase for user {userId}: {ex.Message}");
+			LogError($"Error processing purchase for player {playerId}: {ex.Message}");
 			return PaymentResult.Failure($"Purchase processing error: {ex.Message}");
 		}
 	}
