@@ -132,6 +132,76 @@ sh scripts/test-backend.sh stop
 sh scripts/test-backend.sh restart
 ```
 
+### Production Backend
+
+**Auto-Start Behavior**: The BarBox app **automatically starts the production backend** if it's not already running.
+
+**Production backend runs on port 8000** with the main application database.
+
+**How Auto-Start Works:**
+
+When you launch the app:
+1. BackendManager checks if backend is healthy via HTTP `/alive` endpoint
+2. If not healthy, checks port 8000 for stale processes
+3. Kills any stale processes found
+4. Executes `BarBoxServices/scripts/dev.sh` in background
+5. Polls for health check with 10-second timeout
+6. If successful, app proceeds normally
+7. If failed, shows error UI with retry button
+
+**Backend Lifecycle:**
+
+- **Auto-starts on app launch** if not detected
+- **Persists after app shutdown** for faster subsequent launches
+- **Stale process cleanup** prevents abandoned processes
+- **Retry mechanism** via UI button for transient failures
+
+**Manual Backend Control (Optional):**
+
+You can also start the backend manually:
+
+```bash
+cd BarBoxServices
+
+# Start production backend (blocking)
+sh scripts/dev.sh
+
+# Alternative: Run in background with logs
+uvicorn barbox.main:app --reload --port 8000 > backend.log 2>&1 &
+```
+
+**Environment Configuration:**
+
+```bash
+export BARBOX_BACKEND_HOST=127.0.0.1  # Default
+export BARBOX_BACKEND_PORT=8000        # Default
+```
+
+**Auto-Start Failure Handling:**
+
+If backend fails to auto-start, the app displays:
+
+```
+╔════════════════════════════════════════════════════════╗
+║  Backend Service Not Running                           ║
+╠════════════════════════════════════════════════════════╣
+║  Backend auto-start failed.                            ║
+║                                                        ║
+║  Possible causes:                                      ║
+║    - Backend script not found                          ║
+║    - Port 8000 blocked by firewall                     ║
+║    - Python dependencies missing                       ║
+║                                                        ║
+║  To start manually:                                    ║
+║    cd BarBoxServices                                   ║
+║    sh scripts/dev.sh                                   ║
+║                                                        ║
+║  Then restart the app or click Retry Connection       ║
+╚════════════════════════════════════════════════════════╝
+```
+
+App continues with degraded functionality (credit system, persistence, leaderboards unavailable).
+
 ## Running Tests
 
 ### All Tests (Recommended for Pre-Commit)
@@ -354,6 +424,360 @@ POST http://127.0.0.1:8001/player/
 }
 HTTP 400
 ```
+
+### 6. Testing Failure Scenarios
+
+The test suite includes infrastructure for simulating service failures to test error handling and recovery. This allows tests to replicate production bugs where backend services fail.
+
+#### Failure Test Base Class
+
+Use `FailureScenarioTestBase` to simulate service failures:
+
+```csharp
+using BarBox.Tests.Fixtures;
+
+namespace BarBox.Tests.FailureScenarios;
+
+public class MyFailureTests : FailureScenarioTestBase
+{
+    public MyFailureTests(Node testScene) : base(testScene) {}
+
+    [Test]
+    public async void MyOperation_WhenBackendNotReady_FailsGracefully()
+    {
+        // Check if failure simulation is available (requires DEBUG build)
+        if (!CanSimulateFailures())
+        {
+            TestHelpers.LogTestInfo("Skipping - requires DEBUG build");
+            return;
+        }
+
+        // Arrange
+        var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
+
+        try
+        {
+            // Simulate backend failure
+            SimulateEventServiceNotReady();
+
+            // Verify simulation worked
+            if (IsEventServiceNotReady())
+            {
+                TestHelpers.LogTestInfo("EventService forced to NOT READY state");
+            }
+
+            // Act - attempt operation that requires backend
+            var result = await _myService.DoOperation();
+
+            // Assert - must fail gracefully
+            if (result.IsSuccess)
+            {
+                TestHelpers.LogTestError("REGRESSION: Operation succeeded without backend!");
+            }
+            else
+            {
+                TestHelpers.LogTestInfo($"✓ Correctly failed: {result.ErrorMessage}");
+            }
+        }
+        finally
+        {
+            // ALWAYS restore service state
+            RestoreEventServiceReady();
+            await _sessionManager.LogoutUserAsync(TestPlayerPhone);
+        }
+    }
+}
+```
+
+#### Failure Simulation Methods
+
+```csharp
+// Force EventService to not ready state (backend unavailable)
+SimulateEventServiceNotReady();
+
+// Restore EventService to ready state
+RestoreEventServiceReady();
+
+// Check if EventService is currently not ready
+bool notReady = IsEventServiceNotReady();
+
+// Check if failure simulation is supported (DEBUG build required)
+bool canSimulate = CanSimulateFailures();
+```
+
+#### Using Test Helpers for Failure Simulation
+
+```csharp
+// Static helpers (can be used in any test)
+if (TestHelpers.CanSimulateFailures())
+{
+    TestHelpers.ForceEventServiceNotReady();
+
+    // Run test...
+
+    TestHelpers.RestoreEventServiceReady();
+}
+```
+
+#### Key Principles for Failure Tests
+
+1. **Always use try-finally** - Restore service state even if test fails
+2. **Check CanSimulateFailures()** - Gracefully skip on non-DEBUG builds
+3. **Verify simulation worked** - Check IsEventServiceNotReady() before testing
+4. **Test state transitions** - Backend fails → operation fails → backend recovers → operation succeeds
+
+#### Example: Testing Credit Purchase Failure
+
+```csharp
+[Test]
+public async void PurchaseCredits_BackendDown_FailsWithDiagnostics()
+{
+    if (!CanSimulateFailures()) return;
+
+    var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
+    var initialCredits = _sessionManager.GetUserSession(TestPlayerPhone).Credits;
+
+    try
+    {
+        // Simulate backend failure
+        SimulateEventServiceNotReady();
+
+        // Act - payment processes but credits can't be added
+        var result = await _paymentService.PurchaseCreditsAsync(
+            TestPlayerPhone, new CreditPack(25, 25.00m));
+
+        // Assert
+        if (result.IsSuccess)
+        {
+            TestHelpers.LogTestError("CRITICAL: Payment succeeded without backend!");
+        }
+
+        // Verify credits unchanged
+        var finalCredits = _sessionManager.GetUserSession(TestPlayerPhone).Credits;
+        if (finalCredits != initialCredits)
+        {
+            TestHelpers.LogTestError($"Credits changed: {initialCredits} → {finalCredits}");
+        }
+
+        // Verify error has diagnostics
+        if (!result.ErrorMessage.Contains("EventService") ||
+            !result.ErrorMessage.Contains("ready"))
+        {
+            TestHelpers.LogTestError($"Poor error message: {result.ErrorMessage}");
+        }
+    }
+    finally
+    {
+        RestoreEventServiceReady();
+        await _sessionManager.LogoutUserAsync(TestPlayerPhone);
+    }
+}
+```
+
+#### Build Requirements
+
+**Failure simulation requires DEBUG build:**
+
+```bash
+# Build in DEBUG mode (default for development)
+godot --path . --headless --build-solutions
+
+# Run tests with failure simulation
+sh scripts/run-tests.sh
+```
+
+**Production builds (RELEASE) skip failure tests automatically.**
+
+#### Test Directory Structure
+
+```
+Tests/
+├── FailureScenarios/         # NEW: Dedicated failure tests
+│   ├── PaymentServiceFailureTests.cs
+│   └── ServiceFailureRecoveryTests.cs
+├── Unit/
+│   └── Services/             # Can include failure tests
+├── Integration/
+└── Fixtures/
+    ├── FailureScenarioTestBase.cs  # NEW: Failure test base
+    └── TestHelpers.cs               # NEW: Failure simulation helpers
+```
+
+### DEBUG-Only Test Infrastructure
+
+The test infrastructure uses compile-time conditional compilation to provide test hooks that are **completely removed** from production builds.
+
+#### Pattern: Conditional Compilation
+
+```csharp
+// EventService.cs (and other services that need test hooks)
+#if DEBUG
+    private bool _testReadyOverride = false;
+    private bool _useTestReadyOverride = false;
+
+    /// <summary>
+    /// FOR TESTING ONLY: Override ready state to simulate backend failures.
+    /// This allows tests to verify error handling when EventService is not available.
+    /// </summary>
+    public void SetReadyStateForTesting(bool ready)
+    {
+        _testReadyOverride = ready;
+        _useTestReadyOverride = true;
+        LogInfo($"[TEST] Ready state override set to: {ready}");
+    }
+
+    public void ClearReadyStateOverride()
+    {
+        _useTestReadyOverride = false;
+        LogInfo("[TEST] Ready state override cleared");
+    }
+
+    // Shadow base property in DEBUG builds only
+    public new bool IsReady => _useTestReadyOverride ? _testReadyOverride : base.IsReady;
+#endif
+```
+
+#### Why This Works
+
+**Zero Production Cost**
+- Entire test infrastructure removed in RELEASE builds via `#if DEBUG`
+- No runtime performance impact
+- No additional memory overhead
+- Methods don't exist in production (compile-time removal)
+
+**Type-Safe**
+- Compiler enforces correct usage
+- IntelliSense shows test methods only in DEBUG configuration
+- Build fails if test code tries to use hooks in RELEASE mode
+
+**Observable Behavior**
+- Test hooks log their state changes
+- Makes test failures easier to diagnose
+- Shows in test output when state is being manipulated
+
+**Isolated Impact**
+- Only affects specific services that need test hooks
+- Doesn't require changes to base classes
+- Doesn't affect other services in the autoload system
+
+#### Using Test Infrastructure
+
+**In Test Base Classes (FailureScenarioTestBase.cs)**:
+```csharp
+protected void SimulateEventServiceNotReady()
+{
+#if DEBUG
+    if (_eventService == null)
+    {
+        TestHelpers.LogTestWarning("EventService not found");
+        return;
+    }
+
+    _eventService.SetReadyStateForTesting(false);
+    TestHelpers.LogTestInfo("EventService forced to NOT READY state");
+#else
+    TestHelpers.LogTestWarning("Failure simulation requires DEBUG build");
+#endif
+}
+
+protected void RestoreEventServiceReady()
+{
+#if DEBUG
+    if (_eventService != null && _eventServiceStateModified)
+    {
+        _eventService.SetReadyStateForTesting(true);
+        TestHelpers.LogTestInfo("EventService restored to READY state");
+    }
+#endif
+}
+```
+
+**In Test Methods**:
+```csharp
+[Test]
+public async Task PurchaseCredits_BackendNotReady_MustFailGracefully()
+{
+    try
+    {
+        // Simulate backend failure
+        SimulateEventServiceNotReady();
+
+        // Act - attempt purchase
+        var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
+
+        // Assert - must fail gracefully
+        result.IsSuccess.ShouldBeFalse("Purchase must fail without backend");
+        result.ErrorMessage.ShouldContain("EventService", "Error should include diagnostics");
+    }
+    finally
+    {
+        // Always restore state
+        RestoreEventServiceReady();
+    }
+}
+```
+
+#### Property Shadowing Mechanics
+
+The `new` keyword shadows the base `IsReady` property in DEBUG builds:
+
+```csharp
+// When accessed through EventService type
+EventService service = EventService.GetInstance();
+service.IsReady  // Uses EventService.IsReady (shadowed, test-aware)
+
+// When accessed through AutoloadBase type
+AutoloadBase service = EventService.GetInstance();
+service.IsReady  // Uses AutoloadBase.IsReady (original, not test-aware)
+```
+
+**Our code maintains proper typing**, so shadowing works correctly:
+```csharp
+// PaymentService.cs - correct pattern
+var eventService = EventService.GetInstance();  // Returns EventService type
+if (eventService.IsReady)  // Accesses shadowed property ✓
+```
+
+#### Best Practices
+
+1. **Always Restore State**: Use `try/finally` to ensure state restoration
+2. **Check Build Configuration**: Test infrastructure only exists in DEBUG builds
+3. **Log State Changes**: Use `LogTestInfo` to track state manipulation
+4. **Isolate Test Hooks**: Only add to services that need failure simulation
+5. **Document Intent**: XML comments explain test-only purpose
+
+#### When NOT to Use
+
+- ❌ **Production code paths** - Never use test hooks in production logic
+- ❌ **RELEASE builds** - Test infrastructure doesn't compile
+- ❌ **Performance testing** - State override may affect timing
+- ❌ **Integration testing** - Use real backend state when possible
+
+#### Alternatives Considered
+
+**Virtual Properties** (Rejected)
+```csharp
+// Would affect ALL services, not just EventService
+public virtual bool IsReady => _state == ServiceState.Ready;
+```
+- Impact: Runtime cost for all services
+- Risk: Could break other autoloads
+
+**Interface Mocking** (Rejected)
+```csharp
+public interface IEventService { bool IsReady { get; } }
+```
+- Impact: Major refactoring required
+- Complexity: Needs dependency injection
+- Godot: Autoload pattern incompatible
+
+**Reflection** (Rejected)
+```csharp
+typeof(EventService).GetField("_state").SetValue(...)
+```
+- Impact: Fragile, breaks with refactoring
+- Performance: Reflection overhead
+- Safety: No compile-time checks
 
 ## Debugging Tests
 
