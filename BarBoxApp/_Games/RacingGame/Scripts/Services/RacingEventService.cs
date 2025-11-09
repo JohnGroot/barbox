@@ -119,9 +119,9 @@ public class RacingEventService : GameEventServiceBase
 		if (raceEntry.TotalLaps < 1)
 			return Result<bool>.Failure(ValidationMessages.MinValue("Lap count", 1));
 
-		// Validate physical reasonableness of race times
-		if (!ValidateRaceTimeReasonableness(raceEntry, out string reasonablenessError))
-			return Result<bool>.Failure(reasonablenessError);
+		// Validate race data integrity
+		if (!ValidateRaceDataIntegrity(raceEntry, out string integrityError))
+			return Result<bool>.Failure(integrityError);
 
 		// Convert checkpoints array manually if not null (avoid Linq)
 		object[] checkpointArray = null;
@@ -152,51 +152,48 @@ public class RacingEventService : GameEventServiceBase
 	}
 
 	/// <summary>
-	/// Validate that race times are physically reasonable
-	/// Prevents impossible times (too fast or inconsistent)
+	/// Validate race data integrity
+	/// Ensures data structure correctness without arbitrary time limits
+	/// Trusts the physics system - validates data, not plausibility
 	/// </summary>
-	private bool ValidateRaceTimeReasonableness(RaceEntry raceEntry, out string error)
+	private bool ValidateRaceDataIntegrity(RaceEntry raceEntry, out string error)
 	{
 		error = null;
-		const float MIN_LAP_TIME = 5.0f; // 5 seconds minimum per lap
 
-		// Check individual lap times for impossibly fast times
+		// Check data structure integrity
 		if (raceEntry.LapTimes != null)
 		{
+			// Verify lap count matches
+			if (raceEntry.LapTimes.Length != raceEntry.TotalLaps)
+			{
+				error = $"Lap count mismatch: expected {raceEntry.TotalLaps}, got {raceEntry.LapTimes.Length} lap times";
+				return false;
+			}
+
+			// Check all lap times are positive (physics can't produce negative time)
 			for (int i = 0; i < raceEntry.LapTimes.Length; i++)
 			{
-				if (raceEntry.LapTimes[i] < MIN_LAP_TIME)
+				if (raceEntry.LapTimes[i] <= 0)
 				{
-					error = $"Invalid lap time detected at lap {i + 1}: {raceEntry.LapTimes[i]:F3}s (minimum {MIN_LAP_TIME}s)";
+					error = $"Invalid lap time at lap {i + 1}: {raceEntry.LapTimes[i]:F3}s (must be positive)";
 					return false;
 				}
 			}
-		}
 
-		// Check total time consistency with lap times sum
-		if (raceEntry.LapTimes != null && raceEntry.LapTimes.Length > 0)
-		{
+			// Check total time consistency with lap times sum (exact match within float precision)
 			float lapTimesSum = 0f;
 			for (int i = 0; i < raceEntry.LapTimes.Length; i++)
 			{
 				lapTimesSum += raceEntry.LapTimes[i];
 			}
 
-			// Allow 10% tolerance for floating point precision and timing variations
-			float tolerance = lapTimesSum * 0.1f;
-			if (System.Math.Abs(raceEntry.TotalTime - lapTimesSum) > tolerance)
+			// Use tight tolerance for actual float precision (not arbitrary 10%)
+			const float FLOAT_PRECISION_TOLERANCE = 0.001f;
+			if (System.Math.Abs(raceEntry.TotalTime - lapTimesSum) > FLOAT_PRECISION_TOLERANCE)
 			{
-				error = $"Total time ({raceEntry.TotalTime:F3}s) inconsistent with lap times sum ({lapTimesSum:F3}s)";
+				error = $"Total time ({raceEntry.TotalTime:F3}s) doesn't match lap times sum ({lapTimesSum:F3}s)";
 				return false;
 			}
-		}
-
-		// Check minimum total race time
-		float minTotalTime = MIN_LAP_TIME * raceEntry.TotalLaps * 0.9f;
-		if (raceEntry.TotalTime < minTotalTime)
-		{
-			error = $"Total time ({raceEntry.TotalTime:F3}s) too fast for {raceEntry.TotalLaps} laps (minimum {minTotalTime:F3}s)";
-			return false;
 		}
 
 		return true;

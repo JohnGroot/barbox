@@ -110,6 +110,8 @@ public partial class RacingGame : GameController
 
 	// Event service
 	private RacingEventService _racingEventService;
+	private EventService _eventService;
+	private Guid _activitySessionId;
 
 	// ================================================================
 	// PRIVATE FIELDS - TRACK AND WORLD SYSTEMS
@@ -160,7 +162,8 @@ public partial class RacingGame : GameController
 		SetGameMode(GameMode.Practice); // Start in practice mode
 
 		// Initialize event service
-		_racingEventService = new RacingEventService(EventService.GetInstance());
+		_eventService = EventService.GetInstance();
+		_racingEventService = new RacingEventService(_eventService);
 
 		// Initialize systems - no special context handling needed
 		// Login is required for data persistence, but games work without it
@@ -435,14 +438,14 @@ public partial class RacingGame : GameController
 			float totalTime = _timingSystem.CalculatePlayerScore(playerId, _currentGameMode);
 			UpdateScore(playerId, totalTime);
 		}
-		
+
 		// Save best lap time only if user is logged in (uses phone number as real ID)
 		var currentPhoneNumber = GetCurrentPlayerPhoneNumber();
 		if (currentPhoneNumber != null)
 		{
 			_ = SaveBestLapTime(currentPhoneNumber, lapTime);
 		}
-		
+
 		// Emit signal for external integrations (GameHost) at high level
 		EmitSignal(SignalName.LapCompleted, playerId, lapNumber, lapTime);
 	}
@@ -452,11 +455,18 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void OnTimingSystemRaceCompleted(string playerId, float totalTime)
 	{
+		// CRITICAL: Capture lap data IMMEDIATELY before async operation
+		// This prevents race condition where ResetRacingData() clears lap times
+		// before the async SaveGlobalHighScore completes
+		var lapTimes = GetPlayerLapTimes(playerId).ToArray();
+		var checkpoints = GetPlayerCheckpointTimes(playerId);
+
 		// Save global high score only if user is logged in (uses phone number as real ID)
 		var currentPhoneNumber = GetCurrentPlayerPhoneNumber();
 		if (currentPhoneNumber != null)
 		{
-			_ = SaveGlobalHighScore(currentPhoneNumber, totalTime);
+			// Pass captured data to async method to prevent race condition
+			_ = SaveGlobalHighScore(currentPhoneNumber, totalTime, lapTimes, checkpoints);
 		}
 
 		// End the game when race is completed
@@ -499,8 +509,9 @@ public partial class RacingGame : GameController
 	/// <summary>
 	/// Save race completion via event-sourced backend with retry logic
 	/// Emits racing/race_finish event instead of CRUD operation
+	/// Accepts pre-captured lap data to prevent race condition with ResetRacingData
 	/// </summary>
-	private async Task SaveGlobalHighScore(string playerId, float totalTime)
+	private async Task SaveGlobalHighScore(string playerId, float totalTime, float[] lapTimes, CheckpointTime[] checkpoints)
 	{
 		if (string.IsNullOrEmpty(playerId) || totalTime <= 0.0f)
 			return;
@@ -512,7 +523,8 @@ public partial class RacingGame : GameController
 			return;
 		}
 
-		// Create complete race entry with comprehensive timing data
+		// Create complete race entry with PRE-CAPTURED timing data
+		// Data was captured synchronously before this async method to prevent race condition
 		var raceEntry = new RaceEntry(
 			RaceId: RaceDatabase.GenerateRaceId(),
 			Date: DateTime.UtcNow,
@@ -521,8 +533,8 @@ public partial class RacingGame : GameController
 			Username: "", // Backend will populate from player_id
 			TotalLaps: _targetLaps,
 			TotalTime: totalTime,
-			LapTimes: GetPlayerLapTimes(playerId).ToArray(),
-			Checkpoints: GetPlayerCheckpointTimes(playerId)
+			LapTimes: lapTimes,
+			Checkpoints: checkpoints
 		);
 
 		// Retry logic with exponential backoff
@@ -821,7 +833,42 @@ public partial class RacingGame : GameController
 				return;
 			}
 		}
-		
+
+		// Create ActivitySession for the time trial race
+		if (_eventService != null && _sessionManager != null)
+		{
+			var currentSession = _sessionManager.GetPrimaryUserSession();
+			if (currentSession?.PlayerId != null && currentSession.PlayerId != Guid.Empty)
+			{
+				var locationManager = LocationManager.GetAutoload();
+				if (locationManager != null && locationManager.IsConfigLoaded)
+				{
+					var boxId = locationManager.BoxId;
+					var playerId = currentSession.PlayerId;
+
+					GD.Print($"[RacingGame] Creating backend session for player {playerId} at box {boxId}");
+
+					var sessionResult = await _eventService.CreateActivitySessionAsync(
+						boxId: boxId,
+						playerId: playerId,
+						gameTag: "racing",
+						playerIds: null  // Single-player game
+					);
+
+					if (!sessionResult.IsSuccess)
+					{
+						GD.PrintErr($"[RacingGame] WARNING: Failed to create backend session: {sessionResult.Error}");
+						// Continue anyway - game can work without backend session
+					}
+					else
+					{
+						_activitySessionId = sessionResult.Value;
+						GD.Print($"[RacingGame] Backend session created successfully: {_activitySessionId}");
+					}
+				}
+			}
+		}
+
 		SetGameMode(GameMode.TimeTrial);
 		ResetForNewRace(); // Complete reset including car physics state
 
@@ -954,10 +1001,10 @@ public partial class RacingGame : GameController
 	public virtual void CompletePlayerLap(string playerId, float lapTime)
 	{
 		_timingSystem.CompletePlayerLap(playerId, lapTime);
-		
+
 		// Get current lap AFTER completing the lap
 		int currentLap = _timingSystem.GetPlayerCurrentLap(playerId);
-		
+
 		if (_currentGameMode == GameMode.Practice)
 		{
 			// Always start next lap in practice mode
@@ -1291,24 +1338,24 @@ public partial class RacingGame : GameController
 	// Track signal handlers
 	private void OnStartLineTriggered(Node2D body)
 	{
-		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized) 
+		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized)
 			return;
 
-		if (body != _racingCar.GetCarBody()) 
+		if (body != _racingCar.GetCarBody())
 			return;
 
 		BasePlayer player = _racingCar.GetPlayer();
-		if (player == null) 
+		if (player == null)
 			return;
 
 		string playerId = GetCurrentGamePlayerId();
 		if (GetGameMode() == GameMode.TimeTrial && GetPlayerCurrentLap(playerId) > 0)
 		{
 			// Check if this should be treated as finish line crossing
-			bool shouldTreatAsFinishLine = _checkpointTriggers.Length == 0 ? 
-				GetPlayerCurrentLap(playerId) > 1 : 
+			bool shouldTreatAsFinishLine = _checkpointTriggers.Length == 0 ?
+				GetPlayerCurrentLap(playerId) > 1 :
 				_nextCheckpointIndex >= _checkpointTriggers.Length;
-			
+
 			if (shouldTreatAsFinishLine)
 			{
 				OnFinishLineTriggered(body);
@@ -1325,21 +1372,21 @@ public partial class RacingGame : GameController
 
 	private void OnFinishLineTriggered(Node2D body)
 	{
-		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized) 
+		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized)
 			return;
-		
-		if (body != _racingCar.GetCarBody()) 
+
+		if (body != _racingCar.GetCarBody())
 			return;
-		
+
 		BasePlayer player = _racingCar.GetPlayer();
-		if (player == null) 
+		if (player == null)
 			return;
 
 		string playerId = GetCurrentGamePlayerId();
-		
+
 		// Set processing state during finish line handling
 		_timingSystem?.SetCrossingFinish();
-		
+
 		if (GetGameMode() == GameMode.TimeTrial)
 		{
 			// Complete the lap - let CompletePlayerLap handle all the logic
@@ -2214,6 +2261,12 @@ public partial class RacingGame : GameController
 	public override void _ExitTree()
 	{
 		base._ExitTree();
+
+		// Close activity session if active
+		if (_activitySessionId != Guid.Empty && _eventService != null)
+		{
+			_ = _eventService.CloseActivitySessionAsync(_activitySessionId);
+		}
 
 		// Clean up signals and references
 		DisconnectTrackSignals();

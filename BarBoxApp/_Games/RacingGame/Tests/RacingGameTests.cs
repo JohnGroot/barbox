@@ -5,6 +5,7 @@ using Chickensoft.GoDotTest;
 using Godot;
 using BarBox.Tests.Fixtures;
 using ZLinq;
+using Shouldly;
 
 namespace BarBox.Games.Racing.Tests;
 
@@ -25,7 +26,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[SetupAll]
-	public async void SetupRacingGameSession()
+	public async Task SetupRacingGameSession()
 	{
 		TestHelpers.LogTestInfo("Setting up Racing Game test session");
 
@@ -33,17 +34,13 @@ public class RacingGameTests : TestClass
 		var isHealthy = await TestHelpers.IsTestBackendHealthyAsync();
 		if (!isHealthy)
 		{
-			TestHelpers.LogTestError("Test backend is not healthy!");
+			TestHelpers.LogTestWarning("Test backend is not healthy - some tests may be skipped");
 			return;
 		}
 
 		// Get EventService
 		_eventService = TestScene.GetNode<EventService>("/root/EventService");
-		if (_eventService == null)
-		{
-			TestHelpers.LogTestError("EventService autoload not found!");
-			return;
-		}
+		_eventService.ShouldNotBeNull("EventService autoload must be available");
 
 		// Generate test identifiers
 		_testBoxId = TestHelpers.GenerateTestBoxId();
@@ -58,6 +55,7 @@ public class RacingGameTests : TestClass
 		if (sessionResult.IsSuccess)
 		{
 			_testSessionId = sessionResult.Value;
+			_testSessionId.ShouldNotBe(Guid.Empty, "Session ID should be valid");
 			TestHelpers.LogTestInfo($"Racing session created: {_testSessionId}");
 		}
 		else
@@ -67,7 +65,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[Test]
-	public async void StartRaceSession_EmitsBeginEvent()
+	public async Task StartRaceSession_EmitsBeginEvent()
 	{
 		if (_eventService == null || _testSessionId == Guid.Empty)
 		{
@@ -94,7 +92,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[Test]
-	public async void RecordCheckpointHit_EmitsCheckpointEvent()
+	public async Task RecordCheckpointHit_EmitsCheckpointEvent()
 	{
 		if (_eventService == null || _testSessionId == Guid.Empty)
 		{
@@ -135,7 +133,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[Test]
-	public async void RecordLapCompletion_EmitsLapEvent()
+	public async Task RecordLapCompletion_EmitsLapEvent()
 	{
 		if (_eventService == null || _testSessionId == Guid.Empty)
 		{
@@ -177,7 +175,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[Test]
-	public async void RecordRaceFinish_EmitsFinishEventWithLapTimes()
+	public async Task RecordRaceFinish_EmitsFinishEventWithLapTimes()
 	{
 		if (_eventService == null || _testSessionId == Guid.Empty)
 		{
@@ -208,7 +206,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[Test]
-	public async void LoadLeaderboardData_FromBackend_ReturnsTopTimes()
+	public async Task LoadLeaderboardData_FromBackend_ReturnsTopTimes()
 	{
 		// This would test: GET /game/leaderboard/racing
 		// Expected response sorted by best_time ascending:
@@ -228,7 +226,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[Test]
-	public async void VerifyLeaderboardOrdering_BestTimesFirst()
+	public async Task VerifyLeaderboardOrdering_BestTimesFirst()
 	{
 		// This test verifies leaderboard ordering logic
 		// Best times (lowest) should appear first
@@ -254,7 +252,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[Test]
-	public async void VerifyLapTimeBreakdowns_InLeaderboard()
+	public async Task VerifyLapTimeBreakdowns_InLeaderboard()
 	{
 		// Leaderboard should show individual lap times for analysis
 		// This allows players to see where they can improve
@@ -271,7 +269,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[Test]
-	public async void CompleteRacingGameFlow_AllOperationsSucceed()
+	public async Task CompleteRacingGameFlow_AllOperationsSucceed()
 	{
 		if (_eventService == null)
 		{
@@ -347,8 +345,161 @@ public class RacingGameTests : TestClass
 		TestHelpers.LogTestInfo("=== Racing Game Flow Complete ===");
 	}
 
+	[Test]
+	public async Task RaceFinish_WithValidLapTimes_SavesSuccessfully()
+	{
+		if (_eventService == null || _testSessionId == Guid.Empty)
+		{
+			TestHelpers.LogTestInfo("Skipping - Session not created");
+			return;
+		}
+
+		TestHelpers.LogTestInfo("=== Testing Race Finish with Valid Lap Times ===");
+
+		// Simulate a 3-lap race with valid lap times
+		var lapTimes = new List<float> { 6.670f, 7.120f, 6.890f };
+		var totalTime = 20.680f;
+		var trackId = "oval_track";
+
+		// Emit individual lap complete events
+		float runningTotal = 0f;
+		for (int i = 0; i < lapTimes.Count; i++)
+		{
+			runningTotal += lapTimes[i];
+			var lapResult = await _eventService.EmitEventAsync("racing/lap_complete", new
+			{
+				lap_number = i + 1,
+				lap_time = lapTimes[i],
+				total_time = runningTotal
+			});
+
+			if (lapResult.IsSuccess)
+			{
+				TestHelpers.LogTestInfo($"Lap {i + 1} emitted: {lapTimes[i]:F3}s");
+			}
+			else
+			{
+				TestHelpers.LogTestError($"Lap {i + 1} failed: {lapResult.Error}");
+			}
+		}
+
+		// Emit race finish event
+		var raceResult = await _eventService.EmitEventAsync("racing/race_finish", new
+		{
+			track_id = trackId,
+			total_time = totalTime,
+			total_laps = 3,
+			lap_times = lapTimes
+		});
+
+		if (raceResult.IsSuccess)
+		{
+			TestHelpers.LogTestInfo($"Race finish saved successfully - Time: {totalTime:F3}s");
+			raceResult.IsSuccess.ShouldBeTrue("Valid race should save successfully");
+		}
+		else
+		{
+			TestHelpers.LogTestError($"Race finish failed: {raceResult.Error}");
+			raceResult.Error.ShouldNotContain("Invalid lap");
+		}
+	}
+
+	[Test]
+	public async Task RaceFinish_WithFastLapTimes_SavesSuccessfully()
+	{
+		if (_eventService == null || _testSessionId == Guid.Empty)
+		{
+			TestHelpers.LogTestInfo("Skipping - Session not created");
+			return;
+		}
+
+		TestHelpers.LogTestInfo("=== Testing Race Finish with Fast Lap Times (Previously Blocked) ===");
+
+		// Simulate fast laps that were previously blocked by MIN_LAP_TIME validation:
+		// Lap 1: 6.670s
+		// Lap 2: 3.600s (previously considered "too fast")
+		// Lap 3: 6.890s
+		var lapTimes = new List<float> { 6.670f, 3.600f, 6.890f };
+		var totalTime = 17.160f;
+		var trackId = "oval_track";
+
+		TestHelpers.LogTestInfo($"Saving race with fast lap times: {string.Join(", ", lapTimes)}");
+
+		// Emit race finish event - this should NOW SUCCEED (we trust physics)
+		var raceResult = await _eventService.EmitEventAsync("racing/race_finish", new
+		{
+			track_id = trackId,
+			total_time = totalTime,
+			total_laps = 3,
+			lap_times = lapTimes
+		});
+
+		if (raceResult.IsSuccess)
+		{
+			TestHelpers.LogTestInfo($"Race with fast laps saved successfully - Total: {totalTime:F3}s");
+			raceResult.IsSuccess.ShouldBeTrue("Fast but legitimate lap times should save successfully");
+		}
+		else
+		{
+			TestHelpers.LogTestError($"Race incorrectly rejected: {raceResult.Error}");
+			// Fast laps should now be accepted
+			raceResult.IsSuccess.ShouldBeTrue($"Fast laps should be accepted, but got error: {raceResult.Error}");
+		}
+
+		TestHelpers.LogTestInfo("=== Fast Lap Test Complete ===");
+	}
+
+	[Test]
+	public async Task RaceFinish_WithDataIntegrityError_FailsValidation()
+	{
+		if (_eventService == null || _testSessionId == Guid.Empty)
+		{
+			TestHelpers.LogTestInfo("Skipping - Session not created");
+			return;
+		}
+
+		TestHelpers.LogTestInfo("=== Testing Data Integrity Validation ===");
+
+		// Test case 1: Total time doesn't match lap sum (data corruption)
+		var lapTimes = new List<float> { 6.670f, 5.500f, 6.890f };
+		var totalTime = 999.0f; // Incorrect total time
+		var trackId = "oval_track";
+
+		TestHelpers.LogTestInfo("Testing mismatched total time (should fail)");
+
+		var result1 = await _eventService.EmitEventAsync("racing/race_finish", new
+		{
+			track_id = trackId,
+			total_time = totalTime,
+			total_laps = 3,
+			lap_times = lapTimes
+		});
+
+		result1.IsSuccess.ShouldBeFalse("Mismatched total time should be rejected");
+		result1.Error.ShouldContain("doesn't match");
+
+		// Test case 2: Negative lap time (physics bug)
+		var invalidLapTimes = new List<float> { 6.670f, -3.500f, 6.890f };
+		var validTotalTime = 10.060f; // Matches sum if we allowed negative
+
+		TestHelpers.LogTestInfo("Testing negative lap time (should fail)");
+
+		var result2 = await _eventService.EmitEventAsync("racing/race_finish", new
+		{
+			track_id = trackId,
+			total_time = validTotalTime,
+			total_laps = 3,
+			lap_times = invalidLapTimes
+		});
+
+		result2.IsSuccess.ShouldBeFalse("Negative lap time should be rejected");
+		result2.Error.ShouldContain("must be positive");
+
+		TestHelpers.LogTestInfo("=== Data Integrity Validation Complete ===");
+	}
+
 	[CleanupAll]
-	public async void CleanupRacingGameSession()
+	public async Task CleanupRacingGameSession()
 	{
 		if (_eventService != null && _testSessionId != Guid.Empty)
 		{

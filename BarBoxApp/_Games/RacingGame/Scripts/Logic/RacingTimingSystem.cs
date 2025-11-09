@@ -136,11 +136,11 @@ namespace BarBox.Games.Racing
 	{
 		if (!_playerCurrentLap.ContainsKey(playerId))
 			_playerCurrentLap[playerId] = 0;
-		
+
 		_playerCurrentLap[playerId]++;
 		_playerCurrentLapTime[playerId] = 0.0f;
 		_playerGapTime[playerId] = 0.0f;
-		
+
 		if (!_playerLapTimes.ContainsKey(playerId))
 			_playerLapTimes[playerId] = new List<float>();
 	}
@@ -150,22 +150,22 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public void CompletePlayerLap(string playerId, float lapTime)
 	{
-		if (!_playerCurrentLap.ContainsKey(playerId)) 
+		if (!_playerCurrentLap.ContainsKey(playerId))
 			return;
-		
+
 		int lapNumber = _playerCurrentLap[playerId];
 
 		// Ensure lap times list exists before adding
 		if (!_playerLapTimes.ContainsKey(playerId))
 			_playerLapTimes[playerId] = new List<float>();
 		_playerLapTimes[playerId].Add(lapTime);
-		
+
 		// Update best lap time
 		if (!_playerBestLapTime.ContainsKey(playerId) || lapTime < _playerBestLapTime[playerId])
 		{
 			_playerBestLapTime[playerId] = lapTime;
 		}
-		
+
 		EmitSignal(SignalName.LapCompleted, playerId, lapNumber, lapTime);
 	}
 
