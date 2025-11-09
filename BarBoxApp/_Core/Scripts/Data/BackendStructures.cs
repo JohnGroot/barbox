@@ -107,3 +107,33 @@ public partial class PlayerValidationResponse
 	[JsonPropertyName("errors")]
 	public ValidationErrorDetail[] Errors { get; set; } = Array.Empty<ValidationErrorDetail>();
 }
+
+/// <summary>
+/// Individual player contribution to machine credit pot
+/// </summary>
+public partial class MachinePlayerContribution
+{
+	[JsonPropertyName("player_id")]
+	public string PlayerId { get; set; }
+
+	[JsonPropertyName("amount")]
+	public int Amount { get; set; }
+}
+
+/// <summary>
+/// Response for machine credit pot query (per box+game)
+/// </summary>
+public partial class MachineCreditsResponse
+{
+	[JsonPropertyName("box_id")]
+	public string BoxId { get; set; }
+
+	[JsonPropertyName("game_tag")]
+	public string GameTag { get; set; }
+
+	[JsonPropertyName("balance")]
+	public int Balance { get; set; }
+
+	[JsonPropertyName("contributions")]
+	public MachinePlayerContribution[] Contributions { get; set; } = Array.Empty<MachinePlayerContribution>();
+}

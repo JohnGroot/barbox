@@ -66,6 +66,9 @@ SessionEventType = Literal[
     "user/logout",
     "credit/spend",
     "credit/earn",
+    # Machine credit events (per box+game credit pools)
+    "machine_credit/deposit",
+    "machine_credit/consume",
 ]
 
 
@@ -130,6 +133,20 @@ class PlayerCreditsResponse(BaseModel):
     player_id: UUID
     location_id: str
     credits: int
+
+
+class MachinePlayerContribution(BaseModel):
+    """Individual player contribution to machine credit pot"""
+    player_id: UUID
+    amount: int
+
+
+class MachineCreditsResponse(BaseModel):
+    """Machine credit pot balance and player contributions"""
+    box_id: UUID
+    game_tag: str
+    balance: int
+    contributions: list[MachinePlayerContribution]
 
 
 # ============= ERROR HANDLING STRUCTURES =============

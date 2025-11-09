@@ -18,7 +18,7 @@ using System.Threading.Tasks;
 ///   * TopMenuBar/UI display (showing "a" user)
 ///   * Single-user game contexts (Racing, Mining)
 ///   * Auto-populate convenience (first slot in multiplayer setup)
-///   * Fallback scenarios (GameHost.GetPlayerSession)
+///   * Fallback scenarios (GameHost.GetUserSession)
 ///
 /// MULTI-USER PATTERNS:
 /// - Multi-user games MUST use GetUserSession(phoneNumber) for explicit targeting
@@ -41,7 +41,9 @@ public partial class SessionManager : AutoloadBase
 	public static SessionManager Instance { get; private set; }
 
 	private EventService _eventService;
+	private CreditService _creditService;
 	private Dictionary<string, UserSession> _activeSessions = new();
+	private Dictionary<Guid, UserSession> _sessionsByPlayerId = new(); // Secondary index for O(1) lookup by PlayerId
 	private Timer _idleTimer;
 	private const float IDLE_CHECK_INTERVAL = 30.0f; // 30 seconds
 	private const float IDLE_TIMEOUT = 600.0f; // 10 minutes
@@ -71,9 +73,55 @@ public partial class SessionManager : AutoloadBase
 			LogWarning("EventService not found - user events will not be persisted to backend");
 		}
 
+		// Initialize CreditService and connect to credit changes
+		_creditService = CreditService.Instance;
+		if (_creditService != null)
+		{
+			_creditService.CreditsChanged += OnCreditsChanged;
+			LogInfo("SessionManager connected to CreditService for credit change notifications");
+		}
+		else
+		{
+			LogWarning("CreditService not found - credit change signals will not be emitted");
+		}
+
 		SetupIdleTimer();
 
 		LogInfo("SessionManager initialized with event-sourced persistence");
+	}
+
+	/// <summary>
+	/// Relay CreditService.CreditsChanged signal as SessionManager.CreditsEarned
+	/// This allows UI components to listen to SessionManager instead of CreditService directly
+	/// </summary>
+	private void OnCreditsChanged(string playerIdStr, int newBalance)
+	{
+		// Parse playerId to Guid to match against active sessions
+		if (!Guid.TryParse(playerIdStr, out var playerId))
+		{
+			LogWarning($"Invalid player ID format in credit change: {playerIdStr}");
+			return;
+		}
+
+		// Find the session with matching player ID (O(1) lookup via secondary index)
+		if (_sessionsByPlayerId.TryGetValue(playerId, out var matchedSession))
+		{
+			// Calculate amount changed
+			int previousBalance = matchedSession.Credits;
+			int amountChanged = newBalance - previousBalance;
+
+			// Update session credits
+			matchedSession.Credits = newBalance;
+
+			// Emit signal with phone number (not player ID UUID)
+			EmitSignal(SignalName.CreditsEarned, matchedSession.PhoneNumber, amountChanged, "Credit balance updated");
+			LogInfo($"Credit change relayed for {matchedSession.UserName}: {previousBalance} -> {newBalance} ({amountChanged:+#;-#;0})");
+		}
+		else
+		{
+			// No active session found - log but don't emit (UI won't show anyway)
+			LogInfo($"Credit changed for player {playerId} but no active session found (balance: {newBalance})");
+		}
 	}
 
 	public override void _Notification(int what)
@@ -171,6 +219,36 @@ public partial class SessionManager : AutoloadBase
 			// Generate deterministic player ID from phone number
 			var playerId = EventService.GetPlayerIdFromPhone(cleanedPhone);
 
+			// Register player with backend (idempotent)
+			if (_eventService != null && _eventService.IsReady)
+			{
+				var username = cleanedPhone.Substring(Math.Max(0, cleanedPhone.Length - 7)); // Last 7 digits
+				var boxId = _eventService.GetCurrentBoxId();
+
+				var registrationResult = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, boxId);
+
+				if (!registrationResult.IsSuccess)
+				{
+					// Only continue if error indicates player already exists
+					if (registrationResult.Error != null &&
+					    (registrationResult.Error.Contains("already exists") ||
+					     registrationResult.Error.Contains("409") ||
+					     registrationResult.Error.Contains("conflict", StringComparison.OrdinalIgnoreCase)))
+					{
+						LogInfo($"Player already registered (continuing with login): {playerId}");
+					}
+					else
+					{
+						LogError($"Player registration failed: {registrationResult.Error}");
+						return Result<UserSession>.Failure($"Unable to register player: {registrationResult.Error}");
+					}
+				}
+				else
+				{
+					LogInfo($"Player registered in backend: {playerId}");
+				}
+			}
+
 			// Create local session
 			var session = new UserSession
 			{
@@ -180,25 +258,66 @@ public partial class SessionManager : AutoloadBase
 				PlayerId = playerId,
 				LoginTime = DateTime.UtcNow,
 				LastActivity = DateTime.UtcNow,
-				Credits = 0 // Backend will manage credits via events
+				Credits = 0 // Will be populated from backend below
 			};
 
-			_activeSessions[cleanedPhone] = session;
-
-			// Emit user/login event for analytics (ActivitySession created by games, not login)
-			if (_eventService != null)
+			// Fetch initial credit balance from backend BEFORE adding to active sessions
+			// This prevents race condition where UI queries session before credits are loaded
+			if (_creditService != null)
 			{
-				var payload = new
+				var balanceResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+				if (balanceResult.IsSuccess)
 				{
-					phone_number = cleanedPhone,
-					username = session.UserName,
-					location_id = CurrentLocationId
-				};
-				_ = _eventService.EmitEventAsync("user/login", payload);
+					session.Credits = balanceResult.Value;
+					LogInfo($"Initial credit balance loaded: {session.Credits} credits for {session.UserName}");
+				}
+				else
+				{
+					LogWarning($"Failed to fetch initial credit balance: {balanceResult.Error}");
+					// Keep Credits = 0 as fallback
+				}
 			}
 			else
 			{
-				LogWarning("EventService not available - login event will not be persisted");
+				LogWarning("CreditService not available - credit balance will remain 0 until updated");
+			}
+
+			// Add session to active sessions AFTER initialization is complete
+			_activeSessions[cleanedPhone] = session;
+			_sessionsByPlayerId[playerId] = session; // Maintain secondary index
+
+			// Create lobby session for user-scoped events
+			if (_eventService != null && _eventService.IsReady)
+			{
+				var boxId = _eventService.GetCurrentBoxId();
+				var lobbySessionResult = await _eventService.CreateLobbySessionAsync(boxId, playerId);
+
+				if (lobbySessionResult.IsSuccess)
+				{
+					session.LobbySessionId = lobbySessionResult.Value;
+					LogInfo($"Lobby session created: {session.LobbySessionId}");
+
+					// Emit user/login event to lobby session
+					var payload = new
+					{
+						username = session.UserName,
+						location_id = CurrentLocationId
+					};
+					var loginEventResult = await _eventService.EmitUserEventAsync(playerId, "user/login", payload);
+					if (!loginEventResult.IsSuccess)
+					{
+						LogWarning($"Failed to emit login event: {loginEventResult.Error}");
+					}
+				}
+				else
+				{
+					LogWarning($"Failed to create lobby session: {lobbySessionResult.Error}");
+					// Continue with login but warn that events won't be persisted
+				}
+			}
+			else
+			{
+				LogWarning("EventService not available - user events will not be persisted");
 			}
 
 			LogInfo($"User session created for phone {cleanedPhone}");
@@ -389,8 +508,8 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			// Emit user/logout event for analytics
-			if (_eventService != null)
+			// Emit user/logout event to lobby session (before closing it)
+			if (_eventService != null && _eventService.IsReady && session.LobbySessionId != Guid.Empty)
 			{
 				var payload = new
 				{
@@ -398,15 +517,27 @@ public partial class SessionManager : AutoloadBase
 					location_id = CurrentLocationId,
 					session_duration = session.SessionDuration.TotalSeconds
 				};
-				var logoutResult = await _eventService.EmitEventAsync("user/logout", payload);
+				var logoutResult = await _eventService.EmitUserEventAsync(session.PlayerId, "user/logout", payload);
 				if (!logoutResult.IsSuccess)
 				{
 					LogWarning($"Failed to emit logout event: {logoutResult.Error}");
+				}
+
+				// Close lobby session
+				var closeResult = await _eventService.CloseActivitySessionAsync(session.LobbySessionId);
+				if (!closeResult.IsSuccess)
+				{
+					LogWarning($"Failed to close lobby session: {closeResult.Error}");
+				}
+				else
+				{
+					LogInfo($"Lobby session closed: {session.LobbySessionId}");
 				}
 			}
 
 			// Remove local session
 			_activeSessions.Remove(phoneNumber);
+			_sessionsByPlayerId.Remove(session.PlayerId); // Maintain secondary index
 			EmitSignal(SignalName.UserLoggedOut, phoneNumber);
 
 			LogInfo($"Phone {phoneNumber} logged out");
@@ -535,7 +666,7 @@ public partial class SessionManager : AutoloadBase
 		{
 			var playerId = EventService.GetPlayerIdFromPhone(phoneNumber);
 
-			if (_eventService != null)
+			if (_eventService != null && _eventService.IsReady)
 			{
 				var result = await _eventService.AddCreditsAsync(playerId, amount, reason);
 				if (result.IsSuccess)
@@ -559,7 +690,10 @@ public partial class SessionManager : AutoloadBase
 			}
 			else
 			{
-				LogWarning("EventService not available, cannot sync credits");
+				if (_eventService == null)
+					LogWarning("EventService not available, cannot sync credits");
+				else
+					LogWarning("EventService not ready (backend not initialized), cannot sync credits");
 				return false;
 			}
 		}
@@ -597,7 +731,7 @@ public partial class SessionManager : AutoloadBase
 					return false;
 				}
 
-				// Spend credits
+				// Spend credits from player account
 				var spendResult = await _eventService.SpendCreditsAsync(playerId, amount, $"Transfer to {gameId}: {reason}");
 				if (spendResult.IsSuccess)
 				{
@@ -607,6 +741,28 @@ public partial class SessionManager : AutoloadBase
 					if (_activeSessions.TryGetValue(phoneNumber, out var session))
 					{
 						session.Credits -= amount;
+
+						// Deposit credits to machine pot (backend tracking)
+						var locationManager = LocationManager.GetAutoload();
+						if (locationManager != null && session.LobbySessionId != Guid.Empty)
+						{
+							var boxId = locationManager.BoxId;
+							// Use "carrom" game tag (not "carrom_game" ID) to match backend queries
+							var gameTag = gameId.Replace("_game", "");
+							var depositResult = await _eventService.DepositMachineCreditsAsync(
+								gameTag,
+								boxId,
+								playerId,
+								amount,
+								session.LobbySessionId
+							);
+
+							if (!depositResult.IsSuccess)
+							{
+								LogWarning($"Failed to deposit to machine pot: {depositResult.Error}");
+								// Continue anyway - player credits already deducted
+							}
+						}
 					}
 
 					EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, $"Transfer to {gameId}: {reason}");
@@ -720,6 +876,13 @@ public partial class SessionManager : AutoloadBase
 		_idleTimer?.Stop();
 		_idleTimer?.QueueFree();
 
+		// Disconnect from CreditService
+		if (_creditService != null && GodotObject.IsInstanceValid(_creditService))
+		{
+			_creditService.CreditsChanged -= OnCreditsChanged;
+		}
+		_creditService = null;
+
 		Instance = null;
 	}
 }
@@ -734,6 +897,7 @@ public class UserSession
 	public string UserName { get; set; } = string.Empty;
 	public string LocationId { get; set; } = string.Empty;
 	public Guid PlayerId { get; set; } = Guid.Empty;
+	public Guid LobbySessionId { get; set; } = Guid.Empty;  // Lobby session for user-scoped events
 	public DateTime LoginTime { get; set; }
 	public DateTime LastActivity { get; set; }
 	public int Credits { get; set; }

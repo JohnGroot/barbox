@@ -1018,6 +1018,62 @@ public partial class EventService : AutoloadBase
 		return await EmitUserEventAsync(playerId, "credit/spend", payload);
 	}
 
+	/// <summary>
+	/// Get machine credit pot balance and player contributions
+	/// </summary>
+	public async Task<Result<MachineCreditsResponse>> GetMachineCreditsAsync(string gameTag, Guid boxId)
+	{
+		var queryParams = new Dictionary<string, string>
+		{
+			{ "box_id", boxId.ToString() }
+		};
+
+		return await QueryAsync<MachineCreditsResponse>(
+			$"/game/{gameTag}/machine-credits",
+			queryParams
+		);
+	}
+
+	/// <summary>
+	/// Deposit credits to machine pot (from player account)
+	/// </summary>
+	public async Task<Result<MachineCreditsResponse>> DepositMachineCreditsAsync(
+		string gameTag,
+		Guid boxId,
+		Guid playerId,
+		int amount,
+		Guid lobbySessionId)
+	{
+		// Build URL with query parameters
+		var url = $"/game/{gameTag}/machine-credits/deposit?" +
+			$"box_id={boxId}&" +
+			$"player_id={playerId}&" +
+			$"amount={amount}&" +
+			$"lobby_session_id={lobbySessionId}";
+
+		// POST request with no body (parameters in URL)
+		return await PostAsync<object, MachineCreditsResponse>(url, null, 201);
+	}
+
+	/// <summary>
+	/// Consume credits from machine pot (for game start)
+	/// </summary>
+	public async Task<Result<MachineCreditsResponse>> ConsumeMachineCreditsAsync(
+		string gameTag,
+		Guid boxId,
+		int amount,
+		Guid gameSessionId)
+	{
+		// Build URL with query parameters
+		var url = $"/game/{gameTag}/machine-credits/consume?" +
+			$"box_id={boxId}&" +
+			$"amount={amount}&" +
+			$"game_session_id={gameSessionId}";
+
+		// POST request with no body (parameters in URL)
+		return await PostAsync<object, MachineCreditsResponse>(url, null, 200);
+	}
+
 	// Private helper methods
 
 	private async Task EnsureConnectedAsync()

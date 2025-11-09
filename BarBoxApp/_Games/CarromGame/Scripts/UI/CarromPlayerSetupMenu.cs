@@ -592,12 +592,11 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	{
 		_playerCount = playerCount;
 		_costPerGame = costPerGame;
-		_slotToPhoneNumber.Clear();
 
-		// Event-sourced persistence - backend tracks machine credits
-		// Initialize to zero (would be populated from backend events in full implementation)
-		_tableCredits = 0;
-		_creditsTransferredByPlayer.Clear();
+		// DON'T clear state - preserve between popup open/close cycles
+		// _slotToPhoneNumber.Clear();  // ❌ Removed - keeps player slots
+		// _tableCredits = 0;            // ❌ Removed - keeps table credits
+		// _creditsTransferredByPlayer.Clear();  // ❌ Removed - keeps contributions
 
 		// Create UI if not already created
 		if (_modalPanel == null)
@@ -607,6 +606,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		// Update UI with current configuration
 		UpdateUI();
+
+		// Restore machine credits from backend (async)
+		RestoreMachineCreditsFromBackendAsync();
 
 		// Restore occupied slots from persisted data
 		RestoreOccupiedSlots();
@@ -1155,7 +1157,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		// Transfer credits atomically: player credits → machine credits (via SessionManager)
 		var transferSuccess = await _sessionManager.TransferCreditsToMachineAsync(
 			phoneNumber,
-			"carrom_game",
+			"carrom",  // Use game tag (not game ID) to match backend queries
 			selectedAmount.Value,
 			"Transfer to Carrom table"
 		);
@@ -1194,20 +1196,57 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		EmitSignal(SignalName.MenuCancelled);
 	}
 
-	private void OnStartGamePressed()
+	private async void OnStartGamePressed()
 	{
 		if (_tableCredits < _costPerGame)
 			return;
 
-		// Consume credits from machine credits
-		// TODO: Event-sourced - backend handles machine credits via events
-		{
-			// Fallback if DataStore unavailable
-			_tableCredits -= _costPerGame;
-		}
+		// Consume credits from machine pot (backend tracking)
+		var eventService = EventService.GetInstance();
+		var locationManager = LocationManager.GetAutoload();
 
-		HideMenu();
-		EmitSignal(SignalName.GameStartRequested);
+		if (eventService != null && locationManager != null)
+		{
+			var boxId = locationManager.BoxId;
+
+			// TODO: Get game session ID from CarromGame when starting
+			// For now, use a temporary session ID - will be replaced with actual game session
+			var tempGameSessionId = Guid.NewGuid();
+
+			var consumeResult = await eventService.ConsumeMachineCreditsAsync(
+				"carrom",  // Use game tag to match backend queries
+				boxId,
+				_costPerGame,
+				tempGameSessionId
+			);
+
+			if (consumeResult.IsSuccess)
+			{
+				// Backend consumption successful - update local state
+				_tableCredits = consumeResult.Value.Balance;
+
+				// Clear local state after successful game start
+				_slotToPhoneNumber.Clear();
+				_creditsTransferredByPlayer.Clear();
+
+				HideMenu();
+				EmitSignal(SignalName.GameStartRequested);
+			}
+			else
+			{
+				GD.PrintErr($"[CarromPlayerSetupMenu] Failed to consume machine credits: {consumeResult.Error}");
+			}
+		}
+		else
+		{
+			// Fallback for development mode - just consume locally
+			_tableCredits -= _costPerGame;
+			_slotToPhoneNumber.Clear();
+			_creditsTransferredByPlayer.Clear();
+
+			HideMenu();
+			EmitSignal(SignalName.GameStartRequested);
+		}
 	}
 
 	private async Task ReturnAllCreditsToPlayers()
@@ -1307,11 +1346,80 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	}
 
 	/// <summary>
+	/// Restore machine credits from backend when popup opens
+	/// </summary>
+	private async void RestoreMachineCreditsFromBackendAsync()
+	{
+		try
+		{
+			var eventService = EventService.GetInstance();
+			if (eventService == null)
+			{
+				GD.Print("[CarromPlayerSetupMenu] EventService not available - using local state only");
+				return;
+			}
+
+			var locationManager = LocationManager.GetAutoload();
+			if (locationManager == null)
+			{
+				GD.Print("[CarromPlayerSetupMenu] LocationManager not available");
+				return;
+			}
+
+			var boxId = locationManager.BoxId;
+			var result = await eventService.GetMachineCreditsAsync("carrom", boxId);
+
+			if (result.IsSuccess)
+			{
+				var machineCredits = result.Value;
+				_tableCredits = machineCredits.Balance;
+
+				// Restore player contributions
+				_creditsTransferredByPlayer.Clear();
+				foreach (var contribution in machineCredits.Contributions)
+				{
+					if (Guid.TryParse(contribution.PlayerId, out var playerId))
+					{
+						// Convert playerId to phone number by checking all active sessions
+						// Match against secondary index in SessionManager
+						var sessionManager = SessionManager.GetInstance();
+						if (sessionManager != null)
+						{
+							// Check all active sessions to find matching player ID
+							var activePhones = sessionManager.GetActivePhoneNumbers();
+							foreach (var phone in activePhones)
+							{
+								var session = sessionManager.GetUserSession(phone);
+								if (session != null && session.PlayerId == playerId)
+								{
+									_creditsTransferredByPlayer[session.PhoneNumber] = contribution.Amount;
+									break;
+								}
+							}
+						}
+					}
+				}
+
+				// Update only what changed from backend response (don't recreate slots!)
+				UpdateTableCreditsDisplay();
+				UpdateStartGameButton();
+				GD.Print($"[CarromPlayerSetupMenu] Restored {_tableCredits} table credits with {_creditsTransferredByPlayer.Count} contributions");
+			}
+		}
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[CarromPlayerSetupMenu] Failed to restore machine credits: {ex.Message}");
+		}
+	}
+
+	/// <summary>
 	/// Persist player contributions and slot assignments to MachineGameData.GameState
+	/// This is called after each credit transfer to update the backend
 	/// </summary>
 	private async Task SavePlayerContributionsToMachineData()
 	{
-		// TODO: Event-sourced - backend handles machine credits via events
+		// Backend deposit is now handled directly in OnTransferCreditButtonPressed
+		// This method kept for compatibility but may be removed in future refactoring
 		await Task.CompletedTask;
 		return;
 	}

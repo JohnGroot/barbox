@@ -16,7 +16,7 @@ from bxctl.games.carrom import router as carrom_router
 from bxctl.games.mining import router as mining_router
 from bxctl.games.racing import router as racing_router
 
-from . import box, game, player, test
+from . import box, game, machine_credits, player, test
 
 logger = get_logger()
 
@@ -136,6 +136,7 @@ routers = (
     player.router,
     box.router,
     game.router,
+    machine_credits.router,  # Machine credit pot management
     test.router,  # Test endpoints (only available in dev/test modes)
 )
 for router in routers:
