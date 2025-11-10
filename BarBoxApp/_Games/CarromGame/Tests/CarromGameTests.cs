@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Chickensoft.GoDotTest;
 using Godot;
 using BarBox.Tests.Fixtures;
+using Shouldly;
 
 namespace BarBox.Games.Carrom.Tests;
 
@@ -25,7 +26,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[SetupAll]
-	public async void SetupCarromGameSession()
+	public async Task SetupCarromGameSession()
 	{
 		TestHelpers.LogTestInfo("Setting up Carrom Game test session");
 
@@ -33,17 +34,13 @@ public class CarromGameTests : TestClass
 		var isHealthy = await TestHelpers.IsTestBackendHealthyAsync();
 		if (!isHealthy)
 		{
-			TestHelpers.LogTestError("Test backend is not healthy!");
+			TestHelpers.LogTestWarning("Test backend is not healthy - some tests may be skipped");
 			return;
 		}
 
 		// Get EventService
 		_eventService = TestScene.GetNode<EventService>("/root/EventService");
-		if (_eventService == null)
-		{
-			TestHelpers.LogTestError("EventService autoload not found!");
-			return;
-		}
+		_eventService.ShouldNotBeNull("EventService autoload must be available");
 
 		// Generate test identifiers
 		_testBoxId = TestHelpers.GenerateTestBoxId();
@@ -54,7 +51,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[Test]
-	public async void MultiplayerSessionCreation_WithTwoPlayers_CreatesCorrectly()
+	public async Task MultiplayerSessionCreation_WithTwoPlayers_CreatesCorrectly()
 	{
 		if (_eventService == null)
 		{
@@ -87,7 +84,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[Test]
-	public async void StartMultiplayerGame_EmitsBeginEvent()
+	public async Task StartMultiplayerGame_EmitsBeginEvent()
 	{
 		if (_eventService == null || _testSessionId == Guid.Empty)
 		{
@@ -114,7 +111,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[Test]
-	public async void EmitScoringEvents_ForBothPlayers_RecordsScores()
+	public async Task EmitScoringEvents_ForBothPlayers_RecordsScores()
 	{
 		if (_eventService == null || _testSessionId == Guid.Empty)
 		{
@@ -158,7 +155,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[Test]
-	public async void GameCompletion_EmitsFinishEvent()
+	public async Task GameCompletion_EmitsFinishEvent()
 	{
 		if (_eventService == null || _testSessionId == Guid.Empty)
 		{
@@ -189,7 +186,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[Test]
-	public async void RecordFinalScores_ToBackend_UpdatesLeaderboard()
+	public async Task RecordFinalScores_ToBackend_UpdatesLeaderboard()
 	{
 		// This test verifies the pattern for leaderboard updates
 		// In production: POST /game/leaderboard/carrom
@@ -200,7 +197,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[Test]
-	public async void CreditTransferToMachine_DeductsFromPlayers()
+	public async Task CreditTransferToMachine_DeductsFromPlayers()
 	{
 		if (_eventService == null || _testSessionId == Guid.Empty)
 		{
@@ -234,7 +231,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[Test]
-	public async void CompleteCarromGameFlow_AllOperationsSucceed()
+	public async Task CompleteCarromGameFlow_AllOperationsSucceed()
 	{
 		if (_eventService == null)
 		{
@@ -312,7 +309,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[Test]
-	public async void VerifyLeaderboardUpdates_AfterGameCompletion()
+	public async Task VerifyLeaderboardUpdates_AfterGameCompletion()
 	{
 		// This would test: GET /game/leaderboard/carrom
 		// Expected response:
@@ -326,7 +323,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[CleanupAll]
-	public async void CleanupCarromGameSession()
+	public async Task CleanupCarromGameSession()
 	{
 		if (_eventService != null && _testSessionId != Guid.Empty)
 		{

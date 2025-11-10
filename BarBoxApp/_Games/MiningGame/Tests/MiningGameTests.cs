@@ -5,6 +5,7 @@ using Chickensoft.GoDotTest;
 using Godot;
 using BarBox.Tests.Fixtures;
 using BarBox.Games.MiningGame;
+using Shouldly;
 
 namespace BarBox.Games.MiningGame.Tests;
 
@@ -25,7 +26,7 @@ public class MiningGameTests : TestClass
 	}
 
 	[SetupAll]
-	public async void SetupMiningGameSession()
+	public async Task SetupMiningGameSession()
 	{
 		TestHelpers.LogTestInfo("Setting up Mining Game test session");
 
@@ -33,17 +34,13 @@ public class MiningGameTests : TestClass
 		var isHealthy = await TestHelpers.IsTestBackendHealthyAsync();
 		if (!isHealthy)
 		{
-			TestHelpers.LogTestError("Test backend is not healthy!");
+			TestHelpers.LogTestWarning("Test backend is not healthy - some tests may be skipped");
 			return;
 		}
 
 		// Get EventService
 		_eventService = TestScene.GetNode<EventService>("/root/EventService");
-		if (_eventService == null)
-		{
-			TestHelpers.LogTestError("EventService autoload not found!");
-			return;
-		}
+		_eventService.ShouldNotBeNull("EventService autoload must be available");
 
 		// Generate test identifiers
 		_testBoxId = TestHelpers.GenerateTestBoxId();
@@ -58,6 +55,7 @@ public class MiningGameTests : TestClass
 		if (sessionResult.IsSuccess)
 		{
 			_testSessionId = sessionResult.Value;
+			_testSessionId.ShouldNotBe(Guid.Empty, "Session ID should be valid");
 			TestHelpers.LogTestInfo($"Mining session created: {_testSessionId}");
 		}
 		else
@@ -67,7 +65,7 @@ public class MiningGameTests : TestClass
 	}
 
 	[Test]
-	public async void LoadInventoryValues_FromBackend_ReturnsCorrectData()
+	public async Task LoadInventoryValues_FromBackend_ReturnsCorrectData()
 	{
 		// This tests the pattern of loading inventory from backend
 		// In production, MiningEventService would query the backend
@@ -100,7 +98,7 @@ public class MiningGameTests : TestClass
 	}
 
 	[Test]
-	public async void LoadUpgradeLevels_FromBackend_ReturnsCorrectData()
+	public async Task LoadUpgradeLevels_FromBackend_ReturnsCorrectData()
 	{
 		if (_eventService == null)
 		{
@@ -130,7 +128,7 @@ public class MiningGameTests : TestClass
 	}
 
 	[Test]
-	public async void IdentifyNextMiningTickTime_ReturnsCorrectTimestamp()
+	public async Task IdentifyNextMiningTickTime_ReturnsCorrectTimestamp()
 	{
 		if (_eventService == null)
 		{
@@ -159,7 +157,7 @@ public class MiningGameTests : TestClass
 	}
 
 	[Test]
-	public async void IdentifyExtractableGems_ReturnsCorrectQuantity()
+	public async Task IdentifyExtractableGems_ReturnsCorrectQuantity()
 	{
 		if (_eventService == null)
 		{
@@ -180,7 +178,7 @@ public class MiningGameTests : TestClass
 	}
 
 	[Test]
-	public async void CompleteGemExtraction_UpdatesBackendInventory()
+	public async Task CompleteGemExtraction_UpdatesBackendInventory()
 	{
 		if (_eventService == null)
 		{
@@ -212,7 +210,7 @@ public class MiningGameTests : TestClass
 	}
 
 	[Test]
-	public async void PurchaseUpgrade_UpdatesBackendAndLocalState()
+	public async Task PurchaseUpgrade_UpdatesBackendAndLocalState()
 	{
 		if (_eventService == null)
 		{
@@ -254,7 +252,7 @@ public class MiningGameTests : TestClass
 	}
 
 	[Test]
-	public async void DepositGemsForCredits_UpdatesCreditsOnBackend()
+	public async Task DepositGemsForCredits_UpdatesCreditsOnBackend()
 	{
 		if (_eventService == null)
 		{
@@ -291,7 +289,7 @@ public class MiningGameTests : TestClass
 	}
 
 	[Test]
-	public async void CompleteMiningGameFlow_AllOperationsSucceed()
+	public async Task CompleteMiningGameFlow_AllOperationsSucceed()
 	{
 		if (_eventService == null)
 		{
@@ -345,7 +343,7 @@ public class MiningGameTests : TestClass
 	}
 
 	[CleanupAll]
-	public async void CleanupMiningGameSession()
+	public async Task CleanupMiningGameSession()
 	{
 		if (_eventService != null && _testSessionId != Guid.Empty)
 		{
