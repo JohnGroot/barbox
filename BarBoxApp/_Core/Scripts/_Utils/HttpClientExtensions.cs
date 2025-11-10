@@ -160,11 +160,19 @@ public static class HttpClientExtensions
 		{
 			// Wait for the request to start (transition to Requesting or Connecting)
 			// This confirms we're tracking the NEW request, not the old one
-			// Use a shorter timeout for this transition (should be immediate)
+			// Use 3-second timeout (increased from 1s) to handle system load and first app launch
 			bool requestStarted = await PollUntilAsync(
 				client,
-				status => status != HttpClient.Status.Body && status != HttpClient.Status.Connected,
-				timeoutSeconds: 1.0f
+				status =>
+				{
+					// Exit if request started
+					if (status != HttpClient.Status.Body && status != HttpClient.Status.Connected)
+						return true;
+
+					// Continue waiting
+					return false;
+				},
+				timeoutSeconds: 3.0f  // Increased from 1.0s to handle system load
 			);
 
 			if (!requestStarted)
@@ -176,10 +184,27 @@ public static class HttpClientExtensions
 		}
 
 		// Now wait for the request to complete and return to a ready state
+		// Also check for error states to fail fast instead of waiting full timeout
 		return await PollUntilAsync(
 			client,
-			// Accept both valid response-ready states
-			status => status == HttpClient.Status.Body || status == HttpClient.Status.Connected,
+			status =>
+			{
+				// Success states - response is ready
+				if (status == HttpClient.Status.Body || status == HttpClient.Status.Connected)
+					return true;
+
+				// Error states - fail fast instead of waiting full timeout
+				if (status == HttpClient.Status.CantConnect ||
+				    status == HttpClient.Status.CantResolve ||
+				    status == HttpClient.Status.ConnectionError)
+				{
+					// Return true to exit polling, caller will check status and handle error
+					return true;
+				}
+
+				// Continue waiting for other states (Requesting, Resolving, Connecting)
+				return false;
+			},
 			timeoutSeconds
 		);
 	}
