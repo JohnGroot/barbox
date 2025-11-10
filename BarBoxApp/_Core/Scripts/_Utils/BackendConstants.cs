@@ -20,7 +20,10 @@ namespace BarBox
 		/// <summary>
 		/// Complete backend base URL.
 		/// </summary>
-		public const string BASE_URL = "http://127.0.0.1:8000";
+		// Use environment variable to support test backend (port 8001)
+		public static readonly string BASE_URL =
+			$"http://{System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_HOST") ?? "127.0.0.1"}:" +
+			$"{(int.TryParse(System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_PORT"), out var port) ? port : 8000)}";
 
 		// Common HTTP Headers
 
