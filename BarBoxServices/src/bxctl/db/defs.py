@@ -67,9 +67,10 @@ class Player(Base):
 
 class BoxSession(Base):
     box_id: Mapped[BoxFk]
-    host_player_id: Mapped[Annotated[UUID, fk_to(Player)]]  # Primary player who created session
+    host_player_id: Mapped[Annotated[UUID, fk_to(Player)] | None]  # Primary player who created session (nullable for practice mode)
     player_ids: Mapped[PlayerIdArray]  # All players (single-player: ["uuid"], multi-player: ["uuid1", "uuid2", ...])
-    game_tag: Mapped[str]  # Game type identifier (e.g., "carrom", "racing", "mining")
+    game_tag: Mapped[str]  # Game type identifier (e.g., "carrom", "racing", "mining", "lobby")
+    session_type: Mapped[str]  # Session type: "lobby" | "game" | "practice"
     start_time: Mapped[datetime]
     end_time: Mapped[datetime | None]
     events: Mapped[list["BoxSessionEvent"]] = relationship(back_populates="session")

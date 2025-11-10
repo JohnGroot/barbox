@@ -145,21 +145,68 @@ async def register_box(
     )
 
 
+@router.post("/{box_id}/lobby/session", status_code=status.HTTP_201_CREATED)
+async def create_lobby_session(
+    box_id: UUID,
+    player_id: Annotated[UUID, Header()],
+    db_service: dependencies.Database,
+    now: dependencies.Now,
+) -> structures.BoxSessionDetail:
+    """
+    Create a lobby session for a logged-in player.
+
+    Lobby sessions are long-lived sessions that persist while a player is logged in
+    but not actively playing a game. They receive user-scoped events like:
+    - credit/earn, credit/spend (credit transactions)
+    - user/login, user/logout (authentication events)
+
+    The lobby session is closed when the player logs out.
+    """
+    session_id = uuid4()  # Server-generated session ID
+
+    logger.info(
+        "creating_lobby_session",
+        session_id=str(session_id),
+        box_id=str(box_id),
+        player_id=str(player_id),
+    )
+
+    await db_service.create(
+        target=db.defs.BoxSession,
+        data={
+            "id": session_id,
+            "box_id": box_id,
+            "host_player_id": player_id,
+            "player_ids": [str(player_id)],
+            "game_tag": "lobby",
+            "session_type": "lobby",
+            "start_time": now,
+        },
+    )
+
+    return structures.BoxSessionDetail(id=session_id, game_tag="lobby")
+
+
 @router.put("/{box_id}/session/{session_id}", status_code=status.HTTP_202_ACCEPTED)
 async def create_box_session(
     box_id: UUID,
     session_id: UUID,
-    player_id: Annotated[UUID, Header()],
     game_tag: Annotated[str, Query()],  # Required: Game type identifier
     db_service: dependencies.Database,
     now: dependencies.Now,
+    player_id: Annotated[UUID | None, Header()] = None,  # Optional: Required for logged-in play, None for practice mode
     player_ids: Annotated[str | None, Query()] = None,  # Optional JSON array of player IDs for multiplayer
 ) -> structures.BoxSessionDetail:
     """
-    Create a game session for single or multiple players.
+    Create a game session for single or multiple players, or practice mode.
+
+    For practice mode (anonymous gameplay):
+    - Omit player_id header
+    - Pass game_tag as query parameter: ?game_tag=racing
+    - Session will have host_player_id=NULL, session_type="practice"
 
     For single-player games (Racing, Mining):
-    - Pass player_id via header only
+    - Pass player_id via header
     - Pass game_tag as query parameter: ?game_tag=racing
     - player_ids will be set to [player_id]
 
@@ -168,31 +215,52 @@ async def create_box_session(
     - Pass game_tag as query parameter: ?game_tag=carrom
     - First player in array becomes host_player_id
     """
-    # Determine player list
-    if player_ids is not None:
+    # Determine session type and player list
+    if player_id is None and (player_ids is None or player_ids == ""):
+        # Practice mode: No player information provided
+        session_type = "practice"
+        host_id = None
+        player_id_list = []
+    elif player_ids is not None:
         # Multiplayer: Parse JSON array of player IDs
         try:
             player_id_list = json.loads(player_ids)
             if not isinstance(player_id_list, list) or len(player_id_list) == 0:
                 raise ValueError("player_ids must be a non-empty array")
             host_id = UUID(player_id_list[0])  # First player is host
+            session_type = "game"
         except (json.JSONDecodeError, ValueError, IndexError) as e:
             logger.error("invalid_player_ids", error=str(e), player_ids=player_ids)
             # Fall back to single player from header
-            player_id_list = [str(player_id)]
-            host_id = player_id
+            if player_id is not None:
+                player_id_list = [str(player_id)]
+                host_id = player_id
+                session_type = "game"
+            else:
+                # No valid player data - treat as practice mode
+                player_id_list = []
+                host_id = None
+                session_type = "practice"
     else:
         # Single-player: Use player from header
-        player_id_list = [str(player_id)]
-        host_id = player_id
+        if player_id is not None:
+            player_id_list = [str(player_id)]
+            host_id = player_id
+            session_type = "game"
+        else:
+            # Practice mode
+            player_id_list = []
+            host_id = None
+            session_type = "practice"
 
     logger.info(
         "creating_session",
         session_id=str(session_id),
         box_id=str(box_id),
-        host_player_id=str(host_id),
+        host_player_id=str(host_id) if host_id else "None",
         player_count=len(player_id_list),
         game_tag=game_tag,
+        session_type=session_type,
     )
 
     await db_service.create(
@@ -200,9 +268,10 @@ async def create_box_session(
         data={
             "id": session_id,
             "box_id": box_id,
-            "host_player_id": host_id,
-            "player_ids": player_id_list,
+            "host_player_id": host_id,  # NULL for practice mode
+            "player_ids": player_id_list,  # Empty array for practice mode
             "game_tag": game_tag,
+            "session_type": session_type,  # "game" | "practice"
             "start_time": now,
         },
     )
@@ -265,6 +334,15 @@ async def add_session_event(
     # Use validated payload if available, otherwise original
     final_payload = validated_payload if validated_payload is not None else event.payload
 
+    # Log credit event payloads for debugging
+    if event.type in ("credit/earn", "credit/spend"):
+        logger.info(
+            "credit_event_payload",
+            event_type=event.type,
+            payload=final_payload,
+            session_id=str(session_id),
+        )
+
     new_id = uuid4()
     await db_service.create(
         target=db.defs.BoxSessionEvent,
@@ -276,6 +354,9 @@ async def add_session_event(
             "payload": final_payload,
         },
     )
+
+    # Explicitly commit before returning to ensure event is visible to subsequent queries
+    await db_service.session.commit()
 
     logger.info(
         "session_event_created",

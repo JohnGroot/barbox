@@ -223,7 +223,7 @@ async def register_first_play(
     This is an idempotent endpoint that:
     - Registers the player if they don't exist
     - Returns existing player if already registered
-    - Creates player even if origin box doesn't exist (auto-creates temporary player record)
+    - Auto-creates origin box if it doesn't exist (for seamless first-play experience)
 
     Returns:
         201: Player created or already exists
@@ -242,7 +242,11 @@ async def register_first_play(
             player_id=str(new_player.id),
             username=existing_player.tag,
         )
-        return structures.PlayerDetail(id=existing_player.id)
+        return structures.PlayerDetail(
+            id=existing_player.id,
+            tag=existing_player.tag,
+            origin_id=existing_player.origin_id,
+        )
 
     # Player doesn't exist - create them
     try:
@@ -260,8 +264,56 @@ async def register_first_play(
         return result
 
     except IntegrityError as e:
-        # If origin box doesn't exist, log warning but don't fail
-        # The player table will have a dangling reference, but that's ok for now
+        # Check if this is a foreign key constraint violation (missing origin box)
+        if "FOREIGN KEY constraint failed" in str(e) or "foreign key" in str(e).lower():
+            logger.info(
+                "first_play_auto_creating_origin_box",
+                player_id=str(new_player.id),
+                origin_id=str(new_player.origin_id),
+            )
+
+            # Auto-create the origin box with a placeholder name
+            try:
+                box_exists = await db_service.session.execute(
+                    select(db.defs.Box).where(db.defs.Box.id == new_player.origin_id)
+                )
+                if box_exists.scalar_one_or_none() is None:
+                    await db_service.create(
+                        target=db.defs.Box,
+                        data={
+                            "id": new_player.origin_id,
+                            "name": f"Auto-created Box {new_player.origin_id}",
+                            "tag": f"box-{str(new_player.origin_id)[:8]}",
+                        },
+                    )
+                    logger.info(
+                        "first_play_box_auto_created",
+                        box_id=str(new_player.origin_id),
+                    )
+
+                # Now try to create the player again
+                result = await db_service.create(
+                    target=db.defs.Player,
+                    data=new_player,
+                    read_as=structures.PlayerDetail,
+                )
+                logger.info(
+                    "first_play_player_registered_after_box_creation",
+                    player_id=str(new_player.id),
+                    username=new_player.tag,
+                    origin_id=str(new_player.origin_id),
+                )
+                return result
+
+            except Exception as create_error:
+                logger.error(
+                    "first_play_auto_creation_failed",
+                    error=str(create_error),
+                    error_type=type(create_error).__name__,
+                    player_id=str(new_player.id),
+                )
+
+        # If not a FK error or auto-creation failed, try to fetch the player (race condition)
         logger.warning(
             "first_play_registration_constraint_violation",
             error=str(e),
@@ -269,13 +321,16 @@ async def register_first_play(
             username=new_player.tag,
             origin_id=str(new_player.origin_id),
         )
-        # Try to fetch the player that was just created (race condition scenario)
         retry_result = await db_service.session.execute(
             select(db.defs.Player).where(db.defs.Player.id == new_player.id)
         )
         retry_player = retry_result.scalar_one_or_none()
         if retry_player is not None:
-            return structures.PlayerDetail(id=retry_player.id)
+            return structures.PlayerDetail(
+                id=retry_player.id,
+                tag=retry_player.tag,
+                origin_id=retry_player.origin_id,
+            )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -348,17 +403,53 @@ async def get_player_credits(
         ) as credits
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
-    WHERE bs.player_id = :player_id
+    WHERE bs.host_player_id = :player_id
     AND bse.type IN ('credit/earn', 'credit/spend')
     AND json_extract(bse.payload, '$.location_id') = :location_id
     """
 
-    result = await db_service.get_one_raw(sql, {
-        "player_id": str(player_id),
+    # Diagnostic: Test each WHERE condition independently
+    diagnostic_sql = """
+    SELECT
+        COUNT(*) as total_credit_events,
+        SUM(CASE WHEN bs.host_player_id = :player_id THEN 1 ELSE 0 END) as player_id_matches,
+        SUM(CASE WHEN json_extract(bse.payload, '$.location_id') = :location_id THEN 1 ELSE 0 END) as location_id_matches,
+        SUM(CASE WHEN bs.host_player_id = :player_id AND json_extract(bse.payload, '$.location_id') = :location_id THEN 1 ELSE 0 END) as both_match
+    FROM box_session_event bse
+    JOIN box_session bs ON bse.session_id = bs.id
+    WHERE bse.type IN ('credit/earn', 'credit/spend')
+    """
+
+    diagnostic_result = await db_service.get_many_raw(diagnostic_sql, {
+        "player_id": player_id.hex,
+        "location_id": location_id
+    })
+
+    diagnostic_row = diagnostic_result.first()
+    logger.info(
+        "credit_query_diagnostic",
+        player_id=str(player_id),
+        player_id_type=type(player_id).__name__,
+        location_id=location_id,
+        total_events=diagnostic_row[0] if diagnostic_row else 0,
+        player_matches=diagnostic_row[1] if diagnostic_row else 0,
+        location_matches=diagnostic_row[2] if diagnostic_row else 0,
+        both_match=diagnostic_row[3] if diagnostic_row else 0,
+    )
+
+    result = await db_service.get_many_raw(sql, {
+        "player_id": player_id.hex,
         "location_id": location_id
     })
 
     credits = result.scalar() or 0
+
+    logger.info(
+        "credit_balance_query",
+        player_id=str(player_id),
+        location_id=location_id,
+        credits=credits,
+    )
 
     return structures.PlayerCreditsResponse(
         player_id=player_id,
