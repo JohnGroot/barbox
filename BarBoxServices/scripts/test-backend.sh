@@ -35,14 +35,27 @@ is_running() {
 # Wait for backend to be ready
 wait_for_ready() {
 	print_info "Waiting for test backend to be ready..."
-	for i in {1..30}; do
-		if curl -s "http://127.0.0.1:$TEST_PORT/alive" > /dev/null 2>&1; then
-			print_success "Test backend is ready"
-			return 0
+	local retries=0
+	local max_retries=60  # Increased from 30 for first-time dependency installation
+
+	while [ $retries -lt $max_retries ]; do
+		# More robust health check with timeout
+		if curl -sf --max-time 2 "http://127.0.0.1:$TEST_PORT/alive" > /dev/null 2>&1; then
+			# Double-check it's actually responding (not just transient success)
+			sleep 0.5
+			if curl -sf --max-time 2 "http://127.0.0.1:$TEST_PORT/alive" > /dev/null 2>&1; then
+				print_success "Test backend is ready"
+				return 0
+			fi
 		fi
-		sleep 1
+
+		retries=$((retries + 1))
+		sleep 0.5
 	done
-	print_error "Test backend failed to start within 30 seconds"
+
+	print_error "Test backend failed to start within $((max_retries / 2)) seconds"
+	print_info "Last 20 lines of backend log:"
+	tail -n 20 "$LOG_FILE"
 	return 1
 }
 

@@ -42,6 +42,31 @@ fi
 
 echo ""
 
+# CRITICAL: Wait for backend to be FULLY ready before starting Godot
+print_info "Waiting for test backend health check..."
+MAX_WAIT_SECONDS=30
+WAIT_COUNT=0
+
+while [ $WAIT_COUNT -lt $MAX_WAIT_SECONDS ]; do
+	if curl -sf --max-time 2 "http://127.0.0.1:8001/alive" > /dev/null 2>&1; then
+		print_success "Test backend is healthy and ready"
+		break
+	fi
+
+	if [ $WAIT_COUNT -eq $((MAX_WAIT_SECONDS - 1)) ]; then
+		print_error "Test backend failed to become healthy within ${MAX_WAIT_SECONDS} seconds"
+		print_info "Last 20 lines of backend log:"
+		sh scripts/test-backend.sh logs
+		sh scripts/test-backend.sh stop
+		exit 1
+	fi
+
+	WAIT_COUNT=$((WAIT_COUNT + 1))
+	sleep 1
+done
+
+echo ""
+
 # Phase 2: Run backend Hurl tests (if not frontend-only)
 if [ "$TEST_MODE" != "frontend" ]; then
 	print_header "Phase 2: Running Backend Integration Tests (Hurl)"
@@ -96,19 +121,29 @@ if [ "$TEST_MODE" != "backend" ]; then
 
 	cd "$APP_ROOT"
 
-	# Check if godot command exists
+	# Check if godot command exists, fallback to macOS application path
+	GODOT_CMD="godot"
 	if ! command -v godot &> /dev/null; then
-		print_error "Godot command not found in PATH"
-		print_info "Make sure Godot is installed and available as 'godot' command"
-		cd "$SERVICES_ROOT"
-		sh scripts/test-backend.sh stop
-		exit 1
+		if [ -f "/Applications/Godot.app/Contents/MacOS/Godot" ]; then
+			GODOT_CMD="/Applications/Godot.app/Contents/MacOS/Godot"
+			print_info "Using Godot from: $GODOT_CMD"
+		else
+			print_error "Godot command not found in PATH or /Applications/Godot.app"
+			print_info "Make sure Godot is installed"
+			cd "$SERVICES_ROOT"
+			sh scripts/test-backend.sh stop
+			exit 1
+		fi
 	fi
 
 	print_info "Running GoDotTest via Godot headless mode..."
 
+	# Set environment variables for test backend
+	export BARBOX_BACKEND_PORT=8001
+	export BARBOX_TEST_MODE=1
+
 	# Run tests with godot
-	if godot --path . --headless --run-tests --quit-on-finish; then
+	if $GODOT_CMD --path . --headless --run-tests --quit-on-finish; then
 		print_success "Godot C# tests passed"
 	else
 		print_error "Godot C# tests failed"
