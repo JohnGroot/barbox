@@ -9,6 +9,7 @@ MiningEventType = Literal[
     "mining/upgrade_purchase",
     "mining/credit_deposit",
     "mining/tick_update",
+    "mining/first_time_bonus",
 ]
 
 # Event type constants
@@ -17,6 +18,7 @@ EXTRACT_COMPLETE = "mining/extract_complete"
 UPGRADE_PURCHASE = "mining/upgrade_purchase"
 CREDIT_DEPOSIT = "mining/credit_deposit"
 TICK_UPDATE = "mining/tick_update"
+FIRST_TIME_BONUS = "mining/first_time_bonus"
 
 # All event types for validation
 ALL_EVENT_TYPES = {
@@ -25,6 +27,7 @@ ALL_EVENT_TYPES = {
     UPGRADE_PURCHASE,
     CREDIT_DEPOSIT,
     TICK_UPDATE,
+    FIRST_TIME_BONUS,
 }
 
 

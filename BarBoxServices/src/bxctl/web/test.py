@@ -6,6 +6,7 @@ These endpoints are ONLY available in dev/test modes and will return 404 in prod
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import text
 from structlog import get_logger
 
 from bxctl import db, env, structures
@@ -140,3 +141,90 @@ async def get_environment_info() -> dict:
         "is_test_mode": settings.is_test_mode(),
         "is_dev_mode": settings.is_dev_mode(),
     }
+
+
+@router.delete("/player/{player_id}/mining-state", status_code=200)
+async def reset_player_mining_state(
+    player_id: UUID,
+    db_service: dependencies.Database,
+) -> dict:
+    """Reset a player's mining state by deleting all mining-related events.
+
+    This is a surgical reset that only affects mining game data for the specified player.
+    Other game data and the player account remain intact.
+
+    WARNING: This deletes all mining progress for the player.
+    Only available in dev/test environments.
+
+    Args:
+        player_id: UUID of the player whose mining state should be reset
+
+    Returns:
+        200: Mining state reset successfully with count of deleted events
+        404: Endpoint not available in production
+    """
+    if env.is_production():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test endpoints are not available in production",
+        )
+
+    try:
+        # First, count events that will be deleted
+        count_sql = """
+        WITH mining_sessions AS (
+            SELECT id
+            FROM box_session
+            WHERE host_player_id = :player_id
+            AND game_tag = 'mining'
+        )
+        SELECT COUNT(*)
+        FROM box_session_event
+        WHERE session_id IN (SELECT id FROM mining_sessions)
+        AND type LIKE 'mining/%'
+        """
+
+        count_result = await db_service.session.execute(
+            text(count_sql),
+            {"player_id": str(player_id)},
+        )
+        deleted_count = count_result.scalar()
+
+        # Then delete all mining events for this player
+        delete_sql = """
+        WITH mining_sessions AS (
+            SELECT id
+            FROM box_session
+            WHERE host_player_id = :player_id
+            AND game_tag = 'mining'
+        )
+        DELETE FROM box_session_event
+        WHERE session_id IN (SELECT id FROM mining_sessions)
+        AND type LIKE 'mining/%'
+        """
+
+        await db_service.session.execute(
+            text(delete_sql),
+            {"player_id": str(player_id)},
+        )
+        await db_service.session.commit()
+
+        logger.info(
+            "mining_state_reset",
+            player_id=str(player_id),
+            deleted_events=deleted_count,
+        )
+
+        return {
+            "status": "success",
+            "message": f"Mining state reset for player {player_id}",
+            "deleted_events": deleted_count,
+            "player_id": str(player_id),
+        }
+
+    except Exception as e:
+        logger.error("mining_state_reset_failed", player_id=str(player_id), error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "OPERATION_FAILED", "message": str(e)},
+        )

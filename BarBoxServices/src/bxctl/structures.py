@@ -41,6 +41,8 @@ class GameDetail(Identifiable):
     pass
 
 
+# IMPORTANT: When adding new game event types, they MUST be added here AND in games/{game}/events.py
+# TODO: Consider refactoring to import from game modules to maintain single source of truth
 SessionEventType = Literal[
     # Generic session events
     "play/begin",
@@ -57,6 +59,7 @@ SessionEventType = Literal[
     "mining/upgrade_purchase",
     "mining/credit_deposit",
     "mining/tick_update",
+    "mining/first_time_bonus",
     # Carrom game events
     "carrom/round_start",
     "carrom/piece_pocketed",

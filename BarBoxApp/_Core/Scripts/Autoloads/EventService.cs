@@ -403,7 +403,20 @@ public partial class EventService : AutoloadBase
 				return Result<bool>.Success(true);
 			}
 
+			// CRITICAL: Read error response body to see actual backend validation error
+			_httpClient.Poll();
+			await DelayAsync(0.05f);
+			_httpClient.Poll();
+			var errorBodyBytes = _httpClient.ReadResponseBodyChunk();
+			var errorBody = errorBodyBytes.GetStringFromUtf8();
+
 			var failureMsg = $"Event submission failed with code {responseCode}";
+			if (!string.IsNullOrEmpty(errorBody))
+			{
+				LogError($"[EventService] Backend error response: {errorBody}");
+				failureMsg += $" - {errorBody}";
+			}
+
 			CallDeferred(MethodName.EmitSignal, SignalName.EventSubmissionFailed, _currentSessionId.ToString(), failureMsg);
 			return Result<bool>.Failure(failureMsg);
 		}
