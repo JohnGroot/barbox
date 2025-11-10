@@ -31,20 +31,42 @@ See [Session Architecture Documentation](docs/architecture/sessions.md) for deta
 
 ## Quick Start
 
-### Backend Setup
+The BarBox app **automatically starts the backend** if it's not already running. Just launch the frontend and the backend will start in the background.
+
+### Backend Setup (One-Time)
+
+First time only, set up the backend dependencies:
+
 ```bash
 cd BarBoxServices
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-sh scripts/dev.sh  # Starts on http://127.0.0.1:8000
 ```
 
-### Frontend Setup
+### Launch Application
+
 1. Install Godot 4.4.1
 2. Open `BarBoxApp/project.godot` in Godot Editor
 3. Build C# solution (Build → Build Solution)
 4. Run the project (F5)
+
+**The backend will auto-start** on port 8000 if not already running. You'll see:
+- "Starting backend via: .../scripts/dev.sh"
+- "Backend started successfully at 127.0.0.1:8000"
+
+### Manual Backend Control (Optional)
+
+If you prefer to manage the backend manually:
+
+```bash
+cd BarBoxServices
+
+# Start backend (runs on http://127.0.0.1:8000)
+sh scripts/dev.sh
+```
+
+The backend persists after app shutdown for faster subsequent launches.
 
 ## Development Workflow
 
@@ -183,10 +205,39 @@ POST /events                         # Emit gameplay event
 
 ## Troubleshooting
 
+### "Backend Service Not Running" Error
+
+If the backend fails to auto-start, you'll see this error:
+
+```
+╔════════════════════════════════════════════════════════╗
+║  Backend Service Not Running                           ║
+╠════════════════════════════════════════════════════════╣
+║  Backend auto-start failed.                            ║
+║                                                        ║
+║  Possible causes:                                      ║
+║    - Backend script not found                          ║
+║    - Port 8000 blocked by firewall                     ║
+║    - Python dependencies missing                       ║
+╚════════════════════════════════════════════════════════╝
+```
+
+**Solution**:
+1. Click "Retry Connection" button in the app (auto-start will try again)
+2. If retry fails, check Godot console for detailed error messages
+3. Manually start backend to troubleshoot: `cd BarBoxServices && sh scripts/dev.sh`
+
+**Common causes**:
+- **Port 8000 occupied**: Another process using the port (backend auto-kills stale processes but may miss some)
+- **Python dependencies missing**: Run `pip install -r requirements.txt` in BarBoxServices
+- **Backend script not found**: Verify `BarBoxServices/scripts/dev.sh` exists
+- **Permissions**: Script may not be executable (`chmod +x BarBoxServices/scripts/dev.sh`)
+
 ### Backend won't start
-- Check port 8000 is available: `lsof -i :8000`
-- Verify database exists: `ls BarBoxServices/app.db`
-- Check Python dependencies: `pip list | grep fastapi`
+- **Port 8000 in use**: Kill the process using `lsof -i :8000` to find PID, then `kill <PID>`
+- **Database locked**: Close any other backend instances
+- **Dependencies missing**: Run `pip install -r requirements.txt` in virtual environment
+- **Python version**: Requires Python 3.13+
 
 ### Frontend build errors
 - Rebuild C# solution: `dotnet clean && dotnet build`
@@ -194,9 +245,10 @@ POST /events                         # Emit gameplay event
 - Verify Godot version: Should be 4.4.1
 
 ### Tests failing
-- Backend: Ensure test backend is running on port 8001
-- Frontend: Check EventService can reach backend
-- Clear test database: `rm BarBoxServices/test_app.db`
+- **Backend tests**: Ensure test backend is running on port 8001 (not production 8000)
+- **Frontend tests**: Run `sh scripts/run-tests.sh` which manages test backend automatically
+- **Connection errors**: Check both production (8000) and test (8001) backends are not conflicting
+- **Database issues**: Clear test database: `rm /tmp/barbox-test.db`
 
 ## License
 
