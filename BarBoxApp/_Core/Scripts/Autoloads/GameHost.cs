@@ -173,21 +173,13 @@ public partial class GameHost : AutoloadBase
 	public Node GetCurrentGame() => _currentGame;
 
 	/// <summary>
-	/// Get player session - redirects to SessionManager
+	/// Get user session - redirects to SessionManager
 	/// Falls back to primary user if specific playerId not found (single-user game fallback)
 	/// </summary>
-	public PlayerSession GetPlayerSession(string playerId)
+	public UserSession GetUserSession(string playerId)
 	{
 		var sessionManager = SessionManager.GetInstance();
-		var userSession = sessionManager?.GetUserSession(playerId) ?? sessionManager?.GetPrimaryUserSession();
-
-		if (userSession != null)
-		{
-			// Convert UserSession to PlayerSession
-			return new PlayerSession(userSession.PhoneNumber, userSession);
-		}
-
-		return null;
+		return sessionManager?.GetUserSession(playerId) ?? sessionManager?.GetPrimaryUserSession();
 	}
 
 	/// <summary>

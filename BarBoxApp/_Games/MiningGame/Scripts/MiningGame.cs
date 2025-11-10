@@ -97,9 +97,8 @@ namespace BarBox.Games.MiningGame
 			if (_gameHost != null && IsInstanceValid(_gameHost))
 			{
 				_isProductionContext = true;
-				var playerSession = _gameHost.GetPlayerSession("default");
-				var playerIdString = playerSession?.PlayerId ?? _gameHost.GetCurrentPlayerId();
-				_playerId = Guid.TryParse(playerIdString, out var parsedId) ? parsedId : Guid.Empty;
+				var userSession = _gameHost.GetUserSession("default");
+				_playerId = userSession?.PlayerId ?? Guid.Empty;
 			}
 			else
 			{
@@ -1041,7 +1040,7 @@ namespace BarBox.Games.MiningGame
 							// Show error to user
 							_game._ui?.ShowError(
 								"Service Unavailable",
-								"Unable to connect to game server.\nPlease try again later or contact support if the issue persists."
+								"Unable to connect to game server.\nPlease try agaein later or contact support if the issue persists."
 							);
 
 							// Create minimal default state to prevent crashes
@@ -1185,6 +1184,36 @@ namespace BarBox.Games.MiningGame
 
 					// Initialize pending gems to 0 (location-specific state starts fresh)
 					_pendingGems = 0;
+
+					// Grant first-time bonus if eligible
+					if (_firstTimeBonus)
+					{
+						var maxCapacity = GetMaxCapacity();
+						_pendingGems = maxCapacity; // Grant full capacity of gems
+
+						GD.Print($"[GameState] First-time bonus granted: {_pendingGems} gems");
+
+						// Emit event to backend to mark bonus as received
+						if (_game._miningEventService != null)
+						{
+							var bonusResult = await _game._miningEventService.EmitFirstTimeBonusAsync(
+								playerId,
+								locationId,
+								_pendingGems
+							);
+
+							if (bonusResult.IsSuccess)
+							{
+								_firstTimeBonus = false; // Mark as received locally
+								GD.Print("[GameState] First-time bonus event emitted successfully");
+							}
+							else
+							{
+								GD.PrintErr($"[GameState] Failed to emit first-time bonus event: {bonusResult.Error}");
+								// Keep _firstTimeBonus=true so we retry on next login
+							}
+						}
+					}
 
 					return true;
 				}

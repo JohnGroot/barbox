@@ -1249,13 +1249,13 @@ public partial class CarromGame : GameController
 		if (gameHost != null && GodotObject.IsInstanceValid(gameHost))
 		{
 			// Production context - integrate with platform
-			var playerSession = gameHost.GetPlayerSession("default");
-			if (playerSession != null)
+			var userSession = gameHost.GetUserSession("default");
+			if (userSession != null)
 			{
 				// Setup player integration
 				var player = new CarromPlayer();
-				player.PlayerId = playerSession.PlayerId;
-				player.SetUserSession(playerSession.UserSession);
+				player.PlayerId = userSession.PhoneNumber;
+				player.SetUserSession(userSession);
 				AddPlayer(player);
 			}
 		}

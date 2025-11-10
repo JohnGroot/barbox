@@ -281,7 +281,9 @@ public partial class BuyCreditsModal : Control
 
 		try
 		{
-			var result = await _paymentService.PurchaseCreditsAsync(_targetPhoneNumber, creditPack);
+			// Convert phone number to playerId for backend consistency
+			var playerId = EventService.GetPlayerIdFromPhone(_targetPhoneNumber);
+			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 			if (result.IsSuccess)
 			{
