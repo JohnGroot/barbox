@@ -75,7 +75,7 @@ public abstract class BackendTestBase : TestClass
 		TestBoxId = TestHelpers.GenerateTestBoxId();
 		TestPlayerId = TestHelpers.GenerateTestPlayerId();
 		TestPlayerUsername = TestHelpers.GenerateTestUsername();
-		TestPlayerPhone = TestHelpers.GenerateTestPhoneNumber();
+		TestPlayerPhone = TestHelpers.GenerateTestPhoneNumber(GetType().Name.GetHashCode());
 
 		TestHelpers.LogTestInfo($"Test identifiers created - Box: {TestBoxId}, Player: {TestPlayerId}");
 	}

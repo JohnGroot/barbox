@@ -157,7 +157,7 @@ public class MiningGameTests : TestClass
 	}
 
 	[Test]
-	public async Task IdentifyExtractableGems_ReturnsCorrectQuantity()
+	public void IdentifyExtractableGems_ReturnsCorrectQuantity()
 	{
 		if (_eventService == null)
 		{

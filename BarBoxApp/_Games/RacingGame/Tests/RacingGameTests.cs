@@ -206,7 +206,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[Test]
-	public async Task LoadLeaderboardData_FromBackend_ReturnsTopTimes()
+	public void LoadLeaderboardData_FromBackend_ReturnsTopTimes()
 	{
 		// This would test: GET /game/leaderboard/racing
 		// Expected response sorted by best_time ascending:
@@ -226,7 +226,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[Test]
-	public async Task VerifyLeaderboardOrdering_BestTimesFirst()
+	public void VerifyLeaderboardOrdering_BestTimesFirst()
 	{
 		// This test verifies leaderboard ordering logic
 		// Best times (lowest) should appear first
@@ -252,7 +252,7 @@ public class RacingGameTests : TestClass
 	}
 
 	[Test]
-	public async Task VerifyLapTimeBreakdowns_InLeaderboard()
+	public void VerifyLapTimeBreakdowns_InLeaderboard()
 	{
 		// Leaderboard should show individual lap times for analysis
 		// This allows players to see where they can improve

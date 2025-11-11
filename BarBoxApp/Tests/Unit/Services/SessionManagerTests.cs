@@ -332,7 +332,7 @@ public class SessionManagerTests : BackendTestBase
 			}
 		}
 
-		base.CleanupTestResources();
+		await base.CleanupTestResources();
 		_sessionManager = null;
 	}
 }

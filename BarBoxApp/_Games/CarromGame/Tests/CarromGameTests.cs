@@ -186,7 +186,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[Test]
-	public async Task RecordFinalScores_ToBackend_UpdatesLeaderboard()
+	public void RecordFinalScores_ToBackend_UpdatesLeaderboard()
 	{
 		// This test verifies the pattern for leaderboard updates
 		// In production: POST /game/leaderboard/carrom
@@ -309,7 +309,7 @@ public class CarromGameTests : TestClass
 	}
 
 	[Test]
-	public async Task VerifyLeaderboardUpdates_AfterGameCompletion()
+	public void VerifyLeaderboardUpdates_AfterGameCompletion()
 	{
 		// This would test: GET /game/leaderboard/carrom
 		// Expected response:

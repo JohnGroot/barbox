@@ -118,7 +118,7 @@ public class EventServiceTests : BackendTestBase
 	}
 
 	[Test]
-	public async Task EmitEvent_WithSessionActive_ReturnsSuccess()
+	public void EmitEvent_WithSessionActive_ReturnsSuccess()
 	{
 		// This test requires a full integration setup
 		// For now, testing the API surface

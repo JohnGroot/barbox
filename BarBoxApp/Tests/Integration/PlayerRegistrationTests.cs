@@ -185,7 +185,7 @@ public class PlayerRegistrationTests : BackendTestBase
 	}
 
 	[Test]
-	public async Task PlayerRegistration_ValidatesServiceDependencies()
+	public void PlayerRegistration_ValidatesServiceDependencies()
 	{
 		// Validate all required services are present
 		_sessionManager.ShouldNotBeNull("SessionManager must be present");

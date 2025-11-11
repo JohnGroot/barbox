@@ -1,4 +1,4 @@
-<Project Sdk="Godot.NET.Sdk/4.5.0">
+<Project Sdk="Godot.NET.Sdk/4.5.1">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
@@ -12,7 +12,8 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="ZLinq.Godot" Version="1.5.2" />
-    <PackageReference Include="Chickensoft.GoDotTest" Version="1.1.9" />
+    <PackageReference Include="Chickensoft.GoDotTest" Version="2.0.21" />
+    <PackageReference Include="Chickensoft.Log" Version="2.0.0" />
     <PackageReference Include="Shouldly" Version="4.2.1" />
   </ItemGroup>
 </Project>

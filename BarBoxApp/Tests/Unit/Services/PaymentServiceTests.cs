@@ -293,7 +293,7 @@ public class PaymentServiceTests : BackendTestBase
 			}
 		}
 
-		base.CleanupTestResources();
+		await base.CleanupTestResources();
 		_paymentService = null;
 		_sessionManager = null;
 		_eventService = null;
