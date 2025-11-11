@@ -29,7 +29,7 @@ public partial class EventService : AutoloadBase
 	private const int POLL_INTERVAL_MS = 10;
 
 	// Enable detailed HTTP lifecycle logging for debugging connection issues
-	private const bool DEBUG_HTTP_LIFECYCLE = false;
+	// To enable: Add DEBUG_HTTP_LIFECYCLE to project defines or use #define DEBUG_HTTP_LIFECYCLE at top of file
 
 	private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
 	{
@@ -113,9 +113,9 @@ public partial class EventService : AutoloadBase
 
 		try
 		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateActivitySession - Starting for game '{gameTag}'");
-
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] CreateActivitySession - Starting for game '{gameTag}'");
+#endif
 			await EnsureConnectedAsync();
 
 			// Build URL with required game_tag
@@ -134,8 +134,9 @@ public partial class EventService : AutoloadBase
 				"User-Agent: BarBox-Client/1.0"
 			};
 
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateActivitySession - PUT {url}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] CreateActivitySession - PUT {url}");
+#endif
 
 			var error = _httpClient.Request(
 				Godot.HttpClient.Method.Put,
@@ -150,8 +151,9 @@ public partial class EventService : AutoloadBase
 
 			var responseCode = _httpClient.GetResponseCode();
 
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateActivitySession - Response code: {responseCode}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] CreateActivitySession - Response code: {responseCode}");
+#endif
 
 			if (responseCode != 202)
 			{
@@ -169,8 +171,9 @@ public partial class EventService : AutoloadBase
 		}
 		catch (Exception ex)
 		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogError($"[HTTP] CreateActivitySession - Exception: {ex.Message}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogError($"[HTTP] CreateActivitySession - Exception: {ex.Message}");
+#endif
 
 			_httpClient.Close();
 			return Result<Guid>.Failure($"Activity session creation exception: {ex.Message}");
@@ -190,16 +193,18 @@ public partial class EventService : AutoloadBase
 
 		try
 		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CloseActivitySession - Closing session {sessionId}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] CloseActivitySession - Closing session {sessionId}");
+#endif
 
 			await EnsureConnectedAsync();
 
 			var url = $"/box/session/{sessionId}/close";
 			var headers = new[] { "User-Agent: BarBox-Client/1.0" };
 
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CloseActivitySession - POST {url}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] CloseActivitySession - POST {url}");
+#endif
 
 			var error = _httpClient.Request(
 				Godot.HttpClient.Method.Post,
@@ -214,8 +219,9 @@ public partial class EventService : AutoloadBase
 
 			var responseCode = _httpClient.GetResponseCode();
 
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CloseActivitySession - Response code: {responseCode}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] CloseActivitySession - Response code: {responseCode}");
+#endif
 
 			if (responseCode != 200)
 			{
@@ -235,8 +241,9 @@ public partial class EventService : AutoloadBase
 		}
 		catch (Exception ex)
 		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogError($"[HTTP] CloseActivitySession - Exception: {ex.Message}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogError($"[HTTP] CloseActivitySession - Exception: {ex.Message}");
+#endif
 
 			_httpClient.Close();
 			return Result<bool>.Failure($"Session close exception: {ex.Message}");
@@ -259,8 +266,9 @@ public partial class EventService : AutoloadBase
 
 		try
 		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateLobbySession - Starting for player {playerId}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] CreateLobbySession - Starting for player {playerId}");
+#endif
 
 			await EnsureConnectedAsync();
 
@@ -271,8 +279,9 @@ public partial class EventService : AutoloadBase
 				"User-Agent: BarBox-Client/1.0"
 			};
 
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateLobbySession - POST {url}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] CreateLobbySession - POST {url}");
+#endif
 
 			var error = _httpClient.Request(
 				Godot.HttpClient.Method.Post,
@@ -287,8 +296,9 @@ public partial class EventService : AutoloadBase
 
 			var responseCode = _httpClient.GetResponseCode();
 
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] CreateLobbySession - Response code: {responseCode}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] CreateLobbySession - Response code: {responseCode}");
+#endif
 
 			if (responseCode != 201)
 			{
@@ -324,8 +334,9 @@ public partial class EventService : AutoloadBase
 		}
 		catch (Exception ex)
 		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogError($"[HTTP] CreateLobbySession - Exception: {ex.Message}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogError($"[HTTP] CreateLobbySession - Exception: {ex.Message}");
+#endif
 
 			_httpClient.Close();
 			return Result<Guid>.Failure($"Lobby session creation exception: {ex.Message}");
@@ -397,12 +408,11 @@ public partial class EventService : AutoloadBase
 				// This prevents POST-then-GET state interference by clearing the Body state
 				var responseBody = _httpClient.ReadResponseBodyChunk();
 
-				if (DEBUG_HTTP_LIFECYCLE)
-				{
-					LogInfo($"[HTTP] POST succeeded, consumed {responseBody.Length} bytes");
-					_httpClient.Poll();
-					LogInfo($"[HTTP] Status after response read: {_httpClient.GetStatus()}");
-				}
+#if DEBUG_HTTP_LIFECYCLE
+				LogInfo($"[HTTP] POST succeeded, consumed {responseBody.Length} bytes");
+				_httpClient.Poll();
+				LogInfo($"[HTTP] Status after response read: {_httpClient.GetStatus()}");
+#endif
 
 				CallDeferred(MethodName.EmitSignal, SignalName.EventSubmitted, _currentSessionId.ToString(), eventType);
 				return Result<bool>.Success(true);
@@ -450,8 +460,9 @@ public partial class EventService : AutoloadBase
 
 		try
 		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] EmitUserEvent - {eventType} to lobby session {_lobbySessionId}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] EmitUserEvent - {eventType} to lobby session {_lobbySessionId}");
+#endif
 
 			await EnsureConnectedAsync();
 
@@ -470,8 +481,9 @@ public partial class EventService : AutoloadBase
 				$"Content-Length: {Encoding.UTF8.GetByteCount(eventJson)}"
 			};
 
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] EmitUserEvent - POST {url}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] EmitUserEvent - POST {url}");
+#endif
 
 			var error = _httpClient.Request(
 				Godot.HttpClient.Method.Post,
@@ -487,8 +499,9 @@ public partial class EventService : AutoloadBase
 
 			var responseCode = _httpClient.GetResponseCode();
 
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] EmitUserEvent - Response code: {responseCode}");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] EmitUserEvent - Response code: {responseCode}");
+#endif
 
 			if (responseCode == 201)
 			{
@@ -499,12 +512,11 @@ public partial class EventService : AutoloadBase
 
 				var responseBody = _httpClient.ReadResponseBodyChunk().GetStringFromUtf8();
 
-				if (DEBUG_HTTP_LIFECYCLE)
-				{
-					LogInfo($"[HTTP] POST succeeded, consumed {responseBody.Length} bytes");
-					_httpClient.Poll();
-					LogInfo($"[HTTP] Status after response read: {_httpClient.GetStatus()}");
-				}
+#if DEBUG_HTTP_LIFECYCLE
+				LogInfo($"[HTTP] POST succeeded, consumed {responseBody.Length} bytes");
+				_httpClient.Poll();
+				LogInfo($"[HTTP] Status after response read: {_httpClient.GetStatus()}");
+#endif
 
 				LogInfo($"User event submitted: {eventType} to lobby session {_lobbySessionId}");
 				return Result<bool>.Success(true);
@@ -776,10 +788,9 @@ public partial class EventService : AutoloadBase
 			var bodyBytes = _httpClient.ReadResponseBodyChunk();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
-			if (DEBUG_HTTP_LIFECYCLE)
-			{
-				LogInfo($"[HTTP] PostAsync response: code={responseCode}, bodyLength={bodyBytes.Length}");
-			}
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] PostAsync response: code={responseCode}, bodyLength={bodyBytes.Length}");
+#endif
 
 			// Validate body before deserializing
 			if (string.IsNullOrEmpty(bodyText))
@@ -1109,22 +1120,25 @@ public partial class EventService : AutoloadBase
 		_httpClient.Poll();
 		var currentStatus = _httpClient.GetStatus();
 
-		if (DEBUG_HTTP_LIFECYCLE)
-			LogInfo($"[HTTP] EnsureConnected - Initial status: {currentStatus}");
+#if DEBUG_HTTP_LIFECYCLE
+		LogInfo($"[HTTP] EnsureConnected - Initial status: {currentStatus}");
+#endif
 
 		// Connection is ready for new requests
 		if (currentStatus == Godot.HttpClient.Status.Connected)
 		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo("[HTTP] Connection ready for reuse (keep-alive)");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo("[HTTP] Connection ready for reuse (keep-alive)");
+#endif
 			return;
 		}
 
 		// Handle intermediate states from previous requests
 		if (currentStatus == Godot.HttpClient.Status.Body)
 		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo("[HTTP] Cleaning up unconsumed response body from previous request");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo("[HTTP] Cleaning up unconsumed response body from previous request");
+#endif
 
 			// Fully consume response body - may be chunked, requiring multiple reads
 			const int MAX_DISCARD_BYTES = 10 * 1024 * 1024; // 10MB limit to prevent DOS
@@ -1146,8 +1160,10 @@ public partial class EventService : AutoloadBase
 				}
 			}
 
-			if (DEBUG_HTTP_LIFECYCLE && totalBytesDiscarded > 0)
+#if DEBUG_HTTP_LIFECYCLE
+			if (totalBytesDiscarded > 0)
 				LogInfo($"[HTTP] Discarded {totalBytesDiscarded} bytes of unconsumed response data");
+#endif
 
 			// Poll to advance state machine after full consumption
 			_httpClient.Poll();
@@ -1155,8 +1171,9 @@ public partial class EventService : AutoloadBase
 
 			if (currentStatus == Godot.HttpClient.Status.Connected)
 			{
-				if (DEBUG_HTTP_LIFECYCLE)
-					LogInfo("[HTTP] Connection recovered to Connected state after cleanup");
+#if DEBUG_HTTP_LIFECYCLE
+				LogInfo("[HTTP] Connection recovered to Connected state after cleanup");
+#endif
 				return; // Now ready for reuse
 			}
 		}
@@ -1164,16 +1181,18 @@ public partial class EventService : AutoloadBase
 		// If still not in a good state, close and reconnect
 		if (currentStatus != Godot.HttpClient.Status.Disconnected)
 		{
-			if (DEBUG_HTTP_LIFECYCLE)
-				LogInfo($"[HTTP] Closing stale connection (status: {currentStatus})");
+#if DEBUG_HTTP_LIFECYCLE
+			LogInfo($"[HTTP] Closing stale connection (status: {currentStatus})");
+#endif
 
 			_httpClient.Close();
 			await DelayAsync(0.01f); // Brief delay for clean close
 		}
 
 		// Establish new connection
-		if (DEBUG_HTTP_LIFECYCLE)
-			LogInfo($"[HTTP] Establishing new connection to {BACKEND_HOST}:{BACKEND_PORT}");
+#if DEBUG_HTTP_LIFECYCLE
+		LogInfo($"[HTTP] Establishing new connection to {BACKEND_HOST}:{BACKEND_PORT}");
+#endif
 
 		var error = _httpClient.ConnectToHost(BACKEND_HOST, BACKEND_PORT);
 		if (error != Error.Ok)
@@ -1184,18 +1203,18 @@ public partial class EventService : AutoloadBase
 		if (!connected)
 			throw new Exception("Connection timeout");
 
-		if (DEBUG_HTTP_LIFECYCLE)
-			LogInfo("[HTTP] New connection established successfully");
+#if DEBUG_HTTP_LIFECYCLE
+		LogInfo("[HTTP] New connection established successfully");
+#endif
 	}
 
 	private async Task WaitForResponseAsync()
 	{
-		if (DEBUG_HTTP_LIFECYCLE)
-		{
-			_httpClient.Poll();
-			var statusBeforeWait = _httpClient.GetStatus();
-			LogInfo($"[HTTP] WaitForResponse - Status before wait: {statusBeforeWait}");
-		}
+#if DEBUG_HTTP_LIFECYCLE
+		_httpClient.Poll();
+		var statusBeforeWait = _httpClient.GetStatus();
+		LogInfo($"[HTTP] WaitForResponse - Status before wait: {statusBeforeWait}");
+#endif
 
 		// Use aggressive polling utility - exits immediately when response ready
 		bool ready = await _httpClient.PollUntilResponseReadyAsync(
@@ -1209,12 +1228,11 @@ public partial class EventService : AutoloadBase
 			throw new Exception($"Request timeout (final status: {finalStatus})");
 		}
 
-		if (DEBUG_HTTP_LIFECYCLE)
-		{
-			_httpClient.Poll();
-			var statusAfterWait = _httpClient.GetStatus();
-			LogInfo($"[HTTP] WaitForResponse - Status after wait: {statusAfterWait}");
-		}
+#if DEBUG_HTTP_LIFECYCLE
+		_httpClient.Poll();
+		var statusAfterWait = _httpClient.GetStatus();
+		LogInfo($"[HTTP] WaitForResponse - Status after wait: {statusAfterWait}");
+#endif
 	}
 
 	private string GetLocationId()
