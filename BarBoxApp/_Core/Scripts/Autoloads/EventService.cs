@@ -388,6 +388,11 @@ public partial class EventService : AutoloadBase
 			var responseCode = _httpClient.GetResponseCode();
 			if (responseCode == 201)
 			{
+				// CRITICAL: Poll to ensure body is fully received before reading
+				_httpClient.Poll();
+				await DelayAsync(0.05f);
+				_httpClient.Poll();
+
 				// Consume response body to transition back to Connected state (keep-alive)
 				// This prevents POST-then-GET state interference by clearing the Body state
 				var responseBody = _httpClient.ReadResponseBodyChunk();
@@ -749,6 +754,11 @@ public partial class EventService : AutoloadBase
 			var responseCode = _httpClient.GetResponseCode();
 			if (responseCode != expectedStatusCode)
 			{
+				// CRITICAL: Poll to ensure body is fully received before reading error
+				_httpClient.Poll();
+				await DelayAsync(0.05f);
+				_httpClient.Poll();
+
 				var errorBytes = _httpClient.ReadResponseBodyChunk();
 				var errorText = errorBytes.GetStringFromUtf8();
 
@@ -820,14 +830,14 @@ public partial class EventService : AutoloadBase
 
 			await WaitForResponseAsync();
 
-			// CRITICAL: Poll to ensure body is fully received
-			_httpClient.Poll();
-			await DelayAsync(0.05f);
-			_httpClient.Poll();
-
 			var responseCode = _httpClient.GetResponseCode();
 			if (responseCode != expectedStatusCode)
 			{
+				// CRITICAL: Poll to ensure body is fully received before reading error
+				_httpClient.Poll();
+				await DelayAsync(0.05f);
+				_httpClient.Poll();
+
 				var errorBytes = _httpClient.ReadResponseBodyChunk();
 				var errorText = errorBytes.GetStringFromUtf8();
 
@@ -836,6 +846,11 @@ public partial class EventService : AutoloadBase
 
 				return Result<TResponse>.Failure($"PUT failed with code {responseCode}: {errorText}");
 			}
+
+			// CRITICAL: Poll to ensure body is fully received before reading success response
+			_httpClient.Poll();
+			await DelayAsync(0.05f);
+			_httpClient.Poll();
 
 			var bodyBytes = _httpClient.ReadResponseBodyChunk();
 			var bodyText = bodyBytes.GetStringFromUtf8();

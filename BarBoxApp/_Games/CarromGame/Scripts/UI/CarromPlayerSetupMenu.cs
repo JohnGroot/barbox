@@ -985,10 +985,49 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		}
 	}
 
+	private bool ValidatePlayerSlots()
+	{
+		// Check correct number of slots filled
+		if (_slotToPhoneNumber.Count != _playerCount)
+			return false;
+
+		// Validate each player has valid session
+		foreach (var kvp in _slotToPhoneNumber)
+		{
+			var session = _sessionManager?.GetUserSession(kvp.Value);
+			if (session == null)
+				return false;
+		}
+
+		return true;
+	}
+
 	private void UpdateStartGameButton()
 	{
-		bool canStart = _tableCredits >= _costPerGame;
+		// Validate sufficient credits
+		bool hasCredits = _tableCredits >= _costPerGame;
+
+		// Validate all required player slots are filled
+		bool slotsFilledCorrectly = ValidatePlayerSlots();
+
+		// Enable button only if BOTH conditions met
+		bool canStart = hasCredits && slotsFilledCorrectly;
 		_startGameButton.Disabled = !canStart;
+
+		// Update button text to provide feedback
+		if (!hasCredits)
+		{
+			_startGameButton.Text = $"Need {_costPerGame - _tableCredits} More Credits";
+		}
+		else if (!slotsFilledCorrectly)
+		{
+			int needed = _playerCount - _slotToPhoneNumber.Count;
+			_startGameButton.Text = $"Need {needed} More Player{(needed > 1 ? "s" : "")}";
+		}
+		else
+		{
+			_startGameButton.Text = "Start Game";
+		}
 	}
 
 	// Event handlers
@@ -1016,15 +1055,16 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	/// <summary>
 	/// Handle SessionManager's UserLoggedIn signal
+	/// Comprehensive fix: If _pendingLoginSlot is invalid, find first empty slot automatically
 	/// </summary>
 	private void OnUserLoggedIn(string phoneNumber)
 	{
-		if (_pendingLoginSlot < 0 || _sessionManager == null)
+		if (_sessionManager == null)
 			return;
 
 		// Get the user session
 		var session = _sessionManager.GetUserSession(phoneNumber);
-		if (session == null || false)
+		if (session == null)
 			return;
 
 		// Check if this user is already in another slot
@@ -1035,8 +1075,36 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			return;
 		}
 
-		// Add user to the pending slot
+		// Determine which slot to assign this player to
 		int slotIndex = _pendingLoginSlot;
+
+		// If _pendingLoginSlot is invalid, find first empty slot as fallback
+		if (slotIndex < 0 || slotIndex >= _playerSlots.Count)
+		{
+			GD.Print($"Invalid pending login slot: {_pendingLoginSlot}, searching for empty slot");
+
+			// Find first slot without a phone number assigned
+			slotIndex = -1;
+			for (int i = 0; i < _playerSlots.Count; i++)
+			{
+				if (!_slotToPhoneNumber.ContainsKey(i))
+				{
+					slotIndex = i;
+					GD.Print($"Found empty slot at index {i} for {phoneNumber}");
+					break;
+				}
+			}
+
+			// If still no valid slot, bail out
+			if (slotIndex < 0)
+			{
+				GD.PrintErr($"No empty slots available for {phoneNumber}");
+				_pendingLoginSlot = -1;
+				return;
+			}
+		}
+
+		// Assign user to the determined slot
 		_slotToPhoneNumber[slotIndex] = phoneNumber;
 		_creditsTransferredByPlayer[phoneNumber] = 0;
 
@@ -1045,10 +1113,14 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		{
 			var slot = _playerSlots[slotIndex];
 			slot.SetOccupied(session.UserName, session.Credits);
+			GD.Print($"Player {session.UserName} assigned to slot {slotIndex}");
 		}
 
 		// Clear pending slot
 		_pendingLoginSlot = -1;
+
+		// Update game start button state
+		UpdateStartGameButton();
 	}
 
 	private async void OnLogoutButtonPressed(int slotIndex)
@@ -1198,8 +1270,17 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private async void OnStartGamePressed()
 	{
+		// Validate credits (existing check)
 		if (_tableCredits < _costPerGame)
 			return;
+
+		// Validate player slots
+		if (!ValidatePlayerSlots())
+		{
+			int needed = _playerCount - _slotToPhoneNumber.Count;
+			GD.PrintErr($"[CarromPlayerSetupMenu] Cannot start - need {needed} more player(s) to fill all slots");
+			return;
+		}
 
 		// Consume credits from machine pot (backend tracking)
 		var eventService = EventService.GetInstance();
@@ -1225,12 +1306,13 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				// Backend consumption successful - update local state
 				_tableCredits = consumeResult.Value.Balance;
 
-				// Clear local state after successful game start
-				_slotToPhoneNumber.Clear();
-				_creditsTransferredByPlayer.Clear();
-
 				HideMenu();
 				EmitSignal(SignalName.GameStartRequested);
+
+				// IMPORTANT: Clear local state AFTER signal emission
+				// Signal handlers need to read _slotToPhoneNumber first!
+				_slotToPhoneNumber.Clear();
+				_creditsTransferredByPlayer.Clear();
 			}
 			else
 			{
@@ -1241,11 +1323,14 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		{
 			// Fallback for development mode - just consume locally
 			_tableCredits -= _costPerGame;
-			_slotToPhoneNumber.Clear();
-			_creditsTransferredByPlayer.Clear();
 
 			HideMenu();
 			EmitSignal(SignalName.GameStartRequested);
+
+			// IMPORTANT: Clear local state AFTER signal emission
+			// Signal handlers need to read _slotToPhoneNumber first!
+			_slotToPhoneNumber.Clear();
+			_creditsTransferredByPlayer.Clear();
 		}
 	}
 

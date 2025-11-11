@@ -504,6 +504,12 @@ public partial class CarromGame : GameController
 	/// </summary>
 	public virtual void StartPracticeMode()
 	{
+		// Cancel current game if somehow still active (safety check)
+		if (_isGameActive)
+		{
+			EndGame();
+		}
+
 		// Clean up competitive mode before switching
 		_competitiveModeManager?.CleanupMode();
 
@@ -525,6 +531,40 @@ public partial class CarromGame : GameController
 
 		// Setup state machine for practice mode
 		SetupStateMachineForCurrentMode();
+	}
+
+	/// <summary>
+	/// Return to practice mode with confirmation dialog
+	/// Follows same pattern as ReturnToMainMenu() for consistency
+	/// </summary>
+	protected virtual async void ReturnToPractice()
+	{
+		var uiManager = UIManager.GetInstance();
+		if (uiManager != null)
+		{
+			bool confirmed = await uiManager.ShowConfirmationAsync(
+				"Return to Practice",
+				"Are you sure you want to return to practice mode?\n\nThe current competitive match will be cancelled.",
+				"Return to Practice",
+				"Cancel"
+			);
+
+			if (!confirmed)
+			{
+				return; // User cancelled
+			}
+		}
+
+		// Cancel current game if active - emits GameEnded signal
+		if (_isGameActive)
+		{
+			EndGame();
+		}
+
+		StartPracticeMode();
+
+		// Refresh UI to update button states (re-enable logout button, etc.)
+		RefreshUI();
 	}
 
 	/// <summary>
@@ -1431,7 +1471,7 @@ public partial class CarromGame : GameController
 			buttons.Add(new ContextButtonData("Return to Practice", () => {
 				var userManager = UserManager.GetAutoload();
 				userManager?.ResetUserIdleTimer();
-				StartPracticeMode();
+				ReturnToPractice();
 			}, "🔄", true, "Return to practice mode"));
 		}
 

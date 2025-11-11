@@ -118,12 +118,20 @@ public partial class UIManager : AutoloadBase
 			_sessionManager.CreditsEarned += OnCreditsEarned;
 		}
 
+		// Connect to GameHost signals to control logout button during active games
+		var gameHost = GameHost.GetInstance();
+		if (gameHost != null)
+		{
+			gameHost.GameStarted += OnGameStarted;
+			gameHost.GameEnded += OnGameEnded;
+		}
+
 		// Initialize with current user state
 		UpdateUserDisplay();
-		
+
 		// Apply any context that was set before initialization
 		RefreshTopMenuContext();
-		
+
 		LogInfo("UIManager initialized with top menu bar and login modal");
 	}
 
@@ -143,7 +151,7 @@ public partial class UIManager : AutoloadBase
 			_topMenuBar.BuyCreditsRequested -= OnBuyCreditsRequested;
 			_topMenuBar.ReturnToMenuRequested -= OnReturnToMenuRequested;
 		}
-		
+
 		if (GodotObject.IsInstanceValid(_loginModal))
 		{
 			_loginModal.ModalClosed -= OnLoginModalClosed;
@@ -160,6 +168,13 @@ public partial class UIManager : AutoloadBase
 			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
 			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
 			_sessionManager.CreditsEarned -= OnCreditsEarned;
+		}
+
+		var gameHost = GameHost.GetInstance();
+		if (GodotObject.IsInstanceValid(gameHost))
+		{
+			gameHost.GameStarted -= OnGameStarted;
+			gameHost.GameEnded -= OnGameEnded;
 		}
 	}
 
@@ -398,6 +413,24 @@ public partial class UIManager : AutoloadBase
 	{
 		// Credits were earned (from any source), update user display
 		UpdateUserDisplay();
+	}
+
+	private void OnGameStarted(string gameId)
+	{
+		// Disable logout button when game starts
+		if (_topMenuBar != null)
+		{
+			_topMenuBar.SetLogoutButtonEnabled(false);
+		}
+	}
+
+	private void OnGameEnded(string gameId)
+	{
+		// Re-enable logout button when game ends
+		if (_topMenuBar != null)
+		{
+			_topMenuBar.SetLogoutButtonEnabled(true);
+		}
 	}
 
 	// ============================================================================

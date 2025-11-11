@@ -551,6 +551,42 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	/// <summary>
+	/// Log out all users except the primary (earliest logged-in) user
+	/// Used when exiting to main menu from multi-player games
+	/// </summary>
+	public async Task LogoutNonPrimaryUsersAsync()
+	{
+		var primarySession = GetPrimaryUserSession();
+		if (primarySession == null)
+		{
+			LogInfo("No primary user found - nothing to logout");
+			return;
+		}
+
+		var sessionsToLogout = new List<string>();
+		foreach (var phoneNumber in _activeSessions.Keys)
+		{
+			if (phoneNumber != primarySession.PhoneNumber)
+			{
+				sessionsToLogout.Add(phoneNumber);
+			}
+		}
+
+		if (sessionsToLogout.Count == 0)
+		{
+			LogInfo("No non-primary users to logout");
+			return;
+		}
+
+		LogInfo($"Logging out {sessionsToLogout.Count} non-primary user(s)");
+
+		foreach (var phoneNumber in sessionsToLogout)
+		{
+			await LogoutUserAsync(phoneNumber);
+		}
+	}
+
+	/// <summary>
 	/// Get active user session
 	/// </summary>
 	public UserSession GetUserSession(string phoneNumber)
@@ -559,15 +595,29 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Get primary user session (first logged-in user)
+	/// Get primary user session (earliest logged-in user)
 	/// Use for: UI display (TopMenuBar), single-user game contexts, auto-populate convenience
 	/// Multi-user games: use GetUserSession(phoneNumber) for explicit targeting
 	/// </summary>
 	public UserSession GetPrimaryUserSession()
 	{
+		if (_activeSessions.Count == 0)
+			return null;
+
+		// Return the session with the earliest login time
+		UserSession primarySession = null;
+		DateTime earliestLoginTime = DateTime.MaxValue;
+
 		foreach (var session in _activeSessions.Values)
-			return session;
-		return null;
+		{
+			if (session.LoginTime < earliestLoginTime)
+			{
+				earliestLoginTime = session.LoginTime;
+				primarySession = session;
+			}
+		}
+
+		return primarySession;
 	}
 
 	/// <summary>

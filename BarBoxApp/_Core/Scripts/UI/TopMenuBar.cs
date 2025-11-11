@@ -317,6 +317,26 @@ public partial class TopMenuBar : Control
 	}
 
 	/// <summary>
+	/// Enable or disable the logout button (used to prevent logout during active games)
+	/// </summary>
+	public void SetLogoutButtonEnabled(bool enabled)
+	{
+		if (_logoutButton != null)
+		{
+			_logoutButton.Disabled = !enabled;
+
+			if (!enabled)
+			{
+				_logoutButton.TooltipText = "Cannot logout during active game. Exit to main menu first.";
+			}
+			else
+			{
+				_logoutButton.TooltipText = "";
+			}
+		}
+	}
+
+	/// <summary>
 	/// Apply consistent styling to all top menu bar buttons
 	/// </summary>
 	internal static void ApplyStandardButtonStyle(Button button)

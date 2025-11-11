@@ -88,7 +88,7 @@ public partial class GameHost : AutoloadBase
 		LogInfo($"Loaded {gameId} as overlay");
 	}
 
-	public void StopCurrentGame()
+	public async void StopCurrentGame()
 	{
 		if (_currentGame != null)
 		{
@@ -101,6 +101,12 @@ public partial class GameHost : AutoloadBase
 			EmitSignal(SignalName.GameEnded, _currentGameId);
 			_currentGame.QueueFree();
 			_currentGame = null;
+		}
+
+		// Log out all non-primary users when exiting game
+		if (_sessionManager != null)
+		{
+			await _sessionManager.LogoutNonPrimaryUsersAsync();
 		}
 
 		// Show main menu UI when returning from game
