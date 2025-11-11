@@ -24,7 +24,7 @@ public partial class CreditService : AutoloadBase
 	// Cache and polling configuration constants
 	private const float CACHE_TTL_SECONDS = 30.0f;
 	private const float BALANCE_POLL_TIMEOUT_SECONDS = 1.5f;
-	private const float BALANCE_POLL_INTERVAL_SECONDS = 0.1f;
+	private const float BALANCE_POLL_INTERVAL_SECONDS = 0.05f;  // Reduced from 0.1f for 2x faster UX responsiveness
 
 	public static CreditService Instance { get; private set; }
 

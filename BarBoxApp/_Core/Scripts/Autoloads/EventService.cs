@@ -307,11 +307,7 @@ public partial class EventService : AutoloadBase
 			}
 
 			// Parse response to get session ID
-			_httpClient.Poll();
-			await DelayAsync(0.05f);
-			_httpClient.Poll();
-
-			var bodyBytes = _httpClient.ReadResponseBodyChunk();
+			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			if (string.IsNullOrEmpty(bodyText))
@@ -399,14 +395,8 @@ public partial class EventService : AutoloadBase
 			var responseCode = _httpClient.GetResponseCode();
 			if (responseCode == 201)
 			{
-				// CRITICAL: Poll to ensure body is fully received before reading
-				_httpClient.Poll();
-				await DelayAsync(0.05f);
-				_httpClient.Poll();
-
-				// Consume response body to transition back to Connected state (keep-alive)
 				// This prevents POST-then-GET state interference by clearing the Body state
-				var responseBody = _httpClient.ReadResponseBodyChunk();
+				var responseBody = await _httpClient.ReadResponseBodyOptimizedAsync();
 
 #if DEBUG_HTTP_LIFECYCLE
 				LogInfo($"[HTTP] POST succeeded, consumed {responseBody.Length} bytes");
@@ -419,10 +409,7 @@ public partial class EventService : AutoloadBase
 			}
 
 			// CRITICAL: Read error response body to see actual backend validation error
-			_httpClient.Poll();
-			await DelayAsync(0.05f);
-			_httpClient.Poll();
-			var errorBodyBytes = _httpClient.ReadResponseBodyChunk();
+			var errorBodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
 			var errorBody = errorBodyBytes.GetStringFromUtf8();
 
 			var failureMsg = $"Event submission failed with code {responseCode}";
@@ -506,11 +493,9 @@ public partial class EventService : AutoloadBase
 			if (responseCode == 201)
 			{
 				// Read response body to complete the request cycle
-				_httpClient.Poll();
-				await DelayAsync(0.05f);
-				_httpClient.Poll();
-
-				var responseBody = _httpClient.ReadResponseBodyChunk().GetStringFromUtf8();
+				// Using reactive polling
+				var responseBodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
+			var responseBody = responseBodyBytes.GetStringFromUtf8();
 
 #if DEBUG_HTTP_LIFECYCLE
 				LogInfo($"[HTTP] POST succeeded, consumed {responseBody.Length} bytes");
@@ -591,12 +576,7 @@ public partial class EventService : AutoloadBase
 				return Result<TResponse>.Failure($"Query failed with code {responseCode}");
 			}
 
-			// CRITICAL: Poll to ensure body is fully received (Godot HttpClient timingissue)
-			_httpClient.Poll();
-			await DelayAsync(0.05f);  // Small delay for network I/O
-			_httpClient.Poll();
-
-			var bodyBytes = _httpClient.ReadResponseBodyChunk();
+			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			// Validate body before deserializing
@@ -654,12 +634,9 @@ public partial class EventService : AutoloadBase
 			await WaitForResponseAsync();
 
 			// CRITICAL: Poll to ensure body is fully received
-			_httpClient.Poll();
-			await DelayAsync(0.05f);
-			_httpClient.Poll();
-
+			// Using reactive polling
 			var responseCode = _httpClient.GetResponseCode();
-			var bodyBytes = _httpClient.ReadResponseBodyChunk();
+			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			if (responseCode != 200)
@@ -766,12 +743,7 @@ public partial class EventService : AutoloadBase
 			var responseCode = _httpClient.GetResponseCode();
 			if (responseCode != expectedStatusCode)
 			{
-				// CRITICAL: Poll to ensure body is fully received before reading error
-				_httpClient.Poll();
-				await DelayAsync(0.05f);
-				_httpClient.Poll();
-
-				var errorBytes = _httpClient.ReadResponseBodyChunk();
+				var errorBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
 				var errorText = errorBytes.GetStringFromUtf8();
 
 				// Close connection to allow recovery on next request
@@ -781,11 +753,8 @@ public partial class EventService : AutoloadBase
 			}
 
 			// Ensure response body is fully received (Godot HttpClient timing issue)
-			_httpClient.Poll();
-			await DelayAsync(0.05f);
-			_httpClient.Poll();
-
-			var bodyBytes = _httpClient.ReadResponseBodyChunk();
+			// Using reactive polling
+			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 #if DEBUG_HTTP_LIFECYCLE
@@ -844,12 +813,7 @@ public partial class EventService : AutoloadBase
 			var responseCode = _httpClient.GetResponseCode();
 			if (responseCode != expectedStatusCode)
 			{
-				// CRITICAL: Poll to ensure body is fully received before reading error
-				_httpClient.Poll();
-				await DelayAsync(0.05f);
-				_httpClient.Poll();
-
-				var errorBytes = _httpClient.ReadResponseBodyChunk();
+				var errorBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
 				var errorText = errorBytes.GetStringFromUtf8();
 
 				// Close connection to allow recovery on next request
@@ -858,12 +822,7 @@ public partial class EventService : AutoloadBase
 				return Result<TResponse>.Failure($"PUT failed with code {responseCode}: {errorText}");
 			}
 
-			// CRITICAL: Poll to ensure body is fully received before reading success response
-			_httpClient.Poll();
-			await DelayAsync(0.05f);
-			_httpClient.Poll();
-
-			var bodyBytes = _httpClient.ReadResponseBodyChunk();
+			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
@@ -1145,6 +1104,7 @@ public partial class EventService : AutoloadBase
 			int totalBytesDiscarded = 0;
 			while (_httpClient.GetStatus() == Godot.HttpClient.Status.Body)
 			{
+				// Direct call intentional - chunked reading in loop
 				var chunk = _httpClient.ReadResponseBodyChunk();
 				if (chunk.Length == 0)
 					break; // No more data available
