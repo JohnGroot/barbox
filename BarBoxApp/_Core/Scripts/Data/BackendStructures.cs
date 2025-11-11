@@ -105,7 +105,7 @@ public partial class PlayerValidationResponse
 	public bool Valid { get; set; }
 
 	[JsonPropertyName("errors")]
-	public ValidationErrorDetail[] Errors { get; set; } = Array.Empty<ValidationErrorDetail>();
+	public ValidationErrorDetail[] Errors { get; set; } = [];
 }
 
 /// <summary>
@@ -135,5 +135,5 @@ public partial class MachineCreditsResponse
 	public int Balance { get; set; }
 
 	[JsonPropertyName("contributions")]
-	public MachinePlayerContribution[] Contributions { get; set; } = Array.Empty<MachinePlayerContribution>();
+	public MachinePlayerContribution[] Contributions { get; set; } = [];
 }

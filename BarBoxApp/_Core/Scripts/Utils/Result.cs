@@ -2,7 +2,6 @@ using System;
 
 /// <summary>
 /// Result wrapper for explicit error handling
-/// Extracted from DataStore for use across services
 /// </summary>
 public readonly struct Result<T>
 {
