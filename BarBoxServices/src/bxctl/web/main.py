@@ -11,10 +11,7 @@ from structlog import get_logger
 from bxctl import env
 from bxctl.db.connectivity import engine
 from bxctl.db.defs import Base
-
-from bxctl.games.carrom import router as carrom_router
-from bxctl.games.mining import router as mining_router
-from bxctl.games.racing import router as racing_router
+from bxctl.structures import GAMES
 
 from . import box, game, machine_credits, player, test
 
@@ -142,11 +139,6 @@ routers = (
 for router in routers:
     app.include_router(router)
 
-# Game routers from embedded game modules
-game_routers = (
-    carrom_router.router,
-    racing_router.router,
-    mining_router.router,
-)
-for router in game_routers:
-    app.include_router(router)
+# Game routers - auto-registered from GAMES registry
+for game_name, game_data in GAMES.items():
+    app.include_router(game_data["router"].router)

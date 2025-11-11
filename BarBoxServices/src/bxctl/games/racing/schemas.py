@@ -1,9 +1,22 @@
 """Pydantic models for Racing game events and API responses."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
+
+
+# ============= EVENT TYPES =============
+
+RacingEventType = Literal[
+    "racing/lap_complete",
+    "racing/checkpoint",
+    "racing/race_finish",
+]
+
+# Canonical event type name for generic access
+EventType = RacingEventType
 
 
 # ============= EVENT PAYLOADS =============

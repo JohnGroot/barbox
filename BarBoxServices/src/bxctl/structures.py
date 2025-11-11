@@ -4,6 +4,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, PlainSerializer
 
+# Import game modules for registry
+from bxctl.games import carrom, mining, racing
+
+# Single source of truth: All games registered here
+GAMES = {
+    "carrom": {"schemas": carrom.schemas, "router": carrom.router},
+    "racing": {"schemas": racing.schemas, "router": racing.router},
+    "mining": {"schemas": mining.schemas, "router": mining.router},
+}
+
 
 class Named(BaseModel):
     name: str
@@ -41,38 +51,32 @@ class GameDetail(Identifiable):
     pass
 
 
-# IMPORTANT: When adding new game event types, they MUST be added here AND in games/{game}/events.py
-# TODO: Consider refactoring to import from game modules to maintain single source of truth
-SessionEventType = Literal[
+# Core event types (non-game-specific)
+CoreEventType = Literal[
     # Generic session events
     "play/begin",
     "play/score",
     "play/finish",
     "quit",
-    # Racing game events
-    "racing/lap_complete",
-    "racing/checkpoint",
-    "racing/race_finish",
-    # Mining game events
-    "mining/extract_start",
-    "mining/extract_complete",
-    "mining/upgrade_purchase",
-    "mining/credit_deposit",
-    "mining/tick_update",
-    "mining/first_time_bonus",
-    # Carrom game events
-    "carrom/round_start",
-    "carrom/piece_pocketed",
-    "carrom/round_finish",
     # User events
     "user/login",
     "user/logout",
+    # Credit events
     "credit/spend",
     "credit/earn",
     # Machine credit events (per box+game credit pools)
     "machine_credit/deposit",
     "machine_credit/consume",
 ]
+
+# Compose SessionEventType from core and game-specific types
+# Single source of truth: game event types defined in games/{game}/schemas.py
+type SessionEventType = (
+    CoreEventType
+    | carrom.schemas.CarromEventType
+    | racing.schemas.RacingEventType
+    | mining.schemas.MiningEventType
+)
 
 
 class SessionEventBase(BaseModel):
@@ -116,14 +120,6 @@ class BoxSession(Identifiable):
         list[SessionEventBase],
         Field(default_factory=lambda: [BeginPlay()]),
     ]
-
-
-# ============= GAME STRUCTURES =============
-# Note: Game-specific structures have been moved to their respective game modules:
-# - Racing: bxctl.games.racing.schemas
-# - Mining: bxctl.games.mining.schemas
-# - Carrom: bxctl.games.carrom.schemas
-
 
 # ============= CORE PLAYER STRUCTURES =============
 

@@ -86,6 +86,98 @@ def parse_float_list(value: Any) -> list[float] | None:
         return None
 
 
+def parse_uuid_safe(value: Any) -> Any:
+    """
+    Parse UUID from SQL result with fallback to zero UUID.
+
+    Args:
+        value: UUID value from SQL query (string or None)
+
+    Returns:
+        UUID object, or zero UUID if invalid/null
+
+    Example:
+        >>> parse_uuid_safe("550e8400-e29b-41d4-a716-446655440000")
+        UUID('550e8400-e29b-41d4-a716-446655440000')
+        >>> parse_uuid_safe(None)
+        UUID('00000000-0000-0000-0000-000000000000')
+        >>> parse_uuid_safe("invalid")
+        UUID('00000000-0000-0000-0000-000000000000')
+    """
+    from uuid import UUID
+
+    if value is None:
+        return UUID("00000000-0000-0000-0000-000000000000")
+
+    try:
+        return UUID(str(value))
+    except (ValueError, TypeError) as e:
+        print(f"[WARNING] Invalid UUID: {value}, using zero UUID - {e}")
+        return UUID("00000000-0000-0000-0000-000000000000")
+
+
+def parse_username_safe(value: Any) -> str:
+    """
+    Parse username from SQL result with fallback to "Unknown".
+
+    Args:
+        value: Username value from SQL query (string or None)
+
+    Returns:
+        Username string, or "Unknown" if invalid/null/empty
+
+    Example:
+        >>> parse_username_safe("player123")
+        'player123'
+        >>> parse_username_safe(None)
+        'Unknown'
+        >>> parse_username_safe("")
+        'Unknown'
+    """
+    if value is None or str(value).strip() == "":
+        return "Unknown"
+    return str(value)
+
+
+def safe_parse_leaderboard[T](
+    rows: Any,
+    parser_fn: Any,
+) -> list[T]:
+    """
+    Parse leaderboard entries with per-entry error handling.
+
+    This function prevents a single corrupt row from crashing the entire
+    leaderboard query. Instead, it logs errors and skips problematic entries.
+
+    Args:
+        rows: Iterable of SQL result rows (typically result.tuples())
+        parser_fn: Function that takes a row tuple and returns a leaderboard entry.
+                  Should raise exceptions for invalid data.
+
+    Returns:
+        List of successfully parsed leaderboard entries (may be partial)
+
+    Example:
+        >>> def parse_row(row):
+        ...     return LeaderboardEntry(
+        ...         player_id=parse_uuid_safe(row[0]),
+        ...         username=parse_username_safe(row[1]),
+        ...         score=row[2]
+        ...     )
+        >>> leaderboard = safe_parse_leaderboard(result.tuples(), parse_row)
+    """
+    entries = []
+    for row in rows:
+        try:
+            entry = parser_fn(row)
+            entries.append(entry)
+        except Exception as e:
+            print(f"[ERROR] Failed to parse leaderboard entry: row={row}, error={e}")
+            # Continue processing remaining rows instead of crashing
+            continue
+    return entries
+
+
 def build_player_leaderboard_query(
     event_type: str,
     metric_field: str,

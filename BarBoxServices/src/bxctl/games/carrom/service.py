@@ -1,8 +1,7 @@
 """Business logic and database queries for Carrom game."""
 
-from uuid import UUID
-
 from bxctl.db import service as db_service
+from bxctl.games import common
 
 from . import schemas
 
@@ -58,22 +57,16 @@ async def get_carrom_leaderboard(
 
         result = await db.get_many_raw(sql, {"limit": limit})
 
-        leaderboard = []
-        for row in result.tuples():
-            try:
-                entry = schemas.CarromLeaderboardEntry(
-                    player_id=UUID(str(row[0])) if row[0] else UUID('00000000-0000-0000-0000-000000000000'),
-                    username=row[1] if row[1] else "Unknown",
-                    total_score=row[2],
-                    entry_date=row[3],
-                )
-                leaderboard.append(entry)
-            except Exception as e:
-                # Log but don't crash - skip this problematic entry
-                print(f"[ERROR] Failed to parse leaderboard entry: row={row}, error={e}")
-                import traceback
-                traceback.print_exc()
-                continue
+        # Parse leaderboard with per-entry error handling
+        def parse_row(row):
+            return schemas.CarromLeaderboardEntry(
+                player_id=common.parse_uuid_safe(row[0]),
+                username=common.parse_username_safe(row[1]),
+                total_score=row[2],
+                entry_date=row[3],
+            )
+
+        leaderboard = common.safe_parse_leaderboard(result.tuples(), parse_row)
 
     elif metric == "total_wins":
         # Count wins from carrom/round_finish events where winner = player_id
@@ -104,23 +97,17 @@ async def get_carrom_leaderboard(
 
         result = await db.get_many_raw(sql, {"limit": limit})
 
-        leaderboard = []
-        for row in result.tuples():
-            try:
-                entry = schemas.CarromLeaderboardEntry(
-                    player_id=UUID(str(row[0])) if row[0] else UUID('00000000-0000-0000-0000-000000000000'),
-                    username=row[1] if row[1] else "Unknown",
-                    total_score=row[3],  # Not used for wins metric
-                    total_wins=row[2],
-                    entry_date=row[4],
-                )
-                leaderboard.append(entry)
-            except Exception as e:
-                # Log but don't crash - skip this problematic entry
-                print(f"[ERROR] Failed to parse leaderboard entry: row={row}, error={e}")
-                import traceback
-                traceback.print_exc()
-                continue
+        # Parse leaderboard with per-entry error handling
+        def parse_row(row):
+            return schemas.CarromLeaderboardEntry(
+                player_id=common.parse_uuid_safe(row[0]),
+                username=common.parse_username_safe(row[1]),
+                total_score=row[3],  # Not used for wins metric
+                total_wins=row[2],
+                entry_date=row[4],
+            )
+
+        leaderboard = common.safe_parse_leaderboard(result.tuples(), parse_row)
     else:
         # Invalid metric
         leaderboard = []

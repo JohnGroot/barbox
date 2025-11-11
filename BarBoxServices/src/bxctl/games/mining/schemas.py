@@ -1,9 +1,25 @@
 """Pydantic models for Mining game events and API responses."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
+
+
+# ============= EVENT TYPES =============
+
+MiningEventType = Literal[
+    "mining/extract_start",
+    "mining/extract_complete",
+    "mining/upgrade_purchase",
+    "mining/credit_deposit",
+    "mining/tick_update",
+    "mining/first_time_bonus",
+]
+
+# Canonical event type name for generic access
+EventType = MiningEventType
 
 
 # ============= EVENT PAYLOADS =============

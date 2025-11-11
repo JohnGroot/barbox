@@ -1,26 +1,33 @@
 """Central event validation for all games."""
 
-from typing import Any
+from typing import Any, get_args
 
 from pydantic import ValidationError
 
-from .carrom import events as carrom_events, schemas as carrom_schemas
-from .mining import events as mining_events, schemas as mining_schemas
-from .racing import events as racing_events, schemas as racing_schemas
+from bxctl.structures import CoreEventType, GAMES
+
+# Build event type registry dynamically from GAMES registry
+# Uses canonical EventType alias from each game's schemas module
+_EVENT_REGISTRY: dict[str, set[str]] = {
+    game_name: set(get_args(game_data["schemas"].EventType))
+    for game_name, game_data in GAMES.items()
+}
+
+# Core event types (non-game-specific)
+_CORE_EVENTS = set(get_args(CoreEventType))
 
 
 # Mapping of event types to their Pydantic payload models
+# Import schemas from GAMES registry for consistency
 EVENT_PAYLOAD_MODELS: dict[str, type] = {
     # Carrom events
-    carrom_events.ROUND_FINISH: carrom_schemas.CarromRoundFinishPayload,
-
+    "carrom/round_finish": GAMES["carrom"]["schemas"].CarromRoundFinishPayload,
     # Racing events
-    racing_events.LAP_COMPLETE: racing_schemas.RacingLapCompletePayload,
-    racing_events.RACE_FINISH: racing_schemas.RacingRaceFinishPayload,
-
+    "racing/lap_complete": GAMES["racing"]["schemas"].RacingLapCompletePayload,
+    "racing/race_finish": GAMES["racing"]["schemas"].RacingRaceFinishPayload,
     # Mining events
-    mining_events.EXTRACT_COMPLETE: mining_schemas.MiningExtractCompletePayload,
-    mining_events.UPGRADE_PURCHASE: mining_schemas.MiningUpgradePurchasePayload,
+    "mining/extract_complete": GAMES["mining"]["schemas"].MiningExtractCompletePayload,
+    "mining/upgrade_purchase": GAMES["mining"]["schemas"].MiningUpgradePurchasePayload,
 }
 
 
@@ -36,20 +43,19 @@ def is_valid_event_type(event_type: str) -> bool:
     Check if event type is valid for any game.
 
     Returns True if:
-    - Event type matches a known game event pattern (game/event_name)
-    - The game recognizes this event type
-    """
-    game = get_game_from_event_type(event_type)
+    - Event type is a core event (play/*, user/*, credit/*)
+    - Event type is registered in a game module
 
-    if game == "carrom":
-        return carrom_events.is_valid_event_type(event_type)
-    elif game == "racing":
-        return racing_events.is_valid_event_type(event_type)
-    elif game == "mining":
-        return mining_events.is_valid_event_type(event_type)
-    elif event_type in {"play/begin", "play/score", "play/finish", "quit", "user/login", "user/logout", "credit/spend", "credit/earn"}:
-        # Core event types are always valid
+    Uses dynamic registry built from game Literal types.
+    """
+    # Check core events first
+    if event_type in _CORE_EVENTS:
         return True
+
+    # Check game-specific events
+    game = get_game_from_event_type(event_type)
+    if game and game in _EVENT_REGISTRY:
+        return event_type in _EVENT_REGISTRY[game]
 
     return False
 
@@ -87,8 +93,6 @@ def validate_event_payload(event_type: str, payload: dict[str, Any]) -> tuple[bo
 def get_all_event_types() -> dict[str, list[str]]:
     """Get all registered event types grouped by game."""
     return {
-        "carrom": list(carrom_events.ALL_EVENT_TYPES),
-        "racing": list(racing_events.ALL_EVENT_TYPES),
-        "mining": list(mining_events.ALL_EVENT_TYPES),
-        "core": ["play/begin", "play/score", "play/finish", "quit", "user/login", "user/logout", "credit/spend", "credit/earn"],
+        **{game: list(events) for game, events in _EVENT_REGISTRY.items()},
+        "core": list(_CORE_EVENTS),
     }

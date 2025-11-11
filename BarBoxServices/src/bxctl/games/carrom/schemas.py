@@ -7,6 +7,18 @@ from uuid import UUID
 from pydantic import BaseModel
 
 
+# ============= EVENT TYPES =============
+
+CarromEventType = Literal[
+    "carrom/round_start",
+    "carrom/piece_pocketed",
+    "carrom/round_finish",
+]
+
+# Canonical event type name for generic access
+EventType = CarromEventType
+
+
 # ============= EVENT PAYLOADS =============
 
 class CarromRoundFinishPayload(BaseModel):

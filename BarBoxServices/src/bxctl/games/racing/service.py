@@ -1,7 +1,5 @@
 """Business logic and database queries for Racing game."""
 
-from uuid import UUID
-
 from fastapi import HTTPException
 
 from bxctl.db import service as db_service
@@ -53,15 +51,16 @@ async def get_racing_leaderboard(
             """
             result = await db.get_many_raw(sql, {"track_id": track_id, "limit": limit})
 
-            leaderboard = [
-                schemas.RacingLeaderboardEntry(
-                    player_id=UUID(str(row[0])) if row[0] else UUID('00000000-0000-0000-0000-000000000000'),
-                    username=row[1] if row[1] else "Unknown",
+            # Parse leaderboard with per-entry error handling
+            def parse_row(row):
+                return schemas.RacingLeaderboardEntry(
+                    player_id=common.parse_uuid_safe(row[0]),
+                    username=common.parse_username_safe(row[1]),
                     metric_value=row[2],
                     entry_date=row[3],
                 )
-                for row in result.tuples()
-            ]
+
+            leaderboard = common.safe_parse_leaderboard(result.tuples(), parse_row)
 
         elif metric == "best_race":
             # Aggregate best race times from racing/race_finish events
@@ -110,24 +109,17 @@ async def get_racing_leaderboard(
                     sql, {"track_id": track_id, "laps": laps, "limit": limit}
                 )
 
-            # Build leaderboard with per-entry error handling
-            leaderboard = []
-            for row in result.tuples():
-                try:
-                    entry = schemas.RacingLeaderboardEntry(
-                        player_id=UUID(str(row[0])) if row[0] else UUID('00000000-0000-0000-0000-000000000000'),
-                        username=row[1] if row[1] else "Unknown",
-                        metric_value=row[2],
-                        entry_date=row[3],
-                        lap_times=common.parse_float_list(row[4]) if len(row) > 4 else None,
-                    )
-                    leaderboard.append(entry)
-                except Exception as e:
-                    # Log but don't crash - skip this problematic entry
-                    print(f"[ERROR] Failed to parse leaderboard entry: row={row}, error={e}")
-                    import traceback
-                    traceback.print_exc()
-                    continue
+            # Parse leaderboard with per-entry error handling
+            def parse_row(row):
+                return schemas.RacingLeaderboardEntry(
+                    player_id=common.parse_uuid_safe(row[0]),
+                    username=common.parse_username_safe(row[1]),
+                    metric_value=row[2],
+                    entry_date=row[3],
+                    lap_times=common.parse_float_list(row[4]) if len(row) > 4 else None,
+                )
+
+            leaderboard = common.safe_parse_leaderboard(result.tuples(), parse_row)
         else:
             # Invalid metric
             leaderboard = []
