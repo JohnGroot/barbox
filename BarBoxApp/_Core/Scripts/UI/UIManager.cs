@@ -417,8 +417,12 @@ public partial class UIManager : AutoloadBase
 
 	private void OnGameStarted(string gameId)
 	{
-		// Disable logout button when game starts
-		if (_topMenuBar != null)
+		// Check if game allows logout during play
+		var gameHost = GameHost.GetInstance();
+		var currentGame = gameHost?.GetCurrentGame() as GameController;
+
+		// Only disable logout button if game doesn't allow logout during play
+		if (_topMenuBar != null && currentGame != null && !currentGame.AllowLogoutDuringPlay)
 		{
 			_topMenuBar.SetLogoutButtonEnabled(false);
 		}

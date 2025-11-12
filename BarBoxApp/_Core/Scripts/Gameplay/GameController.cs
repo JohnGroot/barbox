@@ -18,6 +18,12 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	[Export] public int TimeLimit { get; set; } = 0; // 0 = no time limit
 	[Export] public bool CanPause { get; set; } = true;
 
+	/// <summary>
+	/// Whether players can logout during active gameplay.
+	/// Override this in your game to allow logout during play (default: false).
+	/// </summary>
+	public virtual bool AllowLogoutDuringPlay => false;
+
 	// Game modes for racing/sports games
 	public enum GameMode { Practice, TimeTrial, Tournament }
 	
@@ -32,17 +38,23 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	private GameHost _gameHost;
 
 
+	/// <summary>
+	/// Godot lifecycle method - orchestrates all initialization phases synchronously.
+	/// Games can override this but should call base._Ready() first.
+	/// </summary>
 	public override void _Ready()
 	{
-		_gameMetadata = GameRegistry.GetAutoload()?.GetGameData(GameId);
-		_gameHost = GameHost.GetInstance();
+		// Phase 1: Service Discovery
+		DiscoverServices();
 
-		SetupGameTimer();
-		SetupUI(); // Setup UI first to ensure signal connections are established
+		// Phase 2: Core Setup
+		SetupCore();
 
-		// Defer game initialization to ensure all signals are connected
-		// This prevents StartGame() from emitting signals before GameHost is ready
-		CallDeferred(MethodName.InitializeGame);
+		// Phase 3: UI Integration
+		SetupUI();
+
+		// Phase 4: Activation Decision
+		ActivateGame();
 	}
 
 	public override void _Process(double delta)
@@ -54,8 +66,59 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 		}
 	}
 
+	/// <summary>
+	/// PHASE 1: Service Discovery
+	/// Discovers platform services and loads game metadata.
+	/// Override to discover additional game-specific services.
+	/// Called first in initialization sequence - no components are created yet.
+	/// </summary>
+	protected virtual void DiscoverServices()
+	{
+		_gameMetadata = GameRegistry.GetAutoload()?.GetGameData(GameId);
+		_gameHost = GameHost.GetInstance();
+	}
+
+	/// <summary>
+	/// PHASE 2: Core Setup
+	/// Sets up game timer and initializes game components.
+	/// Override InitializeComponents() rather than this method.
+	/// </summary>
+	protected virtual void SetupCore()
+	{
+		SetupGameTimer();
+		InitializeComponents();
+	}
+
+	/// <summary>
+	/// PHASE 2 Extension Point: Component Initialization
+	/// Override this to create game-specific components (engine, state, UI).
+	/// Called after timer setup but before UI integration.
+	/// All components should be fully created before this method returns.
+	/// </summary>
+	protected virtual void InitializeComponents()
+	{
+		// Backward compatibility: Call old InitializeGame() if overridden
+		InitializeGame();
+	}
+
+	/// <summary>
+	/// OBSOLETE: Use InitializeComponents() instead.
+	/// This method exists for backward compatibility and will be removed in a future version.
+	/// </summary>
+	[System.Obsolete("Use InitializeComponents() instead. This method is called automatically for backward compatibility.")]
 	protected virtual void InitializeGame()
 	{
+	}
+
+	/// <summary>
+	/// PHASE 4: Activation Decision
+	/// Determines if game should auto-start or wait for user input.
+	/// Override to implement game-specific activation logic.
+	/// All components are guaranteed to exist when this is called.
+	/// </summary>
+	protected virtual void ActivateGame()
+	{
+		// Default: No auto-start, wait for explicit StartGame() call
 	}
 
 	protected virtual void UpdateGame(float delta)
@@ -254,7 +317,10 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	// ============================================================================
 
 	/// <summary>
-	/// Set up UI integration when the game starts
+	/// PHASE 3: UI Integration
+	/// Registers game with GameHost UI context and connects external handlers.
+	/// Override OnUIContextSetup() to connect event handlers (UserManager signals, etc.).
+	/// Do NOT call StartGame() in OnUIContextSetup() - use ActivateGame() instead.
 	/// </summary>
 	private void SetupUI()
 	{
