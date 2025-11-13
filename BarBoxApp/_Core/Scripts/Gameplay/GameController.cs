@@ -97,17 +97,7 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	/// </summary>
 	protected virtual void InitializeComponents()
 	{
-		// Backward compatibility: Call old InitializeGame() if overridden
-		InitializeGame();
-	}
-
-	/// <summary>
-	/// OBSOLETE: Use InitializeComponents() instead.
-	/// This method exists for backward compatibility and will be removed in a future version.
-	/// </summary>
-	[System.Obsolete("Use InitializeComponents() instead. This method is called automatically for backward compatibility.")]
-	protected virtual void InitializeGame()
-	{
+		// Override this in derived classes to initialize game-specific components
 	}
 
 	/// <summary>

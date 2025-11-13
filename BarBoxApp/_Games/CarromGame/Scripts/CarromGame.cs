@@ -96,49 +96,79 @@ public partial class CarromGame : GameController
 		GameId = "carrom_game";
 		SetGameMode(GameMode.Practice); // Start in practice mode
 
-		// Initialize event service
-		_eventService = EventService.GetInstance();
-
-		// Initialize physics config
+		// Initialize physics config early (needed for exports)
 		if (PhysicsConfig == null)
 		{
 			PhysicsConfig = new CarromPhysicsConfig();
 		}
 
+		// Call base which orchestrates all initialization phases
+		base._Ready();
+	}
+
+	/// <summary>
+	/// PHASE 1: Service Discovery
+	/// Discovers platform services and detects production vs development context
+	/// </summary>
+	protected override void DiscoverServices()
+	{
+		base.DiscoverServices();
+
+		// Initialize event service
+		_eventService = EventService.GetInstance();
+
+		// Context detection
+		DetectAndAdaptToContext();
+	}
+
+	/// <summary>
+	/// PHASE 2: Component Initialization
+	/// Creates and configures all game components (board, camera, input, managers, UI)
+	/// </summary>
+	protected override void InitializeComponents()
+	{
+		base.InitializeComponents();
+
 		// Initialize systems in explicit order
 		SetupBoard();
 		SetupCameraController();
 		SetupInputController();
-		
-		// Initialize game state machine for simplified state management
+
+		// Initialize game state machine
 		InitializeGameStateMachine();
-		
-		// Initialize components explicitly after all nodes are found AND phase manager created
-		InitializeComponents();
-		
+
+		// Initialize components after all nodes are found
+		InitializeComponentsInternal();
+
 		// Initialize managers
 		InitializeManagers();
-		
+
 		// Initialize UI components
 		InitializeScoreDisplay();
-
-		// Call base which triggers InitializeGame()
-		base._Ready();
-		
-		// Context detection
-		DetectAndAdaptToContext();
-		
-		// Load user data after context detection
-		LoadUserDataAsync();
-		
-		// Start practice mode AFTER all managers are initialized
-		// This prevents SetPhaseManager(null) errors during initialization
-		StartPracticeMode();
 	}
 
-	protected override void InitializeGame()
+	/// <summary>
+	/// PHASE 3: UI Context Setup
+	/// Loads user data after UI integration is complete
+	/// </summary>
+	public override void OnUIContextSetup()
 	{
-		base.InitializeGame();
+		base.OnUIContextSetup();
+
+		// Load user data after context detection and UI setup
+		LoadUserDataAsync();
+	}
+
+	/// <summary>
+	/// PHASE 4: Activation Decision
+	/// Automatically starts practice mode after all initialization is complete
+	/// </summary>
+	protected override void ActivateGame()
+	{
+		base.ActivateGame();
+
+		// Start practice mode
+		StartPracticeMode();
 	}
 
 	/// <summary>
@@ -230,14 +260,14 @@ public partial class CarromGame : GameController
 	/// <summary>
 	/// Initialize components in explicit order after all nodes are discovered
 	/// </summary>
-	private void InitializeComponents()
+	private void InitializeComponentsInternal()
 	{
 		// Initialize board first (it may need to setup internal state)
 		if (_board != null)
 		{
 			// Board should be self-contained and fully initialized from its own exports
 			_board.RefreshBoard(); // Ensure board is fully initialized
-			
+
 			// Configure physics config with official board scaling for proportional piece sizes
 			if (PhysicsConfig != null)
 			{
@@ -246,12 +276,12 @@ public partial class CarromGame : GameController
 					_board.PieceRadius,
 					_board.OfficialStrikerRadius
 				);
-				
+
 				// Pass physics config to board pockets for enhanced physics
 				_board.SetPocketPhysicsConfig(PhysicsConfig);
 			}
 		}
-		
+
 		// Initialize input controller after board and camera are ready
 		if (_inputController != null)
 		{
@@ -259,11 +289,11 @@ public partial class CarromGame : GameController
 			_inputController.SetCameraController(_cameraController);
 			_inputController.SetGameState(_gameStateMachine);
 			_inputController.SetPhysicsConfig(PhysicsConfig);
-			
+
 			// Pass visual parameters to input controller
 			_inputController.SetVisualParameters(AimLineLength, PowerBarWidth, PowerBarHeight);
 		}
-		
+
 		// Initialize trail system based on debug setting
 		InitializeTrailSystem();
 	}
