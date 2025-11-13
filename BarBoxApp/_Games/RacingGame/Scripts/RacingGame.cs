@@ -157,50 +157,94 @@ public partial class RacingGame : GameController
 
 	public override void _Ready()
 	{
-		// _Ready() starting
+		// Initial game setup (before any phase)
 		GameId = "racing_game";
 		SetGameMode(GameMode.Practice); // Start in practice mode
 
-		// Initialize event service
+		// Execute phased initialization
+		base._Ready(); // Calls all 4 phases in order
+	}
+
+	/// <summary>
+	/// PHASE 1: Service Discovery
+	/// Discovers platform services and loads game metadata.
+	/// </summary>
+	protected override void DiscoverServices()
+	{
+		base.DiscoverServices(); // Discovers _gameMetadata and _gameHost
+
+		// Service discovery only - no component creation
 		_eventService = EventService.GetInstance();
+		_cachedUserManager = UserManager.GetAutoload();
+		_sessionManager = SessionManager.GetInstance();
+	}
+
+	/// <summary>
+	/// PHASE 2: Component Initialization
+	/// Creates all game components and systems.
+	/// </summary>
+	protected override void InitializeComponents()
+	{
+		// Create racing event service
 		_racingEventService = new RacingEventService(_eventService);
 
-		// Initialize systems - no special context handling needed
-		// Login is required for data persistence, but games work without it
+		// Create core racing systems
 		SetupTimingSystem();
 		SetupTrackValidationSystem();
 		SetupCameraController();
 		SetupCarController();
-		SetupUI();
+
+		// Create UI system
+		SetupRacingUI();
+
+		// Initialize track system
 		InitializeTrackSystem();
 
-		// THEN call base which triggers InitializeGame() -> StartPractice()
-		base._Ready();
+		// All components now fully created and ready
+	}
 
-		// Connect to user authentication signals for UI updates - cache reference
-		_cachedUserManager = UserManager.GetAutoload();
+	/// <summary>
+	/// PHASE 3: UI Context Setup
+	/// Connects external event handlers for authentication and leaderboard systems.
+	/// </summary>
+	public override void OnUIContextSetup()
+	{
+		// Connect UserManager signals for authentication state
 		if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
 		{
 			_cachedUserManager.UserLoggedIn += OnUserLoggedIn;
 			_cachedUserManager.UserLoggedOut += OnUserLoggedOut;
 		}
-		
-		// Get SessionManager for global high score tracking
-		_sessionManager = SessionManager.GetInstance();
-		
-		// Ensure UI gets initial update after setup completes
-		CallDeferred(MethodName.UpdateUI);
-		
-		// Initialize tracks & leaderboard system
-		CallDeferred(MethodName.InitializeTracksLeaderboardSystem);
-		
-		// _Ready() completed
+
+		// Initialize tracks & leaderboard system (no longer deferred)
+		InitializeTracksLeaderboardSystem();
+
+		// Initial UI update (no longer deferred)
+		UpdateUI();
 	}
 
-	protected override void InitializeGame()
+	/// <summary>
+	/// PHASE 3 Cleanup: UI Context Teardown
+	/// Disconnects external event handlers when game ends.
+	/// </summary>
+	public override void OnUIContextTeardown()
 	{
-		base.InitializeGame();
-		StartPractice(); // Default to practice mode
+		// Disconnect UserManager signals
+		if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
+		{
+			_cachedUserManager.UserLoggedIn -= OnUserLoggedIn;
+			_cachedUserManager.UserLoggedOut -= OnUserLoggedOut;
+		}
+	}
+
+	/// <summary>
+	/// PHASE 4: Activation Decision
+	/// Determines if game should auto-start or wait for user input.
+	/// </summary>
+	protected override void ActivateGame()
+	{
+		// Auto-start practice mode for immediate testing
+		StartPractice();
 	}
 
 	/// <summary>
@@ -1479,7 +1523,11 @@ public partial class RacingGame : GameController
 	// UI SYSTEM
 	// ================================================================
 
-	private void SetupUI()
+	/// <summary>
+	/// Setup the racing UI manager and connect all UI signals.
+	/// Called during Phase 2 (InitializeComponents).
+	/// </summary>
+	private void SetupRacingUI()
 	{
 		_uiManager = new RacingUIManager();
 		var trackScenesList = TrackScenes?.ToList();
@@ -2260,7 +2308,7 @@ public partial class RacingGame : GameController
 
 	public override void _ExitTree()
 	{
-		base._ExitTree();
+		base._ExitTree(); // This calls CleanupUI() which calls OnUIContextTeardown()
 
 		// Close activity session if active
 		if (_activitySessionId != Guid.Empty && _eventService != null)
@@ -2284,12 +2332,7 @@ public partial class RacingGame : GameController
 			_timingSystem.CheckpointCrossed -= OnTimingSystemCheckpointCrossed;
 		}
 
-		// Disconnect user manager signals
-		if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
-		{
-			_cachedUserManager.UserLoggedIn -= OnUserLoggedIn;
-			_cachedUserManager.UserLoggedOut -= OnUserLoggedOut;
-		}
+		// UserManager signal disconnection handled in OnUIContextTeardown()
 	}
 
 	/// <summary>
