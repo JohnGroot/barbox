@@ -36,15 +36,15 @@ public class SessionManagerTests : BackendTestBase
 		var result = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, pin);
 
 		// Assert
-		if (!result.IsSuccess)
+		if (result.IsFailure(out var error))
 		{
-			TestHelpers.LogTestInfo($"Login failed (may be expected if backend validation enabled): {result.Error}");
+			TestHelpers.LogTestInfo($"Login failed (may be expected if backend validation enabled): {error.Message}");
 		}
-		else
+		else if (result.IsSuccess(out var session))
 		{
-			result.Value.ShouldNotBeNull("User session should be returned");
-			result.Value.UserName.ShouldNotBeNullOrEmpty("Username should be set");
-			TestHelpers.LogTestInfo($"Login successful: {result.Value.UserName}");
+			session.ShouldNotBeNull("User session should be returned");
+			session.UserName.ShouldNotBeNullOrEmpty("Username should be set");
+			TestHelpers.LogTestInfo($"Login successful: {session.UserName}");
 
 			// Cleanup - logout
 			await _sessionManager.LogoutUserAsync(TestPlayerPhone);
@@ -83,7 +83,7 @@ public class SessionManagerTests : BackendTestBase
 		// Act
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, pin);
 
-		if (loginResult.IsSuccess)
+		if (loginResult.IsSuccess(out var _))
 		{
 			var session = _sessionManager.GetPrimaryUserSession();
 
@@ -95,9 +95,9 @@ public class SessionManagerTests : BackendTestBase
 			// Cleanup
 			await _sessionManager.LogoutUserAsync(TestPlayerPhone);
 		}
-		else
+		else if (loginResult.IsFailure(out var error))
 		{
-			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Test skipped - login failed: {error.Message}");
 		}
 	}
 
@@ -109,9 +109,9 @@ public class SessionManagerTests : BackendTestBase
 		var pin = "1234";
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, pin);
 
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var error))
 		{
-			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Test skipped - login failed: {error.Message}");
 			return;
 		}
 
@@ -143,7 +143,7 @@ public class SessionManagerTests : BackendTestBase
 			var login1 = await _sessionManager.LoginUserByPhoneAsync(phone1, pin);
 			var login2 = await _sessionManager.LoginUserByPhoneAsync(phone2, pin);
 
-			if (login1.IsSuccess && login2.IsSuccess)
+			if (login1.IsSuccess(out var _) && login2.IsSuccess(out var _))
 			{
 				var activeNumbers = _sessionManager.GetActivePhoneNumbers();
 
@@ -188,9 +188,9 @@ public class SessionManagerTests : BackendTestBase
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
 
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var error))
 		{
-			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Test skipped - login failed: {error.Message}");
 			return;
 		}
 
@@ -234,9 +234,9 @@ public class SessionManagerTests : BackendTestBase
 
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
 
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var error))
 		{
-			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Test skipped - login failed: {error.Message}");
 			return;
 		}
 
@@ -285,9 +285,9 @@ public class SessionManagerTests : BackendTestBase
 		}
 
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var error))
 		{
-			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Test skipped - login failed: {error.Message}");
 			return;
 		}
 

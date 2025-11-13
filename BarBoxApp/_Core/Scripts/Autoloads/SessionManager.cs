@@ -1,4 +1,5 @@
 using Godot;
+using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -192,17 +193,17 @@ public partial class SessionManager : AutoloadBase
 	public async Task<Result<UserSession>> LoginUserByPhoneAsync(string phoneNumber, string pin)
 	{
 		if (string.IsNullOrEmpty(phoneNumber))
-			return Result<UserSession>.Failure("Phone number is required");
+			return Result.Failure<UserSession>("Phone number is required");
 
 		// Clean phone number for consistency
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
-			return Result<UserSession>.Failure("Invalid phone number format");
+			return Result.Failure<UserSession>("Invalid phone number format");
 
 		// Clean PIN for consistency
 		var cleanedPin = InputValidator.CleanPin(pin);
 		if (!InputValidator.IsValidPin(cleanedPin))
-			return Result<UserSession>.Failure("PIN must be exactly 4 digits");
+			return Result.Failure<UserSession>("PIN must be exactly 4 digits");
 
 		try
 		{
@@ -213,7 +214,7 @@ public partial class SessionManager : AutoloadBase
 			if (_activeSessions.ContainsKey(cleanedPhone))
 			{
 				LogWarning($"User {cleanedPhone} already has an active session");
-				return Result<UserSession>.Failure("User already logged in");
+				return Result.Failure<UserSession>("User already logged in");
 			}
 
 			// Generate deterministic player ID from phone number
@@ -227,20 +228,20 @@ public partial class SessionManager : AutoloadBase
 
 				var registrationResult = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, boxId);
 
-				if (!registrationResult.IsSuccess)
+				if (registrationResult.IsFailure(out var regError))
 				{
 					// Only continue if error indicates player already exists
-					if (registrationResult.Error != null &&
-					    (registrationResult.Error.Contains("already exists") ||
-					     registrationResult.Error.Contains("409") ||
-					     registrationResult.Error.Contains("conflict", StringComparison.OrdinalIgnoreCase)))
+					if (regError.Message != null &&
+					    (regError.Message.Contains("already exists") ||
+					     regError.Message.Contains("409") ||
+					     regError.Message.Contains("conflict", StringComparison.OrdinalIgnoreCase)))
 					{
 						LogInfo($"Player already registered (continuing with login): {playerId}");
 					}
 					else
 					{
-						LogError($"Player registration failed: {registrationResult.Error}");
-						return Result<UserSession>.Failure($"Unable to register player: {registrationResult.Error}");
+						LogError($"Player registration failed: {regError.Message}");
+						return Result.Failure<UserSession>($"Unable to register player: {regError.Message}");
 					}
 				}
 				else
@@ -266,14 +267,14 @@ public partial class SessionManager : AutoloadBase
 			if (_creditService != null)
 			{
 				var balanceResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
-				if (balanceResult.IsSuccess)
+				if (balanceResult.IsSuccess(out var balance))
 				{
-					session.Credits = balanceResult.Value;
+					session.Credits = balance;
 					LogInfo($"Initial credit balance loaded: {session.Credits} credits for {session.UserName}");
 				}
-				else
+				else if (balanceResult.IsFailure(out var balanceError))
 				{
-					LogWarning($"Failed to fetch initial credit balance: {balanceResult.Error}");
+					LogWarning($"Failed to fetch initial credit balance: {balanceError.Message}");
 					// Keep Credits = 0 as fallback
 				}
 			}
@@ -292,9 +293,9 @@ public partial class SessionManager : AutoloadBase
 				var boxId = _eventService.GetCurrentBoxId();
 				var lobbySessionResult = await _eventService.CreateLobbySessionAsync(boxId, playerId);
 
-				if (lobbySessionResult.IsSuccess)
+				if (lobbySessionResult.IsSuccess(out var lobbySessionId))
 				{
-					session.LobbySessionId = lobbySessionResult.Value;
+					session.LobbySessionId = lobbySessionId;
 					LogInfo($"Lobby session created: {session.LobbySessionId}");
 
 					// Emit user/login event to lobby session
@@ -304,14 +305,14 @@ public partial class SessionManager : AutoloadBase
 						location_id = CurrentLocationId
 					};
 					var loginEventResult = await _eventService.EmitUserEventAsync(playerId, "user/login", payload);
-					if (!loginEventResult.IsSuccess)
+					if (loginEventResult.IsFailure(out var loginError))
 					{
-						LogWarning($"Failed to emit login event: {loginEventResult.Error}");
+						LogWarning($"Failed to emit login event: {loginError.Message}");
 					}
 				}
-				else
+				else if (lobbySessionResult.IsFailure(out var lobbyError))
 				{
-					LogWarning($"Failed to create lobby session: {lobbySessionResult.Error}");
+					LogWarning($"Failed to create lobby session: {lobbyError.Message}");
 					// Continue with login but warn that events won't be persisted
 				}
 			}
@@ -323,12 +324,12 @@ public partial class SessionManager : AutoloadBase
 			LogInfo($"User session created for phone {cleanedPhone}");
 			EmitSignal(SignalName.UserLoggedIn, cleanedPhone);
 
-			return Result<UserSession>.Success(session);
+			return Result.Success(session);
 		}
 		catch (Exception ex)
 		{
 			LogError($"Error logging in user with phone {cleanedPhone}: {ex.Message}");
-			return Result<UserSession>.Failure($"Unexpected error: {ex.Message}");
+			return Result.Failure<UserSession>($"Unexpected error: {ex.Message}");
 		}
 	}
 
@@ -340,20 +341,20 @@ public partial class SessionManager : AutoloadBase
 		// Validate inputs
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
-			return Result<string>.Failure("Invalid phone number format");
+			return Result.Failure<string>("Invalid phone number format");
 
 		var cleanedPin = InputValidator.CleanPin(pin);
 		if (!InputValidator.IsValidPin(cleanedPin))
-			return Result<string>.Failure("PIN must be exactly 4 digits");
+			return Result.Failure<string>("PIN must be exactly 4 digits");
 
 		var cleanedUsername = InputValidator.CleanUsername(username);
 		if (!InputValidator.IsValidUsername(cleanedUsername))
-			return Result<string>.Failure("Username must be 1-7 characters, alphanumeric and underscore only");
+			return Result.Failure<string>("Username must be 1-7 characters, alphanumeric and underscore only");
 
 		if (_eventService == null)
 		{
 			LogError("EventService not available for account creation");
-			return Result<string>.Failure("Backend service unavailable - please try again later");
+			return Result.Failure<string>("Backend service unavailable - please try again later");
 		}
 
 		try
@@ -368,7 +369,7 @@ public partial class SessionManager : AutoloadBase
 			if (locationManager == null || !locationManager.IsConfigLoaded)
 			{
 				LogError("LocationManager not available for account creation");
-				return Result<string>.Failure("Location service unavailable - please try again later");
+				return Result.Failure<string>("Location service unavailable - please try again later");
 			}
 
 			var boxId = locationManager.BoxId;
@@ -376,28 +377,30 @@ public partial class SessionManager : AutoloadBase
 			// Create player account via direct REST call to backend
 			var result = await _eventService.CreatePlayerAsync(playerId, cleanedUsername, boxId);
 
-			if (result.IsSuccess)
+			if (result.IsSuccess(out var _))
 			{
 				LogInfo($"Account created successfully for {cleanedUsername} ({cleanedPhone})");
-				return Result<string>.Success(cleanedPhone);
+				return Result.Success(cleanedPhone);
 			}
-			else
+			else if (result.IsFailure(out var error))
 			{
-				LogError($"Account creation failed: {result.Error}");
+				LogError($"Account creation failed: {error.Message}");
 
 				// Provide user-friendly error messages
-				if (result.Error.Contains("409") || result.Error.Contains("already exists"))
-					return Result<string>.Failure("An account with this phone number or username already exists");
-				else if (result.Error.Contains("timeout"))
-					return Result<string>.Failure("Connection timeout - please check your network and try again");
+				if (error.Message.Contains("409") || error.Message.Contains("already exists"))
+					return Result.Failure<string>("An account with this phone number or username already exists");
+				else if (error.Message.Contains("timeout"))
+					return Result.Failure<string>("Connection timeout - please check your network and try again");
 				else
-					return Result<string>.Failure($"Account creation failed: {result.Error}");
+					return Result.Failure<string>($"Account creation failed: {error.Message}");
 			}
+
+			return Result.Failure<string>("Unknown error during account creation");
 		}
 		catch (Exception ex)
 		{
 			LogError($"Error creating user account: {ex.Message}");
-			return Result<string>.Failure($"Account creation failed: {ex.Message}");
+			return Result.Failure<string>($"Account creation failed: {ex.Message}");
 		}
 	}
 
@@ -410,20 +413,20 @@ public partial class SessionManager : AutoloadBase
 		// Clean and validate inputs
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
-			return Result<PlayerValidationResponse>.Failure("Invalid phone number format");
+			return Result.Failure<PlayerValidationResponse>("Invalid phone number format");
 
 		var cleanedPin = InputValidator.CleanPin(pin);
 		if (!InputValidator.IsValidPin(cleanedPin))
-			return Result<PlayerValidationResponse>.Failure("PIN must be exactly 4 digits");
+			return Result.Failure<PlayerValidationResponse>("PIN must be exactly 4 digits");
 
 		var cleanedUsername = InputValidator.CleanUsername(username);
 		if (!InputValidator.IsValidUsername(cleanedUsername))
-			return Result<PlayerValidationResponse>.Failure("Username must be 1-7 characters, alphanumeric and underscore only");
+			return Result.Failure<PlayerValidationResponse>("Username must be 1-7 characters, alphanumeric and underscore only");
 
 		if (_eventService == null)
 		{
 			LogError("EventService not available for validation");
-			return Result<PlayerValidationResponse>.Failure("Backend service unavailable - please try again later");
+			return Result.Failure<PlayerValidationResponse>("Backend service unavailable - please try again later");
 		}
 
 		try
@@ -436,7 +439,7 @@ public partial class SessionManager : AutoloadBase
 			if (locationManager == null || !locationManager.IsConfigLoaded)
 			{
 				LogError("LocationManager not available for validation");
-				return Result<PlayerValidationResponse>.Failure("Location service unavailable - please try again later");
+				return Result.Failure<PlayerValidationResponse>("Location service unavailable - please try again later");
 			}
 
 			var boxId = locationManager.BoxId;
@@ -444,21 +447,23 @@ public partial class SessionManager : AutoloadBase
 			// Validate via backend
 			var result = await _eventService.ValidatePlayerCreationAsync(playerId, cleanedUsername, boxId);
 
-			if (result.IsSuccess)
+			if (result.IsSuccess(out var validationResponse))
 			{
-				LogInfo($"Validation result for {cleanedUsername}: Valid={result.Value.Valid}, ErrorCount={result.Value.Errors?.Length ?? 0}");
-				return result;
+				LogInfo($"Validation result for {cleanedUsername}: Valid={validationResponse.Valid}, ErrorCount={validationResponse.Errors?.Length ?? 0}");
+				return Result.Success(validationResponse);
 			}
-			else
+			else if (result.IsFailure(out var error))
 			{
-				LogWarning($"Validation failed: {result.Error}");
-				return Result<PlayerValidationResponse>.Failure(result.Error);
+				LogWarning($"Validation failed: {error.Message}");
+				return Result.Failure<PlayerValidationResponse>(error.Message);
 			}
+
+			return Result.Failure<PlayerValidationResponse>("Unknown validation error");
 		}
 		catch (Exception ex)
 		{
 			LogError($"Error validating player creation: {ex.Message}");
-			return Result<PlayerValidationResponse>.Failure($"Validation error: {ex.Message}");
+			return Result.Failure<PlayerValidationResponse>($"Validation error: {ex.Message}");
 		}
 	}
 
@@ -469,7 +474,7 @@ public partial class SessionManager : AutoloadBase
 	{
 		var cleanedUsername = InputValidator.CleanUsername(username);
 		if (!InputValidator.IsValidUsername(cleanedUsername))
-			return Result<bool>.Failure("Invalid username format");
+			return Result.Failure<bool>("Invalid username format");
 
 		try
 		{
@@ -477,24 +482,26 @@ public partial class SessionManager : AutoloadBase
 			{
 				// Fallback to optimistic validation if backend unavailable
 				LogWarning("EventService not available, optimistically allowing username");
-				return Result<bool>.Success(true);
+				return Result.Success(true);
 			}
 
 			var result = await _eventService.IsUsernameAvailableAsync(cleanedUsername);
-			if (result.IsSuccess)
+			if (result.IsSuccess(out var isAvailable))
 			{
-				LogInfo($"Username '{cleanedUsername}' availability: {result.Value}");
-				return Result<bool>.Success(result.Value);
+				LogInfo($"Username '{cleanedUsername}' availability: {isAvailable}");
+				return Result.Success(isAvailable);
 			}
-			else
+			else if (result.IsFailure(out var error))
 			{
-				LogWarning($"Failed to check username: {result.Error}");
-				return Result<bool>.Failure(result.Error);
+				LogWarning($"Failed to check username: {error.Message}");
+				return Result.Failure<bool>(error.Message);
 			}
+
+			return Result.Failure<bool>("Unknown error checking username");
 		}
 		catch (Exception ex)
 		{
-			return Result<bool>.Failure($"Error checking username availability: {ex.Message}");
+			return Result.Failure<bool>($"Error checking username availability: {ex.Message}");
 		}
 	}
 
@@ -518,16 +525,16 @@ public partial class SessionManager : AutoloadBase
 					session_duration = session.SessionDuration.TotalSeconds
 				};
 				var logoutResult = await _eventService.EmitUserEventAsync(session.PlayerId, "user/logout", payload);
-				if (!logoutResult.IsSuccess)
+				if (logoutResult.IsFailure(out var logoutError))
 				{
-					LogWarning($"Failed to emit logout event: {logoutResult.Error}");
+					LogWarning($"Failed to emit logout event: {logoutError.Message}");
 				}
 
 				// Close lobby session
 				var closeResult = await _eventService.CloseActivitySessionAsync(session.LobbySessionId);
-				if (!closeResult.IsSuccess)
+				if (closeResult.IsFailure(out var closeError))
 				{
-					LogWarning($"Failed to close lobby session: {closeResult.Error}");
+					LogWarning($"Failed to close lobby session: {closeError.Message}");
 				}
 				else
 				{
@@ -719,7 +726,7 @@ public partial class SessionManager : AutoloadBase
 			if (_eventService != null && _eventService.IsReady)
 			{
 				var result = await _eventService.AddCreditsAsync(playerId, amount, reason);
-				if (result.IsSuccess)
+				if (result.IsSuccess(out var _))
 				{
 					LogInfo($"Added {amount} credits for {phoneNumber}");
 
@@ -732,11 +739,14 @@ public partial class SessionManager : AutoloadBase
 					EmitSignal(SignalName.CreditsEarned, phoneNumber, amount, reason);
 					return true;
 				}
-				else
+				else if (result.IsFailure(out var error))
 				{
-					LogError($"Failed to add credits: {result.Error}");
+					LogError($"Failed to add credits: {error.Message}");
 					return false;
 				}
+
+				// Fallback - should not reach here due to exhaustive Result<T> pattern
+				return false;
 			}
 			else
 			{
@@ -775,15 +785,18 @@ public partial class SessionManager : AutoloadBase
 			{
 				// Query current balance
 				var balanceResult = await _eventService.GetPlayerCreditsAsync(playerId);
-				if (!balanceResult.IsSuccess || balanceResult.Value < amount)
+				if (balanceResult.IsFailure(out var _) || !balanceResult.IsSuccess(out var currentBalance) || currentBalance < amount)
 				{
-					LogWarning($"Insufficient credits: has {balanceResult.Value}, needs {amount}");
+					if (balanceResult.IsSuccess(out var balance))
+					{
+						LogWarning($"Insufficient credits: has {balance}, needs {amount}");
+					}
 					return false;
 				}
 
 				// Spend credits from player account
 				var spendResult = await _eventService.SpendCreditsAsync(playerId, amount, $"Transfer to {gameId}: {reason}");
-				if (spendResult.IsSuccess)
+				if (spendResult.IsSuccess(out var _))
 				{
 					LogInfo($"Transferred {amount} credits for {phoneNumber}");
 
@@ -807,9 +820,9 @@ public partial class SessionManager : AutoloadBase
 								session.LobbySessionId
 							);
 
-							if (!depositResult.IsSuccess)
+							if (depositResult.IsFailure(out var depositError))
 							{
-								LogWarning($"Failed to deposit to machine pot: {depositResult.Error}");
+								LogWarning($"Failed to deposit to machine pot: {depositError.Message}");
 								// Continue anyway - player credits already deducted
 							}
 						}

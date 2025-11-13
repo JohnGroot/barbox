@@ -62,9 +62,9 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 
 		// Arrange - login user
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -91,19 +91,19 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 			// Production logs show: [CreditService] ERROR: EventService not available (exists: False, ready: False)
 			// This means CreditService._eventService is null even though EventService.GetInstance() works
 
-			if (!addResult.IsSuccess)
+			if (addResult.IsFailure(out var addError))
 			{
-				TestHelpers.LogTestError($"❌ BUG REPRODUCED: Credit add failed: {addResult.Error}");
+				TestHelpers.LogTestError($"❌ BUG REPRODUCED: Credit add failed: {addError.Message}");
 				TestHelpers.LogTestError($"   EventService.GetInstance() is ready: {eventServiceViaGetInstance.IsReady}");
 				TestHelpers.LogTestError($"   But CreditService reports EventService not available");
 				TestHelpers.LogTestError($"   This proves CreditService has stale null reference to EventService");
 
 				// Document the exact bug
-				addResult.Error.Contains("Credit service unavailable").ShouldBeTrue(
+				addError.Message.Contains("Credit service unavailable").ShouldBeTrue(
 					"Error message should match production logs");
 
 				// This assertion will FAIL with current buggy code, proving the bug exists
-				addResult.IsSuccess.ShouldBeTrue(
+				addResult.IsSuccess(out var _).ShouldBeTrue(
 					"BUG: CreditService should succeed when EventService is ready, " +
 					"but fails due to cached null _eventService field. " +
 					"This proves the initialization race condition exists.");
@@ -115,9 +115,9 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 
 			// Additional verification - try other CreditService methods
 			var balanceResult = await _creditService.GetBalanceAsync(playerId);
-			if (!balanceResult.IsSuccess)
+			if (balanceResult.IsFailure(out var balanceError))
 			{
-				TestHelpers.LogTestError($"❌ GetBalanceAsync also failed: {balanceResult.Error}");
+				TestHelpers.LogTestError($"❌ GetBalanceAsync also failed: {balanceError.Message}");
 			}
 		}
 		finally
@@ -146,9 +146,9 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 
 		// Arrange
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -183,7 +183,7 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 					"Credits should not change when purchase fails");
 
 				// This assertion will FAIL with current buggy code
-				purchaseResult.IsSuccess.ShouldBeTrue(
+				(purchaseResult.IsSuccess).ShouldBeTrue(
 					$"BUG: Purchase should succeed when EventService is ready. " +
 					$"EventService exists: {eventServiceExists}, ready: {eventServiceReady}. " +
 					$"Error: {purchaseResult.ErrorMessage}");
@@ -221,9 +221,9 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 
 		// Arrange
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -239,25 +239,25 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 
 			// Test 1: GetBalanceAsync
 			var balanceResult = await _creditService.GetBalanceAsync(playerId);
-			if (!balanceResult.IsSuccess)
+			if (balanceResult.IsFailure(out var balanceError))
 			{
-				TestHelpers.LogTestError($"❌ GetBalanceAsync failed: {balanceResult.Error}");
+				TestHelpers.LogTestError($"❌ GetBalanceAsync failed: {balanceError.Message}");
 			}
 
 			// Test 2: AddAsync
 			var addResult = await _creditService.AddAsync(playerId, 10, "Test add");
-			if (!addResult.IsSuccess)
+			if (addResult.IsFailure(out var addError))
 			{
-				TestHelpers.LogTestError($"❌ AddAsync failed: {addResult.Error}");
+				TestHelpers.LogTestError($"❌ AddAsync failed: {addError.Message}");
 			}
 
 			// Test 3: SpendAsync (only if we have credits)
-			if (addResult.IsSuccess && addResult.Value > 0)
+			if (addResult.IsSuccess(out var addedBalance) && addedBalance > 0)
 			{
 				var spendResult = await _creditService.SpendAsync(playerId, 5, "Test spend");
-				if (!spendResult.IsSuccess)
+				if (spendResult.IsFailure(out var spendError))
 				{
-					TestHelpers.LogTestError($"❌ SpendAsync failed: {spendResult.Error}");
+					TestHelpers.LogTestError($"❌ SpendAsync failed: {spendError.Message}");
 				}
 			}
 
@@ -266,17 +266,17 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 			TestHelpers.LogTestInfo("ReconcileBalanceAsync completed (void return)");
 
 			// Assert - at least one should have failed if bug exists
-			var anyFailed = !balanceResult.IsSuccess || !addResult.IsSuccess;
+			var anyFailed = balanceResult.IsFailure(out var _) || addResult.IsFailure(out var _);
 
 			if (anyFailed)
 			{
 				TestHelpers.LogTestError("❌ BUG CONFIRMED: At least one CreditService method failed");
-				TestHelpers.LogTestError($"   GetBalanceAsync: {(balanceResult.IsSuccess ? "✓" : "✗")}");
-				TestHelpers.LogTestError($"   AddAsync: {(addResult.IsSuccess ? "✓" : "✗")}");
+				TestHelpers.LogTestError($"   GetBalanceAsync: {(balanceResult.IsSuccess(out var _) ? "✓" : "✗")}");
+				TestHelpers.LogTestError($"   AddAsync: {(addResult.IsSuccess(out var _) ? "✓" : "✗")}");
 
 				// This will fail with current buggy code
-				balanceResult.IsSuccess.ShouldBeTrue("GetBalanceAsync should succeed");
-				addResult.IsSuccess.ShouldBeTrue("AddAsync should succeed");
+				balanceResult.IsSuccess(out var _).ShouldBeTrue("GetBalanceAsync should succeed");
+				addResult.IsSuccess(out var _).ShouldBeTrue("AddAsync should succeed");
 			}
 			else
 			{

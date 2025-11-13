@@ -588,14 +588,14 @@ public partial class RacingGame : GameController
 			try
 			{
 				var result = await _racingEventService.EmitRaceFinishAsync(raceEntry);
-				if (result.IsSuccess)
+				if (result.IsSuccess(out var _))
 				{
 					CallDeferred(MethodName.LogRaceSaved, totalTime, _currentTrackId);
 					return; // SUCCESS - exit retry loop
 				}
-				else
+				else if (result.IsFailure(out var error))
 				{
-					GD.PrintErr($"[RacingGame] Race save attempt {attempt} failed: {result.Error}");
+					GD.PrintErr($"[RacingGame] Race save attempt {attempt} failed: {error.Message}");
 
 					if (attempt < MAX_RETRIES)
 					{
@@ -604,7 +604,7 @@ public partial class RacingGame : GameController
 					else
 					{
 						// Final retry failed - log for potential offline queue implementation
-						CallDeferred(MethodName.LogHighScoreError, $"Failed after {MAX_RETRIES} attempts: {result.Error}");
+						CallDeferred(MethodName.LogHighScoreError, $"Failed after {MAX_RETRIES} attempts: {error.Message}");
 						GD.Print($"[RacingGame] Race data could be queued for offline sync: Track={_currentTrackId}, Time={totalTime}");
 					}
 				}
@@ -658,13 +658,13 @@ public partial class RacingGame : GameController
 				reason
 			);
 
-			if (result.IsSuccess)
+			if (result.IsSuccess(out var _))
 			{
 				GD.Print($"[RacingGame] Partial race data saved - Laps: {completedLaps}, Reason: {reason}");
 			}
-			else
+			else if (result.IsFailure(out var error))
 			{
-				GD.PrintErr($"[RacingGame] Failed to save partial race data: {result.Error}");
+				GD.PrintErr($"[RacingGame] Failed to save partial race data: {error.Message}");
 			}
 		}
 		catch (System.Exception ex)
@@ -735,7 +735,7 @@ public partial class RacingGame : GameController
 			// Emit lap complete event with track ID
 			var result = await _racingEventService.EmitLapCompleteAsync(_currentTrackId, currentLap, lapTime, checkpoints);
 
-			if (result.IsSuccess)
+			if (result.IsSuccess(out var _))
 			{
 				// Log potential best lap (backend will determine if it's actually best)
 				CallDeferred(MethodName.LogPotentialBestLap, lapTime, _currentTrackId);
@@ -787,14 +787,14 @@ public partial class RacingGame : GameController
 				boxId
 			);
 
-			if (registerResult.IsSuccess)
+			if (registerResult.IsSuccess(out var _))
 			{
 				GD.Print($"[RacingGame] Player {userName} ({playerId}) registered successfully");
 			}
-			else
+			else if (registerResult.IsFailure(out var error))
 			{
 				// Log error but don't fail - game should continue to work
-				GD.PrintErr($"[RacingGame] Failed to register first play for {userName}: {registerResult.Error}");
+				GD.PrintErr($"[RacingGame] Failed to register first play for {userName}: {error.Message}");
 			}
 		}
 		catch (System.Exception ex)
@@ -899,14 +899,14 @@ public partial class RacingGame : GameController
 						playerIds: null  // Single-player game
 					);
 
-					if (!sessionResult.IsSuccess)
+					if (sessionResult.IsFailure(out var error))
 					{
-						GD.PrintErr($"[RacingGame] WARNING: Failed to create backend session: {sessionResult.Error}");
+						GD.PrintErr($"[RacingGame] WARNING: Failed to create backend session: {error.Message}");
 						// Continue anyway - game can work without backend session
 					}
-					else
+					else if (sessionResult.IsSuccess(out var sessionId))
 					{
-						_activitySessionId = sessionResult.Value;
+						_activitySessionId = sessionId;
 						GD.Print($"[RacingGame] Backend session created successfully: {_activitySessionId}");
 					}
 				}
@@ -1796,10 +1796,8 @@ public partial class RacingGame : GameController
 			// Query backend for racing leaderboard
 			var leaderboardResult = await _racingEventService.GetLeaderboardAsync(_currentTrackId, "best_race", _targetLaps);
 
-			if (leaderboardResult.IsSuccess)
+			if (leaderboardResult.IsSuccess(out var leaderboard))
 			{
-				var leaderboard = leaderboardResult.Value;
-
 				// Build leaderboard display
 				var scoreText = "🏁 RACING HIGH SCORES 🏁\n\n";
 				scoreText += $"Track: {leaderboard.TrackId}\n";
@@ -1829,9 +1827,9 @@ public partial class RacingGame : GameController
 
 				GD.Print(scoreText);
 			}
-			else
+			else if (leaderboardResult.IsFailure(out var error))
 			{
-				GD.PrintErr($"[RacingGame] Failed to fetch leaderboard: {leaderboardResult.Error}");
+				GD.PrintErr($"[RacingGame] Failed to fetch leaderboard: {error.Message}");
 				ShowHighScoresFallback();
 			}
 		}

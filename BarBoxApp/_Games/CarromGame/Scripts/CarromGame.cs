@@ -2222,14 +2222,14 @@ public partial class CarromGame : GameController
 					playerIds: playerIdStrings
 				);
 
-				if (!sessionResult.IsSuccess)
+				if (sessionResult.IsFailure(out var sessionError))
 				{
-					GD.PrintErr($"[CarromGame] Failed to create multiplayer session: {sessionResult.Error}");
+					GD.PrintErr($"[CarromGame] Failed to create multiplayer session: {sessionError.Message}");
 
 					// Show error notification
 					_notificationSystem?.ShowNotification(
 						NotificationType.Foul,
-						$"Session creation failed: {sessionResult.Error}",
+						$"Session creation failed: {sessionError.Message}",
 						duration: 3.0f
 					);
 
@@ -2237,7 +2237,10 @@ public partial class CarromGame : GameController
 					return;
 				}
 
-				_activitySessionId = sessionResult.Value;
+				if (sessionResult.IsSuccess(out var sessionId))
+				{
+					_activitySessionId = sessionId;
+				}
 				GD.Print($"[CarromGame] Multiplayer session created successfully: {_activitySessionId}");
 			}
 			else

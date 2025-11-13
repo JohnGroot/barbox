@@ -1,4 +1,5 @@
 using Godot;
+using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -22,11 +23,11 @@ public class MiningEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (quantity < 1)
-			return Result<bool>.Failure(ValidationMessages.MinValue("Quantity", 1));
+			return Result.Failure<bool>(ValidationMessages.MinValue("Quantity", 1));
 
 		// Check EventService availability (required for location_id)
 		if (_eventService == null)
-			return Result<bool>.Failure("Event service not available");
+			return Result.Failure<bool>("Event service not available");
 
 		// Get location ID with fallback
 		var locationId = _eventService.GetCurrentLocationId();
@@ -57,13 +58,13 @@ public class MiningEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (level < 1)
-			return Result<bool>.Failure(ValidationMessages.MinValue("Level", 1));
+			return Result.Failure<bool>(ValidationMessages.MinValue("Level", 1));
 
 		if (cost == null || cost.Count == 0)
-			return Result<bool>.Failure(ValidationMessages.Required("Upgrade cost"));
+			return Result.Failure<bool>(ValidationMessages.Required("Upgrade cost"));
 
 		if (string.IsNullOrEmpty(locationId))
-			return Result<bool>.Failure(ValidationMessages.Required("Location ID"));
+			return Result.Failure<bool>(ValidationMessages.Required("Location ID"));
 
 		// Convert cost dictionary to string keys
 		var costDict = new Dictionary<string, int>();
@@ -93,10 +94,10 @@ public class MiningEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (gemsSpent < 1)
-			return Result<bool>.Failure(ValidationMessages.MinValue("Gems spent", 1));
+			return Result.Failure<bool>(ValidationMessages.MinValue("Gems spent", 1));
 
 		if (creditsEarned < 1)
-			return Result<bool>.Failure(ValidationMessages.MinValue("Credits earned", 1));
+			return Result.Failure<bool>(ValidationMessages.MinValue("Credits earned", 1));
 
 		var payload = new
 		{
@@ -115,10 +116,10 @@ public class MiningEventService : GameEventServiceBase
 {
 	// Input validation
 	if (string.IsNullOrEmpty(locationId))
-		return Result<bool>.Failure(ValidationMessages.Required("Location ID"));
+		return Result.Failure<bool>(ValidationMessages.Required("Location ID"));
 
 	if (pendingGems < 0)
-		return Result<bool>.Failure(ValidationMessages.MinValue("Pending gems", 0));
+		return Result.Failure<bool>(ValidationMessages.MinValue("Pending gems", 0));
 
 	var payload = new
 	{
@@ -144,8 +145,8 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 	{
 		// Input validation
 		var validation = ValidateGuid(playerId, "Player ID");
-		if (!validation.IsSuccess)
-			return Result<MiningInventoryData>.Failure(validation.Error);
+		if (validation.IsFailure(out var validationError))
+			return Result.Failure<MiningInventoryData>(validationError.Message);
 
 		return await QueryBackendAsync(
 			$"/game/mining/player/{playerId}/inventory",
@@ -160,15 +161,18 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 		var lastUpdatedResult = JsonParsingHelpers.ParseDateTime(jsonDict, JsonFieldNames.LastUpdated);
 		var gemsResult = JsonParsingHelpers.ParseIntDictionary(jsonDict, JsonFieldNames.Gems);
 
-		if (!playerIdResult.IsSuccess) return Result<MiningInventoryData>.Failure(playerIdResult.Error);
-		if (!lastUpdatedResult.IsSuccess) return Result<MiningInventoryData>.Failure(lastUpdatedResult.Error);
-		if (!gemsResult.IsSuccess) return Result<MiningInventoryData>.Failure(gemsResult.Error);
+		if (playerIdResult.IsFailure(out var playerIdError)) return Result.Failure<MiningInventoryData>(playerIdError.Message);
+		if (!playerIdResult.IsSuccess(out var playerId)) return Result.Failure<MiningInventoryData>("Failed to extract player ID");
+		if (lastUpdatedResult.IsFailure(out var lastUpdatedError)) return Result.Failure<MiningInventoryData>(lastUpdatedError.Message);
+		if (!lastUpdatedResult.IsSuccess(out var lastUpdated)) return Result.Failure<MiningInventoryData>("Failed to extract last updated timestamp");
+		if (gemsResult.IsFailure(out var gemsError)) return Result.Failure<MiningInventoryData>(gemsError.Message);
+		if (!gemsResult.IsSuccess(out var gems)) return Result.Failure<MiningInventoryData>("Failed to extract gems data");
 
-		return Result<MiningInventoryData>.Success(new MiningInventoryData
+		return Result.Success(new MiningInventoryData
 		{
-			PlayerId = playerIdResult.Value,
-			LastUpdated = lastUpdatedResult.Value,
-			Gems = gemsResult.Value
+			PlayerId = playerId,
+			LastUpdated = lastUpdated,
+			Gems = gems
 		});
 	}
 
@@ -186,8 +190,8 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 	{
 		// Input validation
 		var validation = ValidateGuid(playerId, "Player ID");
-		if (!validation.IsSuccess)
-			return Result<MiningUpgradesData>.Failure(validation.Error);
+		if (validation.IsFailure(out var validationError))
+			return Result.Failure<MiningUpgradesData>(validationError.Message);
 
 		return await QueryBackendAsync(
 			$"/game/mining/player/{playerId}/upgrades",
@@ -202,15 +206,18 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 		var lastUpdatedResult = JsonParsingHelpers.ParseDateTime(jsonDict, JsonFieldNames.LastUpdated);
 		var upgradesResult = JsonParsingHelpers.ParseIntDictionary(jsonDict, JsonFieldNames.Upgrades);
 
-		if (!playerIdResult.IsSuccess) return Result<MiningUpgradesData>.Failure(playerIdResult.Error);
-		if (!lastUpdatedResult.IsSuccess) return Result<MiningUpgradesData>.Failure(lastUpdatedResult.Error);
-		if (!upgradesResult.IsSuccess) return Result<MiningUpgradesData>.Failure(upgradesResult.Error);
+		if (playerIdResult.IsFailure(out var playerIdError)) return Result.Failure<MiningUpgradesData>(playerIdError.Message);
+		if (!playerIdResult.IsSuccess(out var playerId)) return Result.Failure<MiningUpgradesData>("Failed to extract player ID");
+		if (lastUpdatedResult.IsFailure(out var lastUpdatedError)) return Result.Failure<MiningUpgradesData>(lastUpdatedError.Message);
+		if (!lastUpdatedResult.IsSuccess(out var lastUpdated)) return Result.Failure<MiningUpgradesData>("Failed to extract last updated timestamp");
+		if (upgradesResult.IsFailure(out var upgradesError)) return Result.Failure<MiningUpgradesData>(upgradesError.Message);
+		if (!upgradesResult.IsSuccess(out var upgrades)) return Result.Failure<MiningUpgradesData>("Failed to extract upgrades data");
 
-		return Result<MiningUpgradesData>.Success(new MiningUpgradesData
+		return Result.Success(new MiningUpgradesData
 		{
-			PlayerId = playerIdResult.Value,
-			LastUpdated = lastUpdatedResult.Value,
-			Upgrades = upgradesResult.Value
+			PlayerId = playerId,
+			LastUpdated = lastUpdated,
+			Upgrades = upgrades
 		});
 	}
 
@@ -229,11 +236,11 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 	{
 		// Input validation
 		var validation = ValidateGuid(playerId, "Player ID");
-		if (!validation.IsSuccess)
-			return Result<MiningTimestampData>.Failure(validation.Error);
+		if (validation.IsFailure(out var validationError))
+			return Result.Failure<MiningTimestampData>(validationError.Message);
 
 		if (string.IsNullOrEmpty(locationId))
-			return Result<MiningTimestampData>.Failure(ValidationMessages.Required("Location ID"));
+			return Result.Failure<MiningTimestampData>(ValidationMessages.Required("Location ID"));
 
 		var queryParams = new Dictionary<string, string> { ["location_id"] = locationId };
 		return await QueryBackendAsync(
@@ -248,17 +255,19 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 		var playerIdResult = JsonParsingHelpers.ParseGuid(jsonDict, JsonFieldNames.PlayerId);
 		var lastMiningTimeResult = JsonParsingHelpers.ParseDateTime(jsonDict, JsonFieldNames.LastMiningTime);
 
-		if (!playerIdResult.IsSuccess) return Result<MiningTimestampData>.Failure(playerIdResult.Error);
-		if (!lastMiningTimeResult.IsSuccess) return Result<MiningTimestampData>.Failure(lastMiningTimeResult.Error);
+		if (playerIdResult.IsFailure(out var playerIdError)) return Result.Failure<MiningTimestampData>(playerIdError.Message);
+		if (!playerIdResult.IsSuccess(out var playerId)) return Result.Failure<MiningTimestampData>("Failed to extract player ID");
+		if (lastMiningTimeResult.IsFailure(out var lastMiningTimeError)) return Result.Failure<MiningTimestampData>(lastMiningTimeError.Message);
+		if (!lastMiningTimeResult.IsSuccess(out var lastMiningTime)) return Result.Failure<MiningTimestampData>("Failed to extract last mining time");
 
 		if (!jsonDict.ContainsKey(JsonFieldNames.LocationId))
-			return Result<MiningTimestampData>.Failure($"Missing required field: {JsonFieldNames.LocationId}");
+			return Result.Failure<MiningTimestampData>($"Missing required field: {JsonFieldNames.LocationId}");
 
-		return Result<MiningTimestampData>.Success(new MiningTimestampData
+		return Result.Success(new MiningTimestampData
 		{
-			PlayerId = playerIdResult.Value,
+			PlayerId = playerId,
 			LocationId = jsonDict[JsonFieldNames.LocationId].AsString(),
-			LastMiningTime = lastMiningTimeResult.Value
+			LastMiningTime = lastMiningTime
 		});
 	}
 
@@ -277,8 +286,8 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 	{
 		// Input validation
 		var validation = ValidateGuid(playerId, "Player ID");
-		if (!validation.IsSuccess)
-			return Result<MiningMetadataData>.Failure(validation.Error);
+		if (validation.IsFailure(out var validationError))
+			return Result.Failure<MiningMetadataData>(validationError.Message);
 
 		return await QueryBackendAsync(
 			$"/game/mining/player/{playerId}/metadata",
@@ -293,23 +302,26 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 		var firstEventTimeResult = JsonParsingHelpers.ParseNullableDateTime(jsonDict, JsonFieldNames.FirstEventTime);
 		var lastEventTimeResult = JsonParsingHelpers.ParseNullableDateTime(jsonDict, JsonFieldNames.LastEventTime);
 
-		if (!playerIdResult.IsSuccess) return Result<MiningMetadataData>.Failure(playerIdResult.Error);
-		if (!firstEventTimeResult.IsSuccess) return Result<MiningMetadataData>.Failure(firstEventTimeResult.Error);
-		if (!lastEventTimeResult.IsSuccess) return Result<MiningMetadataData>.Failure(lastEventTimeResult.Error);
+		if (playerIdResult.IsFailure(out var playerIdError)) return Result.Failure<MiningMetadataData>(playerIdError.Message);
+		if (!playerIdResult.IsSuccess(out var playerId)) return Result.Failure<MiningMetadataData>("Failed to extract player ID");
+		if (firstEventTimeResult.IsFailure(out var firstEventTimeError)) return Result.Failure<MiningMetadataData>(firstEventTimeError.Message);
+		if (!firstEventTimeResult.IsSuccess(out var firstEventTime)) return Result.Failure<MiningMetadataData>("Failed to extract first event time");
+		if (lastEventTimeResult.IsFailure(out var lastEventTimeError)) return Result.Failure<MiningMetadataData>(lastEventTimeError.Message);
+		if (!lastEventTimeResult.IsSuccess(out var lastEventTime)) return Result.Failure<MiningMetadataData>("Failed to extract last event time");
 
 		if (!jsonDict.ContainsKey(JsonFieldNames.HasReceivedBonus))
-			return Result<MiningMetadataData>.Failure($"Missing required field: {JsonFieldNames.HasReceivedBonus}");
+			return Result.Failure<MiningMetadataData>($"Missing required field: {JsonFieldNames.HasReceivedBonus}");
 
 		if (!jsonDict.ContainsKey(JsonFieldNames.TotalEvents))
-			return Result<MiningMetadataData>.Failure($"Missing required field: {JsonFieldNames.TotalEvents}");
+			return Result.Failure<MiningMetadataData>($"Missing required field: {JsonFieldNames.TotalEvents}");
 
-		return Result<MiningMetadataData>.Success(new MiningMetadataData
+		return Result.Success(new MiningMetadataData
 		{
-			PlayerId = playerIdResult.Value,
+			PlayerId = playerId,
 			HasReceivedBonus = jsonDict[JsonFieldNames.HasReceivedBonus].AsBool(),
 			TotalEvents = jsonDict[JsonFieldNames.TotalEvents].AsInt32(),
-			FirstEventTime = firstEventTimeResult.Value,
-			LastEventTime = lastEventTimeResult.Value
+			FirstEventTime = firstEventTime,
+			LastEventTime = lastEventTime
 		});
 	}
 
@@ -320,11 +332,11 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 	{
 		// Input validation
 		var validation = ValidateGuid(playerId, "Player ID");
-		if (!validation.IsSuccess)
-			return Result<bool>.Failure(validation.Error);
+		if (validation.IsFailure(out var validationError))
+			return Result.Failure<bool>(validationError.Message);
 
 		if (bonusAmount < 1)
-			return Result<bool>.Failure(ValidationMessages.MinValue("Bonus amount", 1));
+			return Result.Failure<bool>(ValidationMessages.MinValue("Bonus amount", 1));
 
 		var payload = new
 		{

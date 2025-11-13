@@ -698,9 +698,9 @@ public partial class LoginModal : Control
 		try
 		{
 			var result = await _userManager.IsUsernameAvailableAsync(username);
-			if (result.IsSuccess)
+			if (result.IsSuccess(out var isAvailable))
 			{
-				if (result.Value)
+				if (isAvailable)
 				{
 					// Username is available
 					if (_createStatusLabel != null && _createUsernameInput != null && _createUsernameInput.Text.Trim() == username)
@@ -873,7 +873,7 @@ public partial class LoginModal : Control
 			ShowLoginStatusMessage("Logging in...", false);
 
 			var loginResult = await _userManager.LoginUserByPhoneAsync(cleanedPhone, cleanedPin);
-			if (loginResult.IsSuccess)
+			if (loginResult.IsSuccess(out var _))
 			{
 				ShowLoginStatusMessage("Login successful!", true);
 
@@ -883,10 +883,10 @@ public partial class LoginModal : Control
 				// Close modal explicitly (not via signal)
 				HideModal();
 			}
-			else
+			else if (loginResult.IsFailure(out var loginError))
 			{
 				// Display specific error message from backend
-				ShowLoginStatusMessage(loginResult.Error, false);
+				ShowLoginStatusMessage(loginError.Message, false);
 			}
 		}
 		catch (System.Exception ex)
@@ -950,18 +950,18 @@ public partial class LoginModal : Control
 			ShowCreateStatusMessage("Validating account information...", false);
 
 			var validationResult = await _userManager.ValidatePlayerCreationAsync(cleanedPhone, cleanedPin, cleanedUsername);
-			if (!validationResult.IsSuccess)
+			if (validationResult.IsFailure(out var valError))
 			{
-				ShowCreateStatusMessage($"Validation failed: {validationResult.Error}", false);
+				ShowCreateStatusMessage($"Validation failed: {valError.Message}", false);
 				return;
 			}
 
 			// Check validation response
-			if (!validationResult.Value.Valid)
+			if (validationResult.IsSuccess(out var validationResponse) && !validationResponse.Valid)
 			{
 				// Extract user-friendly error messages from validation errors
 				var errorMessages = new System.Collections.Generic.List<string>();
-				foreach (var error in validationResult.Value.Errors)
+				foreach (var error in validationResponse.Errors)
 				{
 					errorMessages.Add(MapValidationError(error));
 				}
@@ -975,7 +975,7 @@ public partial class LoginModal : Control
 			ShowCreateStatusMessage("Creating account...", false);
 
 			var result = await _userManager.CreateUserAccountAsync(cleanedPhone, cleanedPin, cleanedUsername);
-			if (result.IsSuccess)
+			if (result.IsSuccess(out var _))
 			{
 				// Stage 3: Success!
 				ShowCreateStatusMessage("Account created successfully! You can now login.", true);
@@ -991,9 +991,9 @@ public partial class LoginModal : Control
 					_loginPhoneInput.GrabFocus();
 				}
 			}
-			else
+			else if (result.IsFailure(out var createError))
 			{
-				ShowCreateStatusMessage(MapCreationError(result.Error), false);
+				ShowCreateStatusMessage(MapCreationError(createError.Message), false);
 			}
 		}
 		catch (System.Exception ex)

@@ -1,3 +1,4 @@
+using System;
 using Godot;
 
 namespace BarBox.Games.MiningGame.Logic;
@@ -6,24 +7,27 @@ public partial class MiningEngine : Node
 {
 	private MiningGame _game;
 	private bool _isMiningActive = false;
-			
+
 	public MiningEngine(MiningGame game)
 	{
+		if (game == null)
+		{
+			throw new ArgumentNullException(nameof(game), "MiningEngine requires valid game reference");
+		}
+
 		_game = game;
 		Name = "Engine";
 	}
 
 	public override void _Process(double delta)
 	{
-		if (!_isMiningActive || _game == null || !IsInstanceValid(_game.GetState())) return;
+		// Components guaranteed valid by game lifecycle - no defensive checks needed
+		if (!_isMiningActive) return;
 
 		_game.GetState().ProcessReadyMiningTicks();
 
-		// Update UI if needed
-		if (_game != null && IsInstanceValid(_game.GetUI()))
-		{
-			_game.GetUI().UpdateMiningProgress();
-		}
+		// Update UI - direct call, guaranteed valid
+		_game.GetUI()?.UpdateMiningProgress();
 	}
 
 	public void StartMining()
@@ -40,7 +44,8 @@ public partial class MiningEngine : Node
 
 	public float GetMiningProgress()
 	{
-		if (!_isMiningActive || _game == null || !IsInstanceValid(_game.GetState()))
+		// State guaranteed valid by game lifecycle
+		if (!_isMiningActive)
 			return 0.0f;
 
 		var (_, progress) = _game.GetState().CalculateMiningProgress();
@@ -49,7 +54,8 @@ public partial class MiningEngine : Node
 
 	public float GetTimeUntilNextTick()
 	{
-		if (!_isMiningActive || _game == null || !IsInstanceValid(_game.GetState()))
+		// State guaranteed valid by game lifecycle
+		if (!_isMiningActive)
 			return 0.0f;
 
 		var (_, progress) = _game.GetState().CalculateMiningProgress();

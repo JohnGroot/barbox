@@ -79,24 +79,54 @@ public partial class MiningGame : GameController
 	/// <summary>
 	/// PHASE 1: Service Discovery
 	/// Discovers platform services and initializes event services
+	/// POST-CONDITION GUARANTEES:
+	/// - _eventService exists and is valid (REQUIRED)
+	/// - _miningEventService exists (REQUIRED)
+	/// - _userManager, _locationManager, _gameHost exist in production (REQUIRED)
 	/// </summary>
 	protected override void DiscoverServices()
 	{
 		base.DiscoverServices();
 
-		// Initialize event services
+		// Initialize REQUIRED event services
 		_eventService = EventService.GetInstance();
+		if (_eventService == null)
+		{
+			throw new InvalidOperationException("EventService is required but not available");
+		}
+
 		_miningEventService = new MiningEventService(_eventService);
 
-		// Service discovery
+		// Discover platform services
 		_gameHost = GameHost.GetInstance();
 		_userManager = UserManager.GetAutoload();
 		_locationManager = LocationManager.GetAutoload();
 
-		// Enable debug mode if no GameHost (development context)
-		if (_gameHost == null || !IsInstanceValid(_gameHost))
+		// Context detection and validation
+		bool isProductionContext = GameHost.IsProductionContext();
+		if (isProductionContext)
 		{
+			// Production: Validate all required services exist
+			if (_userManager == null)
+			{
+				throw new InvalidOperationException("UserManager is required in production but not available");
+			}
+
+			if (_locationManager == null)
+			{
+				throw new InvalidOperationException("LocationManager is required in production but not available");
+			}
+
+			if (_gameHost == null)
+			{
+				throw new InvalidOperationException("GameHost is required in production but not available");
+			}
+		}
+		else
+		{
+			// Development: Enable debug mode explicitly
 			EnableDebugMode = true;
+			GD.Print("[MiningGame] Development context detected - debug mode enabled");
 		}
 
 		// Check if loaded as direct scene - ensure MainController exists
@@ -109,18 +139,15 @@ public partial class MiningGame : GameController
 
 	private void EnsureMainControllerExists()
 	{
-		// Simple check - is MainController already in the scene tree?
 		if (GetTree().Root.GetNodeOrNull<MainController>("MainController") != null)
-			return; // Already exists
+			return;
 
-		// Load Main.tscn if missing (only for direct scene load scenario)
 		var mainScene = GD.Load<PackedScene>(MAIN_SCENE_PATH);
 		if (mainScene != null)
 		{
 			var mainInstance = mainScene.Instantiate();
 			GetTree().Root.CallDeferred(Node.MethodName.AddChild, mainInstance);
 
-			// Hide UI - we only need the logout functionality
 			if (mainInstance is CanvasItem canvasItem)
 				canvasItem.Visible = false;
 		}
@@ -129,8 +156,7 @@ public partial class MiningGame : GameController
 	private void InitializeLocationDataRegistry()
 	{
 		_locationDataRegistry.Clear();
-			
-		// Populate registry from exported resources only
+
 		if (LocationDataResources != null && LocationDataResources.Count > 0)
 		{
 			foreach (var locationData in LocationDataResources)
@@ -140,7 +166,6 @@ public partial class MiningGame : GameController
 					_locationDataRegistry[locationData.LocationId] = locationData;
 				}
 			}
-				
 		}
 		else
 		{
@@ -151,20 +176,28 @@ public partial class MiningGame : GameController
 	/// <summary>
 	/// PHASE 2: Component Initialization
 	/// Creates game components (_engine, _state, _ui)
+	/// POST-CONDITION GUARANTEES:
+	/// - _engine exists and is valid
+	/// - _state exists and is valid
+	/// - _ui exists and is valid
+	/// - _locationDataRegistry contains at least one location
+	/// - Config is not null
 	/// </summary>
 	protected override void InitializeComponents()
 	{
 		base.InitializeComponents();
 
-		// Initialize location data registry first
 		InitializeLocationDataRegistry();
-			
-		// Setup configuration
+		if (_locationDataRegistry.Count == 0)
+		{
+			throw new InvalidOperationException(
+				"No LocationDataResources configured. Game cannot function without location data.");
+		}
+
 		if (Config == null)
 		{
 			Config = new MiningGameConfig();
-				
-			// Try to load location-specific config
+
 			if (_locationManager != null)
 			{
 				var locationId = _locationManager.CurrentLocationId ?? DEFAULT_LOCATION_ID;
@@ -175,26 +208,22 @@ public partial class MiningGame : GameController
 				}
 			}
 		}
-			
-		// Initialize game systems
+
 		_engine = new MiningEngine(this);
 		_state = new MiningState(this);
-			
-		// Add systems to scene tree
+
 		AddChild(_engine);
 		AddChild(_state);
-			
-		// Setup UI if present
+
 		var uiNode = GetNode<MiningGameUI>(UIPath);
-		if (uiNode is not null)
+		if (uiNode == null)
 		{
-			_ui = uiNode;
-			_ui.Initialize(this, Config);
+			throw new InvalidOperationException(
+				$"UI node is required but not found at path: {UIPath}");
 		}
-		else
-		{
-			GD.PrintErr("[MiningGame] UI node not found or wrong type");
-		}
+
+		_ui = uiNode;
+		_ui.Initialize(this, Config);
 	}
 		
 	// ================================================================
@@ -205,17 +234,6 @@ public partial class MiningGame : GameController
 	{
 		try
 		{
-			// Validate essential components first
-			if (!IsInstanceValid(_state) || !IsInstanceValid(_engine))
-			{
-				GD.PrintErr("[MiningGame] Cannot initialize session - missing essential components (state/engine)");
-				return;
-			}
-				
-			// Note: If no user is logged in in production, game will run with default state
-			// The UI will show appropriate messages and backend persistence will be skipped
-
-			// CREATE BACKEND SESSION - CRITICAL FOR EVENT PERSISTENCE
 			if (_eventService != null && !string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 			{
 				var locationManager = _locationManager;
@@ -226,7 +244,6 @@ public partial class MiningGame : GameController
 
 					if (!string.IsNullOrEmpty(phoneNumber))
 					{
-						// Get player ID from session manager
 						var sessionManager = SessionManager.GetInstance();
 						var currentSession = sessionManager?.GetPrimaryUserSession();
 
@@ -240,17 +257,16 @@ public partial class MiningGame : GameController
 								boxId: boxId,
 								playerId: playerId,
 								gameTag: "mining",
-								playerIds: null  // Single-player game
+								playerIds: null
 							);
-							if (!sessionResult.IsSuccess)
+							if (sessionResult.IsFailure(out var error))
 							{
-								GD.PrintErr($"[MiningGame] WARNING: Failed to create backend session: {sessionResult.Error}");
+								GD.PrintErr($"[MiningGame] WARNING: Failed to create backend session: {error.Message}");
 								GD.PrintErr($"[MiningGame] Game will continue but persistence may not work");
-								// Continue anyway - game can work in offline mode
 							}
-							else
+							else if (sessionResult.IsSuccess(out var sessionId))
 							{
-								_activitySessionId = sessionResult.Value;
+								_activitySessionId = sessionId;
 								GD.Print($"[MiningGame] Backend session created successfully: {_activitySessionId}");
 							}
 						}
@@ -262,40 +278,33 @@ public partial class MiningGame : GameController
 				}
 			}
 
-			// Load user data first, then start mining after data is ready
 			if (!string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 			{
 				await _state.LoadUserDataAsync();
 
-				// Check if components are still valid after await and user hasn't logged out
 				if (!IsInstanceValid(this) || !IsInstanceValid(_engine) || !IsInstanceValid(_state))
 					return;
 
-				// Verify user still logged in after async operation
 				if (string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 				{
 					GD.PrintErr("[MiningGame] User logged out during data load");
 					return;
 				}
 			}
-				
-			// Start mining only after user data (including partial progress) is fully loaded
+
 			_engine.StartMining();
 
-			// Enable UI only if user is logged in
 			if (IsInstanceValid(_ui))
 			{
-				_ui.RefreshLocationData(); // Update cached location data after load
+				_ui.RefreshLocationData();
 
-				// Only enable UI if we have a valid user session
 				if (!string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 				{
 					_ui.SetEnabled(true);
-					_ui.UpdateAllUI(); // Force immediate UI refresh
+					_ui.UpdateAllUI();
 				}
 				else
 				{
-					// No user logged in - keep UI disabled with "login required" state
 					_ui.SetEnabled(false);
 				}
 			}
@@ -303,12 +312,11 @@ public partial class MiningGame : GameController
 		catch (Exception ex)
 		{
 			GD.PrintErr($"[MiningGame] Error during session initialization: {ex.Message}");
-				
-			// Ensure UI shows error state
+
 			if (IsInstanceValid(_ui))
 			{
 				_ui.SetEnabled(false);
-				_ui.UpdateAllUI(); // Show error state
+				_ui.UpdateAllUI();
 			}
 		}
 	}
@@ -336,20 +344,18 @@ public partial class MiningGame : GameController
 		
 	/// <summary>
 	/// PHASE 4: Activation Decision
-	/// Game requires a logged-in user to start - UI remains disabled until login
+	/// Starts game if user is logged in, otherwise waits for login
 	/// </summary>
 	protected override void ActivateGame()
 	{
 		base.ActivateGame();
 
-		// Only start game if user is logged in
 		if (!string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 		{
 			StartGame();
 		}
 		else
 		{
-			// No user logged in, keep UI disabled until login
 			if (IsInstanceValid(_ui))
 			{
 				_ui.SetEnabled(false);
@@ -361,20 +367,17 @@ public partial class MiningGame : GameController
 	{
 		base.OnUIContextSetup();
 
-		// Connect to user changes after UI context is set up
 		if (_userManager != null)
 		{
 			_userManager.UserLoggedIn += OnUserLoggedIn;
 			_userManager.UserLoggedOut += OnUserLoggedOut;
 		}
-
 	}
 		
 	public override void OnUIContextTeardown()
 	{
 		base.OnUIContextTeardown();
 
-		// Disconnect event handlers when UI context is torn down
 		if (_userManager != null && IsInstanceValid(_userManager))
 		{
 			_userManager.UserLoggedIn -= OnUserLoggedIn;
@@ -427,64 +430,56 @@ public partial class MiningGame : GameController
 	internal MiningState GetState() => _state;
 
 	// ================================================================
-	// PUBLIC API - Called directly by UI (no signals)
+	// PUBLIC API
 	// ================================================================
-		
-	public bool CanExtractGems() => _state?.CanExtractGems() ?? false;
-	public bool CanPurchaseCredit() => _state?.CanPurchaseCredit() ?? false;
-	public bool CanPurchaseUpgrade(UpgradeType upgradeType) => _state?.CanPurchaseUpgrade(upgradeType) ?? false;
-		
-	public MiningLocationData GetLocationData() => _state?.GetLocationData();
-	public MiningGlobalDataStore GetGlobalData() => _state?.GetGlobalData();
-		
-	// Encapsulated access to engine properties
-	public float GetMiningProgress() => _engine?.GetMiningProgress() ?? 0.0f;
-	public float GetTimeUntilNextTick() => _engine?.GetTimeUntilNextTick() ?? 0.0f;
-		
-	// Encapsulated access to state properties  
-	public int GetPendingGems() => _state?.PendingGems ?? 0;
-	public int GetMaxCapacity() => _state?.GetMaxCapacity() ?? 0;
 
-	// Specifically gets the game time cached on the state, not the Game Time getter inherited from game controller
-	public double GetStateTime() => _state?.GameTime ?? 0.0;
-	public int GetGemsPerTick() => _state?.GetGemsPerTick() ?? 0;
-	public float GetMiningTickTime() => _state?.GetMiningTickTime() ?? 0.0f;
-	public int GetUpgradeLevel(UpgradeType upgradeType) => _state?.GetUpgradeLevel(upgradeType) ?? 0;
+	public bool CanExtractGems() => _state.CanExtractGems();
+	public bool CanPurchaseCredit() => _state.CanPurchaseCredit();
+	public bool CanPurchaseUpgrade(UpgradeType upgradeType) => _state.CanPurchaseUpgrade(upgradeType);
+
+	public MiningLocationData GetLocationData() => _state.GetLocationData();
+	public MiningGlobalDataStore GetGlobalData() => _state.GetGlobalData();
+
+	public float GetMiningProgress() => _engine.GetMiningProgress();
+	public float GetTimeUntilNextTick() => _engine.GetTimeUntilNextTick();
+
+	public int GetPendingGems() => _state.PendingGems;
+	public int GetMaxCapacity() => _state.GetMaxCapacity();
+
+	public double GetStateTime() => _state.GameTime;
+	public int GetGemsPerTick() => _state.GetGemsPerTick();
+	public float GetMiningTickTime() => _state.GetMiningTickTime();
+	public int GetUpgradeLevel(UpgradeType upgradeType) => _state.GetUpgradeLevel(upgradeType);
 		
 	public MiningLocationData GetLocationDataTemplate(string locationId)
 	{
-		// Try to get exact match first
 		if (_locationDataRegistry.TryGetValue(locationId ?? DEFAULT_LOCATION_ID, out var exactMatch))
 		{
 			return exactMatch;
 		}
 
-		// Log debug info for missing location (fallback to default is expected)
 		if (EnableDebugMode)
 		{
 			GD.Print($"[MiningGame] No location data found for '{locationId}'. Available locations: {string.Join(", ", _locationDataRegistry.Keys)}");
 		}
 
-		// Fall back to first available location
 		if (_locationDataRegistry.Count > 0)
 		{
-			// Use foreach for cold path initialization
 			MiningLocationData fallback = null;
 			foreach (var location in _locationDataRegistry.Values)
 			{
 				fallback = location;
 				break;
 			}
-				
+
 			if (EnableDebugMode)
 			{
 				GD.Print($"[MiningGame] Using fallback location '{fallback.LocationId}' instead of '{locationId}'");
 			}
-				
+
 			return fallback;
 		}
-			
-		// Complete failure - no location data at all
+
 		GD.PrintErr("[MiningGame] CRITICAL ERROR: No location data configured in registry!");
 		return null;
 	}
@@ -527,25 +522,18 @@ public partial class MiningGame : GameController
 	{
 		if (!IsInstanceValid(_state))
 			return;
-				
+
 		var currentLevel = _state.GetUpgradeLevel(upgradeType);
-			
+
 		if (_state.PurchaseUpgrade(upgradeType))
 		{
 			if (IsInstanceValid(_ui))
 				_ui.UpdateAllUI();
 			EmitSignal(SignalName.UpgradePurchased, (int)upgradeType, currentLevel + 1);
 			GD.Print($"[MiningGame] {upgradeType} upgraded to level {currentLevel + 1}");
-				
-			// Handle immediate upgrade effects with unified approach
-			if (IsInstanceValid(_engine))
-			{
-				// Timestamp-based system handles upgrade effects automatically
-			}
 		}
 	}
 		
-	// Direct UI updates - no signal overhead
 	public void UpdateUI()
 	{
 		if (IsInstanceValid(_ui))
@@ -600,7 +588,6 @@ public partial class MiningGame : GameController
 			GD.PrintErr($"[MiningGame] Error getting current user phone number: {ex.Message}");
 		}
 
-		// Return null if no user is logged in - no fallbacks
 		return null;
 	}
 		
@@ -620,23 +607,15 @@ public partial class MiningGame : GameController
 
 		try
 		{
-			// Clear any previous user state FIRST to prevent data mixing
 			if (IsInstanceValid(_state))
 				_state.ClearAllState();
 
-			// User data will be loaded by InitializeGameSession() after StartGame()
-			// No need to load it here to avoid race conditions
-
-			// Ensure game is properly reset before starting
 			if (IsGameActive())
 			{
 				EndGame();
 			}
 
 			StartGame();
-
-			// Game session is automatically initialized via OnGameStarted() -> InitializeGameSession()
-			// No need to call InitializeGameSession() again as it would cause double initialization
 
 			GD.Print($"[MiningGame] User logged in: {userName} ({phoneNumber})");
 		}
@@ -658,19 +637,15 @@ public partial class MiningGame : GameController
 
 		try
 		{
-			// Event-sourced persistence - no explicit save needed
-
 			EndGame();
 
-			// Clear all state to ensure no previous user data remains
 			if (IsInstanceValid(_state))
 				_state.ClearAllState();
 
-			// Ensure UI properly reflects no-user state
 			if (IsInstanceValid(_ui))
 			{
 				_ui.SetEnabled(false);
-				_ui.UpdateAllUI(); // Force UI refresh to show "login required" messages
+				_ui.UpdateAllUI();
 			}
 
 			GD.Print("[MiningGame] User logged out and state cleared");

@@ -52,15 +52,15 @@ public class MiningGameTests : TestClass
 			_testPlayerId,
 			GAME_TAG);
 
-		if (sessionResult.IsSuccess)
+		if (sessionResult.IsSuccess(out var sessionId))
 		{
-			_testSessionId = sessionResult.Value;
+			_testSessionId = sessionId;
 			_testSessionId.ShouldNotBe(Guid.Empty, "Session ID should be valid");
 			TestHelpers.LogTestInfo($"Mining session created: {_testSessionId}");
 		}
-		else
+		else if (sessionResult.IsFailure(out var error))
 		{
-			TestHelpers.LogTestWarning($"Failed to create session: {sessionResult.Error}");
+			TestHelpers.LogTestWarning($"Failed to create session: {error.Message}");
 		}
 	}
 
@@ -84,16 +84,16 @@ public class MiningGameTests : TestClass
 			location_id = "test_cave"
 		});
 
-		if (extractResult.IsSuccess)
+		if (extractResult.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo("Extract event emitted successfully");
 
 			// In production, we would query: GET /game/mining/player/{id}/inventory
 			// For now, verify the event was accepted
 		}
-		else
+		else if (extractResult.IsFailure(out var error))
 		{
-			TestHelpers.LogTestWarning($"Extract event failed: {extractResult.Error}");
+			TestHelpers.LogTestWarning($"Extract event failed: {error.Message}");
 		}
 	}
 
@@ -115,15 +115,15 @@ public class MiningGameTests : TestClass
 			location_id = "test_cave"
 		});
 
-		if (upgradeResult.IsSuccess)
+		if (upgradeResult.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo("Upgrade event emitted successfully");
 
 			// In production: GET /game/mining/player/{id}/upgrades
 		}
-		else
+		else if (upgradeResult.IsFailure(out var error))
 		{
-			TestHelpers.LogTestWarning($"Upgrade event failed: {upgradeResult.Error}");
+			TestHelpers.LogTestWarning($"Upgrade event failed: {error.Message}");
 		}
 	}
 
@@ -144,15 +144,15 @@ public class MiningGameTests : TestClass
 			location_id = "test_cave"
 		});
 
-		if (tickResult.IsSuccess)
+		if (tickResult.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo($"Tick update emitted - next tick: {nextTickTime}");
 
 			// In production: GET /game/mining/player/{id}/tick_time
 		}
-		else
+		else if (tickResult.IsFailure(out var error))
 		{
-			TestHelpers.LogTestWarning($"Tick update failed: {tickResult.Error}");
+			TestHelpers.LogTestWarning($"Tick update failed: {error.Message}");
 		}
 	}
 
@@ -197,15 +197,15 @@ public class MiningGameTests : TestClass
 			location_id = "test_cave"
 		});
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo($"Extracted {quantity} {gemType} successfully");
 
 			// Verify backend updated (in production: query inventory)
 		}
-		else
+		else if (result.IsFailure(out var error))
 		{
-			TestHelpers.LogTestError($"Extraction failed: {result.Error}");
+			TestHelpers.LogTestError($"Extraction failed: {error.Message}");
 		}
 	}
 
@@ -235,7 +235,7 @@ public class MiningGameTests : TestClass
 			location_id = "test_cave"
 		});
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo($"Purchased {upgradeType} level {level}");
 
@@ -245,9 +245,9 @@ public class MiningGameTests : TestClass
 			// 3. Updates upgrade level
 			// 4. Returns updated state
 		}
-		else
+		else if (result.IsFailure(out var error))
 		{
-			TestHelpers.LogTestWarning($"Upgrade purchase failed: {result.Error}");
+			TestHelpers.LogTestWarning($"Upgrade purchase failed: {error.Message}");
 		}
 	}
 
@@ -272,7 +272,7 @@ public class MiningGameTests : TestClass
 			credits_earned = creditsEarned
 		});
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo($"Deposited {gemsSpent} {gemType} for {creditsEarned} credits");
 
@@ -282,9 +282,9 @@ public class MiningGameTests : TestClass
 			// 3. Adds credits to player balance
 			// 4. Returns updated credit balance
 		}
-		else
+		else if (result.IsFailure(out var error))
 		{
-			TestHelpers.LogTestWarning($"Credit deposit failed: {result.Error}");
+			TestHelpers.LogTestWarning($"Credit deposit failed: {error.Message}");
 		}
 	}
 
@@ -307,7 +307,7 @@ public class MiningGameTests : TestClass
 			location_id = "test_cave"
 		});
 
-		TestHelpers.LogTestInfo($"Step 1 - Extract: {(extract1.IsSuccess ? "✓" : "✗")}");
+		TestHelpers.LogTestInfo($"Step 1 - Extract: {(extract1.IsSuccess(out var _) ? "✓" : "✗")}");
 
 		// Step 2: Update tick time
 		var tickUpdate = await _eventService.EmitEventAsync("mining/tick_update", new
@@ -316,7 +316,7 @@ public class MiningGameTests : TestClass
 			location_id = "test_cave"
 		});
 
-		TestHelpers.LogTestInfo($"Step 2 - Tick Update: {(tickUpdate.IsSuccess ? "✓" : "✗")}");
+		TestHelpers.LogTestInfo($"Step 2 - Tick Update: {(tickUpdate.IsSuccess(out var _) ? "✓" : "✗")}");
 
 		// Step 3: Purchase upgrade
 		var upgrade = await _eventService.EmitEventAsync("mining/upgrade_purchase", new
@@ -327,7 +327,7 @@ public class MiningGameTests : TestClass
 			location_id = "test_cave"
 		});
 
-		TestHelpers.LogTestInfo($"Step 3 - Upgrade: {(upgrade.IsSuccess ? "✓" : "✗")}");
+		TestHelpers.LogTestInfo($"Step 3 - Upgrade: {(upgrade.IsSuccess(out var _) ? "✓" : "✗")}");
 
 		// Step 4: Deposit for credits
 		var deposit = await _eventService.EmitEventAsync("mining/credit_deposit", new
@@ -337,7 +337,7 @@ public class MiningGameTests : TestClass
 			credits_earned = 20
 		});
 
-		TestHelpers.LogTestInfo($"Step 4 - Credit Deposit: {(deposit.IsSuccess ? "✓" : "✗")}");
+		TestHelpers.LogTestInfo($"Step 4 - Credit Deposit: {(deposit.IsSuccess(out var _) ? "✓" : "✗")}");
 
 		TestHelpers.LogTestInfo("=== Mining Game Flow Complete ===");
 	}
@@ -350,13 +350,13 @@ public class MiningGameTests : TestClass
 			TestHelpers.LogTestInfo("Closing mining game session");
 			var result = await _eventService.CloseActivitySessionAsync(_testSessionId);
 
-			if (result.IsSuccess)
+			if (result.IsSuccess(out var _))
 			{
 				TestHelpers.LogTestInfo("Session closed successfully");
 			}
-			else
+			else if (result.IsFailure(out var error))
 			{
-				TestHelpers.LogTestWarning($"Session close failed: {result.Error}");
+				TestHelpers.LogTestWarning($"Session close failed: {error.Message}");
 			}
 		}
 	}

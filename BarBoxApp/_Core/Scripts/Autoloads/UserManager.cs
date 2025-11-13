@@ -1,3 +1,4 @@
+using LightResults;
 using System;
 using System.Threading.Tasks;
 using Godot;
@@ -74,7 +75,7 @@ public partial class UserManager : AutoloadBase
 		{
 			return await sessionManager.LoginUserByPhoneAsync(phoneNumber, pin);
 		}
-		return Result<UserSession>.Failure("SessionManager not available");
+		return Result.Failure<UserSession>("SessionManager not available");
 	}
 
 	public async Task<Result<string>> CreateUserAccountAsync(string phoneNumber, string pin, string username)
@@ -84,7 +85,7 @@ public partial class UserManager : AutoloadBase
 		{
 			return await sessionManager.CreateUserAccountAsync(phoneNumber, pin, username);
 		}
-		return Result<string>.Failure("SessionManager not available");
+		return Result.Failure<string>("SessionManager not available");
 	}
 
 	public async Task<Result<bool>> IsUsernameAvailableAsync(string username)
@@ -94,7 +95,7 @@ public partial class UserManager : AutoloadBase
 		{
 			return await sessionManager.IsUsernameAvailableAsync(username);
 		}
-		return Result<bool>.Failure("SessionManager not available");
+		return Result.Failure<bool>("SessionManager not available");
 	}
 
 	public async Task<Result<PlayerValidationResponse>> ValidatePlayerCreationAsync(string phoneNumber, string pin, string username)
@@ -104,7 +105,7 @@ public partial class UserManager : AutoloadBase
 		{
 			return await sessionManager.ValidatePlayerCreationAsync(phoneNumber, pin, username);
 		}
-		return Result<PlayerValidationResponse>.Failure("SessionManager not available");
+		return Result.Failure<PlayerValidationResponse>("SessionManager not available");
 	}
 
 	public void AddCredits(string userId, int amount)

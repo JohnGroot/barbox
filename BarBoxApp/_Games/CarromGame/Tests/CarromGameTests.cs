@@ -72,14 +72,14 @@ public class CarromGameTests : TestClass
 			GAME_TAG,
 			playerIds);
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var sessionId))
 		{
-			_testSessionId = result.Value;
+			_testSessionId = sessionId;
 			TestHelpers.LogTestInfo($"Multiplayer session created: {_testSessionId}");
 		}
-		else
+		else if (result.IsFailure(out var error))
 		{
-			TestHelpers.LogTestWarning($"Session creation failed: {result.Error}");
+			TestHelpers.LogTestWarning($"Session creation failed: {error.Message}");
 		}
 	}
 
@@ -100,13 +100,13 @@ public class CarromGameTests : TestClass
 			player_count = 2
 		});
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo("Game begin event emitted");
 		}
-		else
+		else if (result.IsFailure(out var error))
 		{
-			TestHelpers.LogTestError($"Begin event failed: {result.Error}");
+			TestHelpers.LogTestError($"Begin event failed: {error.Message}");
 		}
 	}
 
@@ -143,7 +143,7 @@ public class CarromGameTests : TestClass
 			piece_type = "queen"
 		});
 
-		if (score1.IsSuccess && score2.IsSuccess && score3.IsSuccess)
+		if (score1.IsSuccess(out var _) && score2.IsSuccess(out var _) && score3.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo("All scoring events emitted successfully");
 			TestHelpers.LogTestInfo("Player 1 total: 30 points, Player 2 total: 15 points");
@@ -175,13 +175,13 @@ public class CarromGameTests : TestClass
 			duration_seconds = 300
 		});
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo("Game finish event emitted");
 		}
-		else
+		else if (result.IsFailure(out var error))
 		{
-			TestHelpers.LogTestError($"Finish event failed: {result.Error}");
+			TestHelpers.LogTestError($"Finish event failed: {error.Message}");
 		}
 	}
 
@@ -220,7 +220,7 @@ public class CarromGameTests : TestClass
 			reason = "competitive_game_entry"
 		});
 
-		if (player1Credit.IsSuccess && player2Credit.IsSuccess)
+		if (player1Credit.IsSuccess(out var _) && player2Credit.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo("Credit deduction events emitted for both players");
 		}
@@ -254,9 +254,8 @@ public class CarromGameTests : TestClass
 			GAME_TAG,
 			playerIds);
 
-		if (sessionResult.IsSuccess)
+		if (sessionResult.IsSuccess(out var flowSessionId))
 		{
-			var flowSessionId = sessionResult.Value;
 			TestHelpers.LogTestInfo($"Step 1 - Session Created: ✓ ({flowSessionId})");
 
 			// Step 2: Start game
@@ -267,7 +266,7 @@ public class CarromGameTests : TestClass
 				player_count = 2
 			});
 
-			TestHelpers.LogTestInfo($"Step 2 - Game Begin: {(beginResult.IsSuccess ? "✓" : "✗")}");
+			TestHelpers.LogTestInfo($"Step 2 - Game Begin: {(beginResult.IsSuccess(out var _) ? "✓" : "✗")}");
 
 			// Step 3: Emit scores
 			await _eventService.EmitEventAsync("play/score", new
@@ -294,15 +293,15 @@ public class CarromGameTests : TestClass
 				}
 			});
 
-			TestHelpers.LogTestInfo($"Step 4 - Game Finish: {(finishResult.IsSuccess ? "✓" : "✗")}");
+			TestHelpers.LogTestInfo($"Step 4 - Game Finish: {(finishResult.IsSuccess(out var _) ? "✓" : "✗")}");
 
 			// Step 5: Close session
 			var closeResult = await _eventService.CloseActivitySessionAsync(flowSessionId);
-			TestHelpers.LogTestInfo($"Step 5 - Session Closed: {(closeResult.IsSuccess ? "✓" : "✗")}");
+			TestHelpers.LogTestInfo($"Step 5 - Session Closed: {(closeResult.IsSuccess(out var _) ? "✓" : "✗")}");
 		}
-		else
+		else if (sessionResult.IsFailure(out var error))
 		{
-			TestHelpers.LogTestError($"Flow failed at session creation: {sessionResult.Error}");
+			TestHelpers.LogTestError($"Flow failed at session creation: {error.Message}");
 		}
 
 		TestHelpers.LogTestInfo("=== Carrom Game Flow Complete ===");
@@ -330,13 +329,13 @@ public class CarromGameTests : TestClass
 			TestHelpers.LogTestInfo("Closing carrom game session");
 			var result = await _eventService.CloseActivitySessionAsync(_testSessionId);
 
-			if (result.IsSuccess)
+			if (result.IsSuccess(out var _))
 			{
 				TestHelpers.LogTestInfo("Session closed successfully");
 			}
-			else
+			else if (result.IsFailure(out var error))
 			{
-				TestHelpers.LogTestWarning($"Session close failed: {result.Error}");
+				TestHelpers.LogTestWarning($"Session close failed: {error.Message}");
 			}
 		}
 	}

@@ -111,7 +111,7 @@ public partial class MiningState : Node
 
 	private void RefreshCacheIfNeeded()
 	{
-		if (_cacheValid || _locationTemplate == null)
+		if (_cacheValid)
 			return;
 
 		_cachedMaxCapacity = _locationTemplate.GetMaxCapacity(GetUpgradeLevel(UpgradeType.Capacity), _game.GetConfig());
@@ -214,11 +214,9 @@ public partial class MiningState : Node
 		if (_game.IsDebugMode())
 			GD.Print("[GameState] === LoadUserDataAsync START ===");
 
-		// Get location template first
 		string currentLocationId = _game.GetLocationManager()?.CurrentLocationId ?? DEFAULT_LOCATION_ID;
 		_locationTemplate = _game.GetLocationDataTemplate(currentLocationId);
 
-		// Validate location template
 		if (_locationTemplate == null)
 		{
 			GD.PrintErr($"[GameState] CRITICAL: Could not load location template for '{currentLocationId}'");
@@ -226,12 +224,10 @@ public partial class MiningState : Node
 			return;
 		}
 
-		// Get current user phone number
 		var phoneNumber = _game.GetCurrentUserPhoneNumber();
 
 		if (!string.IsNullOrEmpty(phoneNumber))
 		{
-			// Get player ID from session manager
 			var sessionManager = SessionManager.GetInstance();
 			var currentSession = sessionManager?.GetPrimaryUserSession();
 
@@ -239,75 +235,34 @@ public partial class MiningState : Node
 			{
 				var playerId = currentSession.PlayerId;
 
-				// Check backend health before attempting to load
-				var backendManager = BackendManager.GetInstance();
-				bool isBackendHealthy = backendManager?.IsBackendRunning() ?? false;
+				GD.Print("[GameState] Loading state from backend...");
+				bool stateLoaded = await TryLoadStateFromBackend(playerId, currentLocationId);
 
-				if (!isBackendHealthy)
+				if (!stateLoaded)
 				{
-					if (GameHost.IsProductionContext())
-					{
-						// Production: Backend is REQUIRED for logged-in users
-						GD.PrintErr("[GameState] CRITICAL ERROR: Backend is unavailable in production mode!");
-						GD.PrintErr("[GameState] Cannot load user data without backend connection.");
-						GD.PrintErr("[GameState] Please ensure the backend service is running and healthy.");
-
-						// Show error to user
-						_game.GetUI()?.ShowError(
-							"Service Unavailable",
-							"Unable to connect to game server.\nPlease try again later or contact support if the issue persists."
-						);
-
-						// Create minimal default state to prevent crashes
-						CreateDefaultState();
-						return; // Skip processing - user should see an error
-					}
-					else
-					{
-						// Development: Fallback gracefully with warning
-						GD.PushWarning("[GameState] Backend unavailable in development mode - using default state");
-						GD.Print("[GameState] To test with backend data, ensure backend is running (sh scripts/dev.sh)");
-						CreateDefaultState();
-					}
+					GD.Print("[GameState] Backend load failed - creating default state");
+					CreateDefaultState();
 				}
 				else
 				{
-					// Backend is healthy - try to load state
-					GD.Print("[GameState] Calling TryLoadStateFromBackend...");
-					bool stateLoaded = await TryLoadStateFromBackend(playerId, currentLocationId);
-					GD.Print($"[GameState] TryLoadStateFromBackend result: {(stateLoaded ? "SUCCESS" : "FAILED")}");
-
-					if (!stateLoaded)
-					{
-						// First-time player or backend error - create default state
-						GD.Print("[GameState] Backend load failed - creating default state");
-						CreateDefaultState();
-					}
-					else
-					{
-						GD.Print("[GameState] Backend data loaded successfully!");
-					}
+					GD.Print("[GameState] Backend data loaded successfully!");
 				}
 			}
 			else
 			{
-				// No valid player ID - create default state
 				GD.Print("[GameState] No valid player ID - creating default state");
 				CreateDefaultState();
 			}
 		}
 		else
 		{
-			// No user logged in - create default state for development/testing
-			GD.Print("[GameState] No user logged in - creating default state (dev/test mode)");
+			GD.Print("[GameState] No user logged in - creating default state");
 			CreateDefaultState();
 		}
 
-		// Process any mining ticks that are ready (handles offline progress automatically)
 		GD.Print("[GameState] Processing ready mining ticks...");
 		ProcessReadyMiningTicks();
 
-		// Invalidate cache so it gets rebuilt with new data
 		InvalidateCache();
 		GD.Print("[GameState] === LoadUserDataAsync COMPLETE ===");
 	}
@@ -316,21 +271,17 @@ public partial class MiningState : Node
 
 #region Backend State Loading
 
-	/// <summary>
-	/// Attempt to load state from backend using event aggregation
-	/// </summary>
 	private async Task<bool> TryLoadStateFromBackend(Guid playerId, string locationId)
 	{
 		GD.Print($"[GameState] === TryLoadStateFromBackend START === Player: {playerId}, Location: {locationId}");
 
 		try
 		{
-			// Load global inventory (gems extracted - gems spent)
 			var inventoryResult = await _game.GetEventService().GetPlayerInventoryAsync(playerId);
-			if (inventoryResult.IsSuccess)
+			if (inventoryResult.IsSuccess(out var inventory))
 			{
 				_globalData = new MiningGlobalDataStore();
-				foreach (var kvp in inventoryResult.Value.Gems)
+				foreach (var kvp in inventory.Gems)
 				{
 					if (Enum.TryParse<GemType>(kvp.Key, true, out var gemType))
 					{
@@ -338,22 +289,19 @@ public partial class MiningState : Node
 					}
 				}
 
-				GD.Print($"[GameState] Loaded inventory: {string.Join(", ", inventoryResult.Value.Gems.Select(g => $"{g.Key}={g.Value}"))}");
+				GD.Print($"[GameState] Loaded inventory: {string.Join(", ", inventory.Gems.Select(g => $"{g.Key}={g.Value}"))}");
 			}
-			else
+			else if (inventoryResult.IsFailure(out var invError))
 			{
-				// No inventory found - new player
 				_globalData = new MiningGlobalDataStore();
-
-				GD.Print($"[GameState] No inventory found (new player): {inventoryResult.Error}");
+				GD.Print($"[GameState] No inventory found: {invError.Message}");
 			}
 
-			// Load upgrade levels
 			var upgradesResult = await _game.GetEventService().GetPlayerUpgradesAsync(playerId);
-			if (upgradesResult.IsSuccess)
+			if (upgradesResult.IsSuccess(out var upgrades))
 			{
 				_upgradeLevels = new Dictionary<UpgradeType, int>();
-				foreach (var kvp in upgradesResult.Value.Upgrades)
+				foreach (var kvp in upgrades.Upgrades)
 				{
 					if (Enum.TryParse<UpgradeType>(kvp.Key, true, out var upgradeType))
 					{
@@ -361,57 +309,49 @@ public partial class MiningState : Node
 					}
 				}
 
-				_firstTimeBonus = false; // Has upgrades = not first time
+				_firstTimeBonus = false;
 
-				GD.Print($"[GameState] Loaded upgrades: {string.Join(", ", upgradesResult.Value.Upgrades.Select(u => $"{u.Key}={u.Value}"))}");
+				GD.Print($"[GameState] Loaded upgrades: {string.Join(", ", upgrades.Upgrades.Select(u => $"{u.Key}={u.Value}"))}");
 			}
-			else
+			else if (upgradesResult.IsFailure(out var upgError))
 			{
-				// No upgrades found - new player
 				_upgradeLevels = new Dictionary<UpgradeType, int>();
 				_firstTimeBonus = true;
 
-				GD.Print($"[GameState] No upgrades found (new player): {upgradesResult.Error}");
+				GD.Print($"[GameState] No upgrades found: {upgError.Message}");
 			}
 
-			// Load last mining timestamp for offline progress
 			var timestampResult = await _game.GetEventService().GetPlayerMiningTimestampAsync(playerId, locationId);
-			if (timestampResult.IsSuccess)
+			if (timestampResult.IsSuccess(out var timestamp))
 			{
-				_lastMiningTickTime = timestampResult.Value.LastMiningTime;
+				_lastMiningTickTime = timestamp.LastMiningTime;
 
 				var elapsed = (DateTime.UtcNow - _lastMiningTickTime).TotalMinutes;
 				GD.Print($"[GameState] Loaded mining timestamp: {_lastMiningTickTime:yyyy-MM-dd HH:mm:ss} ({elapsed:F1} minutes ago)");
 			}
-			else
+			else if (timestampResult.IsFailure(out var tsError))
 			{
-				// No timestamp found - start fresh
 				_lastMiningTickTime = DateTime.UtcNow;
-
-				GD.Print($"[GameState] No timestamp found (new location): {timestampResult.Error}");
+				GD.Print($"[GameState] No timestamp found: {tsError.Message}");
 			}
 
-			// Check first-time bonus status from metadata
 			var metadataResult = await _game.GetEventService().GetPlayerMetadataAsync(playerId);
-			if (metadataResult.IsSuccess)
+			if (metadataResult.IsSuccess(out var metadata))
 			{
-				_firstTimeBonus = !metadataResult.Value.HasReceivedBonus;
+				_firstTimeBonus = !metadata.HasReceivedBonus;
 
-				GD.Print($"[GameState] Loaded metadata: HasBonus={metadataResult.Value.HasReceivedBonus}, TotalEvents={metadataResult.Value.TotalEvents}");
+				GD.Print($"[GameState] Loaded metadata: HasBonus={metadata.HasReceivedBonus}, TotalEvents={metadata.TotalEvents}");
 			}
 
-			// Initialize pending gems to 0 (location-specific state starts fresh)
 			_pendingGems = 0;
 
-			// Grant first-time bonus if eligible
 			if (_firstTimeBonus)
 			{
 				var maxCapacity = GetMaxCapacity();
-				_pendingGems = maxCapacity; // Grant full capacity of gems
+				_pendingGems = maxCapacity;
 
 				GD.Print($"[GameState] First-time bonus granted: {_pendingGems} gems");
 
-				// Emit event to backend to mark bonus as received
 				if (_game.GetEventService() != null)
 				{
 					var bonusResult = await _game.GetEventService().EmitFirstTimeBonusAsync(
@@ -420,15 +360,14 @@ public partial class MiningState : Node
 						_pendingGems
 					);
 
-					if (bonusResult.IsSuccess)
+					if (bonusResult.IsSuccess(out var _))
 					{
-						_firstTimeBonus = false; // Mark as received locally
+						_firstTimeBonus = false;
 						GD.Print("[GameState] First-time bonus event emitted successfully");
 					}
-					else
+					else if (bonusResult.IsFailure(out var bonusError))
 					{
-						GD.PrintErr($"[GameState] Failed to emit first-time bonus event: {bonusResult.Error}");
-						// Keep _firstTimeBonus=true so we retry on next login
+						GD.PrintErr($"[GameState] Failed to emit first-time bonus event: {bonusError.Message}");
 					}
 				}
 			}
@@ -444,16 +383,13 @@ public partial class MiningState : Node
 		
 	private void CreateDefaultState()
 	{
-		GD.Print("[GameState] Creating minimal default state (dev/test mode only)");
+		GD.Print("[GameState] Creating minimal default state");
 
 		_pendingGems = 0;
 		_upgradeLevels = new Dictionary<UpgradeType, int>();
 		_globalData = new MiningGlobalDataStore();
 		_firstTimeBonus = true;
 		_lastMiningTickTime = DateTime.UtcNow;
-
-		// Note: First-time bonuses should be granted via backend events
-		// Note: Debug resources should be granted via backend events
 	}
 
 #endregion
@@ -488,29 +424,23 @@ public partial class MiningState : Node
 		
 	public bool ExtractGems()
 	{
-		if (!CanExtractGems() || _locationTemplate == null) 
+		if (!CanExtractGems() || _locationTemplate == null)
 			return false;
 
-		// Check if mining was paused (at capacity) BEFORE extraction
 		var maxCapacity = GetMaxCapacity();
 		bool wasAtCapacity = _pendingGems >= maxCapacity;
 
 		int extractedAmount = _pendingGems;
 		GemType gemType = _locationTemplate.PrimaryGemType;
 
-		// Update local state
 		_globalData.AddGems(gemType, extractedAmount);
 		_pendingGems = 0;
 
-		// Only reset timer if mining was paused at capacity
-		// If mining was actively progressing, preserve the timer progress
 		if (wasAtCapacity)
 		{
-			ResetMiningTimer(); // Start fresh cycle since mining was paused
+			ResetMiningTimer();
 		}
-		// else: keep current timer progress for continuous mining
 
-		// Emit event to backend (fire and forget)
 		if (_game.GetEventService() != null)
 		{
 			_ = _game.GetEventService().EmitExtractCompleteAsync(gemType, extractedAmount);
@@ -602,9 +532,9 @@ public partial class MiningState : Node
 		try
 		{
 			var result = await _game.GetEventService().EmitMiningTickAsync(locationId, pendingGems);
-			if (!result.IsSuccess)
+			if (result.IsFailure(out var error))
 			{
-				GD.PrintErr($"[GameState] Failed to emit mining tick: {result.Error}");
+				GD.PrintErr($"[GameState] Failed to emit mining tick: {error.Message}");
 			}
 		}
 		catch (Exception ex)

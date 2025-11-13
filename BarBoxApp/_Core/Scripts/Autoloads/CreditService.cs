@@ -1,4 +1,5 @@
 using Godot;
+using LightResults;
 using System;
 using System.Threading.Tasks;
 
@@ -57,7 +58,7 @@ public partial class CreditService : AutoloadBase
 		if (eventService == null || !eventService.IsReady)
 		{
 			LogError($"EventService not available (exists: {eventService != null}, ready: {eventService?.IsReady ?? false})");
-			return Result<int>.Failure("Credit service unavailable");
+			return Result.Failure<int>("Credit service unavailable");
 		}
 
 		// Check cache if not forcing refresh
@@ -65,16 +66,16 @@ public partial class CreditService : AutoloadBase
 		{
 			if (!cached.IsStale)
 			{
-				return Result<int>.Success(cached.Amount);
+				return Result.Success(cached.Amount);
 			}
 		}
 
 		// Query backend
 		var result = await eventService.GetPlayerCreditsAsync(playerId);
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var credits))
 		{
-			UpdateCache(playerId, result.Value);
-			EmitSignal(SignalName.CreditsChanged, playerId.ToString(), result.Value);
+			UpdateCache(playerId, credits);
+			EmitSignal(SignalName.CreditsChanged, playerId.ToString(), credits);
 		}
 
 		return result;
@@ -89,29 +90,29 @@ public partial class CreditService : AutoloadBase
 		if (eventService == null || !eventService.IsReady)
 		{
 			LogError($"EventService not available (exists: {eventService != null}, ready: {eventService?.IsReady ?? false})");
-			return Result<int>.Failure("Credit service unavailable");
+			return Result.Failure<int>("Credit service unavailable");
 		}
 
 		if (amount <= 0)
 		{
-			return Result<int>.Failure("Amount must be positive");
+			return Result.Failure<int>("Amount must be positive");
 		}
 
 		// Get initial balance to detect when credits are spent
 		var initialBalanceResult = await eventService.GetPlayerCreditsAsync(playerId);
-		if (!initialBalanceResult.IsSuccess)
+		if (initialBalanceResult.IsFailure(out var balanceError))
 		{
-			LogWarning($"Could not get initial balance: {initialBalanceResult.Error}");
+			LogWarning($"Could not get initial balance: {balanceError.Message}");
 			// Continue anyway - backend will validate balance on spend
 		}
-		var initialBalance = initialBalanceResult.IsSuccess ? initialBalanceResult.Value : 0;
+		var initialBalance = initialBalanceResult.IsSuccess(out var balanceValue) ? balanceValue : 0;
 
 		// Backend validates balance and performs spend atomically
 		var spendResult = await eventService.SpendCreditsAsync(playerId, amount, reason);
-		if (!spendResult.IsSuccess)
+		if (spendResult.IsFailure(out var spendError))
 		{
-			LogWarning($"Credit spend failed: {spendResult.Error}");
-			return Result<int>.Failure(spendResult.Error);
+			LogWarning($"Credit spend failed: {spendError.Message}");
+			return Result.Failure<int>(spendError.Message);
 		}
 
 		// Poll for updated balance after spend (event-sourced system requires waiting for event processing)
@@ -122,11 +123,11 @@ public partial class CreditService : AutoloadBase
 		while ((System.DateTime.UtcNow - startTime).TotalSeconds < BALANCE_POLL_TIMEOUT_SECONDS)
 		{
 			var balanceResult = await eventService.GetPlayerCreditsAsync(playerId);
-			if (balanceResult.IsSuccess && balanceResult.Value <= expectedMaxBalance)
+			if (balanceResult.IsSuccess(out var newBalance) && newBalance <= expectedMaxBalance)
 			{
-				UpdateCache(playerId, balanceResult.Value);
-				EmitSignal(SignalName.CreditsChanged, playerId.ToString(), balanceResult.Value);
-				LogInfo($"Credits spent: {amount} ({reason}) - New balance: {balanceResult.Value}");
+				UpdateCache(playerId, newBalance);
+				EmitSignal(SignalName.CreditsChanged, playerId.ToString(), newBalance);
+				LogInfo($"Credits spent: {amount} ({reason}) - New balance: {newBalance}");
 				return balanceResult;
 			}
 
@@ -136,12 +137,12 @@ public partial class CreditService : AutoloadBase
 
 		// Timeout - get final balance for diagnostic purposes
 		var finalBalanceResult = await eventService.GetPlayerCreditsAsync(playerId);
-		var finalBalance = finalBalanceResult.IsSuccess ? finalBalanceResult.Value : -1;
+		var finalBalance = finalBalanceResult.IsSuccess(out var finalValue) ? finalValue : -1;
 
 		LogError($"Credit spend timeout: Event succeeded but balance did not update within {BALANCE_POLL_TIMEOUT_SECONDS}s. " +
 			$"Initial: {initialBalance}, Expected: <={expectedMaxBalance}, Final: {finalBalance}");
 
-		return Result<int>.Failure($"Spend succeeded but balance update timed out (expected: {expectedMaxBalance}, got: {finalBalance})");
+		return Result.Failure<int>($"Spend succeeded but balance update timed out (expected: {expectedMaxBalance}, got: {finalBalance})");
 	}
 
 	/// <summary>
@@ -153,28 +154,28 @@ public partial class CreditService : AutoloadBase
 		if (eventService == null || !eventService.IsReady)
 		{
 			LogError($"EventService not available (exists: {eventService != null}, ready: {eventService?.IsReady ?? false})");
-			return Result<int>.Failure("Credit service unavailable");
+			return Result.Failure<int>("Credit service unavailable");
 		}
 
 		if (amount <= 0)
 		{
-			return Result<int>.Failure("Amount must be positive");
+			return Result.Failure<int>("Amount must be positive");
 		}
 
 		// Get initial balance to detect when credits are added
 		var initialBalanceResult = await eventService.GetPlayerCreditsAsync(playerId);
-		if (!initialBalanceResult.IsSuccess)
+		if (initialBalanceResult.IsFailure(out var initialError))
 		{
-			LogWarning($"Could not get initial balance: {initialBalanceResult.Error}");
+			LogWarning($"Could not get initial balance: {initialError.Message}");
 			// Continue anyway - backend might not have player record yet
 		}
-		var initialBalance = initialBalanceResult.IsSuccess ? initialBalanceResult.Value : 0;
+		var initialBalance = initialBalanceResult.IsSuccess(out var initialValue) ? initialValue : 0;
 
 		var addResult = await eventService.AddCreditsAsync(playerId, amount, reason);
-		if (!addResult.IsSuccess)
+		if (addResult.IsFailure(out var addError))
 		{
-			LogWarning($"Credit add failed: {addResult.Error}");
-			return Result<int>.Failure(addResult.Error);
+			LogWarning($"Credit add failed: {addError.Message}");
+			return Result.Failure<int>(addError.Message);
 		}
 
 		// Poll for updated balance after add (event-sourced system requires waiting for event processing)
@@ -185,11 +186,11 @@ public partial class CreditService : AutoloadBase
 		while ((System.DateTime.UtcNow - startTime).TotalSeconds < BALANCE_POLL_TIMEOUT_SECONDS)
 		{
 			var balanceResult = await eventService.GetPlayerCreditsAsync(playerId);
-			if (balanceResult.IsSuccess && balanceResult.Value >= expectedMinBalance)
+			if (balanceResult.IsSuccess(out var newBalance) && newBalance >= expectedMinBalance)
 			{
-				UpdateCache(playerId, balanceResult.Value);
-				EmitSignal(SignalName.CreditsChanged, playerId.ToString(), balanceResult.Value);
-				LogInfo($"Credits added: {amount} ({reason}) - New balance: {balanceResult.Value}");
+				UpdateCache(playerId, newBalance);
+				EmitSignal(SignalName.CreditsChanged, playerId.ToString(), newBalance);
+				LogInfo($"Credits added: {amount} ({reason}) - New balance: {newBalance}");
 				return balanceResult;
 			}
 
@@ -199,12 +200,12 @@ public partial class CreditService : AutoloadBase
 
 		// Timeout - get final balance for diagnostic purposes
 		var finalBalanceResult = await eventService.GetPlayerCreditsAsync(playerId);
-		var finalBalance = finalBalanceResult.IsSuccess ? finalBalanceResult.Value : -1;
+		var finalBalance = finalBalanceResult.IsSuccess(out var finalValue) ? finalValue : -1;
 
 		LogError($"Credit add timeout: Event succeeded but balance did not update within {BALANCE_POLL_TIMEOUT_SECONDS}s. " +
 			$"Initial: {initialBalance}, Expected: >={expectedMinBalance}, Final: {finalBalance}");
 
-		return Result<int>.Failure($"Add succeeded but balance update timed out (expected: {expectedMinBalance}, got: {finalBalance})");
+		return Result.Failure<int>($"Add succeeded but balance update timed out (expected: {expectedMinBalance}, got: {finalBalance})");
 	}
 
 	/// <summary>
@@ -221,25 +222,28 @@ public partial class CreditService : AutoloadBase
 		}
 
 		var backendResult = await eventService.GetPlayerCreditsAsync(playerId);
-		if (!backendResult.IsSuccess)
+		if (backendResult.IsFailure(out var error))
 		{
-			LogWarning($"Reconciliation failed: {backendResult.Error}");
+			LogWarning($"Reconciliation failed: {error.Message}");
 			return;
 		}
 
+		if (!backendResult.IsSuccess(out var backendBalance))
+			return;
+
 		if (_balanceCache.TryGetValue(playerId, out var cached))
 		{
-			if (cached.Amount != backendResult.Value)
+			if (cached.Amount != backendBalance)
 			{
-				LogWarning($"Credit drift detected: Local={cached.Amount}, Backend={backendResult.Value}");
-				UpdateCache(playerId, backendResult.Value);
-				EmitSignal(SignalName.CreditsChanged, playerId.ToString(), backendResult.Value);
+				LogWarning($"Credit drift detected: Local={cached.Amount}, Backend={backendBalance}");
+				UpdateCache(playerId, backendBalance);
+				EmitSignal(SignalName.CreditsChanged, playerId.ToString(), backendBalance);
 			}
 		}
 		else
 		{
 			// First time seeing this player - initialize cache
-			UpdateCache(playerId, backendResult.Value);
+			UpdateCache(playerId, backendBalance);
 		}
 	}
 

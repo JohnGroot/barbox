@@ -40,9 +40,9 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 
 		// Arrange - create user session
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -87,9 +87,9 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 
 		// Arrange
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -135,9 +135,9 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 
 		// Arrange
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -179,9 +179,9 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 
 		// Arrange
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -232,9 +232,9 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 
 		// Arrange
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping - login failed: {loginError.Message}");
 			return;
 		}
 

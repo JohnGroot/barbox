@@ -1,4 +1,5 @@
 using Godot;
+using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -1493,9 +1494,8 @@ namespace BarBox.Games.Racing
 					limit: 10
 				);
 
-				if (leaderboardResult.IsSuccess)
+				if (leaderboardResult.IsSuccess(out var leaderboard))
 				{
-					var leaderboard = leaderboardResult.Value;
 
 					// Convert to LeaderboardEntry format
 					for (int i = 0; i < leaderboard.Leaderboard.Count; i++)
@@ -1524,10 +1524,10 @@ namespace BarBox.Games.Racing
 					// Reset failure counter on success
 					_leaderboardFailureCount = 0;
 				}
-				else
+				else if (leaderboardResult.IsFailure(out var error))
 				{
 					_leaderboardFailureCount++;
-					GD.PrintErr($"[RacingUIManager] Failed to load leaderboard ({_leaderboardFailureCount}/{MAX_LEADERBOARD_FAILURES}): {leaderboardResult.Error}");
+					GD.PrintErr($"[RacingUIManager] Failed to load leaderboard ({_leaderboardFailureCount}/{MAX_LEADERBOARD_FAILURES}): {error.Message}");
 				}
 			}
 
@@ -1900,14 +1900,14 @@ namespace BarBox.Games.Racing
 						limit: 10
 					);
 
-					if (leaderboardResult.Value.IsSuccess)
+					if (leaderboardResult.HasValue && leaderboardResult.Value.IsSuccess(out _))
 					{
 						// Success - break out of retry loop
 						break;
 					}
-					else
+					else if (leaderboardResult.HasValue && leaderboardResult.Value.IsFailure(out var retryError))
 					{
-						GD.PrintErr($"[RacingUIManager] Leaderboard query attempt {attempt}/{MAX_RETRIES} failed: {leaderboardResult.Value.Error}");
+						GD.PrintErr($"[RacingUIManager] Leaderboard query attempt {attempt}/{MAX_RETRIES} failed: {retryError.Message}");
 
 						if (attempt < MAX_RETRIES)
 						{
@@ -1937,14 +1937,13 @@ namespace BarBox.Games.Racing
 			}
 
 			// Process result after retry loop
-			if (leaderboardResult.HasValue && leaderboardResult.Value.IsSuccess)
+			if (leaderboardResult.HasValue && leaderboardResult.Value.IsSuccess(out var finalLeaderboard))
 			{
-				var leaderboard = leaderboardResult.Value.Value;
 				var lapEntries = new List<LeaderboardEntry>();
 				var raceEntries = new List<LeaderboardEntry>();
 
 				// Check if leaderboard is empty (no scores yet)
-				if (leaderboard.Leaderboard == null || leaderboard.Leaderboard.Count == 0)
+				if (finalLeaderboard.Leaderboard == null || finalLeaderboard.Leaderboard.Count == 0)
 				{
 					GD.Print($"[RacingUIManager] Leaderboard for {trackId} is empty (no scores yet)");
 					// Show empty leaderboard (not an error)
@@ -1954,9 +1953,9 @@ namespace BarBox.Games.Racing
 				else
 				{
 					// Convert to LeaderboardEntry format for race entries
-					for (int i = 0; i < leaderboard.Leaderboard.Count; i++)
+					for (int i = 0; i < finalLeaderboard.Leaderboard.Count; i++)
 					{
-						var entry = leaderboard.Leaderboard[i];
+						var entry = finalLeaderboard.Leaderboard[i];
 						raceEntries.Add(new LeaderboardEntry
 						{
 							TrackId = trackId,

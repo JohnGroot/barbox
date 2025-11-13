@@ -1,4 +1,5 @@
 using Godot;
+using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -22,20 +23,20 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (string.IsNullOrEmpty(trackId))
-			return Result<bool>.Failure(ValidationMessages.Required("Track ID"));
+			return Result.Failure<bool>(ValidationMessages.Required("Track ID"));
 
 		if (lapNum < 1)
-			return Result<bool>.Failure(ValidationMessages.MinValue("Lap number", 1));
+			return Result.Failure<bool>(ValidationMessages.MinValue("Lap number", 1));
 
 		if (lapTime < 0)
-			return Result<bool>.Failure(ValidationMessages.MinValue("Lap time", 0));
+			return Result.Failure<bool>(ValidationMessages.MinValue("Lap time", 0));
 
 		if (checkpoints == null || checkpoints.Length == 0)
-			return Result<bool>.Failure(ValidationMessages.Required("Checkpoint data"));
+			return Result.Failure<bool>(ValidationMessages.Required("Checkpoint data"));
 
 		// Validate checkpoint data integrity
 		if (!ValidateCheckpointData(checkpoints, out string validationError))
-			return Result<bool>.Failure(validationError);
+			return Result.Failure<bool>(validationError);
 
 		// Convert checkpoints array to anonymous objects manually (avoid Linq)
 		var checkpointArray = new object[checkpoints.Length];
@@ -108,20 +109,20 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (raceEntry == null)
-			return Result<bool>.Failure(ValidationMessages.Required("Race entry"));
+			return Result.Failure<bool>(ValidationMessages.Required("Race entry"));
 
 		if (string.IsNullOrEmpty(raceEntry.TrackId))
-			return Result<bool>.Failure(ValidationMessages.Required("Track ID"));
+			return Result.Failure<bool>(ValidationMessages.Required("Track ID"));
 
 		if (raceEntry.TotalTime < 0)
-			return Result<bool>.Failure(ValidationMessages.MinValue("Total time", 0));
+			return Result.Failure<bool>(ValidationMessages.MinValue("Total time", 0));
 
 		if (raceEntry.TotalLaps < 1)
-			return Result<bool>.Failure(ValidationMessages.MinValue("Lap count", 1));
+			return Result.Failure<bool>(ValidationMessages.MinValue("Lap count", 1));
 
 		// Validate race data integrity
 		if (!ValidateRaceDataIntegrity(raceEntry, out string integrityError))
-			return Result<bool>.Failure(integrityError);
+			return Result.Failure<bool>(integrityError);
 
 		// Convert checkpoints array manually if not null (avoid Linq)
 		object[] checkpointArray = null;
@@ -207,13 +208,13 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (string.IsNullOrEmpty(trackId))
-			return Result<bool>.Failure(ValidationMessages.Required("Track ID"));
+			return Result.Failure<bool>(ValidationMessages.Required("Track ID"));
 
 		if (string.IsNullOrEmpty(playerId))
-			return Result<bool>.Failure(ValidationMessages.Required("Player ID"));
+			return Result.Failure<bool>(ValidationMessages.Required("Player ID"));
 
 		if (completedLaps < 0)
-			return Result<bool>.Failure(ValidationMessages.MinValue("Completed laps", 0));
+			return Result.Failure<bool>(ValidationMessages.MinValue("Completed laps", 0));
 
 		// Allow empty lap times array (race abandoned before completing any lap)
 		if (lapTimes == null)
@@ -255,16 +256,16 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (string.IsNullOrEmpty(trackId))
-			return Result<RacingLeaderboardData>.Failure(ValidationMessages.Required("Track ID"));
+			return Result.Failure<RacingLeaderboardData>(ValidationMessages.Required("Track ID"));
 
 		var limitValidation = ValidateLeaderboardLimit(limit);
-		if (!limitValidation.IsSuccess)
-			return Result<RacingLeaderboardData>.Failure(limitValidation.Error);
+		if (limitValidation.IsFailure(out var limitError))
+			return Result.Failure<RacingLeaderboardData>(limitError.Message);
 
 		// Validate lap count if provided
 		if (laps.HasValue && expectedLaps.HasValue && laps.Value != expectedLaps.Value)
 		{
-			return Result<RacingLeaderboardData>.Failure(
+			return Result.Failure<RacingLeaderboardData>(
 				$"Leaderboard query lap count ({laps.Value}) doesn't match track configuration ({expectedLaps.Value})");
 		}
 
@@ -289,13 +290,13 @@ public class RacingEventService : GameEventServiceBase
 	private Result<RacingLeaderboardData> ParseLeaderboardData(Godot.Collections.Dictionary jsonDict, string metric)
 	{
 		if (!jsonDict.ContainsKey(JsonFieldNames.TrackId))
-			return Result<RacingLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.TrackId}");
+			return Result.Failure<RacingLeaderboardData>($"Missing required field: {JsonFieldNames.TrackId}");
 
 		if (!jsonDict.ContainsKey(JsonFieldNames.Metric))
-			return Result<RacingLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.Metric}");
+			return Result.Failure<RacingLeaderboardData>($"Missing required field: {JsonFieldNames.Metric}");
 
 		if (!jsonDict.ContainsKey(JsonFieldNames.Leaderboard))
-			return Result<RacingLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.Leaderboard}");
+			return Result.Failure<RacingLeaderboardData>($"Missing required field: {JsonFieldNames.Leaderboard}");
 
 		var leaderboardData = new RacingLeaderboardData
 		{
@@ -312,21 +313,28 @@ public class RacingEventService : GameEventServiceBase
 			var playerIdResult = JsonParsingHelpers.ParseGuid(entryDict, JsonFieldNames.PlayerId);
 			var entryDateResult = JsonParsingHelpers.ParseDateTime(entryDict, JsonFieldNames.EntryDate);
 
-			if (!playerIdResult.IsSuccess) return Result<RacingLeaderboardData>.Failure(playerIdResult.Error);
-			if (!entryDateResult.IsSuccess) return Result<RacingLeaderboardData>.Failure(entryDateResult.Error);
+			if (playerIdResult.IsFailure(out var playerIdError))
+				return Result.Failure<RacingLeaderboardData>(playerIdError.Message);
+			if (entryDateResult.IsFailure(out var entryDateError))
+				return Result.Failure<RacingLeaderboardData>(entryDateError.Message);
 
 			if (!entryDict.ContainsKey(JsonFieldNames.Username))
-				return Result<RacingLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.Username}");
+				return Result.Failure<RacingLeaderboardData>($"Missing required field: {JsonFieldNames.Username}");
 
 			if (!entryDict.ContainsKey(JsonFieldNames.MetricValue))
-				return Result<RacingLeaderboardData>.Failure($"Missing required field: {JsonFieldNames.MetricValue}");
+				return Result.Failure<RacingLeaderboardData>($"Missing required field: {JsonFieldNames.MetricValue}");
+
+			if (!playerIdResult.IsSuccess(out var playerId))
+				return Result.Failure<RacingLeaderboardData>("Failed to parse player ID");
+			if (!entryDateResult.IsSuccess(out var entryDate))
+				return Result.Failure<RacingLeaderboardData>("Failed to parse entry date");
 
 			var leaderboardEntry = new RacingLeaderboardEntry
 			{
-				PlayerId = playerIdResult.Value,
+				PlayerId = playerId,
 				Username = entryDict[JsonFieldNames.Username].AsString(),
 				MetricValue = (float)entryDict[JsonFieldNames.MetricValue].AsDouble(),
-				EntryDate = entryDateResult.Value
+				EntryDate = entryDate
 			};
 
 			// Parse lap_times if present (only for best_race metric)
@@ -343,7 +351,7 @@ public class RacingEventService : GameEventServiceBase
 			leaderboardData.Leaderboard.Add(leaderboardEntry);
 		}
 
-		return Result<RacingLeaderboardData>.Success(leaderboardData);
+		return Result.Success(leaderboardData);
 	}
 
 	/// <summary>
@@ -358,13 +366,13 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (playerId == Guid.Empty)
-			return Result<bool>.Failure(ValidationMessages.Required("Player ID"));
+			return Result.Failure<bool>(ValidationMessages.Required("Player ID"));
 
 		if (string.IsNullOrEmpty(username))
-			return Result<bool>.Failure(ValidationMessages.Required("Username"));
+			return Result.Failure<bool>(ValidationMessages.Required("Username"));
 
 		if (boxId == Guid.Empty)
-			return Result<bool>.Failure(ValidationMessages.Required("Box ID"));
+			return Result.Failure<bool>(ValidationMessages.Required("Box ID"));
 
 		// Build request payload using DTO class to avoid Godot.Variant serialization issues
 		var request = new PlayerCreateRequest
@@ -377,7 +385,7 @@ public class RacingEventService : GameEventServiceBase
 		// Call backend /player/first_play endpoint
 		// Use EventService.PostAsync directly since GameEventServiceBase doesn't have PostBackendAsync
 		if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
-			return Result<bool>.Failure("Event service not available");
+			return Result.Failure<bool>("Event service not available");
 
 		var result = await _eventService.PostAsync<PlayerCreateRequest, PlayerDetailResponse>(
 			"/player/first_play",
@@ -385,10 +393,13 @@ public class RacingEventService : GameEventServiceBase
 			expectedStatusCode: 201
 		);
 
-		if (result.IsSuccess)
-			return Result<bool>.Success(true);
-		else
-			return Result<bool>.Failure(result.Error);
+		if (result.IsSuccess(out var _))
+			return Result.Success(true);
+
+		if (result.IsFailure(out var error))
+			return Result.Failure<bool>(error.Message);
+
+		return Result.Failure<bool>("Unknown error");
 	}
 }
 
