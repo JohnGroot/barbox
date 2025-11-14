@@ -17,9 +17,10 @@ public partial class SceneManager : AutoloadBase
 	{
 		_sceneTree = GetTree();
 		_currentScenePath = _sceneTree.CurrentScene?.SceneFilePath ?? string.Empty;
-		
-		// Initialize all services in dependency order
-		CallDeferred(nameof(InitializeAllServices));
+
+		// All autoloads have completed OnServiceEnterTree() by this point
+		// Safe to call async initialization directly (no CallDeferred needed)
+		InitializeAllServices();
 	}
 
 	/// <summary>

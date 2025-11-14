@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -15,21 +16,29 @@ public partial class GameHost : AutoloadBase
 
 	public static GameHost Instance { get; private set; }
 
-	private Node _currentGame;
+	private GameController _currentGame;
 	private string _currentGameId = string.Empty;
 	private SessionManager _sessionManager;
 	private GameRegistry _gameRegistry;
 	private SceneManager _sceneManager;
 	private MainController _mainController;
 
-	protected override void OnServiceReady()
+	protected override void OnServiceEnterTree()
 	{
 		Instance = this;
-		
+
+		// All autoloads guaranteed to exist after _EnterTree phase
 		_sessionManager = SessionManager.GetInstance();
 		_gameRegistry = GetAutoload<GameRegistry>();
 		_sceneManager = GetAutoload<SceneManager>();
-		
+
+		// Production validation - fail fast if required services missing
+		if (IsProductionContext())
+		{
+			if (_gameRegistry == null || _sessionManager == null || _sceneManager == null)
+				throw new InvalidOperationException("Required services not configured for GameHost");
+		}
+
 		LogInfo("GameHost initialized");
 	}
 
@@ -42,8 +51,8 @@ public partial class GameHost : AutoloadBase
 		// Stop any current game first
 		StopCurrentGame();
 
-		// Validate game data
-		var gameData = _gameRegistry?.GetGameData(gameId);
+		// Validate game data (GameRegistry guaranteed to exist)
+		var gameData = _gameRegistry.GetGameData(gameId);
 		if (gameData == null || !gameData.IsActive)
 		{
 			LogError($"Game {gameId} not found or inactive");
@@ -71,7 +80,7 @@ public partial class GameHost : AutoloadBase
 			return;
 		}
 
-		_currentGame = scene.Instantiate();
+		_currentGame = scene.Instantiate<GameController>();
 		_currentGameId = gameId;
 
 		// Hide main menu UI when game starts
@@ -80,10 +89,13 @@ public partial class GameHost : AutoloadBase
 		_mainController?.HideMainUI();
 
 		// Add as child of current scene (overlay pattern)
+		// Game's _Ready() will call SetTopMenuContext() during initialization
 		currentScene?.AddChild(_currentGame);
 
-		// Connect game signals for optional integration
-		ConnectGameSignals(_currentGame);
+		// Show top menu bar AFTER game has initialized and set context
+		// This ensures visibility propagation happens with correct child states
+		var uiManager = UIManager.GetInstance();
+		uiManager?.SetTopMenuVisible(true);
 
 		LogInfo($"Loaded {gameId} as overlay");
 	}
@@ -92,12 +104,8 @@ public partial class GameHost : AutoloadBase
 	{
 		if (_currentGame != null)
 		{
-			// Try to call EndGame on the hosted game
-			if (_currentGame.HasMethod("EndGame"))
-			{
-				_currentGame.Call("EndGame");
-			}
-
+			// Games are responsible for calling NotifyGameEnded() when they end
+			// We just emit the platform signal and clean up
 			EmitSignal(SignalName.GameEnded, _currentGameId);
 			_currentGame.QueueFree();
 			_currentGame = null;
@@ -116,17 +124,35 @@ public partial class GameHost : AutoloadBase
 		_currentGameId = string.Empty;
 	}
 
+	/// <summary>
+	/// Attempts to pause the current game by calling game-specific pause methods
+	/// Games should implement their own pause logic (PauseRace, etc.)
+	/// </summary>
 	public void PauseGame()
 	{
-		if (_currentGame?.HasMethod("PauseGame") == true)
+		// Try common pause method names
+		if (_currentGame?.HasMethod("PauseRace") == true)
+		{
+			_currentGame.Call("PauseRace");
+		}
+		else if (_currentGame?.HasMethod("PauseGame") == true)
 		{
 			_currentGame.Call("PauseGame");
 		}
 	}
 
+	/// <summary>
+	/// Attempts to resume the current game by calling game-specific resume methods
+	/// Games should implement their own resume logic (ResumeRace, etc.)
+	/// </summary>
 	public void ResumeGame()
 	{
-		if (_currentGame?.HasMethod("ResumeGame") == true)
+		// Try common resume method names
+		if (_currentGame?.HasMethod("ResumeRace") == true)
+		{
+			_currentGame.Call("ResumeRace");
+		}
+		else if (_currentGame?.HasMethod("ResumeGame") == true)
 		{
 			_currentGame.Call("ResumeGame");
 		}
@@ -135,40 +161,53 @@ public partial class GameHost : AutoloadBase
 	public void ReturnToMainMenu()
 	{
 		StopCurrentGame();
-		_sceneManager?.ReturnToMainMenu();
+		_sceneManager.ReturnToMainMenu();
 	}
 
 
-	// Signal connection for optional game integration
-	private void ConnectGameSignals(Node gameNode)
-	{
-		// Connect essential game lifecycle signals only
-		TryConnectSignal(gameNode, "GameStarted", nameof(OnGameStarted), Callable.From(OnGameStarted));
-		TryConnectSignal(gameNode, "GameEnded", nameof(OnGameEnded), Callable.From(OnGameEnded));
-		TryConnectSignal(gameNode, "GamePaused", nameof(OnGamePaused), Callable.From(OnGamePaused));
-		TryConnectSignal(gameNode, "GameResumed", nameof(OnGameResumed), Callable.From(OnGameResumed));
-	}
+	// ============================================================================
+	// Platform Integration - Games call these to emit platform-level signals
+	// ============================================================================
 
-	// Signal handlers
-	private void OnGameStarted()
+	/// <summary>
+	/// Games call this when their domain-specific game session starts
+	/// (e.g., race starts, mining session starts, round starts)
+	/// Emits platform-level GameStarted signal for platform services
+	/// </summary>
+	public void NotifyGameStarted()
 	{
 		LogInfo($"{_currentGameId} started");
 		EmitSignal(SignalName.GameStarted, _currentGameId);
 	}
 
-	private void OnGameEnded()
+	/// <summary>
+	/// Games call this when their domain-specific game session ends
+	/// (e.g., race ends, mining session ends, round ends)
+	/// Emits platform-level GameEnded signal for platform services
+	/// </summary>
+	public void NotifyGameEnded()
 	{
 		LogInfo($"{_currentGameId} ended");
 		EmitSignal(SignalName.GameEnded, _currentGameId);
 	}
 
-	private void OnGamePaused()
+	/// <summary>
+	/// Games call this when their domain-specific game session pauses
+	/// (e.g., race pauses)
+	/// Emits platform-level GamePaused signal for platform services
+	/// </summary>
+	public void NotifyGamePaused()
 	{
 		LogInfo($"{_currentGameId} paused");
 		EmitSignal(SignalName.GamePaused, _currentGameId);
 	}
 
-	private void OnGameResumed()
+	/// <summary>
+	/// Games call this when their domain-specific game session resumes
+	/// (e.g., race resumes)
+	/// Emits platform-level GameResumed signal for platform services
+	/// </summary>
+	public void NotifyGameResumed()
 	{
 		LogInfo($"{_currentGameId} resumed");
 		EmitSignal(SignalName.GameResumed, _currentGameId);
@@ -176,7 +215,7 @@ public partial class GameHost : AutoloadBase
 
 	// Public API for games and other systems
 	public string GetCurrentGameId() => _currentGameId;
-	public Node GetCurrentGame() => _currentGame;
+	public GameController GetCurrentGame() => _currentGame;
 
 	/// <summary>
 	/// Get user session - redirects to SessionManager
@@ -185,7 +224,7 @@ public partial class GameHost : AutoloadBase
 	public UserSession GetUserSession(string playerId)
 	{
 		var sessionManager = SessionManager.GetInstance();
-		return sessionManager?.GetUserSession(playerId) ?? sessionManager?.GetPrimaryUserSession();
+		return sessionManager.GetUserSession(playerId) ?? sessionManager.GetPrimaryUserSession();
 	}
 
 	/// <summary>
@@ -194,29 +233,13 @@ public partial class GameHost : AutoloadBase
 	public void SetTopMenuContext(string gameTitle, ContextButtonData[] contextButtons = null)
 	{
 		var uiManager = UIManager.GetInstance();
-		if (uiManager != null)
-		{
-			uiManager.SetGameContext(gameTitle, contextButtons);
-			LogInfo($"SetTopMenuContext called for '{gameTitle}' with {contextButtons?.Length ?? 0} buttons");
-		}
-		else
-		{
-			LogInfo($"SetTopMenuContext called for '{gameTitle}' but UIManager not available (development mode)");
-		}
+		uiManager.SetGameContext(gameTitle, contextButtons);
 	}
 
 	public void ClearTopMenuContext()
 	{
 		var uiManager = UIManager.GetInstance();
-		if (uiManager != null)
-		{
-			uiManager.ClearGameContext();
-			LogInfo("ClearTopMenuContext called - game context cleared");
-		}
-		else
-		{
-			LogInfo("ClearTopMenuContext called but UIManager not available (development mode)");
-		}
+		uiManager.ClearGameContext();
 	}
 
 	/// <summary>
@@ -226,15 +249,7 @@ public partial class GameHost : AutoloadBase
 	public void SetGameHelpContent(HelpContentData helpContent)
 	{
 		var uiManager = UIManager.GetInstance();
-		if (uiManager != null)
-		{
-			uiManager.SetGameHelpContent(helpContent);
-			LogInfo($"Game help content set: {helpContent.Title}");
-		}
-		else
-		{
-			LogInfo("SetGameHelpContent called but UIManager not available (development mode)");
-		}
+		uiManager.SetGameHelpContent(helpContent);
 	}
 
 	/// <summary>

@@ -1182,13 +1182,13 @@ namespace BarBox.Games.Racing
 	/// <param name="timeLabel">Label for the time display</param>
 	/// <param name="maxSpeed">Maximum car speed for percentage calculation</param>
 	/// <param name="lapProgress">Current lap progress (0.0 to 1.0)</param>
-	public void UpdateStatusLabels(float carSpeed, GameController.GameMode gameMode, int currentLap, int targetLaps, float timeDisplay, string timeLabel, float maxSpeed = 1800.0f, float lapProgress = 0.0f)
+	public void UpdateStatusLabels(float carSpeed, RacingMode gameMode, int currentLap, int targetLaps, float timeDisplay, string timeLabel, float maxSpeed = 1800.0f, float lapProgress = 0.0f)
 	{
 		// Update arc-based HUD (primary display)
 		if (_hudArcRenderer != null && IsInstanceValid(_hudArcRenderer))
 		{
 			var timeText = $"{timeLabel}: {timeDisplay:F1}s";
-			var isPracticeMode = (gameMode == GameController.GameMode.Practice);
+			var isPracticeMode = (gameMode == RacingMode.Practice);
 			_hudArcRenderer.UpdateHUDState(carSpeed, maxSpeed, currentLap, targetLaps, lapProgress, timeText, isPracticeMode);
 		}
 
@@ -1200,7 +1200,7 @@ namespace BarBox.Games.Racing
 
 		if (_lapLabel != null)
 		{
-			if (gameMode == GameController.GameMode.Practice)
+			if (gameMode == RacingMode.Practice)
 			{
 				_lapLabel.Text = "Practice Mode";
 			}
@@ -1227,7 +1227,7 @@ namespace BarBox.Games.Racing
 						  state.TargetLaps, state.TimeDisplay, state.TimeLabel, state.MaxSpeed, state.LapProgress);
 
 		UpdateButtonStates(state.IsTimeTrialInProgress, state.CanStartTimeTrial, state.IsInCountdown,
-						  state.GameMode == GameController.GameMode.TimeTrial, state.IsUserLoggedIn);
+						  state.GameMode == RacingMode.TimeTrial, state.IsUserLoggedIn);
 
 		SetPauseOverlayVisible(state.IsGamePaused);
 
@@ -1245,7 +1245,7 @@ namespace BarBox.Games.Racing
 		UpdateCountdownArc(state.IsInCountdown, state.CountdownNumber, state.CountdownProgress);
 
 		// Update time trial timer display
-		UpdateTimerDisplay(state.GameMode == GameController.GameMode.TimeTrial, state.TimeDisplay);
+		UpdateTimerDisplay(state.GameMode == RacingMode.TimeTrial, state.TimeDisplay);
 	}
 
 	/// <summary>

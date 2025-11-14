@@ -59,14 +59,11 @@ public partial class SessionManager : AutoloadBase
 		}
 	}
 
-	protected override void OnServiceReady()
+	protected override void OnServiceEnterTree()
 	{
 		Instance = this;
-		// Minimal setup only - actual initialization happens in OnServiceInitialize
-	}
 
-	protected override void OnServiceInitialize()
-	{
+		// All autoloads guaranteed to exist after _EnterTree phase
 		// Initialize EventService for event-sourced persistence
 		_eventService = EventService.GetInstance();
 		if (_eventService == null)

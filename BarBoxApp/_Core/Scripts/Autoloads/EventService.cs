@@ -49,7 +49,7 @@ public partial class EventService : AutoloadBase
 
 	public static EventService Instance { get; private set; }
 
-	protected override void OnServiceReady()
+	protected override void OnServiceEnterTree()
 	{
 		Instance = this;
 	}

@@ -27,7 +27,12 @@ public partial class MiningGame : GameController
 	// ================================================================
 	// SIGNALS - External integration only
 	// ================================================================
-		
+
+	// Domain-specific lifecycle signals
+	[Signal] public delegate void MiningSessionStartedEventHandler();
+	[Signal] public delegate void MiningSessionEndedEventHandler();
+
+	// Game event signals
 	[Signal] public delegate void GemsExtractedEventHandler(int amount, GemType gemType);
 	[Signal] public delegate void CreditPurchasedEventHandler();
 	[Signal] public delegate void UpgradePurchasedEventHandler(UpgradeType upgradeType, int newLevel);
@@ -45,7 +50,7 @@ public partial class MiningGame : GameController
 	/// <summary>
 	/// Allow players to logout during active mining sessions
 	/// </summary>
-	public override bool AllowLogoutDuringPlay => true;
+	public override bool CanLogout => true;
 
 	[ExportCategory("Location Data")]
 	[Export] public Godot.Collections.Array<MiningLocationData> LocationDataResources { get; set; } = new();
@@ -61,8 +66,7 @@ public partial class MiningGame : GameController
 	private Guid _activitySessionId;
 	private MiningEventService _miningEventService;
 
-	// Platform services
-	private GameHost _gameHost;
+	// Platform services (Note: _gameHost inherited from GameController)
 	private UserManager _userManager;
 	private LocationManager _locationManager;
 
@@ -227,9 +231,64 @@ public partial class MiningGame : GameController
 	}
 		
 	// ================================================================
-	// GAME LIFECYCLE
+	// DOMAIN-SPECIFIC STATE - Mining Game checks player login status
 	// ================================================================
-		
+
+	/// <summary>
+	/// Check if a player is currently logged in and mining session is active
+	/// MiningGame uses login status as its primary state check
+	/// </summary>
+	public bool IsPlayerLoggedIn()
+	{
+		return !string.IsNullOrEmpty(GetCurrentUserPhoneNumber());
+	}
+
+	// ================================================================
+	// DOMAIN-SPECIFIC LIFECYCLE - Mining session management
+	// ================================================================
+
+	/// <summary>
+	/// Start a mining session for the logged-in player
+	/// </summary>
+	public void StartMiningSession()
+	{
+		if (!IsPlayerLoggedIn())
+		{
+			GD.PrintErr("[MiningGame] Cannot start mining session - no player logged in");
+			return;
+		}
+
+		InitializeGameSession();
+
+		// Notify platform that game session started
+		_gameHost?.NotifyGameStarted();
+
+		EmitSignal(SignalName.MiningSessionStarted);
+		GD.Print("[MiningGame] Mining session started");
+	}
+
+	/// <summary>
+	/// End the current mining session
+	/// </summary>
+	public void EndMiningSession()
+	{
+		if (IsInstanceValid(_engine))
+			_engine.StopMining();
+
+		if (IsInstanceValid(_ui))
+			_ui.SetEnabled(false);
+
+		// Notify platform that game session ended
+		_gameHost?.NotifyGameEnded();
+
+		EmitSignal(SignalName.MiningSessionEnded);
+		GD.Print("[MiningGame] Mining session ended");
+	}
+
+	// ================================================================
+	// GAME SESSION INITIALIZATION
+	// ================================================================
+
 	private async void InitializeGameSession()
 	{
 		try
@@ -321,38 +380,17 @@ public partial class MiningGame : GameController
 		}
 	}
 
-	protected override void OnGameStarted()
-	{
-		base.OnGameStarted();
-		InitializeGameSession();
-		EmitSignal(SignalName.GameStarted);
-	}
-		
-	protected override void OnGameEnded()
-	{
-		base.OnGameEnded();
-			
-		if (IsInstanceValid(_engine))
-			_engine.StopMining();
-				
-		if (IsInstanceValid(_ui))
-			_ui.SetEnabled(false);
-			
-		EmitSignal(SignalName.GameEnded);
-		GD.Print("[MiningGame] Game ended");
-	}
-		
 	/// <summary>
 	/// PHASE 4: Activation Decision
-	/// Starts game if user is logged in, otherwise waits for login
+	/// Starts mining session if user is logged in, otherwise waits for login
 	/// </summary>
 	protected override void ActivateGame()
 	{
 		base.ActivateGame();
 
-		if (!string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
+		if (IsPlayerLoggedIn())
 		{
-			StartGame();
+			StartMiningSession();
 		}
 		else
 		{
@@ -363,9 +401,9 @@ public partial class MiningGame : GameController
 		}
 	}
 
-	public override void OnUIContextSetup()
+	public override void OnGameSetup()
 	{
-		base.OnUIContextSetup();
+		base.OnGameSetup();
 
 		if (_userManager != null)
 		{
@@ -373,10 +411,10 @@ public partial class MiningGame : GameController
 			_userManager.UserLoggedOut += OnUserLoggedOut;
 		}
 	}
-		
-	public override void OnUIContextTeardown()
+
+	public override void OnGameTeardown()
 	{
-		base.OnUIContextTeardown();
+		base.OnGameTeardown();
 
 		if (_userManager != null && IsInstanceValid(_userManager))
 		{
@@ -610,12 +648,12 @@ public partial class MiningGame : GameController
 			if (IsInstanceValid(_state))
 				_state.ClearAllState();
 
-			if (IsGameActive())
+			if (IsPlayerLoggedIn())
 			{
-				EndGame();
+				EndMiningSession();
 			}
 
-			StartGame();
+			StartMiningSession();
 
 			GD.Print($"[MiningGame] User logged in: {userName} ({phoneNumber})");
 		}
@@ -624,7 +662,7 @@ public partial class MiningGame : GameController
 			_isProcessingUserChange = false;
 		}
 	}
-		
+
 	private void OnUserLoggedOut(string phoneNumber)
 	{
 		if (_isProcessingUserChange)
@@ -637,7 +675,7 @@ public partial class MiningGame : GameController
 
 		try
 		{
-			EndGame();
+			EndMiningSession();
 
 			if (IsInstanceValid(_state))
 				_state.ClearAllState();

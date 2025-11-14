@@ -43,8 +43,8 @@ public partial class TopMenuBar : Control
 	{
 		// Set up as full-width top bar with base height
 		SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopWide);
-		// Start with base height, will expand when context buttons are added
-		SetSize(new Vector2(0, BASE_HEIGHT));
+		// Set minimum height, width handled by TopWide preset
+		CustomMinimumSize = new Vector2(0, BASE_HEIGHT);
 		// Layout setup completed
 	}
 

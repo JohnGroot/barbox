@@ -52,17 +52,18 @@ public partial class UIManager : AutoloadBase
 	private string _currentGameTitle = "BarBox";
 	private ContextButtonData[] _currentContextButtons = null;
 
-	protected override void OnServiceReady()
+	// UI ready state and queuing
+	private bool _isUIReady = false;
+	private string _queuedGameTitle = null;
+	private ContextButtonData[] _queuedContextButtons = null;
+
+	protected override void OnServiceEnterTree()
 	{
 		Instance = this;
-		// Minimal setup only - actual initialization happens in OnServiceInitialize
-	}
 
-	protected override void OnServiceInitialize()
-	{
-		// Get service references - now guaranteed to be initialized
+		// Get service references - all autoloads guaranteed to exist
 		_sessionManager = SessionManager.GetInstance();
-		
+
 		// Create top menu layer
 		_topMenuLayer = new CanvasLayer();
 		_topMenuLayer.Layer = LAYER_GAME_UI; // Game UI elements and top menu bar
@@ -84,7 +85,7 @@ public partial class UIManager : AutoloadBase
 
 		// Set up help system
 		SetupHelpSystem();
-		
+
 		// Create login modal
 		_loginModal = new LoginModal();
 		_modalLayer.AddChild(_loginModal);
@@ -96,7 +97,10 @@ public partial class UIManager : AutoloadBase
 		// Create confirmation dialog
 		_confirmationDialog = new ConfirmationDialog();
 		_modalLayer.AddChild(_confirmationDialog);
-		
+	}
+
+	protected override void OnServiceReady()
+	{
 		// Connect signals
 		_topMenuBar.LoginRequested += OnLoginRequested;
 		_topMenuBar.LogoutRequested += OnLogoutRequested;
@@ -131,6 +135,17 @@ public partial class UIManager : AutoloadBase
 
 		// Apply any context that was set before initialization
 		RefreshTopMenuContext();
+
+		// Mark UI as ready
+		_isUIReady = true;
+
+		// Apply any queued game context
+		if (_queuedGameTitle != null)
+		{
+			SetGameContext(_queuedGameTitle, _queuedContextButtons);
+			_queuedGameTitle = null;
+			_queuedContextButtons = null;
+		}
 
 		LogInfo("UIManager initialized with top menu bar and login modal");
 	}
@@ -183,20 +198,25 @@ public partial class UIManager : AutoloadBase
 	/// </summary>
 	public void SetGameContext(string gameTitle, ContextButtonData[] contextButtons = null)
 	{
+		// If UI not ready yet, queue the context to apply later
+		if (!_isUIReady)
+		{
+			_queuedGameTitle = gameTitle ?? "BarBox";
+			_queuedContextButtons = contextButtons;
+			LogInfo($"UI not ready - queued game context: '{_queuedGameTitle}' with {contextButtons?.Length ?? 0} buttons");
+			return;
+		}
+
+		// UI is ready, apply context immediately
 		_currentGameTitle = gameTitle ?? "BarBox";
 		_currentContextButtons = contextButtons;
-		
-		// If not yet initialized, the context will be applied when OnServiceInitialize runs
+
 		if (_topMenuBar != null)
 		{
 			RefreshTopMenuContext();
 		}
-		else
-		{
-			// Game context queued (UI not ready)
-		}
-		
-		// Game context set
+
+		LogInfo($"Game context set: '{_currentGameTitle}' with {contextButtons?.Length ?? 0} buttons");
 	}
 
 
@@ -246,7 +266,7 @@ public partial class UIManager : AutoloadBase
 	{
 		if (_currentContextButtons != null)
 		{
-			// Trigger UI update for games implementing IGameUIIntegration
+			// Trigger UI update for current game
 			RefreshTopMenuContext();
 			// Context button states updated
 		}
@@ -417,24 +437,13 @@ public partial class UIManager : AutoloadBase
 
 	private void OnGameStarted(string gameId)
 	{
-		// Check if game allows logout during play
-		var gameHost = GameHost.GetInstance();
-		var currentGame = gameHost?.GetCurrentGame() as GameController;
-
-		// Only disable logout button if game doesn't allow logout during play
-		if (_topMenuBar != null && currentGame != null && !currentGame.AllowLogoutDuringPlay)
-		{
-			_topMenuBar.SetLogoutButtonEnabled(false);
-		}
+		_topMenuBar.SetLogoutButtonEnabled(GameHost.GetInstance().GetCurrentGame().CanLogout);
 	}
 
 	private void OnGameEnded(string gameId)
 	{
 		// Re-enable logout button when game ends
-		if (_topMenuBar != null)
-		{
-			_topMenuBar.SetLogoutButtonEnabled(true);
-		}
+		_topMenuBar?.SetLogoutButtonEnabled(true);
 	}
 
 	// ============================================================================

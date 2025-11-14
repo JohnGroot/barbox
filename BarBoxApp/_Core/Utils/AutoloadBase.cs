@@ -35,10 +35,25 @@ public abstract partial class AutoloadBase : Node
 	private TaskCompletionSource<bool> _readySignal = new();
 
 	/// <summary>
-	/// Called during _Ready() to perform service-specific setup (minimal initialization only)
-	/// Override this instead of _Ready() in derived classes
+	/// Called during _EnterTree() to perform synchronous service initialization
+	/// This fires BEFORE any scene _Ready() methods, guaranteeing service availability
+	/// Override this for critical service setup (NO async/await, NO CallDeferred allowed)
+	/// All autoloads will have completed OnServiceEnterTree() before any scene loads
 	/// </summary>
-	protected abstract void OnServiceReady();
+	protected virtual void OnServiceEnterTree()
+	{
+		// Default implementation does nothing - override in derived classes for sync initialization
+	}
+
+	/// <summary>
+	/// Called during _Ready() to perform service-specific setup (async work allowed)
+	/// By this point, all autoloads have completed OnServiceEnterTree() synchronously
+	/// Override this for async initialization or signal connections
+	/// </summary>
+	protected virtual void OnServiceReady()
+	{
+		// Default implementation does nothing - override in derived classes
+	}
 
 	/// <summary>
 	/// Called explicitly by SceneManager to perform full service initialization
@@ -60,15 +75,34 @@ public abstract partial class AutoloadBase : Node
 		await Task.CompletedTask;
 	}
 
-	public override void _Ready()
+	/// <summary>
+	/// Godot lifecycle: _EnterTree() fires first (top-down, autoloads before scenes)
+	/// This is where we guarantee synchronous initialization completes
+	/// </summary>
+	public override void _EnterTree()
 	{
 		// Automatic group registration using service name
 		AddToGroup(ServiceName);
-		
-		// Log service construction
-		LogInfo($"{ServiceName} autoload constructed");
-		
-		// Call derived class setup (minimal only)
+
+		// Log service entering tree
+		LogInfo($"{ServiceName} entering tree");
+
+		// Call derived class synchronous initialization
+		// All autoloads complete this phase BEFORE any scene loads
+		OnServiceEnterTree();
+	}
+
+	/// <summary>
+	/// Godot lifecycle: _Ready() fires after _EnterTree() (bottom-up traversal)
+	/// All autoloads have completed OnServiceEnterTree() by this point
+	/// Safe to perform async operations or connect signals
+	/// </summary>
+	public override void _Ready()
+	{
+		// Log service ready
+		LogInfo($"{ServiceName} ready");
+
+		// Call derived class async/deferred setup
 		OnServiceReady();
 	}
 

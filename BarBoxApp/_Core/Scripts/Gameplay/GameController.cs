@@ -1,42 +1,22 @@
 using Godot;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 [GlobalClass]
-public abstract partial class GameController : Node2D, IGameUIIntegration
+public abstract partial class GameController : Node2D
 {
-	[Signal] public delegate void GameStartedEventHandler();
-	[Signal] public delegate void GameEndedEventHandler();
-	[Signal] public delegate void GamePausedEventHandler();
-	[Signal] public delegate void GameResumedEventHandler();
-	[Signal] public delegate void ScoreChangedEventHandler(string playerId, float score);
-	[Signal] public delegate void PlayerAddedEventHandler(string playerId);
-
 	[ExportCategory("Game Settings")]
 	[Export] public string GameId { get; set; } = string.Empty;
-	[Export] public int TimeLimit { get; set; } = 0; // 0 = no time limit
-	[Export] public bool CanPause { get; set; } = true;
 
 	/// <summary>
 	/// Whether players can logout during active gameplay.
 	/// Override this in your game to allow logout during play (default: false).
+	/// Games should check their domain-specific state (IsRaceActive, IsPlayerLoggedIn, etc.)
 	/// </summary>
-	public virtual bool AllowLogoutDuringPlay => false;
+	public virtual bool CanLogout => true;
 
-	// Game modes for racing/sports games
-	public enum GameMode { Practice, TimeTrial, Tournament }
-	
+	// Core metadata and services (guaranteed available after DiscoverServices)
 	protected GameMetadata _gameMetadata;
-	protected List<BasePlayer> _players = new();
-	protected Dictionary<string, float> _playerScores = new(); // Changed to string keys and float scores for time-based games
-	protected bool _isGameActive = false;
-	protected bool _isGamePaused = false;
-	protected GameMode _currentGameMode = GameMode.Practice;
-	protected float _gameTime = 0.0f;
-	protected Timer _gameTimer;
-	private GameHost _gameHost;
-
+	protected GameHost _gameHost;
 
 	/// <summary>
 	/// Godot lifecycle method - orchestrates all initialization phases synchronously.
@@ -50,20 +30,11 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 		// Phase 2: Core Setup
 		SetupCore();
 
-		// Phase 3: UI Integration
-		SetupUI();
+		// Phase 3: Game Context Setup
+		SetupGameContext();
 
 		// Phase 4: Activation Decision
 		ActivateGame();
-	}
-
-	public override void _Process(double delta)
-	{
-		if (_isGameActive && !_isGamePaused)
-		{
-			_gameTime += (float)delta;
-			UpdateGame((float)delta);
-		}
 	}
 
 	/// <summary>
@@ -71,49 +42,52 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	/// Discovers platform services and loads game metadata.
 	/// Override to discover additional game-specific services.
 	/// Called first in initialization sequence - no components are created yet.
+	///
+	/// POST-GUARANTEES:
+	/// - _gameMetadata is not null (throws if missing)
+	/// - _gameHost is not null in production context
+	/// - All autoloads are guaranteed available (initialized in _EnterTree)
 	/// </summary>
 	protected virtual void DiscoverServices()
 	{
-		_gameMetadata = GameRegistry.GetAutoload()?.GetGameData(GameId);
+		// Services guaranteed available - autoloads initialized in _EnterTree
+		_gameMetadata = GameRegistry.GetAutoload().GetGameData(GameId);
 		_gameHost = GameHost.GetInstance();
 	}
 
 	/// <summary>
 	/// PHASE 2: Core Setup
-	/// Sets up game timer and initializes game components.
+	/// Initializes game components.
 	/// Override InitializeComponents() rather than this method.
 	/// </summary>
-	protected virtual void SetupCore()
+	private void SetupCore()
 	{
-		SetupGameTimer();
 		InitializeComponents();
 	}
 
 	/// <summary>
 	/// PHASE 2 Extension Point: Component Initialization
 	/// Override this to create game-specific components (engine, state, UI).
-	/// Called after timer setup but before UI integration.
-	/// All components should be fully created before this method returns.
+	/// Called after service discovery but before UI integration.
+	///
+	/// POST-GUARANTEES:
+	/// - All game components exist and are valid
+	/// - Configuration loaded and validated
+	/// - Components ready for gameplay
 	/// </summary>
-	protected virtual void InitializeComponents()
-	{
-		// Override this in derived classes to initialize game-specific components
-	}
+	protected virtual void InitializeComponents() { }
 
 	/// <summary>
 	/// PHASE 4: Activation Decision
 	/// Determines if game should auto-start or wait for user input.
 	/// Override to implement game-specific activation logic.
 	/// All components are guaranteed to exist when this is called.
+	///
+	/// Note: Games are responsible for their own lifecycle management.
+	/// Implement domain-specific state checks (IsRaceActive, IsPlayerLoggedIn, etc.)
+	/// and lifecycle methods (StartRace, EndRace, StartMiningSession, etc.)
 	/// </summary>
-	protected virtual void ActivateGame()
-	{
-		// Default: No auto-start, wait for explicit StartGame() call
-	}
-
-	protected virtual void UpdateGame(float delta)
-	{
-	}
+	protected virtual void ActivateGame() { }
 
 	/// <summary>
 	/// Override this method to provide help content for your game
@@ -125,224 +99,87 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 			.AddSection("🎮 Basic Controls", "Touch or click to interact with the game.");
 	}
 
-	protected virtual void SetupGameTimer()
-	{
-		if (TimeLimit <= 0)
-			return;
-
-		_gameTimer = new Timer();
-		_gameTimer.WaitTime = TimeLimit;
-		_gameTimer.OneShot = true;
-		_gameTimer.Timeout += OnTimeUp;
-		AddChild(_gameTimer);
-	}
-
-	public virtual void StartGame()
-	{
-		if (_isGameActive)
-			return;
-
-		_isGameActive = true;
-		_isGamePaused = false;
-		_gameTime = 0.0f;
-		_playerScores.Clear();
-			
-		// Initialize scores for all players
-		foreach (var player in _players)
-		{
-			_playerScores[player.PlayerId] = 0.0f;
-		}
-			
-		if (_gameTimer != null)
-		{
-			_gameTimer.Start();
-		}
-			
-		OnGameStarted();
-		EmitSignal(SignalName.GameStarted);
-	}
-
-	public virtual void EndGame()
-	{
-		if (!_isGameActive)
-			return;
-
-		_isGameActive = false;
-		_isGamePaused = false;
-			
-		if (_gameTimer != null)
-		{
-			_gameTimer.Stop();
-		}
-			
-		SaveScores();
-		OnGameEnded();
-		EmitSignal(SignalName.GameEnded);
-	}
-
-	public virtual void PauseGame()
-	{
-		if (!_isGameActive || !CanPause || _isGamePaused)
-			return;
-
-		_isGamePaused = true;
-			
-		if (_gameTimer != null)
-		{
-			_gameTimer.Paused = true;
-		}
-			
-		OnGamePaused();
-		EmitSignal(SignalName.GamePaused);
-	}
-
-	public virtual void ResumeGame()
-	{
-		if (!_isGameActive || !_isGamePaused)
-			return;
-
-		_isGamePaused = false;
-			
-		if (_gameTimer != null)
-		{
-			_gameTimer.Paused = false;
-		}
-			
-		OnGameResumed();
-		EmitSignal(SignalName.GameResumed);
-	}
-
-	protected virtual void OnGameStarted()
-	{
-	}
-
-	protected virtual void OnGameEnded()
-	{
-	}
-
-	protected virtual void OnGamePaused()
-	{
-	}
-
-	protected virtual void OnGameResumed()
-	{
-	}
-
-	protected virtual void OnTimeUp()
-	{
-		EndGame();
-	}
-
-	public virtual void UpdateScore(string playerId, float score)
-	{
-		if (!_playerScores.ContainsKey(playerId))
-			return;
-
-		_playerScores[playerId] = score;
-		EmitSignal(SignalName.ScoreChanged, playerId, score);
-	}
-
-	public virtual void AddScore(string playerId, float points)
-	{
-		if (!_isGameActive || !_playerScores.ContainsKey(playerId))
-			return;
-
-		_playerScores[playerId] += points;
-		EmitSignal(SignalName.ScoreChanged, playerId, _playerScores[playerId]);
-	}
-
-	public virtual void AddPlayer(BasePlayer player)
-	{
-		if (_players.Contains(player))
-			return;
-
-		_players.Add(player);
-		_playerScores[player.PlayerId] = 0.0f;
-		EmitSignal(SignalName.PlayerAdded, player.PlayerId);
-	}
-
-	public virtual void RemovePlayer(BasePlayer player)
-	{
-		if (_players.Contains(player))
-		{
-			_players.Remove(player);
-			_playerScores.Remove(player.PlayerId);
-		}
-	}
-
-	private void SaveScores()
-	{
-		var userManager = UserManager.GetAutoload();
-		if (userManager != null && !string.IsNullOrEmpty(GameId))
-		{
-			foreach (var player in _players)
-			{
-				if (GodotObject.IsInstanceValid(player))
-				{
-					var userSession = player.GetUserSession();
-					if (userSession != null && _playerScores.ContainsKey(player.PlayerId))
-					{
-						// Convert float score to int for UserManager compatibility
-						int intScore = (int)_playerScores[player.PlayerId];
-						userManager.UpdateHighScore(GameId, intScore);
-					}
-				}
-			}
-		}
-	}
-
-	public float GetPlayerScore(string playerId) => string.IsNullOrEmpty(playerId) ? 0.0f : _playerScores.GetValueOrDefault(playerId, 0.0f);
-	public Dictionary<string, float> GetAllScores() => new Dictionary<string, float>(_playerScores);
-	public List<BasePlayer> GetPlayers() => new List<BasePlayer>(_players);
-	public int GetPlayerCount() => _players.Count;
-	public float GetGameTime() => _gameTime;
-	public bool IsGameActive() => _isGameActive;
-	public bool IsGamePaused() => _isGamePaused;
-	public GameMode GetGameMode() => _currentGameMode;
-	public void SetGameMode(GameMode mode) => _currentGameMode = mode;
-	public float GetTimeRemaining() => (float)(_gameTimer?.TimeLeft ?? 0.0f);
-
 	// ============================================================================
-	// UI Integration
+	// Pause/Resume Control
 	// ============================================================================
 
 	/// <summary>
-	/// PHASE 3: UI Integration
-	/// Registers game with GameHost UI context and connects external handlers.
-	/// Override OnUIContextSetup() to connect event handlers (UserManager signals, etc.).
-	/// Do NOT call StartGame() in OnUIContextSetup() - use ActivateGame() instead.
+	/// Indicates whether the game is currently paused.
 	/// </summary>
-	private void SetupUI()
-	{
-		if (_gameHost != null)
-		{
-			// Set up the game context in the top menu
-			var contextButtons = GetContextButtons();
-			_gameHost.SetTopMenuContext(GetGameTitle(), contextButtons);
-			OnUIContextSetup();
+	public bool IsPaused { get; protected set; }
 
-			GD.Print($"[GameController] UI context set up for '{GetGameTitle()}' with {contextButtons?.Length ?? 0} buttons");
-		}
-		else
-		{
-			GD.Print("[GameController] GameHost not available - UI integration skipped (development mode)");
-		}
+	/// <summary>
+	/// Pauses the game. Sets IsPaused to true and calls OnPause() for derived classes.
+	/// Override OnPause() to implement game-specific pause behavior.
+	/// </summary>
+	public void Pause()
+	{
+		if (IsPaused) 
+			return;
+
+		IsPaused = true;
+		OnPause();
+	}
+
+	/// <summary>
+	/// Resumes the game. Sets IsPaused to false and calls OnResume() for derived classes.
+	/// Override OnResume() to implement game-specific resume behavior.
+	/// </summary>
+	public void Resume()
+	{
+		if (!IsPaused)
+			return;
+
+		IsPaused = false;
+		OnResume();
+	}
+
+	/// <summary>
+	/// Override this method to implement game-specific pause logic.
+	/// Base implementation does nothing.
+	/// </summary>
+	protected virtual void OnPause() { }
+
+	/// <summary>
+	/// Override this method to implement game-specific resume logic.
+	/// Base implementation does nothing.
+	/// </summary>
+	protected virtual void OnResume() { }
+
+	// ============================================================================
+	// Game Context Setup
+	// ============================================================================
+
+	/// <summary>
+	/// PHASE 3: Game Context Setup
+	/// Integrates game with platform UI and triggers game-specific setup lifecycle.
+	/// Override OnGameSetup() to connect event handlers (UserManager signals, etc.).
+	/// Do NOT call StartGame() in OnGameSetup() - use ActivateGame() instead.
+	///
+	/// POST-GUARANTEES:
+	/// - Top menu context set with game title and buttons
+	/// - Help content registered
+	/// - UI integration complete
+	/// - OnGameSetup() lifecycle called
+	/// </summary>
+	private void SetupGameContext()
+	{
+		var contextButtons = GetContextButtons();
+		_gameHost.SetTopMenuContext(GetGameTitle(), contextButtons);
 
 		// Set up help content through GameHost (when available)
 		SetupGameHelp();
+
+		// Call game-specific setup after UI integration is complete
+		OnGameSetup();
 	}
 
 	/// <summary>
-	/// Clean up UI integration when the game ends
+	/// Clean up game context when the game ends
 	/// </summary>
-	private void CleanupUI()
+	private void CleanupGameContext()
 	{
-		if (_gameHost != null)
-		{
-			_gameHost.ClearTopMenuContext();
-			OnUIContextTeardown();
-			GD.Print("[GameController] UI context cleaned up");
-		}
+		_gameHost?.ClearTopMenuContext();
 
 		// Clean up help content
 		CleanupGameHelp();
@@ -350,18 +187,15 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 
 	public override void _ExitTree()
 	{
-		// Disconnect timer signal if it exists
-		if (GodotObject.IsInstanceValid(_gameTimer))
-		{
-			_gameTimer.Timeout -= OnTimeUp;
-		}
-		
-		CleanupUI();
+		CleanupGameContext();
+
+		OnGameTeardown();
+
 		base._ExitTree();
 	}
 
 	// ============================================================================
-	// IGameUIIntegration Implementation
+	// Game UI Integration Methods
 	// ============================================================================
 
 	/// <summary>
@@ -375,56 +209,34 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 
 	/// <summary>
 	/// Gets the context buttons this game wants to display in the top menu bar
-	/// Override this to provide custom buttons for your game
+	/// Override this to provide custom buttons for your game (e.g., pause/resume based on domain state)
 	/// </summary>
 	public virtual ContextButtonData[] GetContextButtons()
 	{
-		var buttons = new List<ContextButtonData>();
-
-		// Standard "Return to Menu" button
-		buttons.Add(GameContextButton.CreateReturnToMenuButton(() => {
-			var userManager = UserManager.GetAutoload();
-			userManager?.ResetUserIdleTimer();
-			ReturnToMainMenu();
-		}));
-
-		// Add pause/resume button if the game supports pausing
-		if (CanPause)
+		var buttons = new List<ContextButtonData>
 		{
-			if (_isGamePaused)
-			{
-				buttons.Add(GameContextButton.CreateResumeButton(() => {
-					ResumeGame();
-					RefreshUI();
-				}));
-			}
-			else if (_isGameActive)
-			{
-				buttons.Add(GameContextButton.CreatePauseButton(() => {
-					PauseGame();
-					RefreshUI();
-				}));
-			}
-		}
+			// Standard "Return to Menu" button
+			GameContextButton.CreateReturnToMenuButton(() => {
+				var userManager = UserManager.GetAutoload();
+				userManager?.ResetUserIdleTimer();
+				ReturnToMainMenu();
+			})
+		};
 
 		return buttons.ToArray();
 	}
 
 	/// <summary>
-	/// Called when the game's UI context is being set up
-	/// Override this to perform any additional UI initialization
+	/// Called when the game is being set up
+	/// Override this to connect external event handlers and perform initialization
 	/// </summary>
-	public virtual void OnUIContextSetup()
-	{
-	}
+	public virtual void OnGameSetup() { }
 
 	/// <summary>
-	/// Called when the game's UI context is being torn down
-	/// Override this to perform any UI cleanup
+	/// Called when the game is being torn down
+	/// Override this to disconnect external event handlers and perform cleanup
 	/// </summary>
-	public virtual void OnUIContextTeardown()
-	{
-	}
+	public virtual void OnGameTeardown() { }
 
 	/// <summary>
 	/// Called to update the game's UI state (e.g., button enabled/disabled states)
@@ -450,30 +262,29 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	}
 
 	/// <summary>
-	/// Return to the main menu with confirmation dialog - can be overridden for custom behavior
+	/// Return to the main menu with confirmation dialog.
+	/// Use OnGameTeardown() for cleanup logic instead of overriding this method.
 	/// </summary>
-	protected virtual async void ReturnToMainMenu()
+	protected async void ReturnToMainMenu()
 	{
 		// Get UIManager for confirmation dialog
 		var uiManager = UIManager.GetInstance();
-		if (uiManager != null)
-		{
-			// Show confirmation dialog
-			bool confirmed = await uiManager.ShowConfirmationAsync(
-				"Return to Menu",
-				"Are you sure you want to return to the main menu?\n\nAny unsaved progress will be lost.",
-				"Return to Menu",
-				"Cancel"
-			);
 
-			if (!confirmed)
-			{
-				return; // User cancelled
-			}
+		// Show confirmation dialog
+		bool confirmed = await uiManager.ShowConfirmationAsync(
+			"Return to Menu",
+			"Are you sure you want to return to the main menu?\n\nAny unsaved progress will be lost.",
+			"Return to Menu",
+			"Cancel"
+		);
+
+		if (!confirmed)
+		{
+			return; // User cancelled
 		}
 
 		// User confirmed or no UIManager available - proceed with return to menu
-		_gameHost?.ReturnToMainMenu();
+		_gameHost.ReturnToMainMenu();
 	}
 
 	// ============================================================================
@@ -485,32 +296,9 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	/// </summary>
 	private void SetupGameHelp()
 	{
-		if (_gameHost != null)
-		{
-			// Set help content through GameHost (production context)
-			var helpContent = GetHelpContent();
-			_gameHost.SetGameHelpContent(helpContent);
-			_gameHost.ShowGameHelp(true);
-
-			GD.Print($"[GameController] Game help content set: {helpContent.Title}");
-		}
-		else
-		{
-			// Development context - UIManager might still be available
-			var uiManager = UIManager.GetInstance();
-			if (uiManager != null)
-			{
-				var helpContent = GetHelpContent();
-				uiManager.SetGameHelpContent(helpContent);
-				uiManager.ShowHelpButton(true);
-
-				GD.Print($"[GameController] Game help content set via UIManager: {helpContent.Title}");
-			}
-			else
-			{
-				GD.Print("[GameController] Help system not available (no GameHost or UIManager)");
-			}
-		}
+		var helpContent = GetHelpContent();
+		_gameHost.SetGameHelpContent(helpContent);
+		_gameHost.ShowGameHelp(true);
 	}
 
 	/// <summary>
@@ -518,21 +306,6 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	/// </summary>
 	private void CleanupGameHelp()
 	{
-		if (_gameHost != null)
-		{
-			// Hide help button through GameHost
-			_gameHost.ShowGameHelp(false);
-			GD.Print("[GameController] Game help button hidden via GameHost");
-		}
-		else
-		{
-			// Development context cleanup
-			var uiManager = UIManager.GetInstance();
-			if (uiManager != null)
-			{
-				uiManager.ShowHelpButton(false);
-				GD.Print("[GameController] Game help button hidden via UIManager");
-			}
-		}
+		_gameHost.ShowGameHelp(false);
 	}
 }

@@ -10,8 +10,9 @@ public partial class GameRegistry : AutoloadBase
 	private Dictionary<string, GameMetadata> _availableGames = new();
 	private string _currentGameId = string.Empty;
 
-	protected override void OnServiceReady()
+	protected override void OnServiceEnterTree()
 	{
+		// Synchronous initialization - guaranteed before any scene loads
 		LoadGameConfigurations();
 	}
 
