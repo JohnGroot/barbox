@@ -53,6 +53,9 @@ public abstract partial class GameController : Node2D
 		// Services guaranteed available - autoloads initialized in _EnterTree
 		_gameMetadata = GameRegistry.GetAutoload().GetGameData(GameId);
 		_gameHost = GameHost.GetInstance();
+
+		// Register with GameHost for direct scene loading support
+		_gameHost?.RegisterCurrentGame(this);
 	}
 
 	/// <summary>

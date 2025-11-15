@@ -218,6 +218,22 @@ public partial class GameHost : AutoloadBase
 	public GameController GetCurrentGame() => _currentGame;
 
 	/// <summary>
+	/// Register a game as the current game.
+	/// Called by GameController during direct scene loading.
+	/// LoadGameOverlay() takes precedence - this is a fallback for development.
+	/// </summary>
+	public void RegisterCurrentGame(GameController game)
+	{
+		// Only register if no game is currently loaded via LoadGameOverlay
+		if (_currentGame == null)
+		{
+			_currentGame = game;
+			_currentGameId = game.GameId;
+			LogInfo($"Game self-registered: {_currentGameId}");
+		}
+	}
+
+	/// <summary>
 	/// Get user session - redirects to SessionManager
 	/// Falls back to primary user if specific playerId not found (single-user game fallback)
 	/// </summary>

@@ -260,9 +260,6 @@ public partial class MiningGame : GameController
 
 		InitializeGameSession();
 
-		// Notify platform that game session started
-		_gameHost?.NotifyGameStarted();
-
 		EmitSignal(SignalName.MiningSessionStarted);
 		GD.Print("[MiningGame] Mining session started");
 	}
@@ -367,6 +364,9 @@ public partial class MiningGame : GameController
 					_ui.SetEnabled(false);
 				}
 			}
+
+			// Notify platform that game session started - only after full initialization
+			_gameHost?.NotifyGameStarted();
 		}
 		catch (Exception ex)
 		{
