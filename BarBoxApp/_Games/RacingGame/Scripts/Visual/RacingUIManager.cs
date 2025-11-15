@@ -1680,14 +1680,14 @@ namespace BarBox.Games.Racing
 	// ================================================================
 
 	/// <summary>
-	/// Reset user idle timer through UserManager
+	/// Reset user idle timer through SessionManager
 	/// </summary>
 	private void ResetUserIdleTimer()
 	{
-		var userManager = UserManager.GetAutoload();
-		if (userManager != null && GodotObject.IsInstanceValid(userManager))
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
 		{
-			userManager.ResetUserIdleTimer();
+			sessionManager.ResetAllIdleTimers();
 		}
 	}
 
@@ -2052,7 +2052,7 @@ namespace BarBox.Games.Racing
 		// Priority order:
 		// 1. Stored username from the time entry
 		// 2. Fallback username from global data
-		// 3. Current session username (from UserManager/SessionManager)
+		// 3. Current session username (from SessionManager)
 		// 4. Player ID (if not default "player1")
 		// 5. Empty string if no username available
 
@@ -2131,7 +2131,7 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Get current session username from UserManager/SessionManager
+	/// Get current session username from SessionManager
 	/// </summary>
 	private string GetCurrentSessionUsername()
 	{

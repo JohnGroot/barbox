@@ -67,7 +67,7 @@ public partial class MiningGame : GameController
 	private MiningEventService _miningEventService;
 
 	// Platform services (Note: _gameHost inherited from GameController)
-	private UserManager _userManager;
+	private SessionManager _sessionManager;
 	private LocationManager _locationManager;
 
 	// Race condition prevention
@@ -103,7 +103,7 @@ public partial class MiningGame : GameController
 
 		// Discover platform services
 		_gameHost = GameHost.GetInstance();
-		_userManager = UserManager.GetAutoload();
+		_sessionManager = SessionManager.GetInstance();
 		_locationManager = LocationManager.GetAutoload();
 
 		// Context detection and validation
@@ -111,9 +111,9 @@ public partial class MiningGame : GameController
 		if (isProductionContext)
 		{
 			// Production: Validate all required services exist
-			if (_userManager == null)
+			if (_sessionManager == null)
 			{
-				throw new InvalidOperationException("UserManager is required in production but not available");
+				throw new InvalidOperationException("SessionManager is required in production but not available");
 			}
 
 			if (_locationManager == null)
@@ -405,10 +405,10 @@ public partial class MiningGame : GameController
 	{
 		base.OnGameSetup();
 
-		if (_userManager != null)
+		if (_sessionManager != null)
 		{
-			_userManager.UserLoggedIn += OnUserLoggedIn;
-			_userManager.UserLoggedOut += OnUserLoggedOut;
+			_sessionManager.UserLoggedIn += OnUserLoggedIn;
+			_sessionManager.UserLoggedOut += OnUserLoggedOut;
 		}
 	}
 
@@ -416,10 +416,10 @@ public partial class MiningGame : GameController
 	{
 		base.OnGameTeardown();
 
-		if (_userManager != null && IsInstanceValid(_userManager))
+		if (_sessionManager != null && IsInstanceValid(_sessionManager))
 		{
-			_userManager.UserLoggedIn -= OnUserLoggedIn;
-			_userManager.UserLoggedOut -= OnUserLoggedOut;
+			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
+			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
 		}
 	}
 
@@ -463,7 +463,7 @@ public partial class MiningGame : GameController
 	internal LocationManager GetLocationManager() => _locationManager;
 	internal MiningGameUI GetUI() => _ui;
 	internal MiningGameConfig GetConfig() => Config;
-	internal UserManager GetUserManager() => _userManager;
+	internal SessionManager GetSessionManager() => _sessionManager;
 	internal bool IsDebugMode() => EnableDebugMode;
 	internal MiningState GetState() => _state;
 
@@ -633,7 +633,7 @@ public partial class MiningGame : GameController
 	// EVENT HANDLERS
 	// ================================================================
 		
-	private void OnUserLoggedIn(string phoneNumber, string userName)
+	private void OnUserLoggedIn(string phoneNumber)
 	{
 		if (_isProcessingUserChange)
 		{
@@ -654,6 +654,10 @@ public partial class MiningGame : GameController
 			}
 
 			StartMiningSession();
+
+			// Fetch username from session for logging
+			var session = _sessionManager?.GetUserSession(phoneNumber);
+			var userName = session?.UserName ?? string.Empty;
 
 			GD.Print($"[MiningGame] User logged in: {userName} ({phoneNumber})");
 		}
@@ -717,10 +721,10 @@ public partial class MiningGame : GameController
 			}
 
 			// Disconnect event handlers
-			if (_userManager != null && IsInstanceValid(_userManager))
+			if (_sessionManager != null && IsInstanceValid(_sessionManager))
 			{
-				_userManager.UserLoggedIn -= OnUserLoggedIn;
-				_userManager.UserLoggedOut -= OnUserLoggedOut;
+				_sessionManager.UserLoggedIn -= OnUserLoggedIn;
+				_sessionManager.UserLoggedOut -= OnUserLoggedOut;
 			}
 		}
 	}

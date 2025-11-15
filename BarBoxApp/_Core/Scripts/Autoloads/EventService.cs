@@ -47,13 +47,6 @@ public partial class EventService : AutoloadBase
 	[Signal] public delegate void EventSubmissionFailedEventHandler(string sessionId, string error);
 	[Signal] public delegate void SessionCreatedEventHandler(string sessionId);
 
-	public static EventService Instance { get; private set; }
-
-	protected override void OnServiceEnterTree()
-	{
-		Instance = this;
-	}
-
 	protected override async Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
 		_httpClient = new Godot.HttpClient();
@@ -67,7 +60,7 @@ public partial class EventService : AutoloadBase
 		catch (Exception ex)
 		{
 			LogError($"Failed to get Box ID: {ex.Message}");
-			throw new Exception($"EventService requires valid Box ID: {ex.Message}");
+			throw new Exception($"EventService requires valid Box ID: {ex.Message}\nStack Trace: {ex.StackTrace}");
 		}
 
 		// Wait for BackendManager to be ready
@@ -173,7 +166,7 @@ public partial class EventService : AutoloadBase
 		catch (Exception ex)
 		{
 #if DEBUG_HTTP_LIFECYCLE
-			LogError($"[HTTP] CreateActivitySession - Exception: {ex.Message}");
+			LogError($"[HTTP] CreateActivitySession - Exception: {ex.Message}\nStack Trace: {ex.StackTrace}");
 #endif
 
 			_httpClient.Close();
@@ -1320,7 +1313,5 @@ public partial class EventService : AutoloadBase
 	{
 		_httpClient?.Close();
 		_httpClient = null;
-
-		Instance = null;
 	}
 }

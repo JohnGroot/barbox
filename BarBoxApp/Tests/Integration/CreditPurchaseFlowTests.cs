@@ -287,7 +287,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		var creditPack = new CreditPack(25, 25.00m);
 
 		// Get initial balance with forced refresh to ensure we have accurate starting point
-		var creditService = CreditService.Instance;
+		var creditService = CreditService.GetInstance();
 		creditService.ShouldNotBeNull("CreditService must be available");
 
 		var initialBalanceResult = await creditService.GetBalanceAsync(playerId, forceRefresh: true);

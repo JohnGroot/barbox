@@ -33,6 +33,7 @@ public abstract partial class AutoloadBase : Node
 	private ServiceState _state = ServiceState.Constructed;
 	private string _failureReason = string.Empty;
 	private TaskCompletionSource<bool> _readySignal = new();
+	private readonly SemaphoreSlim _initializationLock = new(1, 1);
 
 	/// <summary>
 	/// Called during _EnterTree() to perform synchronous service initialization
@@ -132,38 +133,56 @@ public abstract partial class AutoloadBase : Node
 	/// </summary>
 	public async Task<bool> InitializeAsync(CancellationToken cancellationToken = default)
 	{
-		if (_state >= ServiceState.Initializing)
-		{
-			LogWarning($"{ServiceName} already initializing/ready, waiting for completion");
-			return await WaitForReadyAsync(30.0f, cancellationToken);
-		}
-
-		_state = ServiceState.Initializing;
-		LogInfo($"{ServiceName} initializing...");
+		// CRITICAL FIX: Use semaphore to prevent race condition between checking state and setting it
+		// Multiple concurrent calls could pass the state check before any of them set Initializing
+		await _initializationLock.WaitAsync(cancellationToken);
 
 		try
 		{
-			await OnServiceInitializeAsync(cancellationToken);
-			_state = ServiceState.Ready;
-			_isInitialized = true;
-			_readySignal.TrySetResult(true);
-			LogInfo($"{ServiceName} ready");
-			return true;
+			// Re-check state after acquiring lock (double-check locking pattern)
+			if (_state >= ServiceState.Initializing)
+			{
+				_initializationLock.Release();
+				LogWarning($"{ServiceName} already initializing/ready, waiting for completion");
+				return await WaitForReadyAsync(30.0f, cancellationToken);
+			}
+
+			_state = ServiceState.Initializing;
+			LogInfo($"{ServiceName} initializing...");
+
+			// Release lock before potentially long-running initialization
+			_initializationLock.Release();
+
+			try
+			{
+				await OnServiceInitializeAsync(cancellationToken);
+				_state = ServiceState.Ready;
+				_isInitialized = true;
+				_readySignal.TrySetResult(true);
+				LogInfo($"{ServiceName} ready");
+				return true;
+			}
+			catch (OperationCanceledException)
+			{
+				_state = ServiceState.Failed;
+				_failureReason = "Initialization cancelled";
+				_readySignal.TrySetResult(false);
+				LogWarning($"{ServiceName} initialization cancelled");
+				return false;
+			}
+			catch (Exception ex)
+			{
+				_state = ServiceState.Failed;
+				_failureReason = ex.Message;
+				_readySignal.TrySetResult(false);
+				LogError($"{ServiceName} initialization failed: {ex.Message}");
+				return false;
+			}
 		}
 		catch (OperationCanceledException)
 		{
-			_state = ServiceState.Failed;
-			_failureReason = "Initialization cancelled";
-			_readySignal.TrySetResult(false);
-			LogWarning($"{ServiceName} initialization cancelled");
-			return false;
-		}
-		catch (Exception ex)
-		{
-			_state = ServiceState.Failed;
-			_failureReason = ex.Message;
-			_readySignal.TrySetResult(false);
-			LogError($"{ServiceName} initialization failed: {ex.Message}");
+			// Lock acquisition was cancelled
+			_initializationLock.Release();
 			return false;
 		}
 	}
@@ -347,6 +366,10 @@ public abstract partial class AutoloadBase : Node
 	{
 		LogInfo($"{ServiceName} autoload shutting down");
 		OnServiceDestroyed();
+
+		// Dispose of initialization lock
+		_initializationLock?.Dispose();
+
 		base._ExitTree();
 	}
 }

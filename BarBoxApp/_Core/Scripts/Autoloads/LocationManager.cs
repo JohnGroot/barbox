@@ -8,8 +8,6 @@ using System;
 /// </summary>
 public partial class LocationManager : AutoloadBase
 {
-	public static LocationManager Instance { get; private set; }
-
 	// Cached configuration values
 	private Guid _boxId;
 	private string _locationId;
@@ -25,7 +23,6 @@ public partial class LocationManager : AutoloadBase
 
 	protected override void OnServiceReady()
 	{
-		Instance = this;
 		LoadEnvironmentConfiguration();
 		LogInfo($"LocationManager initialized - Location: {_locationId}, BoxId: {_boxId}");
 	}
@@ -143,6 +140,5 @@ public partial class LocationManager : AutoloadBase
 
 	protected override void OnServiceDestroyed()
 	{
-		Instance = null;
 	}
 }

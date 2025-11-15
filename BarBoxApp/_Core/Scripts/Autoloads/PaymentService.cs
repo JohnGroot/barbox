@@ -8,8 +8,6 @@ using System.Threading.Tasks;
 /// </summary>
 public partial class PaymentService : AutoloadBase
 {
-	public static PaymentService Instance { get; private set; }
-
 	public static PaymentService GetInstance()
 	{
 		return GetAutoload<PaymentService>();
@@ -18,14 +16,9 @@ public partial class PaymentService : AutoloadBase
 	private IPaymentService _currentProvider;
 	private CreditService _creditService;
 
-	protected override void OnServiceReady()
-	{
-		Instance = this;
-	}
-
 	protected override void OnServiceInitialize()
 	{
-		_creditService = CreditService.Instance;
+		_creditService = CreditService.GetInstance();
 		if (_creditService == null)
 		{
 			LogError("CreditService not found - PaymentService requires CreditService");
@@ -163,6 +156,5 @@ public partial class PaymentService : AutoloadBase
 
 	protected override void OnServiceDestroyed()
 	{
-		Instance = null;
 	}
 }

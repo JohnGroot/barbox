@@ -2,6 +2,7 @@ using Godot;
 using LightResults;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 /// <summary>
@@ -39,15 +40,16 @@ public partial class SessionManager : AutoloadBase
 	[Signal] public delegate void CreditsSpentEventHandler(string phoneNumber, int amount, string reason);
 	[Signal] public delegate void CreditsEarnedEventHandler(string phoneNumber, int amount, string reason);
 
-	public static SessionManager Instance { get; private set; }
-
 	private EventService _eventService;
 	private CreditService _creditService;
 	private Dictionary<string, UserSession> _activeSessions = new();
 	private Dictionary<Guid, UserSession> _sessionsByPlayerId = new(); // Secondary index for O(1) lookup by PlayerId
-	private Timer _idleTimer;
+	private Godot.Timer _idleTimer;
 	private const float IDLE_CHECK_INTERVAL = 30.0f; // 30 seconds
 	private const float IDLE_TIMEOUT = 600.0f; // 10 minutes
+
+	// CRITICAL FIX: Limit concurrent logout operations to prevent overwhelming backend
+	private readonly SemaphoreSlim _logoutSemaphore = new(5, 5); // Max 5 concurrent logouts
 
 	public string CurrentLocationId
 	{
@@ -61,8 +63,6 @@ public partial class SessionManager : AutoloadBase
 
 	protected override void OnServiceEnterTree()
 	{
-		Instance = this;
-
 		// All autoloads guaranteed to exist after _EnterTree phase
 		// Initialize EventService for event-sourced persistence
 		_eventService = EventService.GetInstance();
@@ -72,7 +72,7 @@ public partial class SessionManager : AutoloadBase
 		}
 
 		// Initialize CreditService and connect to credit changes
-		_creditService = CreditService.Instance;
+		_creditService = CreditService.GetInstance();
 		if (_creditService != null)
 		{
 			_creditService.CreditsChanged += OnCreditsChanged;
@@ -510,6 +510,10 @@ public partial class SessionManager : AutoloadBase
 		if (!_activeSessions.TryGetValue(phoneNumber, out var session))
 			return false;
 
+		// CRITICAL FIX: Use semaphore to limit concurrent logout operations
+		// Prevents overwhelming backend with many simultaneous HTTP calls during mass logout
+		await _logoutSemaphore.WaitAsync();
+
 		try
 		{
 			// Emit user/logout event to lobby session (before closing it)
@@ -551,6 +555,10 @@ public partial class SessionManager : AutoloadBase
 		{
 			LogError($"Error logging out phone {phoneNumber}: {ex.Message}");
 			return false;
+		}
+		finally
+		{
+			_logoutSemaphore.Release();
 		}
 	}
 
@@ -866,7 +874,7 @@ public partial class SessionManager : AutoloadBase
 
 	private void SetupIdleTimer()
 	{
-		_idleTimer = new Timer();
+		_idleTimer = new Godot.Timer();
 		_idleTimer.WaitTime = IDLE_CHECK_INTERVAL;
 		_idleTimer.Timeout += OnIdleTimerTimeout;
 		AddChild(_idleTimer);
@@ -943,7 +951,8 @@ public partial class SessionManager : AutoloadBase
 		}
 		_creditService = null;
 
-		Instance = null;
+		// Dispose of logout semaphore
+		_logoutSemaphore?.Dispose();
 	}
 }
 

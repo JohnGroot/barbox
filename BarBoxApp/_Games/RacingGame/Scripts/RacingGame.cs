@@ -132,7 +132,6 @@ public partial class RacingGame : GameController
 	// ================================================================
 
 	// Optional components from GameController
-	private ScoringComponent _scoring;
 	private PlayerManagementComponent _playerMgmt;
 
 	// Racing timing system
@@ -179,7 +178,6 @@ public partial class RacingGame : GameController
 	private RacingUIManager _uiManager;
 	
 	// Cached service references
-	private UserManager _cachedUserManager;
 	private SessionManager _sessionManager;
 
 	// ================================================================
@@ -217,7 +215,6 @@ public partial class RacingGame : GameController
 
 		// Service discovery only - no component creation
 		_eventService = EventService.GetInstance();
-		_cachedUserManager = UserManager.GetAutoload();
 		_sessionManager = SessionManager.GetInstance();
 	}
 
@@ -228,9 +225,6 @@ public partial class RacingGame : GameController
 	protected override void InitializeComponents()
 	{
 		// Create optional GameController components
-		_scoring = new ScoringComponent();
-		AddChild(_scoring);
-
 		_playerMgmt = new PlayerManagementComponent();
 		AddChild(_playerMgmt);
 
@@ -258,11 +252,11 @@ public partial class RacingGame : GameController
 	/// </summary>
 	public override void OnGameSetup()
 	{
-		// Connect UserManager signals for authentication state
-		if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
+		// Connect SessionManager signals for authentication state
+		if (_sessionManager != null && IsInstanceValid(_sessionManager))
 		{
-			_cachedUserManager.UserLoggedIn += OnUserLoggedIn;
-			_cachedUserManager.UserLoggedOut += OnUserLoggedOut;
+			_sessionManager.UserLoggedIn += OnUserLoggedIn;
+			_sessionManager.UserLoggedOut += OnUserLoggedOut;
 		}
 
 		// Initialize tracks & leaderboard system (no longer deferred)
@@ -278,11 +272,11 @@ public partial class RacingGame : GameController
 	/// </summary>
 	public override void OnGameTeardown()
 	{
-		// Disconnect UserManager signals
-		if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
+		// Disconnect SessionManager signals
+		if (_sessionManager != null && IsInstanceValid(_sessionManager))
 		{
-			_cachedUserManager.UserLoggedIn -= OnUserLoggedIn;
-			_cachedUserManager.UserLoggedOut -= OnUserLoggedOut;
+			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
+			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
 		}
 
 		// Save partial race data when exiting (fire-and-forget)
@@ -529,18 +523,6 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void OnTimingSystemLapCompleted(string playerId, int lapNumber, float lapTime)
 	{
-		// Update player score (best lap time or total time)
-		if (_currentGameMode == RacingMode.Practice)
-		{
-			_scoring.UpdateScore(playerId, _timingSystem.GetPlayerBestLapTime(playerId));
-		}
-		else
-		{
-			// In time trial, score is total time
-			float totalTime = _timingSystem.CalculatePlayerScore(playerId, _currentGameMode);
-			_scoring.UpdateScore(playerId, totalTime);
-		}
-
 		// Save best lap time only if user is logged in (uses phone number as real ID)
 		var currentPhoneNumber = GetCurrentPlayerPhoneNumber();
 		if (currentPhoneNumber != null)
@@ -809,8 +791,12 @@ public partial class RacingGame : GameController
 	/// <summary>
 	/// Handle user login - refresh UI to enable time trial button and register first play
 	/// </summary>
-	private async void OnUserLoggedIn(string phoneNumber, string userName)
+	private async void OnUserLoggedIn(string phoneNumber)
 	{
+		// Fetch username from session
+		var session = _sessionManager?.GetUserSession(phoneNumber);
+		var userName = session?.UserName ?? string.Empty;
+
 		// Register player on first play (idempotent - safe to call multiple times)
 		await RegisterFirstPlayAsync(phoneNumber, userName);
 
@@ -888,21 +874,21 @@ public partial class RacingGame : GameController
 		}
 
 		// Always require login first, regardless of development mode
-		if (_cachedUserManager == null || !IsInstanceValid(_cachedUserManager))
+		if (_sessionManager == null || !IsInstanceValid(_sessionManager))
 		{
 			GD.PrintErr("Time trial cancelled - user management system not available");
 			return;
 		}
 
-		bool isLoggedIn = _cachedUserManager.IsUserLoggedIn();
+		bool isLoggedIn = _sessionManager.GetPrimaryUserSession() != null;
 		if (!isLoggedIn)
 		{
 			// Time trial cancelled - user must be logged in
 			return;
 		}
-		
+
 		// Reset idle timer when starting a premium feature
-		_cachedUserManager.ResetUserIdleTimer();
+		_sessionManager.ResetAllIdleTimers();
 		
 		// Check credits only in production mode or when explicitly required
 		bool isDevelopmentMode = Engine.IsEditorHint() || OS.IsDebugBuild();
@@ -1678,13 +1664,13 @@ public partial class RacingGame : GameController
 	private async void OnRaceAgainRequested()
 	{
 		// Always require login first, regardless of development mode
-		if (_cachedUserManager == null || !IsInstanceValid(_cachedUserManager))
+		if (_sessionManager == null || !IsInstanceValid(_sessionManager))
 		{
 			GD.PrintErr("Race again cancelled - user management system not available");
 			return;
 		}
 
-		bool isLoggedIn = _cachedUserManager.IsUserLoggedIn();
+		bool isLoggedIn = _sessionManager.GetPrimaryUserSession() != null;
 		if (!isLoggedIn)
 		{
 			GD.PrintErr("Race again cancelled - user must be logged in");
@@ -1692,7 +1678,7 @@ public partial class RacingGame : GameController
 		}
 
 		// Reset idle timer when starting a premium feature
-		_cachedUserManager.ResetUserIdleTimer();
+		_sessionManager.ResetAllIdleTimers();
 
 		// Check credits only in production mode or when explicitly required
 		bool isDevelopmentMode = Engine.IsEditorHint() || OS.IsDebugBuild();
@@ -1754,9 +1740,9 @@ public partial class RacingGame : GameController
 	private void OnAddCreditsRequested()
 	{
 		// Reset idle timer when accessing premium features
-		if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
+		if (_sessionManager != null && IsInstanceValid(_sessionManager))
 		{
-			_cachedUserManager.ResetUserIdleTimer();
+			_sessionManager.ResetAllIdleTimers();
 		}
 
 		// Get primary user for single-user racing context
@@ -2152,7 +2138,7 @@ public partial class RacingGame : GameController
 		// Use consistent player ID throughout - phone number when logged in
 		var playerId = GetCurrentGamePlayerId();
 		var gameMode = GetRacingMode();
-		var loggedIn = _cachedUserManager?.IsUserLoggedIn() ?? false;
+		var loggedIn = _sessionManager?.GetPrimaryUserSession() != null;
 		var currentRacingState = _timingSystem?.CurrentRacingState ?? RacingTimingSystem.RacingState.Idle;
 		
 		// Determine if a formal time trial is in progress (vs practice mode)
@@ -2207,7 +2193,7 @@ public partial class RacingGame : GameController
 
 			IsUserLoggedIn = loggedIn,
 			ShowGameOverOverlay = currentRacingState == RacingTimingSystem.RacingState.GameOverDeciding,
-			FinalTime = _scoring.GetPlayerScore(playerId),
+			FinalTime = IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerTotalTime(playerId) : 0.0f,
 			CanAffordReplay = canAffordReplay,
 
 			// Tracks & Leaderboard overlay state
@@ -2307,9 +2293,9 @@ public partial class RacingGame : GameController
 
 		// Standard "Return to Menu" button
 		buttons.Add(GameContextButton.CreateReturnToMenuButton(() => {
-			if (_cachedUserManager != null && IsInstanceValid(_cachedUserManager))
+			if (_sessionManager != null && IsInstanceValid(_sessionManager))
 			{
-				_cachedUserManager.ResetUserIdleTimer();
+				_sessionManager.ResetAllIdleTimers();
 			}
 			ReturnToMainMenu();
 		}));
@@ -2376,7 +2362,7 @@ public partial class RacingGame : GameController
 			_timingSystem.CheckpointCrossed -= OnTimingSystemCheckpointCrossed;
 		}
 
-		// UserManager signal disconnection handled in OnUIContextTeardown()
+		// SessionManager signal disconnection handled in OnGameTeardown()
 	}
 
 	/// <summary>

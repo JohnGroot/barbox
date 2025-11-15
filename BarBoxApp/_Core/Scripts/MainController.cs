@@ -8,7 +8,7 @@ public partial class MainController : Control
 	[Export] public VBoxContainer GameList { get; set; }
 	[Export] public Label UserInfoLabel { get; set; }
 
-	private UserManager _userManager;
+	private SessionManager _sessionManager;
 	private GameRegistry _gameRegistry;
 	private SceneManager _sceneManager;
 	private GameHost _gameHost;
@@ -57,9 +57,9 @@ public partial class MainController : Control
 		// Services ready, initializing UI
 		
 		// Now safe to get service references
-		_userManager = UserManager.GetAutoload();
+		_sessionManager = SessionManager.GetInstance();
 		_gameRegistry = GameRegistry.GetAutoload();
-		_gameHost = GameHost.Instance;
+		_gameHost = GameHost.GetInstance();
 		
 		// Services loaded and initialized
 		
@@ -110,21 +110,19 @@ public partial class MainController : Control
 
 	private void ConnectSignals()
 	{
-		if (_userManager != null)
+		if (_sessionManager != null)
 		{
-			_userManager.UserLoggedIn += OnUserLoggedIn;
-			_userManager.UserLoggedOut += OnUserLoggedOut;
-			_userManager.UserDataUpdated += OnUserDataUpdated;
+			_sessionManager.UserLoggedIn += OnUserLoggedIn;
+			_sessionManager.UserLoggedOut += OnUserLoggedOut;
 		}
 	}
 
 	private void DisconnectSignals()
 	{
-		if (GodotObject.IsInstanceValid(_userManager))
+		if (GodotObject.IsInstanceValid(_sessionManager))
 		{
-			_userManager.UserLoggedIn -= OnUserLoggedIn;
-			_userManager.UserLoggedOut -= OnUserLoggedOut;
-			_userManager.UserDataUpdated -= OnUserDataUpdated;
+			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
+			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
 		}
 	}
 
@@ -182,10 +180,10 @@ public partial class MainController : Control
 		if (gameData == null) return;
 
 		// Get primary user session if logged in (single-user main menu context)
-		var currentUserSession = _userManager?.GetCurrentUserSession();
+		var currentUserSession = _sessionManager?.GetPrimaryUserSession();
 
 		// Load game - it will run in practice mode if no user is logged in
-		var gameHost = GameHost.Instance;
+		var gameHost = GameHost.GetInstance();
 		if (gameHost != null)
 		{
 			gameHost.LoadGameOverlay(gameId);
@@ -205,7 +203,7 @@ public partial class MainController : Control
 	private void UpdateUI()
 	{
 		// Show primary user info in main menu UI
-		var currentUserSession = _userManager?.GetCurrentUserSession();
+		var currentUserSession = _sessionManager?.GetPrimaryUserSession();
 
 		if (UserInfoLabel != null)
 		{
@@ -220,7 +218,7 @@ public partial class MainController : Control
 		}
 	}
 
-	private void OnUserLoggedIn(string phoneNumber, string userName)
+	private void OnUserLoggedIn(string phoneNumber)
 	{
 		// Game selection panel stays visible - no login panel switching needed
 		UpdateUI();
@@ -232,27 +230,25 @@ public partial class MainController : Control
 		UpdateUI();
 	}
 
-	private void OnUserDataUpdated(string phoneNumber)
-	{
-		UpdateUI();
-	}
-
 	private async void OnLogoutRequested()
 	{
 		try
 		{
 			// Logout requested
-			
+
 			// Handle logout request from UIManager
-			if (_userManager != null)
+			if (_sessionManager != null)
 			{
-				// UserManager exists, calling LogoutUserAsync()
-				await _userManager.LogoutUserAsync();
-				// LogoutUserAsync() completed
+				// Get primary user session to get phone number
+				var session = _sessionManager.GetPrimaryUserSession();
+				if (session != null)
+				{
+					await _sessionManager.LogoutUserAsync(session.PhoneNumber);
+				}
 			}
 			else
 			{
-				GD.PrintErr("[MainController DEBUG] _userManager is NULL, cannot logout");
+				GD.PrintErr("[MainController DEBUG] _sessionManager is NULL, cannot logout");
 			}
 			
 			// UI will be updated via UserLoggedOut signal - no need for immediate UpdateUI()
@@ -291,13 +287,11 @@ public partial class MainController : Control
 				_uiManager.LogoutRequested += OnLogoutRequested;
 			}
 		}
-		
-		// Ensure UserManager reference is available for logout functionality
-		if (_userManager == null)
+
+		// Ensure SessionManager reference is available for logout functionality
+		if (_sessionManager == null)
 		{
-			// UserManager is null, obtaining reference
-			_userManager = UserManager.GetAutoload();
-			// UserManager reference obtained
+			_sessionManager = SessionManager.GetInstance();
 		}
 	}
 

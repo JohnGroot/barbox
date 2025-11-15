@@ -156,7 +156,7 @@ public abstract partial class GameController : Node2D
 	/// <summary>
 	/// PHASE 3: Game Context Setup
 	/// Integrates game with platform UI and triggers game-specific setup lifecycle.
-	/// Override OnGameSetup() to connect event handlers (UserManager signals, etc.).
+	/// Override OnGameSetup() to connect event handlers (SessionManager signals, etc.).
 	/// Do NOT call StartGame() in OnGameSetup() - use ActivateGame() instead.
 	///
 	/// POST-GUARANTEES:
@@ -220,8 +220,8 @@ public abstract partial class GameController : Node2D
 		{
 			// Standard "Return to Menu" button
 			GameContextButton.CreateReturnToMenuButton(() => {
-				var userManager = UserManager.GetAutoload();
-				userManager?.ResetUserIdleTimer();
+				var sessionManager = SessionManager.GetInstance();
+				sessionManager?.ResetAllIdleTimers();
 				ReturnToMainMenu();
 			})
 		};

@@ -27,8 +27,6 @@ public partial class CreditService : AutoloadBase
 	private const float BALANCE_POLL_TIMEOUT_SECONDS = 1.5f;
 	private const float BALANCE_POLL_INTERVAL_SECONDS = 0.05f;  // Reduced from 0.1f for 2x faster UX responsiveness
 
-	public static CreditService Instance { get; private set; }
-
 	private System.Collections.Generic.Dictionary<Guid, CachedBalance> _balanceCache = new();
 
 	private class CachedBalance
@@ -38,14 +36,14 @@ public partial class CreditService : AutoloadBase
 		public bool IsStale => (DateTime.UtcNow - LastUpdated).TotalSeconds > CACHE_TTL_SECONDS;
 	}
 
-	protected override void OnServiceReady()
-	{
-		Instance = this;
-	}
-
 	protected override void OnServiceInitialize()
 	{
 		LogInfo("CreditService initialized with smart caching (30s TTL)");
+	}
+
+	public static CreditService GetInstance()
+	{
+		return GetAutoload<CreditService>();
 	}
 
 	/// <summary>
@@ -139,10 +137,25 @@ public partial class CreditService : AutoloadBase
 		var finalBalanceResult = await eventService.GetPlayerCreditsAsync(playerId);
 		var finalBalance = finalBalanceResult.IsSuccess(out var finalValue) ? finalValue : -1;
 
-		LogError($"Credit spend timeout: Event succeeded but balance did not update within {BALANCE_POLL_TIMEOUT_SECONDS}s. " +
+		LogWarning($"Credit spend timeout: Event succeeded but balance did not update within {BALANCE_POLL_TIMEOUT_SECONDS}s. " +
 			$"Initial: {initialBalance}, Expected: <={expectedMaxBalance}, Final: {finalBalance}");
 
-		return Result.Failure<int>($"Spend succeeded but balance update timed out (expected: {expectedMaxBalance}, got: {finalBalance})");
+		// CRITICAL FIX: Backend operation succeeded, so we must return success
+		// The timeout is only for the event-sourced balance update, not the spend operation
+		// Return the best available balance (final query result or expected balance)
+		if (finalBalanceResult.IsSuccess(out var finalBalanceValue))
+		{
+			UpdateCache(playerId, finalBalanceValue);
+			EmitSignal(SignalName.CreditsChanged, playerId.ToString(), finalBalanceValue);
+			return Result.Success(finalBalanceValue);
+		}
+
+		// Fallback: Use expected balance if we can't query final balance
+		// This is conservative (assumes spend worked) to prevent double-spending
+		var expectedBalance = Math.Max(0, initialBalance - amount);
+		UpdateCache(playerId, expectedBalance);
+		EmitSignal(SignalName.CreditsChanged, playerId.ToString(), expectedBalance);
+		return Result.Success(expectedBalance);
 	}
 
 	/// <summary>
@@ -202,10 +215,25 @@ public partial class CreditService : AutoloadBase
 		var finalBalanceResult = await eventService.GetPlayerCreditsAsync(playerId);
 		var finalBalance = finalBalanceResult.IsSuccess(out var finalValue) ? finalValue : -1;
 
-		LogError($"Credit add timeout: Event succeeded but balance did not update within {BALANCE_POLL_TIMEOUT_SECONDS}s. " +
+		LogWarning($"Credit add timeout: Event succeeded but balance did not update within {BALANCE_POLL_TIMEOUT_SECONDS}s. " +
 			$"Initial: {initialBalance}, Expected: >={expectedMinBalance}, Final: {finalBalance}");
 
-		return Result.Failure<int>($"Add succeeded but balance update timed out (expected: {expectedMinBalance}, got: {finalBalance})");
+		// CRITICAL FIX: Backend operation succeeded, so we must return success
+		// The timeout is only for the event-sourced balance update, not the add operation
+		// Return the best available balance (final query result or expected balance)
+		if (finalBalanceResult.IsSuccess(out var finalBalanceValue))
+		{
+			UpdateCache(playerId, finalBalanceValue);
+			EmitSignal(SignalName.CreditsChanged, playerId.ToString(), finalBalanceValue);
+			return Result.Success(finalBalanceValue);
+		}
+
+		// Fallback: Use expected balance if we can't query final balance
+		// This is optimistic (assumes add worked) since credits were added on backend
+		var expectedBalance = initialBalance + amount;
+		UpdateCache(playerId, expectedBalance);
+		EmitSignal(SignalName.CreditsChanged, playerId.ToString(), expectedBalance);
+		return Result.Success(expectedBalance);
 	}
 
 	/// <summary>
@@ -267,6 +295,5 @@ public partial class CreditService : AutoloadBase
 	protected override void OnServiceDestroyed()
 	{
 		_balanceCache.Clear();
-		Instance = null;
 	}
 }

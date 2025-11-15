@@ -27,7 +27,6 @@ EventService="*res://_Core/Scripts/Autoloads/EventService.cs"
 GameHost="*res://_Core/Scripts/Autoloads/GameHost.cs"
 InputManager="*res://_Core/Scripts/Autoloads/InputManager.cs"
 UIManager="*res://_Core/Scripts/UI/UIManager.cs"
-UserManager="*res://_Core/Scripts/Autoloads/UserManager.cs"
 PaymentService="*res://_Core/Scripts/Autoloads/PaymentService.cs"
 
 [display]

@@ -89,9 +89,6 @@ public partial class SceneManager : AutoloadBase
 			};
 			await Task.WhenAll(phase5Tasks);
 
-			// Phase 6: Compatibility stubs (can fail gracefully)
-			LogInfo("Phase 6: Compatibility services");
-			await InitializeServiceAsync("UserManager", UserManager.GetAutoload(), cancellationToken);
 
 			_servicesInitialized = true;
 			LogInfo("All services initialized successfully");

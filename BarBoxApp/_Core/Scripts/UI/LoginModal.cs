@@ -35,7 +35,7 @@ public partial class LoginModal : Control
 	private Button _createCancelButton;
 	private Label _createStatusLabel;
 
-	private UserManager _userManager;
+	private SessionManager _sessionManager;
 
 	// Processing state flags to prevent duplicate submissions
 	private bool _isLoginInProgress = false;
@@ -49,7 +49,7 @@ public partial class LoginModal : Control
 
 	public override void _Ready()
 	{
-		_userManager = UserManager.GetAutoload();
+		_sessionManager = SessionManager.GetInstance();
 
 		SetupModalLayout();
 		CreateModalUI();
@@ -273,11 +273,11 @@ public partial class LoginModal : Control
 		if (_createCancelButton != null)
 			_createCancelButton.Pressed += OnCancelPressed;
 
-		// Connect to user manager signals for status updates
-		if (_userManager != null)
+		// Connect to session manager signals for status updates
+		if (_sessionManager != null)
 		{
-			_userManager.UserLoggedIn += OnUserLoggedIn;
-			_userManager.UserLoggedOut += OnUserLoggedOut;
+			_sessionManager.UserLoggedIn += OnUserLoggedIn;
+			_sessionManager.UserLoggedOut += OnUserLoggedOut;
 		}
 
 		// Handle Enter key in login input fields
@@ -693,11 +693,11 @@ public partial class LoginModal : Control
 
 	private async void CheckUsernameAvailabilityAsync(string username)
 	{
-		if (_userManager == null || string.IsNullOrEmpty(username)) return;
+		if (_sessionManager == null || string.IsNullOrEmpty(username)) return;
 
 		try
 		{
-			var result = await _userManager.IsUsernameAvailableAsync(username);
+			var result = await _sessionManager.IsUsernameAvailableAsync(username);
 			if (result.IsSuccess(out var isAvailable))
 			{
 				if (isAvailable)
@@ -838,7 +838,7 @@ public partial class LoginModal : Control
 		// Prevent re-entry - ignore if already processing
 		if (_isLoginInProgress) return;
 
-		if (_loginPhoneInput == null || _loginPinInput == null || _userManager == null)
+		if (_loginPhoneInput == null || _loginPinInput == null || _sessionManager == null)
 		{
 			ShowLoginStatusMessage("Login system not properly initialized", false);
 			return;
@@ -872,7 +872,7 @@ public partial class LoginModal : Control
 
 			ShowLoginStatusMessage("Logging in...", false);
 
-			var loginResult = await _userManager.LoginUserByPhoneAsync(cleanedPhone, cleanedPin);
+			var loginResult = await _sessionManager.LoginUserByPhoneAsync(cleanedPhone, cleanedPin);
 			if (loginResult.IsSuccess(out var _))
 			{
 				ShowLoginStatusMessage("Login successful!", true);
@@ -907,7 +907,7 @@ public partial class LoginModal : Control
 		// Prevent re-entry - ignore if already processing
 		if (_isCreateAccountInProgress) return;
 
-		if (_createPhoneInput == null || _createPinInput == null || _createUsernameInput == null || _userManager == null)
+		if (_createPhoneInput == null || _createPinInput == null || _createUsernameInput == null || _sessionManager == null)
 		{
 			ShowCreateStatusMessage("Account creation system not properly initialized", false);
 			return;
@@ -949,7 +949,7 @@ public partial class LoginModal : Control
 			// Stage 1: Validate all requirements (pessimistic validation)
 			ShowCreateStatusMessage("Validating account information...", false);
 
-			var validationResult = await _userManager.ValidatePlayerCreationAsync(cleanedPhone, cleanedPin, cleanedUsername);
+			var validationResult = await _sessionManager.ValidatePlayerCreationAsync(cleanedPhone, cleanedPin, cleanedUsername);
 			if (validationResult.IsFailure(out var valError))
 			{
 				ShowCreateStatusMessage($"Validation failed: {valError.Message}", false);
@@ -974,7 +974,7 @@ public partial class LoginModal : Control
 			// Stage 2: All validation passed, create account
 			ShowCreateStatusMessage("Creating account...", false);
 
-			var result = await _userManager.CreateUserAccountAsync(cleanedPhone, cleanedPin, cleanedUsername);
+			var result = await _sessionManager.CreateUserAccountAsync(cleanedPhone, cleanedPin, cleanedUsername);
 			if (result.IsSuccess(out var _))
 			{
 				// Stage 3: Success!
@@ -1051,10 +1051,15 @@ public partial class LoginModal : Control
 		HideModal();
 	}
 
-	private void OnUserLoggedIn(string phoneNumber, string userName)
+	private void OnUserLoggedIn(string phoneNumber)
 	{
 		// Don't auto-hide modal - let OnLoginPressed() handle it after showing success message
 		// This prevents the race condition where modal closes before user sees "Login successful!"
+
+		// Fetch username from session for logging
+		var session = _sessionManager?.GetUserSession(phoneNumber);
+		var userName = session?.UserName ?? string.Empty;
+
 		GD.Print($"[LoginModal] User logged in: {userName} ({phoneNumber})");
 	}
 
@@ -1109,11 +1114,11 @@ public partial class LoginModal : Control
 			_createUsernameInput.TextChanged -= OnCreateUsernameChanged;
 		}
 
-		// Disconnect user manager signals
-		if (GodotObject.IsInstanceValid(_userManager))
+		// Disconnect session manager signals
+		if (GodotObject.IsInstanceValid(_sessionManager))
 		{
-			_userManager.UserLoggedIn -= OnUserLoggedIn;
-			_userManager.UserLoggedOut -= OnUserLoggedOut;
+			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
+			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
 		}
 
 		// Clean up username check timer

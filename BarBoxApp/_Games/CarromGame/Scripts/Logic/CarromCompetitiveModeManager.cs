@@ -391,12 +391,12 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		if (_competitiveCreditCost > 0)
 		{
 			// Reset user idle timer
-			var userManager = UserManager.GetAutoload();
-			if (userManager != null && IsInstanceValid(userManager))
+			var sessionManager = SessionManager.GetInstance();
+			if (sessionManager != null && IsInstanceValid(sessionManager))
 			{
-				userManager.ResetUserIdleTimer();
+				sessionManager.ResetAllIdleTimers();
 			}
-			
+
 			// NEW PATTERN: Track global competitive games played instead of spending table credits
 			// This allows for unlimited competitive play while tracking usage analytics
 			TrackGlobalCompetitiveGame();

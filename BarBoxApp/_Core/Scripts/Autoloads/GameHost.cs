@@ -14,8 +14,6 @@ public partial class GameHost : AutoloadBase
 	[Signal] public delegate void GamePausedEventHandler(string gameId);
 	[Signal] public delegate void GameResumedEventHandler(string gameId);
 
-	public static GameHost Instance { get; private set; }
-
 	private GameController _currentGame;
 	private string _currentGameId = string.Empty;
 	private SessionManager _sessionManager;
@@ -25,7 +23,6 @@ public partial class GameHost : AutoloadBase
 
 	protected override void OnServiceEnterTree()
 	{
-		Instance = this;
 
 		// All autoloads guaranteed to exist after _EnterTree phase
 		_sessionManager = SessionManager.GetInstance();
@@ -406,7 +403,5 @@ public partial class GameHost : AutoloadBase
 		{
 			StopCurrentGame();
 		}
-		
-		Instance = null;
 	}
 }

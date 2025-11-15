@@ -1534,8 +1534,8 @@ public partial class CarromGame : GameController
 
 		// Standard "Return to Menu" button
 		buttons.Add(GameContextButton.CreateReturnToMenuButton(() => {
-			var userManager = UserManager.GetAutoload();
-			userManager?.ResetUserIdleTimer();
+			var sessionManager = SessionManager.GetInstance();
+			sessionManager?.ResetAllIdleTimers();
 			ReturnToMainMenu();
 		}));
 
@@ -1543,20 +1543,20 @@ public partial class CarromGame : GameController
 		if (_carromGameMode == CarromGameMode.Practice)
 		{
 			buttons.Add(new ContextButtonData("Reset", () => {
-				var userManager = UserManager.GetAutoload();
-				userManager?.ResetUserIdleTimer();
+				var sessionManager = SessionManager.GetInstance();
+				sessionManager?.ResetAllIdleTimers();
 				RequestPracticeReset();
 			}, "🔄", true, "Reset practice session"));
 			
 			buttons.Add(new ContextButtonData("2-Player Match", () => {
-				var userManager = UserManager.GetAutoload();
-				userManager?.ResetUserIdleTimer();
+				var sessionManager = SessionManager.GetInstance();
+				sessionManager?.ResetAllIdleTimers();
 				StartCompetitiveMode(2);
 			}, "👥", true, "Start 2-player competitive match"));
 			
 			buttons.Add(new ContextButtonData("4-Player Match", () => {
-				var userManager = UserManager.GetAutoload();
-				userManager?.ResetUserIdleTimer();
+				var sessionManager = SessionManager.GetInstance();
+				sessionManager?.ResetAllIdleTimers();
 				StartCompetitiveMode(4);
 			}, "👨‍👩‍👧‍👦", true, "Start 4-player doubles match"));
 		}
@@ -1569,8 +1569,8 @@ public partial class CarromGame : GameController
 			
 			// Return to practice mode
 			buttons.Add(new ContextButtonData("Return to Practice", () => {
-				var userManager = UserManager.GetAutoload();
-				userManager?.ResetUserIdleTimer();
+				var sessionManager = SessionManager.GetInstance();
+				sessionManager?.ResetAllIdleTimers();
 				ReturnToPractice();
 			}, "🔄", true, "Return to practice mode"));
 		}

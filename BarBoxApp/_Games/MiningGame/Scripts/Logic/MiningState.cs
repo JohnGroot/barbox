@@ -462,9 +462,14 @@ public partial class MiningState : Node
 		_globalData.SpendGems(cost);
 
 		// Actually add credit to user account
-		if (!string.IsNullOrEmpty(_game.GetCurrentUserPhoneNumber()))
+		var phoneNumber = _game.GetCurrentUserPhoneNumber();
+		if (!string.IsNullOrEmpty(phoneNumber))
 		{
-			_game.GetUserManager()?.AddCredits(CREDITS_PER_PURCHASE);
+			var sessionManager = _game.GetSessionManager();
+			if (sessionManager != null)
+			{
+				_ = sessionManager.AddGlobalCreditsAsync(phoneNumber, CREDITS_PER_PURCHASE, "Mining game credit purchase");
+			}
 		}
 
 		// Emit event to backend
