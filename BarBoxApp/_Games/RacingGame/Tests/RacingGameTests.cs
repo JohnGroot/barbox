@@ -52,15 +52,15 @@ public class RacingGameTests : TestClass
 			_testPlayerId,
 			GAME_TAG);
 
-		if (sessionResult.IsSuccess)
+		if (sessionResult.IsSuccess(out var sessionId))
 		{
-			_testSessionId = sessionResult.Value;
+			_testSessionId = sessionId;
 			_testSessionId.ShouldNotBe(Guid.Empty, "Session ID should be valid");
 			TestHelpers.LogTestInfo($"Racing session created: {_testSessionId}");
 		}
-		else
+		else if (sessionResult.IsFailure(out var sessionError))
 		{
-			TestHelpers.LogTestWarning($"Failed to create session: {sessionResult.Error}");
+			TestHelpers.LogTestWarning($"Failed to create session: {sessionError.Message}");
 		}
 	}
 
@@ -81,13 +81,13 @@ public class RacingGameTests : TestClass
 			mode = "time_trial"
 		});
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo("Race begin event emitted");
 		}
-		else
+		else if (result.IsFailure(out var error))
 		{
-			TestHelpers.LogTestError($"Begin event failed: {result.Error}");
+			TestHelpers.LogTestError($"Begin event failed: {error.Message}");
 		}
 	}
 
@@ -122,7 +122,7 @@ public class RacingGameTests : TestClass
 			position = new { x = 500, y = 600 }
 		});
 
-		if (checkpoint1.IsSuccess && checkpoint2.IsSuccess && checkpoint3.IsSuccess)
+		if (checkpoint1.IsSuccess(out var _) && checkpoint2.IsSuccess(out var __) && checkpoint3.IsSuccess(out var ___))
 		{
 			TestHelpers.LogTestInfo("All checkpoint events emitted successfully");
 		}
@@ -163,7 +163,7 @@ public class RacingGameTests : TestClass
 			total_time = 45.1f
 		});
 
-		if (lap1.IsSuccess && lap2.IsSuccess && lap3.IsSuccess)
+		if (lap1.IsSuccess(out var _) && lap2.IsSuccess(out var __) && lap3.IsSuccess(out var ___))
 		{
 			TestHelpers.LogTestInfo("All lap events emitted successfully");
 			TestHelpers.LogTestInfo("Best lap: 14.8s (Lap 2)");
@@ -195,13 +195,13 @@ public class RacingGameTests : TestClass
 			track = "oval"
 		});
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var _))
 		{
 			TestHelpers.LogTestInfo($"Race finish event emitted - Final time: {finalTime}s");
 		}
-		else
+		else if (result.IsFailure(out var error))
 		{
-			TestHelpers.LogTestError($"Finish event failed: {result.Error}");
+			TestHelpers.LogTestError($"Finish event failed: {error.Message}");
 		}
 	}
 
@@ -285,9 +285,8 @@ public class RacingGameTests : TestClass
 			_testPlayerId,
 			GAME_TAG);
 
-		if (sessionResult.IsSuccess)
+		if (sessionResult.IsSuccess(out var flowSessionId))
 		{
-			var flowSessionId = sessionResult.Value;
 			TestHelpers.LogTestInfo($"Step 1 - Session Created: ✓ ({flowSessionId})");
 
 			// Step 2: Start race
@@ -297,7 +296,7 @@ public class RacingGameTests : TestClass
 				track = "oval"
 			});
 
-			TestHelpers.LogTestInfo($"Step 2 - Race Begin: {(beginResult.IsSuccess ? "✓" : "✗")}");
+			TestHelpers.LogTestInfo($"Step 2 - Race Begin: {(beginResult.IsSuccess(out var _) ? "✓" : "✗")}");
 
 			// Step 3: Record checkpoints (3 laps, 4 checkpoints each = 12 total)
 			for (int lap = 1; lap <= 3; lap++)
@@ -331,15 +330,15 @@ public class RacingGameTests : TestClass
 				checkpoints_hit = 12
 			});
 
-			TestHelpers.LogTestInfo($"Step 4 - Race Finish: {(finishResult.IsSuccess ? "✓" : "✗")}");
+			TestHelpers.LogTestInfo($"Step 4 - Race Finish: {(finishResult.IsSuccess(out var __) ? "✓" : "✗")}");
 
 			// Step 5: Close session
 			var closeResult = await _eventService.CloseActivitySessionAsync(flowSessionId);
-			TestHelpers.LogTestInfo($"Step 5 - Session Closed: {(closeResult.IsSuccess ? "✓" : "✗")}");
+			TestHelpers.LogTestInfo($"Step 5 - Session Closed: {(closeResult.IsSuccess(out var ___) ? "✓" : "✗")}");
 		}
-		else
+		else if (sessionResult.IsFailure(out var sessionError))
 		{
-			TestHelpers.LogTestError($"Flow failed at session creation: {sessionResult.Error}");
+			TestHelpers.LogTestError($"Flow failed at session creation: {sessionError.Message}");
 		}
 
 		TestHelpers.LogTestInfo("=== Racing Game Flow Complete ===");
@@ -373,13 +372,13 @@ public class RacingGameTests : TestClass
 				total_time = runningTotal
 			});
 
-			if (lapResult.IsSuccess)
+			if (lapResult.IsSuccess(out var _))
 			{
 				TestHelpers.LogTestInfo($"Lap {i + 1} emitted: {lapTimes[i]:F3}s");
 			}
-			else
+			else if (lapResult.IsFailure(out var lapError))
 			{
-				TestHelpers.LogTestError($"Lap {i + 1} failed: {lapResult.Error}");
+				TestHelpers.LogTestError($"Lap {i + 1} failed: {lapError.Message}");
 			}
 		}
 
@@ -392,15 +391,16 @@ public class RacingGameTests : TestClass
 			lap_times = lapTimes
 		});
 
-		if (raceResult.IsSuccess)
+		var raceSuccess = raceResult.IsSuccess(out var _);
+		if (raceSuccess)
 		{
 			TestHelpers.LogTestInfo($"Race finish saved successfully - Time: {totalTime:F3}s");
-			raceResult.IsSuccess.ShouldBeTrue("Valid race should save successfully");
+			raceSuccess.ShouldBeTrue("Valid race should save successfully");
 		}
-		else
+		else if (raceResult.IsFailure(out var raceError))
 		{
-			TestHelpers.LogTestError($"Race finish failed: {raceResult.Error}");
-			raceResult.Error.ShouldNotContain("Invalid lap");
+			TestHelpers.LogTestError($"Race finish failed: {raceError.Message}");
+			raceError.Message.ShouldNotContain("Invalid lap");
 		}
 	}
 
@@ -434,16 +434,17 @@ public class RacingGameTests : TestClass
 			lap_times = lapTimes
 		});
 
-		if (raceResult.IsSuccess)
+		var fastRaceSuccess = raceResult.IsSuccess(out var _);
+		if (fastRaceSuccess)
 		{
 			TestHelpers.LogTestInfo($"Race with fast laps saved successfully - Total: {totalTime:F3}s");
-			raceResult.IsSuccess.ShouldBeTrue("Fast but legitimate lap times should save successfully");
+			fastRaceSuccess.ShouldBeTrue("Fast but legitimate lap times should save successfully");
 		}
-		else
+		else if (raceResult.IsFailure(out var fastRaceError))
 		{
-			TestHelpers.LogTestError($"Race incorrectly rejected: {raceResult.Error}");
+			TestHelpers.LogTestError($"Race incorrectly rejected: {fastRaceError.Message}");
 			// Fast laps should now be accepted
-			raceResult.IsSuccess.ShouldBeTrue($"Fast laps should be accepted, but got error: {raceResult.Error}");
+			fastRaceSuccess.ShouldBeTrue($"Fast laps should be accepted, but got error: {fastRaceError.Message}");
 		}
 
 		TestHelpers.LogTestInfo("=== Fast Lap Test Complete ===");
@@ -475,8 +476,12 @@ public class RacingGameTests : TestClass
 			lap_times = lapTimes
 		});
 
-		result1.IsSuccess.ShouldBeFalse("Mismatched total time should be rejected");
-		result1.Error.ShouldContain("doesn't match");
+		var result1Success = result1.IsSuccess(out var _);
+		result1Success.ShouldBeFalse("Mismatched total time should be rejected");
+		if (result1.IsFailure(out var result1Error))
+		{
+			result1Error.Message.ShouldContain("doesn't match");
+		}
 
 		// Test case 2: Negative lap time (physics bug)
 		var invalidLapTimes = new List<float> { 6.670f, -3.500f, 6.890f };
@@ -492,8 +497,12 @@ public class RacingGameTests : TestClass
 			lap_times = invalidLapTimes
 		});
 
-		result2.IsSuccess.ShouldBeFalse("Negative lap time should be rejected");
-		result2.Error.ShouldContain("must be positive");
+		var result2Success = result2.IsSuccess(out var _);
+		result2Success.ShouldBeFalse("Negative lap time should be rejected");
+		if (result2.IsFailure(out var result2Error))
+		{
+			result2Error.Message.ShouldContain("must be positive");
+		}
 
 		TestHelpers.LogTestInfo("=== Data Integrity Validation Complete ===");
 	}
@@ -506,13 +515,13 @@ public class RacingGameTests : TestClass
 			TestHelpers.LogTestInfo("Closing racing game session");
 			var result = await _eventService.CloseActivitySessionAsync(_testSessionId);
 
-			if (result.IsSuccess)
+			if (result.IsSuccess(out var _))
 			{
 				TestHelpers.LogTestInfo("Session closed successfully");
 			}
-			else
+			else if (result.IsFailure(out var error))
 			{
-				TestHelpers.LogTestWarning($"Session close failed: {result.Error}");
+				TestHelpers.LogTestWarning($"Session close failed: {error.Message}");
 			}
 		}
 	}

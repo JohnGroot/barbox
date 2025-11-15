@@ -52,13 +52,6 @@ public partial class BackendManager : AutoloadBase
 	[Signal] public delegate void BackendReadyEventHandler();
 	[Signal] public delegate void BackendStartFailedEventHandler(string error);
 
-	public static BackendManager Instance { get; private set; }
-
-	protected override void OnServiceReady()
-	{
-		Instance = this;
-	}
-
 	protected override async Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
 		LogInfo("BackendManager initializing...");
@@ -167,15 +160,13 @@ public partial class BackendManager : AutoloadBase
 		try
 		{
 			var output = new Godot.Collections.Array();
-			var exitCode = OS.Execute("lsof", new string[] { "-i", $":{port}", "-t" }, output);
+			var exitCode = OS.Execute("lsof", ["-i", $":{port}", "-t"], output);
 
-			if (exitCode == 0 && output.Count > 0)
-			{
-				var outputStr = output[0].ToString().Trim();
-				return !string.IsNullOrEmpty(outputStr);
-			}
+			if (exitCode != 0 || output.Count <= 0)
+				return false;
 
-			return false;
+			var outputStr = output[0].ToString().Trim();
+			return !string.IsNullOrEmpty(outputStr);
 		}
 		catch (Exception ex)
 		{
@@ -194,7 +185,7 @@ public partial class BackendManager : AutoloadBase
 		try
 		{
 			var output = new Godot.Collections.Array();
-			var exitCode = OS.Execute("lsof", new string[] { "-i", $":{port}", "-t" }, output);
+			var exitCode = OS.Execute("lsof", ["-i", $":{port}", "-t"], output);
 
 			if (exitCode == 0 && output.Count > 0)
 			{
@@ -213,7 +204,7 @@ public partial class BackendManager : AutoloadBase
 						if (!string.IsNullOrEmpty(trimmedPid))
 						{
 							LogWarning($"Killing stale process on port {port} (PID: {trimmedPid})");
-							OS.Execute("kill", new string[] { "-9", trimmedPid });
+							OS.Execute("kill", ["-9", trimmedPid]);
 						}
 					}
 
@@ -242,7 +233,7 @@ public partial class BackendManager : AutoloadBase
 		}
 		catch (Exception ex)
 		{
-			LogError($"Failed to kill process on port {port}: {ex.Message}");
+			LogError($"Failed to kill process on port {port}: {ex.Message}\nStack Trace: {ex.StackTrace}");
 		}
 	}
 
@@ -371,7 +362,7 @@ public partial class BackendManager : AutoloadBase
 		}
 		catch (Exception ex)
 		{
-			LogError($"Exception during backend startup: {ex.Message}");
+			LogError($"Exception during backend startup: {ex.Message}\nStack Trace: {ex.StackTrace}");
 			return false;
 		}
 	}
@@ -472,7 +463,7 @@ public partial class BackendManager : AutoloadBase
 		}
 		catch (Exception ex)
 		{
-			LogError($"Backend health check failed: {ex.Message}");
+			LogError($"Backend health check failed: {ex.Message}\nStack Trace: {ex.StackTrace}");
 			return false;
 		}
 	}
@@ -522,6 +513,5 @@ public partial class BackendManager : AutoloadBase
 	protected override void OnServiceDestroyed()
 	{
 		// We don't manage backend lifecycle, so nothing to clean up
-		Instance = null;
 	}
 }

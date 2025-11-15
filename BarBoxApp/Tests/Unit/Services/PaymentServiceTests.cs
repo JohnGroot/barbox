@@ -41,9 +41,9 @@ public class PaymentServiceTests : BackendTestBase
 
 		// Create user session first
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -102,9 +102,9 @@ public class PaymentServiceTests : BackendTestBase
 
 		// Create user session
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -200,9 +200,9 @@ public class PaymentServiceTests : BackendTestBase
 
 		// Create user session
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginError.Message}");
 			return;
 		}
 

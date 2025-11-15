@@ -14,6 +14,11 @@ public partial class CarromGame : GameController
 	// SIGNALS
 	// ================================================================
 
+	// Domain-specific lifecycle signals
+	[Signal] public delegate void RoundStartedEventHandler();
+	[Signal] public delegate void RoundEndedEventHandler();
+
+	// Game event signals
 	[Signal] public delegate void PiecePocketedEventHandler(string playerId, CarromPiece piece);
 	[Signal] public delegate void StrikerFoulEventHandler(string playerId);
 	[Signal] public delegate void TurnChangedEventHandler(string playerId, int turnNumber);
@@ -47,6 +52,11 @@ public partial class CarromGame : GameController
 
 	// Board settings are now managed by the CarromBoard component itself
 
+	/// <summary>
+	/// Disallow logout during active rounds, allow when in menu/idle states
+	/// </summary>
+	public override bool CanLogout => !IsRoundActive();
+
 	[ExportCategory("Piece Templates")]
 	[Export(PropertyHint.ResourceType, "PackedScene")] public PackedScene WhitePieceTemplate { get; set; }
 	[Export(PropertyHint.ResourceType, nameof(PackedScene))] public PackedScene BlackPieceTemplate { get; set; }
@@ -70,6 +80,9 @@ public partial class CarromGame : GameController
 	private CarromPieceFactory _pieceFactory;
 	private CarromCameraController _cameraController;
 	private CarromGameStateMachine _gameStateMachine;
+
+	// Optional GameController components (minimal usage - Carrom has own player system)
+	private PlayerManagementComponent _playerMgmt;
 	
 	// UI Components
 	private CarromScoreDisplay _scoreDisplay;
@@ -94,51 +107,84 @@ public partial class CarromGame : GameController
 	public override void _Ready()
 	{
 		GameId = "carrom_game";
-		SetGameMode(GameMode.Practice); // Start in practice mode
 
-		// Initialize event service
-		_eventService = EventService.GetInstance();
-
-		// Initialize physics config
+		// Initialize physics config early (needed for exports)
 		if (PhysicsConfig == null)
 		{
 			PhysicsConfig = new CarromPhysicsConfig();
 		}
 
+		// Call base which orchestrates all initialization phases
+		base._Ready();
+	}
+
+	/// <summary>
+	/// PHASE 1: Service Discovery
+	/// Discovers platform services and detects production vs development context
+	/// </summary>
+	protected override void DiscoverServices()
+	{
+		base.DiscoverServices();
+
+		// Initialize event service
+		_eventService = EventService.GetInstance();
+	}
+
+	/// <summary>
+	/// PHASE 2: Component Initialization
+	/// Creates and configures all game components (board, camera, input, managers, UI)
+	/// </summary>
+	protected override void InitializeComponents()
+	{
+		base.InitializeComponents();
+
+		// Create minimal GameController components for compatibility
+		_playerMgmt = new PlayerManagementComponent();
+		AddChild(_playerMgmt);
+
 		// Initialize systems in explicit order
 		SetupBoard();
 		SetupCameraController();
 		SetupInputController();
-		
-		// Initialize game state machine for simplified state management
+
+		// Initialize game state machine
 		InitializeGameStateMachine();
-		
-		// Initialize components explicitly after all nodes are found AND phase manager created
-		InitializeComponents();
-		
+
+		// Initialize components after all nodes are found
+		InitializeComponentsInternal();
+
 		// Initialize managers
 		InitializeManagers();
-		
+
 		// Initialize UI components
 		InitializeScoreDisplay();
-
-		// Call base which triggers InitializeGame()
-		base._Ready();
-		
-		// Context detection
-		DetectAndAdaptToContext();
-		
-		// Load user data after context detection
-		LoadUserDataAsync();
-		
-		// Start practice mode AFTER all managers are initialized
-		// This prevents SetPhaseManager(null) errors during initialization
-		StartPracticeMode();
 	}
 
-	protected override void InitializeGame()
+	/// <summary>
+	/// PHASE 3: Game Setup
+	/// Loads user data after UI integration is complete
+	/// </summary>
+	public override void OnGameSetup()
 	{
-		base.InitializeGame();
+		base.OnGameSetup();
+
+		// Setup player integration (components now guaranteed to exist)
+		SetupPlayerIntegration();
+
+		// Load user data after context detection and UI setup
+		LoadUserDataAsync();
+	}
+
+	/// <summary>
+	/// PHASE 4: Activation Decision
+	/// Automatically starts practice mode after all initialization is complete
+	/// </summary>
+	protected override void ActivateGame()
+	{
+		base.ActivateGame();
+
+		// Start practice mode
+		StartPracticeMode();
 	}
 
 	/// <summary>
@@ -230,14 +276,14 @@ public partial class CarromGame : GameController
 	/// <summary>
 	/// Initialize components in explicit order after all nodes are discovered
 	/// </summary>
-	private void InitializeComponents()
+	private void InitializeComponentsInternal()
 	{
 		// Initialize board first (it may need to setup internal state)
 		if (_board != null)
 		{
 			// Board should be self-contained and fully initialized from its own exports
 			_board.RefreshBoard(); // Ensure board is fully initialized
-			
+
 			// Configure physics config with official board scaling for proportional piece sizes
 			if (PhysicsConfig != null)
 			{
@@ -246,12 +292,12 @@ public partial class CarromGame : GameController
 					_board.PieceRadius,
 					_board.OfficialStrikerRadius
 				);
-				
+
 				// Pass physics config to board pockets for enhanced physics
 				_board.SetPocketPhysicsConfig(PhysicsConfig);
 			}
 		}
-		
+
 		// Initialize input controller after board and camera are ready
 		if (_inputController != null)
 		{
@@ -259,11 +305,11 @@ public partial class CarromGame : GameController
 			_inputController.SetCameraController(_cameraController);
 			_inputController.SetGameState(_gameStateMachine);
 			_inputController.SetPhysicsConfig(PhysicsConfig);
-			
+
 			// Pass visual parameters to input controller
 			_inputController.SetVisualParameters(AimLineLength, PowerBarWidth, PowerBarHeight);
 		}
-		
+
 		// Initialize trail system based on debug setting
 		InitializeTrailSystem();
 	}
@@ -496,6 +542,61 @@ public partial class CarromGame : GameController
 	}
 
 	// ================================================================
+	// DOMAIN-SPECIFIC STATE - Carrom Game checks if a round is active
+	// ================================================================
+
+	/// <summary>
+	/// Check if a carrom round is currently active
+	/// A round is active when the state machine is in any state except Initializing
+	/// </summary>
+	public bool IsRoundActive()
+	{
+		// Only competitive rounds are considered "active rounds"
+		// Practice mode is free-play and shouldn't block competitive mode start
+		return _gameStateMachine != null &&
+		       _gameStateMachine.CurrentState != CarromGameStateMachine.GameState.Initializing &&
+		       _carromGameMode == CarromGameMode.Competitive;
+	}
+
+	// ================================================================
+	// DOMAIN-SPECIFIC LIFECYCLE - Round management
+	// ================================================================
+
+	/// <summary>
+	/// Start a new carrom round
+	/// </summary>
+	public void StartRound()
+	{
+		// Initialize game state
+		var allPieces = _pieceFactory?.GetAllPieces();
+		if (_gameStateMachine != null && _currentModeManager != null && allPieces != null)
+		{
+			_gameStateMachine.Initialize(allPieces, _currentModeManager);
+			// Note: TransitionTo is called internally by the state machine initialization
+		}
+
+		// Notify platform that game session started
+		_gameHost?.NotifyGameStarted();
+
+		EmitSignal(SignalName.RoundStarted);
+		GD.Print("[CarromGame] Round started");
+	}
+
+	/// <summary>
+	/// End the current carrom round
+	/// </summary>
+	public void EndRound()
+	{
+		// Game state is managed by state machine - no need to manually transition
+
+		// Notify platform that game session ended
+		_gameHost?.NotifyGameEnded();
+
+		EmitSignal(SignalName.RoundEnded);
+		GD.Print("[CarromGame] Round ended");
+	}
+
+	// ================================================================
 	// GAME MODES
 	// ================================================================
 
@@ -504,10 +605,10 @@ public partial class CarromGame : GameController
 	/// </summary>
 	public virtual void StartPracticeMode()
 	{
-		// Cancel current game if somehow still active (safety check)
-		if (_isGameActive)
+		// Cancel current round if somehow still active (safety check)
+		if (IsRoundActive())
 		{
-			EndGame();
+			EndRound();
 		}
 
 		// Clean up competitive mode before switching
@@ -523,7 +624,6 @@ public partial class CarromGame : GameController
 		// Set current mode manager to practice
 		_currentModeManager = _practiceModeManager;
 		_carromGameMode = CarromGameMode.Practice;
-		SetGameMode(GameMode.Practice);
 		ResetGame();
 
 		// Delegate to practice mode manager - it will emit PracticeModeSetupComplete when done
@@ -555,10 +655,10 @@ public partial class CarromGame : GameController
 			}
 		}
 
-		// Cancel current game if active - emits GameEnded signal
-		if (_isGameActive)
+		// Cancel current round if active
+		if (IsRoundActive())
 		{
-			EndGame();
+			EndRound();
 		}
 
 		StartPracticeMode();
@@ -572,7 +672,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	public virtual void StartCompetitiveMode(int playerCount = 2)
 	{
-		if (_isGameActive)
+		if (IsRoundActive())
 			return;
 
 		// Store player count for when menu signals game start
@@ -590,7 +690,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void StartCompetitiveModeInternal(int playerCount)
 	{
-		if (_isGameActive)
+		if (IsRoundActive())
 			return;
 
 		// Clean up practice mode before switching
@@ -602,9 +702,8 @@ public partial class CarromGame : GameController
 		// Set current mode manager to competitive
 		_currentModeManager = _competitiveModeManager;
 		_carromGameMode = CarromGameMode.Competitive;
-		SetGameMode(GameMode.TimeTrial); // Use TimeTrial for competitive tracking
 		ResetGame();
-		StartGame();
+		StartRound();
 
 		// Delegate to competitive mode manager
 		bool success = _competitiveModeManager.StartCompetitiveMode();
@@ -1279,10 +1378,14 @@ public partial class CarromGame : GameController
 	}
 
 	// ================================================================
-	// CONTEXT DETECTION
+	// PLAYER INTEGRATION
 	// ================================================================
 
-	private void DetectAndAdaptToContext()
+	/// <summary>
+	/// Sets up player integration with GameHost when available
+	/// Called during OnGameSetup phase when _playerMgmt is guaranteed to exist
+	/// </summary>
+	private void SetupPlayerIntegration()
 	{
 		var gameHost = GameHost.GetInstance();
 
@@ -1296,7 +1399,7 @@ public partial class CarromGame : GameController
 				var player = new CarromPlayer();
 				player.PlayerId = userSession.PhoneNumber;
 				player.SetUserSession(userSession);
-				AddPlayer(player);
+				_playerMgmt.AddPlayer(player);
 			}
 		}
 		// Development context: No auto-player creation
@@ -1434,8 +1537,8 @@ public partial class CarromGame : GameController
 
 		// Standard "Return to Menu" button
 		buttons.Add(GameContextButton.CreateReturnToMenuButton(() => {
-			var userManager = UserManager.GetAutoload();
-			userManager?.ResetUserIdleTimer();
+			var sessionManager = SessionManager.GetInstance();
+			sessionManager?.ResetAllIdleTimers();
 			ReturnToMainMenu();
 		}));
 
@@ -1443,20 +1546,20 @@ public partial class CarromGame : GameController
 		if (_carromGameMode == CarromGameMode.Practice)
 		{
 			buttons.Add(new ContextButtonData("Reset", () => {
-				var userManager = UserManager.GetAutoload();
-				userManager?.ResetUserIdleTimer();
+				var sessionManager = SessionManager.GetInstance();
+				sessionManager?.ResetAllIdleTimers();
 				RequestPracticeReset();
 			}, "🔄", true, "Reset practice session"));
 			
 			buttons.Add(new ContextButtonData("2-Player Match", () => {
-				var userManager = UserManager.GetAutoload();
-				userManager?.ResetUserIdleTimer();
+				var sessionManager = SessionManager.GetInstance();
+				sessionManager?.ResetAllIdleTimers();
 				StartCompetitiveMode(2);
 			}, "👥", true, "Start 2-player competitive match"));
 			
 			buttons.Add(new ContextButtonData("4-Player Match", () => {
-				var userManager = UserManager.GetAutoload();
-				userManager?.ResetUserIdleTimer();
+				var sessionManager = SessionManager.GetInstance();
+				sessionManager?.ResetAllIdleTimers();
 				StartCompetitiveMode(4);
 			}, "👨‍👩‍👧‍👦", true, "Start 4-player doubles match"));
 		}
@@ -1469,8 +1572,8 @@ public partial class CarromGame : GameController
 			
 			// Return to practice mode
 			buttons.Add(new ContextButtonData("Return to Practice", () => {
-				var userManager = UserManager.GetAutoload();
-				userManager?.ResetUserIdleTimer();
+				var sessionManager = SessionManager.GetInstance();
+				sessionManager?.ResetAllIdleTimers();
 				ReturnToPractice();
 			}, "🔄", true, "Return to practice mode"));
 		}
@@ -2045,9 +2148,9 @@ public partial class CarromGame : GameController
 		SaveGameResultAsync(playerId, true);
 
 		// Handle win condition
-		EndGame();
+		EndRound();
 
-		// Hide notification system on game end
+		// Hide notification system on round end
 		_notificationSystem?.Hide();
 
 		// Show comprehensive game over screen
@@ -2222,14 +2325,14 @@ public partial class CarromGame : GameController
 					playerIds: playerIdStrings
 				);
 
-				if (!sessionResult.IsSuccess)
+				if (sessionResult.IsFailure(out var sessionError))
 				{
-					GD.PrintErr($"[CarromGame] Failed to create multiplayer session: {sessionResult.Error}");
+					GD.PrintErr($"[CarromGame] Failed to create multiplayer session: {sessionError.Message}");
 
 					// Show error notification
 					_notificationSystem?.ShowNotification(
 						NotificationType.Foul,
-						$"Session creation failed: {sessionResult.Error}",
+						$"Session creation failed: {sessionError.Message}",
 						duration: 3.0f
 					);
 
@@ -2237,7 +2340,10 @@ public partial class CarromGame : GameController
 					return;
 				}
 
-				_activitySessionId = sessionResult.Value;
+				if (sessionResult.IsSuccess(out var sessionId))
+				{
+					_activitySessionId = sessionId;
+				}
 				GD.Print($"[CarromGame] Multiplayer session created successfully: {_activitySessionId}");
 			}
 			else

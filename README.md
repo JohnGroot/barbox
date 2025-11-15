@@ -124,7 +124,7 @@ barbox/
 
 ### Frontend
 - **Godot 4.4.1** - Game engine with C# support
-- **ZLinq** - Zero-allocation LINQ alternative for performance
+- **ZLinq** - Zero-allocation LINQ alternative (use sparingly, only for hot paths)
 - **GoDotTest** - Testing framework for Godot
 - **Odin Inspector** - Enhanced editor serialization
 
@@ -172,7 +172,7 @@ See [Session Architecture Guide](docs/architecture/sessions.md) for detailed pat
 ### Code Style
 - **C#**: PascalCase for classes/methods, camelCase for private fields with underscore prefix
 - **Python**: PEP 8 style guide
-- **Performance**: Use ZLinq instead of System.Linq for hot paths
+- **Performance**: Prefer System.Linq for readability; use ZLinq only for proven bottlenecks in hot paths
 - **Testing**: All new features require tests (GoDotTest for frontend, pytest for backend)
 
 See [CLAUDE.md](CLAUDE.md) for comprehensive coding guidelines.

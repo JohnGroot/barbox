@@ -8,8 +8,6 @@ using System.Threading.Tasks;
 /// </summary>
 public partial class PaymentService : AutoloadBase
 {
-	public static PaymentService Instance { get; private set; }
-
 	public static PaymentService GetInstance()
 	{
 		return GetAutoload<PaymentService>();
@@ -18,14 +16,9 @@ public partial class PaymentService : AutoloadBase
 	private IPaymentService _currentProvider;
 	private CreditService _creditService;
 
-	protected override void OnServiceReady()
-	{
-		Instance = this;
-	}
-
 	protected override void OnServiceInitialize()
 	{
-		_creditService = CreditService.Instance;
+		_creditService = CreditService.GetInstance();
 		if (_creditService == null)
 		{
 			LogError("CreditService not found - PaymentService requires CreditService");
@@ -99,7 +92,7 @@ public partial class PaymentService : AutoloadBase
 			var addResult = await _creditService.AddAsync(playerId, creditPack.Credits,
 				$"Credit purchase - Transaction: {paymentResult.TransactionId}");
 
-			if (!addResult.IsSuccess)
+			if (addResult.IsFailure(out var addError))
 			{
 				// This should be VERY rare now - we already checked EventService before payment
 				// But we log diagnostics in case of race conditions
@@ -111,7 +104,7 @@ public partial class PaymentService : AutoloadBase
 
 				LogError($"CRITICAL: Failed to add credits for player {playerId} after successful payment {paymentResult.TransactionId}");
 				LogError($"Diagnostics: {diagnostics}");
-				LogError($"Error: {addResult.Error}");
+				LogError($"Error: {addError.Message}");
 				LogError("This requires manual intervention for refund");
 
 				// TODO: In production, queue for automatic refund processing
@@ -121,7 +114,7 @@ public partial class PaymentService : AutoloadBase
 				);
 			}
 
-			LogInfo($"Purchase completed for player {playerId}: {creditPack.Credits} credits added, new balance: {addResult.Value} (Transaction: {paymentResult.TransactionId})");
+			if (addResult.IsSuccess(out var newBalance)) { LogInfo($"Purchase completed for player {playerId}: {creditPack.Credits} credits added, new balance: {newBalance} (Transaction: {paymentResult.TransactionId})"); }
 			return paymentResult;
 		}
 		catch (System.Exception ex)
@@ -163,6 +156,5 @@ public partial class PaymentService : AutoloadBase
 
 	protected override void OnServiceDestroyed()
 	{
-		Instance = null;
 	}
 }

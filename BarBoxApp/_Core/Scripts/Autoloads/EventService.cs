@@ -1,4 +1,5 @@
 using Godot;
+using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -46,13 +47,6 @@ public partial class EventService : AutoloadBase
 	[Signal] public delegate void EventSubmissionFailedEventHandler(string sessionId, string error);
 	[Signal] public delegate void SessionCreatedEventHandler(string sessionId);
 
-	public static EventService Instance { get; private set; }
-
-	protected override void OnServiceReady()
-	{
-		Instance = this;
-	}
-
 	protected override async Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
 		_httpClient = new Godot.HttpClient();
@@ -66,7 +60,7 @@ public partial class EventService : AutoloadBase
 		catch (Exception ex)
 		{
 			LogError($"Failed to get Box ID: {ex.Message}");
-			throw new Exception($"EventService requires valid Box ID: {ex.Message}");
+			throw new Exception($"EventService requires valid Box ID: {ex.Message}\nStack Trace: {ex.StackTrace}");
 		}
 
 		// Wait for BackendManager to be ready
@@ -104,10 +98,10 @@ public partial class EventService : AutoloadBase
 		List<string> playerIds = null)
 	{
 		if (!IsReady)
-			return Result<Guid>.Failure("EventService not initialized - backend not ready");
+			return Result.Failure<Guid>("EventService not initialized - backend not ready");
 
 		if (string.IsNullOrEmpty(gameTag))
-			return Result<Guid>.Failure("game_tag is required");
+			return Result.Failure<Guid>("game_tag is required");
 
 		var sessionId = Guid.NewGuid();
 
@@ -144,8 +138,8 @@ public partial class EventService : AutoloadBase
 				headers
 			);
 
-			if (error != Error.Ok)
-				return Result<Guid>.Failure($"Activity session creation request failed: {error}");
+			if (error != Godot.Error.Ok)
+				return Result.Failure<Guid>($"Activity session creation request failed: {error}");
 
 			await WaitForResponseAsync();
 
@@ -158,7 +152,7 @@ public partial class EventService : AutoloadBase
 			if (responseCode != 202)
 			{
 				_httpClient.Close();
-				return Result<Guid>.Failure($"Activity session creation failed with code {responseCode}");
+				return Result.Failure<Guid>($"Activity session creation failed with code {responseCode}");
 			}
 
 			_currentSessionId = sessionId;
@@ -167,16 +161,16 @@ public partial class EventService : AutoloadBase
 			LogInfo($"Activity session created: {sessionId} (game: {gameTag})");
 			CallDeferred(MethodName.EmitSignal, SignalName.SessionCreated, sessionId.ToString());
 
-			return Result<Guid>.Success(sessionId);
+			return Result.Success(sessionId);
 		}
 		catch (Exception ex)
 		{
 #if DEBUG_HTTP_LIFECYCLE
-			LogError($"[HTTP] CreateActivitySession - Exception: {ex.Message}");
+			LogError($"[HTTP] CreateActivitySession - Exception: {ex.Message}\nStack Trace: {ex.StackTrace}");
 #endif
 
 			_httpClient.Close();
-			return Result<Guid>.Failure($"Activity session creation exception: {ex.Message}");
+			return Result.Failure<Guid>($"Activity session creation exception: {ex.Message}");
 		}
 	}
 
@@ -189,7 +183,7 @@ public partial class EventService : AutoloadBase
 	public async Task<Result<bool>> CloseActivitySessionAsync(Guid sessionId)
 	{
 		if (!IsReady)
-			return Result<bool>.Failure("EventService not initialized - backend not ready");
+			return Result.Failure<bool>("EventService not initialized - backend not ready");
 
 		try
 		{
@@ -212,8 +206,8 @@ public partial class EventService : AutoloadBase
 				headers
 			);
 
-			if (error != Error.Ok)
-				return Result<bool>.Failure($"Session close request failed: {error}");
+			if (error != Godot.Error.Ok)
+				return Result.Failure<bool>($"Session close request failed: {error}");
 
 			await WaitForResponseAsync();
 
@@ -226,7 +220,7 @@ public partial class EventService : AutoloadBase
 			if (responseCode != 200)
 			{
 				_httpClient.Close();
-				return Result<bool>.Failure($"Session close failed with code {responseCode}");
+				return Result.Failure<bool>($"Session close failed with code {responseCode}");
 			}
 
 			// Clear current session if it was the one we just closed
@@ -237,7 +231,7 @@ public partial class EventService : AutoloadBase
 
 			LogInfo($"Activity session closed: {sessionId}");
 
-			return Result<bool>.Success(true);
+			return Result.Success(true);
 		}
 		catch (Exception ex)
 		{
@@ -246,7 +240,7 @@ public partial class EventService : AutoloadBase
 #endif
 
 			_httpClient.Close();
-			return Result<bool>.Failure($"Session close exception: {ex.Message}");
+			return Result.Failure<bool>($"Session close exception: {ex.Message}");
 		}
 	}
 
@@ -262,7 +256,7 @@ public partial class EventService : AutoloadBase
 	public async Task<Result<Guid>> CreateLobbySessionAsync(Guid boxId, Guid playerId)
 	{
 		if (!IsReady)
-			return Result<Guid>.Failure("EventService not initialized - backend not ready");
+			return Result.Failure<Guid>("EventService not initialized - backend not ready");
 
 		try
 		{
@@ -289,8 +283,8 @@ public partial class EventService : AutoloadBase
 				headers
 			);
 
-			if (error != Error.Ok)
-				return Result<Guid>.Failure($"Lobby session creation request failed: {error}");
+			if (error != Godot.Error.Ok)
+				return Result.Failure<Guid>($"Lobby session creation request failed: {error}");
 
 			await WaitForResponseAsync();
 
@@ -303,7 +297,7 @@ public partial class EventService : AutoloadBase
 			if (responseCode != 201)
 			{
 				_httpClient.Close();
-				return Result<Guid>.Failure($"Lobby session creation failed with code {responseCode}");
+				return Result.Failure<Guid>($"Lobby session creation failed with code {responseCode}");
 			}
 
 			// Parse response to get session ID
@@ -312,7 +306,7 @@ public partial class EventService : AutoloadBase
 
 			if (string.IsNullOrEmpty(bodyText))
 			{
-				return Result<Guid>.Failure("Empty response body from lobby session creation");
+				return Result.Failure<Guid>("Empty response body from lobby session creation");
 			}
 
 			var response = JsonSerializer.Deserialize<Dictionary<string, object>>(bodyText);
@@ -323,10 +317,10 @@ public partial class EventService : AutoloadBase
 
 				LogInfo($"Lobby session created: {sessionId}");
 				CallDeferred(MethodName.EmitSignal, SignalName.SessionCreated, sessionId.ToString());
-				return Result<Guid>.Success(sessionId);
+				return Result.Success(sessionId);
 			}
 
-			return Result<Guid>.Failure("Failed to parse lobby session ID from response");
+			return Result.Failure<Guid>("Failed to parse lobby session ID from response");
 		}
 		catch (Exception ex)
 		{
@@ -335,7 +329,7 @@ public partial class EventService : AutoloadBase
 #endif
 
 			_httpClient.Close();
-			return Result<Guid>.Failure($"Lobby session creation exception: {ex.Message}");
+			return Result.Failure<Guid>($"Lobby session creation exception: {ex.Message}");
 		}
 	}
 
@@ -351,10 +345,10 @@ public partial class EventService : AutoloadBase
 	public async Task<Result<bool>> EmitEventAsync(string eventType, object payload)
 	{
 		if (!IsReady)
-			return Result<bool>.Failure("EventService not initialized - backend not ready");
+			return Result.Failure<bool>("EventService not initialized - backend not ready");
 
 		if (_currentSessionId == Guid.Empty)
-			return Result<bool>.Failure("No active session - call CreateSessionAsync first");
+			return Result.Failure<bool>("No active session - call CreateSessionAsync first");
 
 		try
 		{
@@ -383,11 +377,11 @@ public partial class EventService : AutoloadBase
 				json
 			);
 
-			if (error != Error.Ok)
+			if (error != Godot.Error.Ok)
 			{
 				var errorMsg = $"Event submission request failed: {error}";
 				CallDeferred(MethodName.EmitSignal, SignalName.EventSubmissionFailed, _currentSessionId.ToString(), errorMsg);
-				return Result<bool>.Failure(errorMsg);
+				return Result.Failure<bool>(errorMsg);
 			}
 
 			await WaitForResponseAsync();
@@ -405,7 +399,7 @@ public partial class EventService : AutoloadBase
 #endif
 
 				CallDeferred(MethodName.EmitSignal, SignalName.EventSubmitted, _currentSessionId.ToString(), eventType);
-				return Result<bool>.Success(true);
+				return Result.Success(true);
 			}
 
 			// CRITICAL: Read error response body to see actual backend validation error
@@ -420,13 +414,13 @@ public partial class EventService : AutoloadBase
 			}
 
 			CallDeferred(MethodName.EmitSignal, SignalName.EventSubmissionFailed, _currentSessionId.ToString(), failureMsg);
-			return Result<bool>.Failure(failureMsg);
+			return Result.Failure<bool>(failureMsg);
 		}
 		catch (Exception ex)
 		{
 			var errorMsg = $"Event submission exception: {ex.Message}";
 			LogError(errorMsg);
-			return Result<bool>.Failure(errorMsg);
+			return Result.Failure<bool>(errorMsg);
 		}
 	}
 
@@ -437,12 +431,12 @@ public partial class EventService : AutoloadBase
 	public async Task<Result<bool>> EmitUserEventAsync(Guid playerId, string eventType, object payload)
 	{
 		if (!IsReady)
-			return Result<bool>.Failure("EventService not initialized - backend not ready");
+			return Result.Failure<bool>("EventService not initialized - backend not ready");
 
 		// Check if we have an active lobby session
 		if (_lobbySessionId == Guid.Empty)
 		{
-			return Result<bool>.Failure("No active lobby session - call CreateLobbySessionAsync first");
+			return Result.Failure<bool>("No active lobby session - call CreateLobbySessionAsync first");
 		}
 
 		try
@@ -479,8 +473,8 @@ public partial class EventService : AutoloadBase
 				eventJson
 			);
 
-			if (error != Error.Ok)
-				return Result<bool>.Failure($"User event submission request failed: {error}");
+			if (error != Godot.Error.Ok)
+				return Result.Failure<bool>($"User event submission request failed: {error}");
 
 			await WaitForResponseAsync();
 
@@ -504,17 +498,17 @@ public partial class EventService : AutoloadBase
 #endif
 
 				LogInfo($"User event submitted: {eventType} to lobby session {_lobbySessionId}");
-				return Result<bool>.Success(true);
+				return Result.Success(true);
 			}
 
 			var failureMsg = $"User event submission failed with code {responseCode}";
-			return Result<bool>.Failure(failureMsg);
+			return Result.Failure<bool>(failureMsg);
 		}
 		catch (Exception ex)
 		{
 			var errorMsg = $"User event submission exception: {ex.Message}";
 			LogError(errorMsg);
-			return Result<bool>.Failure(errorMsg);
+			return Result.Failure<bool>(errorMsg);
 		}
 	}
 
@@ -542,7 +536,7 @@ public partial class EventService : AutoloadBase
 	) where TResponse : class
 	{
 		if (!IsReady)
-			return Result<TResponse>.Failure("EventService not initialized - backend not ready");
+			return Result.Failure<TResponse>("EventService not initialized - backend not ready");
 
 		try
 		{
@@ -563,8 +557,8 @@ public partial class EventService : AutoloadBase
 			};
 
 			var error = _httpClient.Request(Godot.HttpClient.Method.Get, url, headers);
-			if (error != Error.Ok)
-				return Result<TResponse>.Failure($"Query request failed: {error}");
+			if (error != Godot.Error.Ok)
+				return Result.Failure<TResponse>($"Query request failed: {error}");
 
 			await WaitForResponseAsync();
 
@@ -573,7 +567,7 @@ public partial class EventService : AutoloadBase
 			{
 				// Close connection to allow recovery on next request
 				_httpClient.Close();
-				return Result<TResponse>.Failure($"Query failed with code {responseCode}");
+				return Result.Failure<TResponse>($"Query failed with code {responseCode}");
 			}
 
 			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
@@ -583,17 +577,17 @@ public partial class EventService : AutoloadBase
 			if (string.IsNullOrEmpty(bodyText))
 			{
 				_httpClient.Close();
-				return Result<TResponse>.Failure("Empty response body from query");
+				return Result.Failure<TResponse>("Empty response body from query");
 			}
 
 			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
-			return Result<TResponse>.Success(response);
+			return Result.Success(response);
 		}
 		catch (Exception ex)
 		{
 			// Close connection on exception to ensure clean state
 			_httpClient.Close();
-			return Result<TResponse>.Failure($"Query exception: {ex.Message}");
+			return Result.Failure<TResponse>($"Query exception: {ex.Message}");
 		}
 	}
 
@@ -607,7 +601,7 @@ public partial class EventService : AutoloadBase
 	)
 	{
 		if (!IsReady)
-			return Result<string>.Failure("EventService not initialized - backend not ready");
+			return Result.Failure<string>("EventService not initialized - backend not ready");
 
 		try
 		{
@@ -628,8 +622,8 @@ public partial class EventService : AutoloadBase
 			};
 
 			var error = _httpClient.Request(Godot.HttpClient.Method.Get, url, headers);
-			if (error != Error.Ok)
-				return Result<string>.Failure($"Query request failed: {error}");
+			if (error != Godot.Error.Ok)
+				return Result.Failure<string>($"Query request failed: {error}");
 
 			await WaitForResponseAsync();
 
@@ -696,16 +690,16 @@ public partial class EventService : AutoloadBase
 
 				// Close connection to allow recovery on next request
 				_httpClient.Close();
-				return Result<string>.Failure(errorMessage);
+				return Result.Failure<string>(errorMessage);
 			}
 
-			return Result<string>.Success(bodyText);
+			return Result.Success(bodyText);
 		}
 		catch (Exception ex)
 		{
 			// Close connection on exception to ensure clean state
 			_httpClient.Close();
-			return Result<string>.Failure($"Query exception: {ex.Message}");
+			return Result.Failure<string>($"Query exception: {ex.Message}");
 		}
 	}
 
@@ -719,7 +713,7 @@ public partial class EventService : AutoloadBase
 	) where TResponse : class
 	{
 		if (!IsReady)
-			return Result<TResponse>.Failure("EventService not initialized - backend not ready");
+			return Result.Failure<TResponse>("EventService not initialized - backend not ready");
 
 		try
 		{
@@ -735,8 +729,8 @@ public partial class EventService : AutoloadBase
 			};
 
 			var error = _httpClient.Request(Godot.HttpClient.Method.Post, endpoint, headers, json);
-			if (error != Error.Ok)
-				return Result<TResponse>.Failure($"POST request failed: {error}");
+			if (error != Godot.Error.Ok)
+				return Result.Failure<TResponse>($"POST request failed: {error}");
 
 			await WaitForResponseAsync();
 
@@ -749,7 +743,7 @@ public partial class EventService : AutoloadBase
 				// Close connection to allow recovery on next request
 				_httpClient.Close();
 
-				return Result<TResponse>.Failure($"POST failed with code {responseCode}: {errorText}");
+				return Result.Failure<TResponse>($"POST failed with code {responseCode}: {errorText}");
 			}
 
 			// Ensure response body is fully received (Godot HttpClient timing issue)
@@ -765,17 +759,17 @@ public partial class EventService : AutoloadBase
 			if (string.IsNullOrEmpty(bodyText))
 			{
 				_httpClient.Close();
-				return Result<TResponse>.Failure($"POST returned {responseCode} with empty response body");
+				return Result.Failure<TResponse>($"POST returned {responseCode} with empty response body");
 			}
 
 			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
-			return Result<TResponse>.Success(response);
+			return Result.Success(response);
 		}
 		catch (Exception ex)
 		{
 			// Close connection on exception to ensure clean state
 			_httpClient.Close();
-			return Result<TResponse>.Failure($"POST exception: {ex.Message}");
+			return Result.Failure<TResponse>($"POST exception: {ex.Message}");
 		}
 	}
 
@@ -789,7 +783,7 @@ public partial class EventService : AutoloadBase
 	) where TResponse : class
 	{
 		if (!IsReady)
-			return Result<TResponse>.Failure("EventService not initialized - backend not ready");
+			return Result.Failure<TResponse>("EventService not initialized - backend not ready");
 
 		try
 		{
@@ -805,8 +799,8 @@ public partial class EventService : AutoloadBase
 			};
 
 			var error = _httpClient.Request(Godot.HttpClient.Method.Put, endpoint, headers, json);
-			if (error != Error.Ok)
-				return Result<TResponse>.Failure($"PUT request failed: {error}");
+			if (error != Godot.Error.Ok)
+				return Result.Failure<TResponse>($"PUT request failed: {error}");
 
 			await WaitForResponseAsync();
 
@@ -819,20 +813,20 @@ public partial class EventService : AutoloadBase
 				// Close connection to allow recovery on next request
 				_httpClient.Close();
 
-				return Result<TResponse>.Failure($"PUT failed with code {responseCode}: {errorText}");
+				return Result.Failure<TResponse>($"PUT failed with code {responseCode}: {errorText}");
 			}
 
 			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
-			return Result<TResponse>.Success(response);
+			return Result.Success(response);
 		}
 		catch (Exception ex)
 		{
 			// Close connection on exception to ensure clean state
 			_httpClient.Close();
-			return Result<TResponse>.Failure($"PUT exception: {ex.Message}");
+			return Result.Failure<TResponse>($"PUT exception: {ex.Message}");
 		}
 	}
 
@@ -846,10 +840,13 @@ public partial class EventService : AutoloadBase
 			null
 		);
 
-		if (result.IsSuccess)
-			return Result<bool>.Success(result.Value.IsAvailable);
+		if (result.IsSuccess(out var response))
+			return Result.Success(response.IsAvailable);
 
-		return Result<bool>.Failure(result.Error);
+		if (result.IsFailure(out var error))
+			return Result.Failure<bool>(error.Message);
+
+		return Result.Failure<bool>("Unknown error");
 	}
 
 	/// <summary>
@@ -867,24 +864,29 @@ public partial class EventService : AutoloadBase
 
 		var result = await PostAsync<PlayerCreateRequest, PlayerValidationResponse>("/player/validate", request, 200);
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var response))
 		{
-			if (!result.Value.Valid)
+			if (!response.Valid)
 			{
 				// Validation failed - construct error message from validation errors
 				var errorMessages = new System.Text.StringBuilder();
 				errorMessages.AppendLine("Validation failed:");
-				foreach (var error in result.Value.Errors)
+				foreach (var validationError in response.Errors)
 				{
-					errorMessages.AppendLine($"  - {error.Field}: {error.Message}");
+					errorMessages.AppendLine($"  - {validationError.Field}: {validationError.Message}");
 				}
 				LogWarning($"Player validation failed: {errorMessages}");
 			}
-			return Result<PlayerValidationResponse>.Success(result.Value);
+			return Result.Success(response);
 		}
 
-		LogError($"Failed to validate player creation: {result.Error}");
-		return Result<PlayerValidationResponse>.Failure(result.Error);
+		if (result.IsFailure(out var error))
+		{
+			LogError($"Failed to validate player creation: {error.Message}");
+			return Result.Failure<PlayerValidationResponse>(error.Message);
+		}
+
+		return Result.Failure<PlayerValidationResponse>("Unknown error");
 	}
 
 	/// <summary>
@@ -901,14 +903,19 @@ public partial class EventService : AutoloadBase
 
 		var result = await PostAsync<PlayerCreateRequest, PlayerDetailResponse>("/player/", request, 201);
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var _))
 		{
 			LogInfo($"Player created successfully: {username} ({playerId})");
-			return Result<Guid>.Success(playerId);
+			return Result.Success(playerId);
 		}
 
-		LogError($"Failed to create player: {result.Error}");
-		return Result<Guid>.Failure(result.Error);
+		if (result.IsFailure(out var error))
+		{
+			LogError($"Failed to create player: {error.Message}");
+			return Result.Failure<Guid>(error.Message);
+		}
+
+		return Result.Failure<Guid>("Unknown error");
 	}
 
 	/// <summary>
@@ -927,14 +934,19 @@ public partial class EventService : AutoloadBase
 
 		var result = await PostAsync<PlayerCreateRequest, PlayerDetailResponse>("/player/first_play", request, 201);
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var _))
 		{
 			LogInfo($"Player first_play registered: {username} ({playerId})");
-			return Result<Guid>.Success(playerId);
+			return Result.Success(playerId);
 		}
 
-		LogError($"Failed to register player first_play: {result.Error}");
-		return Result<Guid>.Failure(result.Error);
+		if (result.IsFailure(out var error))
+		{
+			LogError($"Failed to register player first_play: {error.Message}");
+			return Result.Failure<Guid>(error.Message);
+		}
+
+		return Result.Failure<Guid>("Unknown error registering player first_play");
 	}
 
 	/// <summary>
@@ -957,14 +969,19 @@ public partial class EventService : AutoloadBase
 			200
 		);
 
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var _))
 		{
 			LogInfo($"Box registered/verified: {locationName} ({boxId})");
-			return Result<Guid>.Success(boxId);
+			return Result.Success(boxId);
 		}
 
-		LogError($"Failed to register box: {result.Error}");
-		return Result<Guid>.Failure(result.Error);
+		if (result.IsFailure(out var error))
+		{
+			LogError($"Failed to register box: {error.Message}");
+			return Result.Failure<Guid>(error.Message);
+		}
+
+		return Result.Failure<Guid>("Unknown error registering box");
 	}
 
 	/// <summary>
@@ -978,10 +995,13 @@ public partial class EventService : AutoloadBase
 			new Dictionary<string, string> { { "location_id", locationId } }
 		);
 
-		if (result.IsSuccess)
-			return Result<int>.Success(result.Value.Credits);
+		if (result.IsSuccess(out var creditsResponse))
+			return Result.Success(creditsResponse.Credits);
 
-		return Result<int>.Failure(result.Error);
+		if (result.IsFailure(out var error))
+			return Result.Failure<int>(error.Message);
+
+		return Result.Failure<int>("Unknown error getting player credits");
 	}
 
 	/// <summary>
@@ -1155,7 +1175,7 @@ public partial class EventService : AutoloadBase
 #endif
 
 		var error = _httpClient.ConnectToHost(BACKEND_HOST, BACKEND_PORT);
-		if (error != Error.Ok)
+		if (error != Godot.Error.Ok)
 			throw new Exception($"Failed to connect to backend: {error}");
 
 		// Use aggressive polling utility - exits immediately when connected
@@ -1293,7 +1313,5 @@ public partial class EventService : AutoloadBase
 	{
 		_httpClient?.Close();
 		_httpClient = null;
-
-		Instance = null;
 	}
 }

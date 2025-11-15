@@ -45,9 +45,9 @@ public class CreditPurchaseFlowTests : BackendTestBase
 
 		// Create and login user
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping test - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping test - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -63,7 +63,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		var purchaseResult = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 		// Assert
-		purchaseResult.IsSuccess.ShouldBeTrue($"Purchase should succeed, but failed: {purchaseResult.ErrorMessage}");
+		(purchaseResult.IsSuccess).ShouldBeTrue($"Purchase should succeed, but failed: {purchaseResult.ErrorMessage}");
 		purchaseResult.TransactionId.ShouldNotBeNullOrEmpty("Transaction ID should be set");
 		TestHelpers.LogTestInfo($"Purchase succeeded: {purchaseResult.TransactionId}");
 
@@ -80,16 +80,16 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		// Verify backend has record
 		var backendCredits = await _eventService.GetPlayerCreditsAsync(playerId);
 
-		if (backendCredits.IsSuccess)
+		if (backendCredits.IsSuccess(out var backendCreditAmount))
 		{
-			TestHelpers.LogTestInfo($"Backend credits: {backendCredits.Value}");
-			backendCredits.Value.ShouldBeGreaterThanOrEqualTo(expectedCredits,
+			TestHelpers.LogTestInfo($"Backend credits: {backendCreditAmount}");
+			backendCreditAmount.ShouldBeGreaterThanOrEqualTo(expectedCredits,
 				$"Backend credits should match or exceed {expectedCredits}");
 			TestHelpers.LogTestInfo($"✓ Backend credits match session");
 		}
-		else
+		else if (backendCredits.IsFailure(out var backendError))
 		{
-			TestHelpers.LogTestWarning($"Could not verify backend credits: {backendCredits.Error}");
+			TestHelpers.LogTestWarning($"Could not verify backend credits: {backendError.Message}");
 		}
 
 		// Cleanup
@@ -101,9 +101,9 @@ public class CreditPurchaseFlowTests : BackendTestBase
 	{
 		// Arrange
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping test - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping test - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -123,7 +123,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		// Assert
 		if (!isBackendRunning || !isEventServiceReady)
 		{
-			result.IsSuccess.ShouldBeFalse("Purchase must fail when backend/EventService not ready");
+			(result.IsSuccess).ShouldBeFalse("Purchase must fail when backend/EventService not ready");
 			result.ErrorMessage.ShouldNotBeNullOrEmpty("Error message should be provided");
 			TestHelpers.LogTestInfo($"Purchase correctly failed: {result.ErrorMessage}");
 
@@ -179,9 +179,9 @@ public class CreditPurchaseFlowTests : BackendTestBase
 
 		// Create and login user
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping test - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping test - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -248,7 +248,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 
 		// Services are ready - attempt purchase
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (loginResult.IsSuccess)
+		if (loginResult.IsSuccess(out var _))
 		{
 			var creditPack = new CreditPack(10, 10.00m);
 			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
@@ -277,9 +277,9 @@ public class CreditPurchaseFlowTests : BackendTestBase
 
 		// Create and login user
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (!loginResult.IsSuccess)
+		if (loginResult.IsFailure(out var loginError))
 		{
-			TestHelpers.LogTestInfo($"Skipping test - login failed: {loginResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping test - login failed: {loginError.Message}");
 			return;
 		}
 
@@ -287,18 +287,18 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		var creditPack = new CreditPack(25, 25.00m);
 
 		// Get initial balance with forced refresh to ensure we have accurate starting point
-		var creditService = CreditService.Instance;
+		var creditService = CreditService.GetInstance();
 		creditService.ShouldNotBeNull("CreditService must be available");
 
 		var initialBalanceResult = await creditService.GetBalanceAsync(playerId, forceRefresh: true);
-		if (!initialBalanceResult.IsSuccess)
+		if (initialBalanceResult.IsFailure(out var initialBalanceError))
 		{
-			TestHelpers.LogTestInfo($"Skipping test - could not get initial balance: {initialBalanceResult.Error}");
+			TestHelpers.LogTestInfo($"Skipping test - could not get initial balance: {initialBalanceError.Message}");
 			await _sessionManager.LogoutUserAsync(TestPlayerPhone);
 			return;
 		}
 
-		var initialBalance = initialBalanceResult.Value;
+		var initialBalance = initialBalanceResult.IsSuccess(out var initBalance) ? initBalance : 0;
 		TestHelpers.LogTestInfo($"Initial balance: {initialBalance}");
 
 		// Act - Purchase credits
@@ -306,7 +306,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		var purchaseResult = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 		// Assert - Purchase should succeed
-		purchaseResult.IsSuccess.ShouldBeTrue($"Purchase should succeed, but failed: {purchaseResult.ErrorMessage}");
+		(purchaseResult.IsSuccess).ShouldBeTrue($"Purchase should succeed, but failed: {purchaseResult.ErrorMessage}");
 		TestHelpers.LogTestInfo($"Purchase succeeded: {purchaseResult.TransactionId}");
 
 		// CRITICAL: Query balance immediately after purchase (this is where the bug manifests)
@@ -314,8 +314,8 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		TestHelpers.LogTestInfo("Querying balance immediately after purchase (reproducing race condition)...");
 		var immediateBalanceResult = await creditService.GetBalanceAsync(playerId, forceRefresh: true);
 
-		immediateBalanceResult.IsSuccess.ShouldBeTrue("Balance query should succeed");
-		var immediateBalance = immediateBalanceResult.Value;
+		immediateBalanceResult.IsSuccess(out var _).ShouldBeTrue("Balance query should succeed");
+		var immediateBalance = immediateBalanceResult.IsSuccess(out var immBalance) ? immBalance : 0;
 		TestHelpers.LogTestInfo($"Immediate balance: {immediateBalance}");
 
 		var expectedBalance = initialBalance + creditPack.Credits;

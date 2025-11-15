@@ -1301,10 +1301,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				tempGameSessionId
 			);
 
-			if (consumeResult.IsSuccess)
+			if (consumeResult.IsSuccess(out var machineState))
 			{
 				// Backend consumption successful - update local state
-				_tableCredits = consumeResult.Value.Balance;
+				_tableCredits = machineState.Balance;
 
 				HideMenu();
 				EmitSignal(SignalName.GameStartRequested);
@@ -1314,9 +1314,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				_slotToPhoneNumber.Clear();
 				_creditsTransferredByPlayer.Clear();
 			}
-			else
+			else if (consumeResult.IsFailure(out var error))
 			{
-				GD.PrintErr($"[CarromPlayerSetupMenu] Failed to consume machine credits: {consumeResult.Error}");
+				GD.PrintErr($"[CarromPlayerSetupMenu] Failed to consume machine credits: {error.Message}");
 			}
 		}
 		else
@@ -1454,9 +1454,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			var boxId = locationManager.BoxId;
 			var result = await eventService.GetMachineCreditsAsync("carrom", boxId);
 
-			if (result.IsSuccess)
+			if (result.IsSuccess(out var machineCredits))
 			{
-				var machineCredits = result.Value;
 				_tableCredits = machineCredits.Balance;
 
 				// Restore player contributions

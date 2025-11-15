@@ -59,7 +59,7 @@ namespace BarBox.Games.Racing
 	private Dictionary<string, float> _playerLastCheckpointTime = new();
 
 	// Game mode reference
-	private GameController.GameMode _currentGameMode = GameController.GameMode.Practice;
+	private RacingMode _currentGameMode = RacingMode.Practice;
 
 	// ================================================================
 	// PUBLIC PROPERTIES
@@ -250,7 +250,7 @@ namespace BarBox.Games.Racing
 	/// <summary>
 	/// Set the current game mode
 	/// </summary>
-	public void SetGameMode(GameController.GameMode mode)
+	public void SetGameMode(RacingMode mode)
 	{
 		_currentGameMode = mode;
 	}
@@ -291,7 +291,7 @@ namespace BarBox.Games.Racing
 		else
 		{
 			// Resume to appropriate state based on game mode
-			if (_currentGameMode == GameController.GameMode.Practice)
+			if (_currentGameMode == RacingMode.Practice)
 				_racingState = RacingState.PracticeMode;
 			else
 				_racingState = RacingState.Racing;
@@ -398,9 +398,9 @@ namespace BarBox.Games.Racing
 	/// <summary>
 	/// Calculate player score based on game mode
 	/// </summary>
-	public float CalculatePlayerScore(string playerId, GameController.GameMode gameMode)
+	public float CalculatePlayerScore(string playerId, RacingMode gameMode)
 	{
-		if (gameMode == GameController.GameMode.Practice)
+		if (gameMode == RacingMode.Practice)
 		{
 			// In practice mode, score is best lap time
 			return GetPlayerBestLapTime(playerId);

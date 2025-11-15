@@ -47,7 +47,11 @@ public class PlayerRegistrationTests : BackendTestBase
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
 
 		// Assert
-		loginResult.IsSuccess.ShouldBeTrue($"Login should succeed, but failed: {loginResult.Error}");
+		if (loginResult.IsFailure(out var loginError))
+		{
+			loginResult.IsSuccess(out var _).ShouldBeTrue($"Login should succeed, but failed: {loginError.Message}");
+		}
+
 		var session = _sessionManager.GetUserSession(TestPlayerPhone);
 		session.ShouldNotBeNull("User session should exist after login");
 
@@ -56,7 +60,10 @@ public class PlayerRegistrationTests : BackendTestBase
 
 		// Verify player is registered in backend by attempting credit operation
 		var addResult = await _creditService.AddAsync(playerId, 10, "Test credit after registration");
-		addResult.IsSuccess.ShouldBeTrue($"Credit add should succeed for registered player, but failed: {addResult.Error}");
+		if (addResult.IsFailure(out var addError))
+		{
+			addResult.IsSuccess(out var _).ShouldBeTrue($"Credit add should succeed for registered player, but failed: {addError.Message}");
+		}
 
 		TestHelpers.LogTestInfo($"✓ Player automatically registered during login");
 		TestHelpers.LogTestInfo($"✓ Credit operations work immediately after registration");
@@ -78,15 +85,15 @@ public class PlayerRegistrationTests : BackendTestBase
 
 		// Act - Login same user multiple times (logout between logins)
 		var login1 = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		login1.IsSuccess.ShouldBeTrue("First login should succeed");
+		login1.IsSuccess(out var _).ShouldBeTrue("First login should succeed");
 		await _sessionManager.LogoutUserAsync(TestPlayerPhone);
 
 		var login2 = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		login2.IsSuccess.ShouldBeTrue("Second login should succeed (idempotent registration)");
+		login2.IsSuccess(out var _).ShouldBeTrue("Second login should succeed (idempotent registration)");
 		await _sessionManager.LogoutUserAsync(TestPlayerPhone);
 
 		var login3 = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		login3.IsSuccess.ShouldBeTrue("Third login should succeed (idempotent registration)");
+		login3.IsSuccess(out var _).ShouldBeTrue("Third login should succeed (idempotent registration)");
 
 		// Assert - All logins should produce same player ID
 		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
@@ -94,7 +101,7 @@ public class PlayerRegistrationTests : BackendTestBase
 
 		// Verify credit operations still work
 		var addResult = await _creditService.AddAsync(playerId, 5, "Test after multiple logins");
-		addResult.IsSuccess.ShouldBeTrue("Credits should work after multiple logins");
+		addResult.IsSuccess(out var _).ShouldBeTrue("Credits should work after multiple logins");
 
 		TestHelpers.LogTestInfo($"✓ Multiple logins are idempotent");
 		TestHelpers.LogTestInfo($"✓ Player registration doesn't create duplicates");
@@ -116,26 +123,32 @@ public class PlayerRegistrationTests : BackendTestBase
 
 		// Act - Login (registers player) then add credits
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		loginResult.IsSuccess.ShouldBeTrue("Login should succeed");
+		loginResult.IsSuccess(out var _).ShouldBeTrue("Login should succeed");
 
 		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 		TestHelpers.LogTestInfo($"Player registered: {playerId}");
 
 		// Get initial balance
 		var initialBalanceResult = await _eventService.GetPlayerCreditsAsync(playerId);
-		var initialBalance = initialBalanceResult.IsSuccess ? initialBalanceResult.Value : 0;
+		var initialBalance = initialBalanceResult.IsSuccess(out var initBalance) ? initBalance : 0;
 		TestHelpers.LogTestInfo($"Initial balance: {initialBalance}");
 
 		// Add credits
 		var creditsToAdd = 25;
 		var addResult = await _creditService.AddAsync(playerId, creditsToAdd, "Test credit purchase");
-		addResult.IsSuccess.ShouldBeTrue($"Credit add should succeed, but failed: {addResult.Error}");
+		if (addResult.IsFailure(out var addError))
+		{
+			addResult.IsSuccess(out var _).ShouldBeTrue($"Credit add should succeed, but failed: {addError.Message}");
+		}
 
 		// Get updated balance
 		var updatedBalanceResult = await _eventService.GetPlayerCreditsAsync(playerId);
-		updatedBalanceResult.IsSuccess.ShouldBeTrue($"Balance query should succeed, but failed: {updatedBalanceResult.Error}");
+		if (updatedBalanceResult.IsFailure(out var balanceError))
+		{
+			updatedBalanceResult.IsSuccess(out var _).ShouldBeTrue($"Balance query should succeed, but failed: {balanceError.Message}");
+		}
 
-		var updatedBalance = updatedBalanceResult.Value;
+		var updatedBalance = updatedBalanceResult.IsSuccess(out var updBalance) ? updBalance : 0;
 		TestHelpers.LogTestInfo($"Updated balance: {updatedBalance}");
 
 		// Assert
@@ -166,19 +179,20 @@ public class PlayerRegistrationTests : BackendTestBase
 		if (!isBackendRunning || !isEventServiceReady)
 		{
 			// Login should still succeed locally (graceful degradation)
-			TestHelpers.LogTestInfo($"Login result with backend unavailable: {(loginResult.IsSuccess ? "Success" : loginResult.Error)}");
+			var loginStatusMsg = loginResult.IsSuccess(out var _) ? "Success" : (loginResult.IsFailure(out var err) ? err.Message : "Unknown");
+			TestHelpers.LogTestInfo($"Login result with backend unavailable: {loginStatusMsg}");
 			TestHelpers.LogTestInfo("Expected: Login continues even if player registration fails");
 			TestHelpers.LogTestInfo("Expected: Credit operations may fail later if player not registered");
 		}
 		else
 		{
 			// Backend is available - normal registration should happen
-			loginResult.IsSuccess.ShouldBeTrue("Login should succeed when backend is available");
+			loginResult.IsSuccess(out var _).ShouldBeTrue("Login should succeed when backend is available");
 			TestHelpers.LogTestInfo("✓ Login with backend available succeeded");
 		}
 
 		// Cleanup
-		if (loginResult.IsSuccess)
+		if (loginResult.IsSuccess(out var _))
 		{
 			await _sessionManager.LogoutUserAsync(TestPlayerPhone);
 		}

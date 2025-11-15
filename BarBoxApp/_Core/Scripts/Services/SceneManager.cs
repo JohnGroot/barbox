@@ -17,9 +17,10 @@ public partial class SceneManager : AutoloadBase
 	{
 		_sceneTree = GetTree();
 		_currentScenePath = _sceneTree.CurrentScene?.SceneFilePath ?? string.Empty;
-		
-		// Initialize all services in dependency order
-		CallDeferred(nameof(InitializeAllServices));
+
+		// All autoloads have completed OnServiceEnterTree() by this point
+		// Safe to call async initialization directly (no CallDeferred needed)
+		InitializeAllServices();
 	}
 
 	/// <summary>
@@ -88,9 +89,6 @@ public partial class SceneManager : AutoloadBase
 			};
 			await Task.WhenAll(phase5Tasks);
 
-			// Phase 6: Compatibility stubs (can fail gracefully)
-			LogInfo("Phase 6: Compatibility services");
-			await InitializeServiceAsync("UserManager", UserManager.GetAutoload(), cancellationToken);
 
 			_servicesInitialized = true;
 			LogInfo("All services initialized successfully");

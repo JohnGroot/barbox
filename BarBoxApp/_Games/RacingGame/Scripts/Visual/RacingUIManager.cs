@@ -1,4 +1,5 @@
 using Godot;
+using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -1181,13 +1182,13 @@ namespace BarBox.Games.Racing
 	/// <param name="timeLabel">Label for the time display</param>
 	/// <param name="maxSpeed">Maximum car speed for percentage calculation</param>
 	/// <param name="lapProgress">Current lap progress (0.0 to 1.0)</param>
-	public void UpdateStatusLabels(float carSpeed, GameController.GameMode gameMode, int currentLap, int targetLaps, float timeDisplay, string timeLabel, float maxSpeed = 1800.0f, float lapProgress = 0.0f)
+	public void UpdateStatusLabels(float carSpeed, RacingMode gameMode, int currentLap, int targetLaps, float timeDisplay, string timeLabel, float maxSpeed = 1800.0f, float lapProgress = 0.0f)
 	{
 		// Update arc-based HUD (primary display)
 		if (_hudArcRenderer != null && IsInstanceValid(_hudArcRenderer))
 		{
 			var timeText = $"{timeLabel}: {timeDisplay:F1}s";
-			var isPracticeMode = (gameMode == GameController.GameMode.Practice);
+			var isPracticeMode = (gameMode == RacingMode.Practice);
 			_hudArcRenderer.UpdateHUDState(carSpeed, maxSpeed, currentLap, targetLaps, lapProgress, timeText, isPracticeMode);
 		}
 
@@ -1199,7 +1200,7 @@ namespace BarBox.Games.Racing
 
 		if (_lapLabel != null)
 		{
-			if (gameMode == GameController.GameMode.Practice)
+			if (gameMode == RacingMode.Practice)
 			{
 				_lapLabel.Text = "Practice Mode";
 			}
@@ -1226,7 +1227,7 @@ namespace BarBox.Games.Racing
 						  state.TargetLaps, state.TimeDisplay, state.TimeLabel, state.MaxSpeed, state.LapProgress);
 
 		UpdateButtonStates(state.IsTimeTrialInProgress, state.CanStartTimeTrial, state.IsInCountdown,
-						  state.GameMode == GameController.GameMode.TimeTrial, state.IsUserLoggedIn);
+						  state.GameMode == RacingMode.TimeTrial, state.IsUserLoggedIn);
 
 		SetPauseOverlayVisible(state.IsGamePaused);
 
@@ -1244,7 +1245,7 @@ namespace BarBox.Games.Racing
 		UpdateCountdownArc(state.IsInCountdown, state.CountdownNumber, state.CountdownProgress);
 
 		// Update time trial timer display
-		UpdateTimerDisplay(state.GameMode == GameController.GameMode.TimeTrial, state.TimeDisplay);
+		UpdateTimerDisplay(state.GameMode == RacingMode.TimeTrial, state.TimeDisplay);
 	}
 
 	/// <summary>
@@ -1493,9 +1494,8 @@ namespace BarBox.Games.Racing
 					limit: 10
 				);
 
-				if (leaderboardResult.IsSuccess)
+				if (leaderboardResult.IsSuccess(out var leaderboard))
 				{
-					var leaderboard = leaderboardResult.Value;
 
 					// Convert to LeaderboardEntry format
 					for (int i = 0; i < leaderboard.Leaderboard.Count; i++)
@@ -1524,10 +1524,10 @@ namespace BarBox.Games.Racing
 					// Reset failure counter on success
 					_leaderboardFailureCount = 0;
 				}
-				else
+				else if (leaderboardResult.IsFailure(out var error))
 				{
 					_leaderboardFailureCount++;
-					GD.PrintErr($"[RacingUIManager] Failed to load leaderboard ({_leaderboardFailureCount}/{MAX_LEADERBOARD_FAILURES}): {leaderboardResult.Error}");
+					GD.PrintErr($"[RacingUIManager] Failed to load leaderboard ({_leaderboardFailureCount}/{MAX_LEADERBOARD_FAILURES}): {error.Message}");
 				}
 			}
 
@@ -1680,14 +1680,14 @@ namespace BarBox.Games.Racing
 	// ================================================================
 
 	/// <summary>
-	/// Reset user idle timer through UserManager
+	/// Reset user idle timer through SessionManager
 	/// </summary>
 	private void ResetUserIdleTimer()
 	{
-		var userManager = UserManager.GetAutoload();
-		if (userManager != null && GodotObject.IsInstanceValid(userManager))
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
 		{
-			userManager.ResetUserIdleTimer();
+			sessionManager.ResetAllIdleTimers();
 		}
 	}
 
@@ -1900,14 +1900,14 @@ namespace BarBox.Games.Racing
 						limit: 10
 					);
 
-					if (leaderboardResult.Value.IsSuccess)
+					if (leaderboardResult.HasValue && leaderboardResult.Value.IsSuccess(out _))
 					{
 						// Success - break out of retry loop
 						break;
 					}
-					else
+					else if (leaderboardResult.HasValue && leaderboardResult.Value.IsFailure(out var retryError))
 					{
-						GD.PrintErr($"[RacingUIManager] Leaderboard query attempt {attempt}/{MAX_RETRIES} failed: {leaderboardResult.Value.Error}");
+						GD.PrintErr($"[RacingUIManager] Leaderboard query attempt {attempt}/{MAX_RETRIES} failed: {retryError.Message}");
 
 						if (attempt < MAX_RETRIES)
 						{
@@ -1937,14 +1937,13 @@ namespace BarBox.Games.Racing
 			}
 
 			// Process result after retry loop
-			if (leaderboardResult.HasValue && leaderboardResult.Value.IsSuccess)
+			if (leaderboardResult.HasValue && leaderboardResult.Value.IsSuccess(out var finalLeaderboard))
 			{
-				var leaderboard = leaderboardResult.Value.Value;
 				var lapEntries = new List<LeaderboardEntry>();
 				var raceEntries = new List<LeaderboardEntry>();
 
 				// Check if leaderboard is empty (no scores yet)
-				if (leaderboard.Leaderboard == null || leaderboard.Leaderboard.Count == 0)
+				if (finalLeaderboard.Leaderboard == null || finalLeaderboard.Leaderboard.Count == 0)
 				{
 					GD.Print($"[RacingUIManager] Leaderboard for {trackId} is empty (no scores yet)");
 					// Show empty leaderboard (not an error)
@@ -1954,9 +1953,9 @@ namespace BarBox.Games.Racing
 				else
 				{
 					// Convert to LeaderboardEntry format for race entries
-					for (int i = 0; i < leaderboard.Leaderboard.Count; i++)
+					for (int i = 0; i < finalLeaderboard.Leaderboard.Count; i++)
 					{
-						var entry = leaderboard.Leaderboard[i];
+						var entry = finalLeaderboard.Leaderboard[i];
 						raceEntries.Add(new LeaderboardEntry
 						{
 							TrackId = trackId,
@@ -2053,7 +2052,7 @@ namespace BarBox.Games.Racing
 		// Priority order:
 		// 1. Stored username from the time entry
 		// 2. Fallback username from global data
-		// 3. Current session username (from UserManager/SessionManager)
+		// 3. Current session username (from SessionManager)
 		// 4. Player ID (if not default "player1")
 		// 5. Empty string if no username available
 
@@ -2132,7 +2131,7 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Get current session username from UserManager/SessionManager
+	/// Get current session username from SessionManager
 	/// </summary>
 	private string GetCurrentSessionUsername()
 	{

@@ -1,4 +1,5 @@
 using Godot;
+using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -29,11 +30,11 @@ public class GameEventServiceBase
 	{
 		// Service availability and validity check
 		if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
-			return Result<bool>.Failure("Event service not available");
+			return Result.Failure<bool>("Event service not available");
 
 		// Backend session check
 		if (_eventService.GetCurrentSessionId() == Guid.Empty)
-			return Result<bool>.Failure("No active backend session");
+			return Result.Failure<bool>("No active backend session");
 
 		// Emit event
 		var result = await _eventService.EmitEventAsync(eventType, payload);
@@ -53,7 +54,7 @@ public class GameEventServiceBase
 	)
 	{
 		if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
-			return Result<string>.Failure("Event service not available");
+			return Result.Failure<string>("Event service not available");
 
 		// Delegate to EventService which maintains persistent HttpClient
 		return await _eventService.QueryRawAsync(endpoint, queryParams);
@@ -66,14 +67,14 @@ public class GameEventServiceBase
 	protected Result<Godot.Collections.Dictionary> ParseJsonResponse(string responseBody)
 	{
 		if (string.IsNullOrEmpty(responseBody))
-			return Result<Godot.Collections.Dictionary>.Failure("Empty response from server");
+			return Result.Failure<Godot.Collections.Dictionary>("Empty response from server");
 
 		var json = Json.ParseString(responseBody);
 		if (json.Obj == null)
-			return Result<Godot.Collections.Dictionary>.Failure("Failed to parse JSON response");
+			return Result.Failure<Godot.Collections.Dictionary>("Failed to parse JSON response");
 
 		var jsonDict = json.AsGodotDictionary();
-		return Result<Godot.Collections.Dictionary>.Success(jsonDict);
+		return Result.Success(jsonDict);
 	}
 
 	/// <summary>
@@ -82,26 +83,32 @@ public class GameEventServiceBase
 	/// </summary>
 	protected Result<T> MapBackendError<T>(Result<T> backendResult)
 	{
-		if (backendResult.IsSuccess)
-			return backendResult;
+		if (backendResult.IsSuccess(out var value))
+			return Result.Success(value);
 
-		var error = backendResult.Error;
+		if (backendResult.IsFailure(out var error))
+		{
+			var errorMsg = error.Message;
 
-		// Map common backend errors to user-friendly messages
-		if (error.Contains("not initialized") || error.Contains("not ready") || error.Contains("not available"))
-			return Result<T>.Failure("Game service temporarily unavailable");
+			// Map common backend errors to user-friendly messages
+			if (errorMsg.Contains("not initialized") || errorMsg.Contains("not ready") || errorMsg.Contains("not available"))
+				return Result.Failure<T>("Game service temporarily unavailable");
 
-		if (error.Contains("timeout") || error.Contains("Timeout"))
-			return Result<T>.Failure("Connection lost - your progress may not be saved");
+			if (errorMsg.Contains("timeout") || errorMsg.Contains("Timeout"))
+				return Result.Failure<T>("Connection lost - your progress may not be saved");
 
-		if (error.Contains("No active session") || error.Contains("No active backend session"))
-			return Result<T>.Failure("Session expired - please restart the game");
+			if (errorMsg.Contains("No active session") || errorMsg.Contains("No active backend session"))
+				return Result.Failure<T>("Session expired - please restart the game");
 
-		if (error.Contains("Connection failed") || error.Contains("Connection timeout"))
-			return Result<T>.Failure("Unable to connect to game server");
+			if (errorMsg.Contains("Connection failed") || errorMsg.Contains("Connection timeout"))
+				return Result.Failure<T>("Unable to connect to game server");
 
-		// Generic fallback
-		return Result<T>.Failure("Unable to save game data");
+			// Generic fallback
+			return Result.Failure<T>("Unable to save game data");
+		}
+
+		// Fallback if neither success nor failure (shouldn't happen)
+		return Result.Failure<T>("Unknown error occurred");
 	}
 
 	/// <summary>
@@ -189,25 +196,33 @@ public class GameEventServiceBase
 		try
 		{
 			var responseResult = await QueryBackendRawAsync(endpoint, queryParams);
-			if (!responseResult.IsSuccess)
-				return Result<TData>.Failure(responseResult.Error);
+			if (responseResult.IsFailure(out var responseError))
+				return Result.Failure<TData>(responseError.Message);
 
-			var parseResult = ParseJsonResponse(responseResult.Value);
-			if (!parseResult.IsSuccess)
-				return Result<TData>.Failure(parseResult.Error);
+			if (responseResult.IsSuccess(out var responseBody))
+			{
+				var parseResult = ParseJsonResponse(responseBody);
+				if (parseResult.IsFailure(out var parseError))
+					return Result.Failure<TData>(parseError.Message);
 
-			// Delegate to specific parsing function
-			return parseFunc(parseResult.Value);
+				if (parseResult.IsSuccess(out var jsonDict))
+				{
+					// Delegate to specific parsing function
+					return parseFunc(jsonDict);
+				}
+			}
+
+			return Result.Failure<TData>("Unable to retrieve data");
 		}
 		catch (FormatException ex)
 		{
 			LogError($"Invalid data format in response: {ex.Message}");
-			return Result<TData>.Failure("Invalid server response format");
+			return Result.Failure<TData>("Invalid server response format");
 		}
 		catch (System.Exception ex)
 		{
 			LogError($"Unexpected error in query: {ex.Message}");
-			return Result<TData>.Failure("Unable to retrieve data");
+			return Result.Failure<TData>("Unable to retrieve data");
 		}
 	}
 
@@ -235,15 +250,15 @@ public class GameEventServiceBase
 		public static Result<Guid> ParseGuid(Godot.Collections.Dictionary dict, string key)
 		{
 			if (!dict.ContainsKey(key))
-				return Result<Guid>.Failure($"Missing required field: {key}");
+				return Result.Failure<Guid>($"Missing required field: {key}");
 
 			try
 			{
-				return Result<Guid>.Success(Guid.Parse(dict[key].AsString()));
+				return Result.Success(Guid.Parse(dict[key].AsString()));
 			}
 			catch (FormatException)
 			{
-				return Result<Guid>.Failure($"Invalid GUID format for field: {key}");
+				return Result.Failure<Guid>($"Invalid GUID format for field: {key}");
 			}
 		}
 
@@ -253,7 +268,7 @@ public class GameEventServiceBase
 		public static Result<DateTime> ParseDateTime(Godot.Collections.Dictionary dict, string key)
 		{
 			if (!dict.ContainsKey(key))
-				return Result<DateTime>.Failure($"Missing required field: {key}");
+				return Result.Failure<DateTime>($"Missing required field: {key}");
 
 			try
 			{
@@ -266,11 +281,11 @@ public class GameEventServiceBase
 					parsed = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
 				}
 
-				return Result<DateTime>.Success(parsed);
+				return Result.Success(parsed);
 			}
 			catch (FormatException)
 			{
-				return Result<DateTime>.Failure($"Invalid DateTime format for field: {key}");
+				return Result.Failure<DateTime>($"Invalid DateTime format for field: {key}");
 			}
 		}
 
@@ -280,7 +295,7 @@ public class GameEventServiceBase
 		public static Result<DateTime?> ParseNullableDateTime(Godot.Collections.Dictionary dict, string key)
 		{
 			if (IsNullOrMissing(dict, key))
-				return Result<DateTime?>.Success(null);
+				return Result.Success<DateTime?>(null);
 
 			try
 			{
@@ -293,11 +308,11 @@ public class GameEventServiceBase
 					parsed = DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
 				}
 
-				return Result<DateTime?>.Success(parsed);
+				return Result.Success<DateTime?>(parsed);
 			}
 			catch (FormatException)
 			{
-				return Result<DateTime?>.Failure($"Invalid DateTime format for field: {key}");
+				return Result.Failure<DateTime?>($"Invalid DateTime format for field: {key}");
 			}
 		}
 
@@ -310,7 +325,7 @@ public class GameEventServiceBase
 			string key)
 		{
 			if (!dict.ContainsKey(key))
-				return Result<Dictionary<string, int>>.Failure($"Missing required field: {key}");
+				return Result.Failure<Dictionary<string, int>>($"Missing required field: {key}");
 
 			try
 			{
@@ -322,11 +337,11 @@ public class GameEventServiceBase
 					result[godotKey.AsString()] = godotDict[godotKey].AsInt32();
 				}
 
-				return Result<Dictionary<string, int>>.Success(result);
+				return Result.Success(result);
 			}
 			catch (System.Exception ex)
 			{
-				return Result<Dictionary<string, int>>.Failure(
+				return Result.Failure<Dictionary<string, int>>(
 					$"Failed to parse dictionary for {key}: {ex.Message}");
 			}
 		}
@@ -358,8 +373,8 @@ public class GameEventServiceBase
 	protected Result<bool> ValidateGuid(Guid value, string parameterName)
 	{
 		if (value == Guid.Empty)
-			return Result<bool>.Failure(ValidationMessages.Required(parameterName));
-		return Result<bool>.Success(true);
+			return Result.Failure<bool>(ValidationMessages.Required(parameterName));
+		return Result.Success(true);
 	}
 
 	/// <summary>
@@ -368,9 +383,9 @@ public class GameEventServiceBase
 	protected Result<bool> ValidateLeaderboardLimit(int limit)
 	{
 		if (limit < MIN_LEADERBOARD_LIMIT || limit > MAX_LEADERBOARD_LIMIT)
-			return Result<bool>.Failure(
+			return Result.Failure<bool>(
 				ValidationMessages.RangeError("Limit", MIN_LEADERBOARD_LIMIT, MAX_LEADERBOARD_LIMIT));
-		return Result<bool>.Success(true);
+		return Result.Success(true);
 	}
 
 	#endregion

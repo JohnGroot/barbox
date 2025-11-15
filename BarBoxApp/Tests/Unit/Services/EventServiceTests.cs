@@ -42,13 +42,13 @@ public class EventServiceTests : BackendTestBase
 		// Assert
 		// Note: This test may fail if backend requires box/player to exist first
 		// In production, SessionManager handles box/player creation
-		if (!result.IsSuccess)
+		if (result.IsFailure(out var error))
 		{
-			TestHelpers.LogTestInfo($"CreateActivitySession failed (may be expected if backend validation enabled): {result.Error}");
+			TestHelpers.LogTestInfo($"CreateActivitySession failed (may be expected if backend validation enabled): {error.Message}");
 		}
-		else
+		else if (result.IsSuccess(out var sessionId))
 		{
-			result.Value.ShouldNotBe(Guid.Empty, "Session ID should not be empty");
+			sessionId.ShouldNotBe(Guid.Empty, "Session ID should not be empty");
 		}
 	}
 
@@ -65,9 +65,9 @@ public class EventServiceTests : BackendTestBase
 			null); // Missing game tag
 
 		// Assert
-		result.IsSuccess.ShouldBeFalse("Should fail without game tag");
-		result.Error.ShouldNotBeNullOrEmpty("Error message should be provided");
-		TestHelpers.LogTestInfo($"Correctly failed: {result.Error}");
+		result.IsFailure(out var error).ShouldBeTrue("Should fail without game tag");
+		error.Message.ShouldNotBeNullOrEmpty("Error message should be provided");
+		TestHelpers.LogTestInfo($"Correctly failed: {error.Message}");
 	}
 
 	[Test]
@@ -90,12 +90,15 @@ public class EventServiceTests : BackendTestBase
 			playerIds);
 
 		// Assert - should handle multiplayer session creation
-		TestHelpers.LogTestInfo($"Multiplayer session result: {(result.IsSuccess ? $"Success (SessionID: {result.Value})" : result.Error)}");
-
-		// Note: Backend may reject if players don't exist, but API call should succeed
-		if (!result.IsSuccess)
+		if (result.IsSuccess(out var sessionId))
 		{
-			TestHelpers.LogTestInfo($"Backend rejected multiplayer session: {result.Error}");
+			TestHelpers.LogTestInfo($"Multiplayer session result: Success (SessionID: {sessionId})");
+		}
+		else if (result.IsFailure(out var error))
+		{
+			TestHelpers.LogTestInfo($"Multiplayer session result: {error.Message}");
+			// Note: Backend may reject if players don't exist, but API call should succeed
+			TestHelpers.LogTestInfo($"Backend rejected multiplayer session: {error.Message}");
 		}
 	}
 
@@ -111,7 +114,14 @@ public class EventServiceTests : BackendTestBase
 
 		// Assert
 		// May fail if session doesn't exist - that's expected for unit test
-		TestHelpers.LogTestInfo($"Close session result: {(result.IsSuccess ? "Success" : result.Error)}");
+		if (result.IsSuccess(out var _))
+		{
+			TestHelpers.LogTestInfo("Close session result: Success");
+		}
+		else if (result.IsFailure(out var error))
+		{
+			TestHelpers.LogTestInfo($"Close session result: {error.Message}");
+		}
 
 		// We're testing the API contract, not necessarily success
 		// The method should return a Result, not throw an exception
@@ -177,17 +187,17 @@ public class EventServiceTests : BackendTestBase
 		var result = await _eventService.AddCreditsAsync(TestPlayerId, 100, "test");
 
 		// Assert
-		result.IsSuccess.ShouldBeFalse("Should fail when EventService not ready");
-		result.Error.ShouldNotBeNullOrEmpty("Error message should be provided");
+		result.IsFailure(out var error).ShouldBeTrue("Should fail when EventService not ready");
+		error.Message.ShouldNotBeNullOrEmpty("Error message should be provided");
 
-		if (result.Error.Contains("not initialized") || result.Error.Contains("not ready"))
+		if (error.Message.Contains("not initialized") || error.Message.Contains("not ready"))
 		{
 			TestHelpers.LogTestInfo("✓ Correctly rejected credits before initialization");
 			true.ShouldBeTrue("Expected error message found");
 		}
 		else
 		{
-			TestHelpers.LogTestInfo($"Failed with unexpected error: {result.Error}");
+			TestHelpers.LogTestInfo($"Failed with unexpected error: {error.Message}");
 		}
 	}
 
@@ -207,17 +217,17 @@ public class EventServiceTests : BackendTestBase
 		var result = await _eventService.EmitEventAsync("test/event", new { data = "test" });
 
 		// Assert
-		result.IsSuccess.ShouldBeFalse("Should fail without active session");
-		result.Error.ShouldNotBeNullOrEmpty("Error message should be provided");
+		result.IsFailure(out var error).ShouldBeTrue("Should fail without active session");
+		error.Message.ShouldNotBeNullOrEmpty("Error message should be provided");
 
-		if (result.Error.Contains("No active session") || result.Error.Contains("not initialized"))
+		if (error.Message.Contains("No active session") || error.Message.Contains("not initialized"))
 		{
-			TestHelpers.LogTestInfo($"✓ Correctly requires active session: {result.Error}");
+			TestHelpers.LogTestInfo($"✓ Correctly requires active session: {error.Message}");
 			true.ShouldBeTrue("Expected error message found");
 		}
 		else
 		{
-			TestHelpers.LogTestInfo($"Failed with different error: {result.Error}");
+			TestHelpers.LogTestInfo($"Failed with different error: {error.Message}");
 		}
 	}
 
@@ -242,11 +252,14 @@ public class EventServiceTests : BackendTestBase
 			var creditResult = await _eventService.AddCreditsAsync(TestPlayerId, 10, "test");
 
 			// Assert
-			TestHelpers.LogTestInfo($"CreateActivitySession: {(sessionResult.IsSuccess ? "Success" : "Failed")}");
-			TestHelpers.LogTestInfo($"AddCredits: {(creditResult.IsSuccess ? "Success" : "Failed")}");
+			var sessionSuccess = sessionResult.IsSuccess(out var _);
+			var creditSuccess = creditResult.IsSuccess(out var _);
+
+			TestHelpers.LogTestInfo($"CreateActivitySession: {(sessionSuccess ? "Success" : "Failed")}");
+			TestHelpers.LogTestInfo($"AddCredits: {(creditSuccess ? "Success" : "Failed")}");
 
 			// Both should fail when not ready
-			if (!sessionResult.IsSuccess && !creditResult.IsSuccess)
+			if (!sessionSuccess && !creditSuccess)
 			{
 				TestHelpers.LogTestInfo("✓ Operations correctly fail when EventService not ready");
 				true.ShouldBeTrue("Operations correctly failed");
@@ -335,15 +348,15 @@ public class EventServiceTests : BackendTestBase
 		var result = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, boxId);
 
 		// Assert
-		if (result.IsSuccess)
+		if (result.IsSuccess(out var registeredPlayerId))
 		{
-			result.Value.ShouldBe(playerId, "Should return the same player ID");
+			registeredPlayerId.ShouldBe(playerId, "Should return the same player ID");
 			TestHelpers.LogTestInfo($"✓ Player registered successfully: {playerId}");
 		}
-		else
+		else if (result.IsFailure(out var error))
 		{
 			// May fail if backend requires box to exist first
-			TestHelpers.LogTestInfo($"Player registration failed (may be expected): {result.Error}");
+			TestHelpers.LogTestInfo($"Player registration failed (may be expected): {error.Message}");
 		}
 	}
 
@@ -368,19 +381,22 @@ public class EventServiceTests : BackendTestBase
 		var result2 = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, boxId);
 
 		// Assert
-		if (result1.IsSuccess && result2.IsSuccess)
+		var firstSuccess = result1.IsSuccess(out var playerId1);
+		var secondSuccess = result2.IsSuccess(out var playerId2);
+
+		if (firstSuccess && secondSuccess)
 		{
-			result1.Value.ShouldBe(playerId, "First registration should return player ID");
-			result2.Value.ShouldBe(playerId, "Second registration should return same player ID");
+			playerId1.ShouldBe(playerId, "First registration should return player ID");
+			playerId2.ShouldBe(playerId, "Second registration should return same player ID");
 			TestHelpers.LogTestInfo("✓ RegisterPlayerFirstPlay is idempotent - same player registered twice");
 		}
-		else if (!result1.IsSuccess)
+		else if (!firstSuccess && result1.IsFailure(out var error1))
 		{
-			TestHelpers.LogTestInfo($"First registration failed: {result1.Error}");
+			TestHelpers.LogTestInfo($"First registration failed: {error1.Message}");
 		}
-		else
+		else if (!secondSuccess && result2.IsFailure(out var error2))
 		{
-			TestHelpers.LogTestInfo($"Second registration failed: {result2.Error}");
+			TestHelpers.LogTestInfo($"Second registration failed: {error2.Message}");
 		}
 	}
 
@@ -404,9 +420,9 @@ public class EventServiceTests : BackendTestBase
 		var result = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, boxId);
 
 		// Assert
-		result.IsSuccess.ShouldBeFalse("Should fail when EventService not ready");
-		result.Error.ShouldNotBeNullOrEmpty("Error message should be provided");
-		TestHelpers.LogTestInfo($"✓ Correctly failed when not ready: {result.Error}");
+		result.IsFailure(out var error).ShouldBeTrue("Should fail when EventService not ready");
+		error.Message.ShouldNotBeNullOrEmpty("Error message should be provided");
+		TestHelpers.LogTestInfo($"✓ Correctly failed when not ready: {error.Message}");
 	}
 
 	[Test]
@@ -430,7 +446,14 @@ public class EventServiceTests : BackendTestBase
 
 		// Assert
 		// Backend may or may not validate empty username - we're testing API contract
-		TestHelpers.LogTestInfo($"Empty username result: {(result.IsSuccess ? "Accepted" : $"Rejected - {result.Error}")}");
+		if (result.IsSuccess(out var _))
+		{
+			TestHelpers.LogTestInfo("Empty username result: Accepted");
+		}
+		else if (result.IsFailure(out var error))
+		{
+			TestHelpers.LogTestInfo($"Empty username result: Rejected - {error.Message}");
+		}
 	}
 
 	[Cleanup]

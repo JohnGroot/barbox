@@ -36,15 +36,15 @@ public class CreditServiceTests : BackendTestBase
 
 		// Assert
 		// Note: May fail if player doesn't exist in backend
-		if (!result.IsSuccess)
+		if (result.IsFailure(out var error))
 		{
-			result.Error.ShouldNotBeNullOrEmpty("Error message should be provided");
-			TestHelpers.LogTestInfo($"GetBalance failed (may be expected if player not in backend): {result.Error}");
+			error.Message.ShouldNotBeNullOrEmpty("Error message should be provided");
+			TestHelpers.LogTestInfo($"GetBalance failed (may be expected if player not in backend): {error.Message}");
 		}
-		else
+		else if (result.IsSuccess(out var balance))
 		{
-			result.Value.ShouldBeGreaterThanOrEqualTo(0, "Balance should be non-negative");
-			TestHelpers.LogTestInfo($"Balance retrieved: {result.Value}");
+			balance.ShouldBeGreaterThanOrEqualTo(0, "Balance should be non-negative");
+			TestHelpers.LogTestInfo($"Balance retrieved: {balance}");
 		}
 	}
 
@@ -57,18 +57,20 @@ public class CreditServiceTests : BackendTestBase
 		// First call to populate cache
 		var firstResult = await _creditService.GetBalanceAsync(TestPlayerId);
 
-		if (!firstResult.IsSuccess)
+		if (firstResult.IsFailure(out var _))
 		{
 			TestHelpers.LogTestInfo("Test skipped - first call failed");
 			return;
 		}
 
+		firstResult.IsSuccess(out var firstBalance).ShouldBeTrue();
+
 		// Act - Second call should use cache
 		var secondResult = await _creditService.GetBalanceAsync(TestPlayerId);
 
 		// Assert
-		secondResult.IsSuccess.ShouldBeTrue("Second call should succeed if first succeeded");
-		secondResult.Value.ShouldBe(firstResult.Value, "Cached value should match first call");
+		secondResult.IsSuccess(out var secondBalance).ShouldBeTrue("Second call should succeed if first succeeded");
+		secondBalance.ShouldBe(firstBalance, "Cached value should match first call");
 		TestHelpers.LogTestInfo("Cache appears to be working (same balance returned)");
 	}
 
@@ -80,7 +82,7 @@ public class CreditServiceTests : BackendTestBase
 
 		var firstResult = await _creditService.GetBalanceAsync(TestPlayerId);
 
-		if (!firstResult.IsSuccess)
+		if (firstResult.IsFailure(out var _))
 		{
 			TestHelpers.LogTestInfo("Test skipped - first call failed");
 			return;
@@ -90,9 +92,9 @@ public class CreditServiceTests : BackendTestBase
 		var refreshedResult = await _creditService.GetBalanceAsync(TestPlayerId, forceRefresh: true);
 
 		// Assert
-		refreshedResult.IsSuccess.ShouldBeTrue("Force refresh should succeed if first call succeeded");
-		refreshedResult.Value.ShouldBeGreaterThanOrEqualTo(0, "Balance should be non-negative");
-		TestHelpers.LogTestInfo($"Force refresh returned: {refreshedResult.Value}");
+		refreshedResult.IsSuccess(out var refreshedBalance).ShouldBeTrue("Force refresh should succeed if first call succeeded");
+		refreshedBalance.ShouldBeGreaterThanOrEqualTo(0, "Balance should be non-negative");
+		TestHelpers.LogTestInfo($"Force refresh returned: {refreshedBalance}");
 	}
 
 	[Test]
@@ -108,15 +110,15 @@ public class CreditServiceTests : BackendTestBase
 
 		// Assert
 		// Note: May fail if player doesn't have sufficient credits
-		if (!result.IsSuccess)
+		if (result.IsFailure(out var error))
 		{
-			result.Error.ShouldNotBeNullOrEmpty("Error message should be provided");
-			TestHelpers.LogTestInfo($"Spend failed (may be expected if insufficient credits): {result.Error}");
+			error.Message.ShouldNotBeNullOrEmpty("Error message should be provided");
+			TestHelpers.LogTestInfo($"Spend failed (may be expected if insufficient credits): {error.Message}");
 		}
-		else
+		else if (result.IsSuccess(out var newBalance))
 		{
-			result.Value.ShouldBeGreaterThanOrEqualTo(0, "Balance should be non-negative after spend");
-			TestHelpers.LogTestInfo($"Credits spent successfully, new balance: {result.Value}");
+			newBalance.ShouldBeGreaterThanOrEqualTo(0, "Balance should be non-negative after spend");
+			TestHelpers.LogTestInfo($"Credits spent successfully, new balance: {newBalance}");
 		}
 	}
 
@@ -130,9 +132,9 @@ public class CreditServiceTests : BackendTestBase
 		var result = await _creditService.SpendAsync(TestPlayerId, 0, "test");
 
 		// Assert
-		result.IsSuccess.ShouldBeFalse("Should not allow spending zero credits");
-		result.Error.ShouldNotBeNullOrEmpty("Error message should be provided");
-		TestHelpers.LogTestInfo($"Correctly rejected zero amount: {result.Error}");
+		result.IsFailure(out var error).ShouldBeTrue("Should not allow spending zero credits");
+		error.Message.ShouldNotBeNullOrEmpty("Error message should be provided");
+		TestHelpers.LogTestInfo($"Correctly rejected zero amount: {error.Message}");
 	}
 
 	[Test]
@@ -145,9 +147,9 @@ public class CreditServiceTests : BackendTestBase
 		var result = await _creditService.SpendAsync(TestPlayerId, -10, "test");
 
 		// Assert
-		result.IsSuccess.ShouldBeFalse("Should not allow spending negative credits");
-		result.Error.ShouldNotBeNullOrEmpty("Error message should be provided");
-		TestHelpers.LogTestInfo($"Correctly rejected negative amount: {result.Error}");
+		result.IsFailure(out var error).ShouldBeTrue("Should not allow spending negative credits");
+		error.Message.ShouldNotBeNullOrEmpty("Error message should be provided");
+		TestHelpers.LogTestInfo($"Correctly rejected negative amount: {error.Message}");
 	}
 
 	[Test]
@@ -163,15 +165,15 @@ public class CreditServiceTests : BackendTestBase
 
 		// Assert
 		// Note: May fail if backend not available
-		if (!result.IsSuccess)
+		if (result.IsFailure(out var error))
 		{
-			result.Error.ShouldNotBeNullOrEmpty("Error message should be provided");
-			TestHelpers.LogTestInfo($"Add credits failed: {result.Error}");
+			error.Message.ShouldNotBeNullOrEmpty("Error message should be provided");
+			TestHelpers.LogTestInfo($"Add credits failed: {error.Message}");
 		}
-		else
+		else if (result.IsSuccess(out var newBalance))
 		{
-			result.Value.ShouldBeGreaterThanOrEqualTo(amount, "Balance should at least include added amount");
-			TestHelpers.LogTestInfo($"Credits added successfully, new balance: {result.Value}");
+			newBalance.ShouldBeGreaterThanOrEqualTo(amount, "Balance should at least include added amount");
+			TestHelpers.LogTestInfo($"Credits added successfully, new balance: {newBalance}");
 		}
 	}
 
@@ -196,16 +198,18 @@ public class CreditServiceTests : BackendTestBase
 		// Get initial balance to populate cache
 		var initialResult = await _creditService.GetBalanceAsync(TestPlayerId);
 
-		if (!initialResult.IsSuccess)
+		if (initialResult.IsFailure(out var _))
 		{
 			TestHelpers.LogTestInfo("Test skipped - initial get failed");
 			return;
 		}
 
+		initialResult.IsSuccess(out var initialBalance).ShouldBeTrue();
+
 		// Act - Spend credits (should invalidate cache)
 		var spendResult = await _creditService.SpendAsync(TestPlayerId, 1, "cache_test");
 
-		if (!spendResult.IsSuccess)
+		if (spendResult.IsFailure(out var _))
 		{
 			TestHelpers.LogTestInfo("Test skipped - spend failed");
 			return;
@@ -215,10 +219,10 @@ public class CreditServiceTests : BackendTestBase
 		var newResult = await _creditService.GetBalanceAsync(TestPlayerId);
 
 		// Assert
-		newResult.IsSuccess.ShouldBeTrue("Balance retrieval should succeed after spend");
-		newResult.Value.ShouldBeLessThan(initialResult.Value,
+		newResult.IsSuccess(out var newBalance).ShouldBeTrue("Balance retrieval should succeed after spend");
+		newBalance.ShouldBeLessThan(initialBalance,
 			"Balance should decrease after spend (cache should be invalidated)");
-		TestHelpers.LogTestInfo($"After spend: old={initialResult.Value}, new={newResult.Value}");
+		TestHelpers.LogTestInfo($"After spend: old={initialBalance}, new={newBalance}");
 	}
 
 	[Cleanup]
