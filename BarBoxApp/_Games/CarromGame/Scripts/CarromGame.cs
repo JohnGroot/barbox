@@ -551,8 +551,11 @@ public partial class CarromGame : GameController
 	/// </summary>
 	public bool IsRoundActive()
 	{
+		// Only competitive rounds are considered "active rounds"
+		// Practice mode is free-play and shouldn't block competitive mode start
 		return _gameStateMachine != null &&
-		       _gameStateMachine.CurrentState != CarromGameStateMachine.GameState.Initializing;
+		       _gameStateMachine.CurrentState != CarromGameStateMachine.GameState.Initializing &&
+		       _carromGameMode == CarromGameMode.Competitive;
 	}
 
 	// ================================================================
