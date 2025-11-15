@@ -1,8 +1,8 @@
-[gd_scene load_steps=6 format=3 uid="uid://dg6t2lspq4j8h"]
+[gd_scene load_steps=7 format=3 uid="uid://dg6t2lspq4j8h"]
 
-[ext_resource type="Script" uid="uid://c8vylp72vcaag" path="res://_Games/MiningGame/Scripts/MiningGame.cs" id="1_3w5hw"]
+[ext_resource type="Script" uid="uid://duvrmfacy26qf" path="res://_Games/MiningGame/Scripts/MiningGame.cs" id="1_3w5hw"]
 [ext_resource type="Resource" uid="uid://b1i5oh72e5nmu" path="res://_Games/MiningGame/Resources/Configs/MiningConfig.tres" id="2_d4bfs"]
-[ext_resource type="Script" uid="uid://dmjgptbjrwt7i" path="res://_Games/MiningGame/Scripts/Data/MiningLocationData.cs" id="3_fhfuh"]
+[ext_resource type="Script" uid="uid://od75pahyuuy6" path="res://_Games/MiningGame/Scripts/Data/MiningLocationData.cs" id="3_fhfuh"]
 [ext_resource type="Resource" uid="uid://deveej7cv2cru" path="res://_Games/MiningGame/Resources/Configs/DefaultLocation.tres" id="4_ji104"]
 [ext_resource type="Script" path="res://_Games/MiningGame/Scripts/Visual/MiningGameUI.cs" id="5_ji104"]
 

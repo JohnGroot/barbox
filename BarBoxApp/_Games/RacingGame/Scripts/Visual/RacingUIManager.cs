@@ -92,6 +92,19 @@ namespace BarBox.Games.Racing
 	// Countdown state tracking
 	private bool _wasCountdownVisible = false;
 
+	// Race complete overlay visibility tracking
+	private bool _raceCompleteOverlayWasVisible = false;
+
+	// Backend service integration
+	private RacingEventService _racingEventService;
+
+	// Circuit breaker for leaderboard failures
+	private int _leaderboardFailureCount = 0;
+	private const int MAX_LEADERBOARD_FAILURES = 3;
+
+	// Concurrency guard for async operations
+	private bool _isLoadingLeaderboard = false;
+
 	// ================================================================
 	// NESTED CLASSES FOR TRACK & LEADERBOARD MANAGEMENT
 	// ================================================================
@@ -746,6 +759,9 @@ namespace BarBox.Games.Racing
 		_currentTrackIndex = currentTrackIndex;
 		TimeTrialCreditCost = timeTrialCreditCost;
 
+		// Initialize singleton racing event service
+		_racingEventService = new RacingEventService(EventService.GetInstance());
+
 		SetupUILayer();
 		SetupMainUI();
 		SetupOverlays();
@@ -1300,8 +1316,9 @@ namespace BarBox.Games.Racing
 		if (_raceCompleteOverlay == null)
 			return;
 
-		if (visible)
+		if (visible && !_raceCompleteOverlayWasVisible)
 		{
+			// Overlay transitioning from hidden to visible - load data once
 			// Update button states first
 			_raceCompleteOverlay.UpdateButtonStates(canAffordReplay, creditCost);
 
@@ -1310,10 +1327,14 @@ namespace BarBox.Games.Racing
 
 			_raceCompleteOverlay.ShowOverlay();
 		}
-		else
+		else if (!visible && _raceCompleteOverlayWasVisible)
 		{
+			// Overlay transitioning from visible to hidden
 			_raceCompleteOverlay.HideOverlay();
 		}
+
+		// Track visibility state for next call
+		_raceCompleteOverlayWasVisible = visible;
 	}
 
 	/// <summary>
@@ -1429,77 +1450,84 @@ namespace BarBox.Games.Racing
 		if (_raceCompleteOverlay == null)
 			return;
 
+		// Concurrency guard - prevent overlapping requests
+		if (_isLoadingLeaderboard)
+		{
+			// Silent early return - don't spam logs
+			return;
+		}
+
+		// Circuit breaker - stop after too many failures
+		if (_leaderboardFailureCount >= MAX_LEADERBOARD_FAILURES)
+		{
+			GD.PrintErr($"[RacingUIManager] Too many leaderboard failures ({_leaderboardFailureCount}), using fallback");
+			UpdateRaceCompleteUIFallback(trackId, finalTime);
+			return;
+		}
+
+		_isLoadingLeaderboard = true;
 		try
 		{
 			// Get current player's phone number for leaderboard data
 			var playerId = GetCurrentPlayerPhoneNumber();
 			var trackName = GetTrackNameFromId(trackId);
 
-			// Load high score data from DataStore
+			// Load high score data from backend
 			var highScores = new List<LeaderboardEntry>();
 			int playerPosition = 0;
 			bool isNewHighScore = false;
 
-			if (playerId != null)
+			if (playerId != null && _racingEventService != null)
 			{
-				var dataStore = DataStore.GetInstance();
-				if (dataStore != null)
+				// Get track lap count from metadata
+				int trackLaps = 3; // Default
+				if (_trackMetadataCache.TryGetValue(trackId, out var trackMetadata))
 				{
-					var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
+					trackLaps = trackMetadata.DefaultLaps;
+				}
 
-					// Check if overlay is still valid after await
-					if (_raceCompleteOverlay == null || !IsInstanceValid(this))
-						return;
+				var leaderboardResult = await _racingEventService.GetLeaderboardAsync(
+					trackId,
+					"best_race",
+					trackLaps,
+					limit: 10
+				);
 
-					if (globalDataResult.IsSuccess)
+				if (leaderboardResult.IsSuccess)
+				{
+					var leaderboard = leaderboardResult.Value;
+
+					// Convert to LeaderboardEntry format
+					for (int i = 0; i < leaderboard.Leaderboard.Count; i++)
 					{
-						var racingData = globalDataResult.Value.RaceDb;
-
-						// Get all race times for this track (different lap counts)
-						var allRaceTimes = new List<(float time, string username, int laps)>();
-
-						// Get best race times for various lap counts
-						for (int laps = 1; laps <= 10; laps++)
+						var entry = leaderboard.Leaderboard[i];
+						highScores.Add(new LeaderboardEntry
 						{
-							var raceEntry = racingData.GetBestRaceTimeEntry(trackId, laps);
-							if (raceEntry != null && raceEntry.TotalTime > 0f)
-							{
-								allRaceTimes.Add((raceEntry.TotalTime, raceEntry.Username, laps));
-							}
-						}
+							TrackId = trackId,
+							TrackName = trackName,
+							Time = entry.MetricValue,
+							Type = "Best Race",
+							Laps = trackLaps,
+							Username = entry.Username,
+							IsCurrentPlayer = entry.PlayerId.ToString() == playerId,
+							DisplayRank = (i + 1).ToString()
+						});
 
-						// Sort all times and create leaderboard entries
-						var sortedTimes = allRaceTimes.OrderBy(x => x.time).ToList();
-
-						for (int i = 0; i < sortedTimes.Count; i++)
+						// Calculate player position
+						if (entry.PlayerId.ToString() == playerId)
 						{
-							var (time, username, laps) = sortedTimes[i];
-
-							highScores.Add(new LeaderboardEntry
-							{
-								TrackId = trackId,
-								TrackName = trackName,
-								Time = time,
-								Type = "Race",
-								Laps = laps,
-								Username = !string.IsNullOrEmpty(username) ? username : "Player",
-								IsCurrentPlayer = username == globalDataResult.Value.UserName ||
-												 username == playerId ||
-												 (string.IsNullOrEmpty(username) && playerId != null)
-							});
-						}
-
-						// Calculate player position based on final time
-						if (finalTime > 0f)
-						{
-							var betterTimes = allRaceTimes.Count(x => x.time < finalTime);
-							playerPosition = betterTimes + 1;
-
-							// Check if this is a new high score
-							var previousBest = racingData.GetBestRaceTime(trackId, 3); // Assume 3 laps for most races
-							isNewHighScore = previousBest == 0f || finalTime < previousBest;
+							playerPosition = i + 1;
+							isNewHighScore = (i == 0); // First place
 						}
 					}
+
+					// Reset failure counter on success
+					_leaderboardFailureCount = 0;
+				}
+				else
+				{
+					_leaderboardFailureCount++;
+					GD.PrintErr($"[RacingUIManager] Failed to load leaderboard ({_leaderboardFailureCount}/{MAX_LEADERBOARD_FAILURES}): {leaderboardResult.Error}");
 				}
 			}
 
@@ -1516,11 +1544,16 @@ namespace BarBox.Games.Racing
 		}
 		catch (System.Exception ex)
 		{
-			GD.PrintErr($"[RacingUIManager] Exception loading race complete data: {ex.Message}");
+			_leaderboardFailureCount++;
+			GD.PrintErr($"[RacingUIManager] Exception loading race complete data ({_leaderboardFailureCount}/{MAX_LEADERBOARD_FAILURES}): {ex.Message}");
 
 			// Fallback UI update
 			var fallbackCallable = Callable.From(() => UpdateRaceCompleteUIFallback(trackId, finalTime));
 			fallbackCallable.CallDeferred();
+		}
+		finally
+		{
+			_isLoadingLeaderboard = false;
 		}
 	}
 
@@ -1801,59 +1834,170 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Load leaderboard data from DataStore for a specific track
+	/// Load leaderboard data from backend for a specific track with retry logic
 	/// </summary>
 	private async void LoadLeaderboardDataAsync(string trackId)
 	{
+		// Concurrency guard - prevent overlapping requests (set flag BEFORE check to prevent race condition)
+		if (_isLoadingLeaderboard)
+		{
+			// Silent early return - don't spam logs
+			return;
+		}
+		_isLoadingLeaderboard = true;
+
 		try
 		{
+			// Circuit breaker - stop after too many failures
+			if (_leaderboardFailureCount >= MAX_LEADERBOARD_FAILURES)
+			{
+				GD.PrintErr($"[RacingUIManager] Too many leaderboard failures ({_leaderboardFailureCount}), using fallback");
+				UpdateLeaderboardFallback(trackId);
+				return;
+			}
+
 			// Get current player's phone number from SessionManager (real backend identifier)
+			// Note: Leaderboard should work even when no user is logged in (shows all players)
 			var playerId = GetCurrentPlayerPhoneNumber();
 
-			// If no user is logged in, show empty leaderboard
-			if (playerId == null)
+			// Query backend for leaderboard data using singleton service
+			if (_racingEventService == null)
 			{
+				GD.PrintErr("[RacingUIManager] Racing event service not initialized");
 				UpdateLeaderboardFallback(trackId);
 				return;
 			}
 
-			var dataStore = DataStore.GetInstance();
-			if (dataStore == null)
+			// Get track lap count from metadata
+			int trackLaps = 3; // Default
+			if (_trackMetadataCache.TryGetValue(trackId, out var trackMetadata))
 			{
+				trackLaps = trackMetadata.DefaultLaps;
+			}
+
+			// Validate parameters before query
+			if (trackLaps <= 0)
+			{
+				GD.PrintErr($"[RacingUIManager] Invalid lap count {trackLaps} for track {trackId}");
 				UpdateLeaderboardFallback(trackId);
 				return;
 			}
 
-			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-			
-			// Check if overlay is still valid after await
-			if (_tracksLeaderboardOverlay == null || !IsInstanceValid(this))
-				return;
-				
-			if (!globalDataResult.IsSuccess)
-			{
-				UpdateLeaderboardFallback(trackId);
-				return;
-			}
-			
-			var racingData = globalDataResult.Value.RaceDb;
-			var lapEntries = new List<LeaderboardEntry>();
-			var raceEntries = new List<LeaderboardEntry>();
+			GD.Print($"[RacingUIManager] Querying leaderboard: trackId={trackId}, metric=best_race, laps={trackLaps}");
 
-			// Extract track-specific times using both new and legacy key formats
-			// Pass the username from global data as fallback
-			string fallbackUsername = globalDataResult.Value.UserName;
-			ExtractTrackLeaderboardEntries(racingData, trackId, playerId, lapEntries, raceEntries, fallbackUsername);
-			
-			// Update UI on main thread
-			var callable = Callable.From(() => UpdateLeaderboardUI(trackId, lapEntries, raceEntries));
-			callable.CallDeferred();
+			// Retry logic with exponential backoff (matching SaveGlobalHighScore pattern)
+			const int MAX_RETRIES = 3;
+			Result<RacingLeaderboardData>? leaderboardResult = null;
+
+			for (int attempt = 1; attempt <= MAX_RETRIES; attempt++)
+			{
+				try
+				{
+					leaderboardResult = await _racingEventService.GetLeaderboardAsync(
+						trackId,
+						"best_race",
+						trackLaps,
+						limit: 10
+					);
+
+					if (leaderboardResult.Value.IsSuccess)
+					{
+						// Success - break out of retry loop
+						break;
+					}
+					else
+					{
+						GD.PrintErr($"[RacingUIManager] Leaderboard query attempt {attempt}/{MAX_RETRIES} failed: {leaderboardResult.Value.Error}");
+
+						if (attempt < MAX_RETRIES)
+						{
+							// Exponential backoff before retry
+							int delayMs = 1000 * attempt;
+							GD.Print($"[RacingUIManager] Retrying in {delayMs}ms...");
+							await System.Threading.Tasks.Task.Delay(delayMs);
+						}
+					}
+				}
+				catch (System.Exception retryEx)
+				{
+					GD.PrintErr($"[RacingUIManager] Exception on leaderboard attempt {attempt}/{MAX_RETRIES}: {retryEx.Message}");
+
+					if (attempt == MAX_RETRIES)
+					{
+						// Final attempt failed, throw to outer catch
+						throw;
+					}
+					else
+					{
+						// Retry with backoff
+						int delayMs = 1000 * attempt;
+						await System.Threading.Tasks.Task.Delay(delayMs);
+					}
+				}
+			}
+
+			// Process result after retry loop
+			if (leaderboardResult.HasValue && leaderboardResult.Value.IsSuccess)
+			{
+				var leaderboard = leaderboardResult.Value.Value;
+				var lapEntries = new List<LeaderboardEntry>();
+				var raceEntries = new List<LeaderboardEntry>();
+
+				// Check if leaderboard is empty (no scores yet)
+				if (leaderboard.Leaderboard == null || leaderboard.Leaderboard.Count == 0)
+				{
+					GD.Print($"[RacingUIManager] Leaderboard for {trackId} is empty (no scores yet)");
+					// Show empty leaderboard (not an error)
+					var emptyCallable = Callable.From(() => _tracksLeaderboardOverlay?.UpdateLeaderboard(lapEntries, raceEntries));
+					emptyCallable.CallDeferred();
+				}
+				else
+				{
+					// Convert to LeaderboardEntry format for race entries
+					for (int i = 0; i < leaderboard.Leaderboard.Count; i++)
+					{
+						var entry = leaderboard.Leaderboard[i];
+						raceEntries.Add(new LeaderboardEntry
+						{
+							TrackId = trackId,
+							TrackName = trackMetadata?.TrackName ?? trackId,
+							Time = entry.MetricValue,
+							Type = "Best Race",
+							Laps = trackLaps,
+							Username = entry.Username,
+							IsCurrentPlayer = playerId != null && entry.PlayerId.ToString() == playerId,
+							DisplayRank = (i + 1).ToString()
+						});
+					}
+
+					GD.Print($"[RacingUIManager] Loaded {raceEntries.Count} leaderboard entries for {trackId}");
+
+					// Update leaderboard UI on main thread
+					var callable = Callable.From(() => _tracksLeaderboardOverlay?.UpdateLeaderboard(lapEntries, raceEntries));
+					callable.CallDeferred();
+				}
+
+				// Reset failure counter on success
+				_leaderboardFailureCount = 0;
+			}
+			else
+			{
+				// All retries failed
+				_leaderboardFailureCount++;
+				GD.PrintErr($"[RacingUIManager] All {MAX_RETRIES} attempts failed to load leaderboard ({_leaderboardFailureCount}/{MAX_LEADERBOARD_FAILURES})");
+				UpdateLeaderboardFallback(trackId);
+			}
 		}
 		catch (System.Exception ex)
 		{
-			GD.PrintErr($"[RacingUIManager] Exception loading leaderboard: {ex.Message}");
+			_leaderboardFailureCount++;
+			GD.PrintErr($"[RacingUIManager] Exception loading leaderboard ({_leaderboardFailureCount}/{MAX_LEADERBOARD_FAILURES}): {ex.Message}");
 			var fallbackCallable = Callable.From(() => UpdateLeaderboardFallback(trackId));
 			fallbackCallable.CallDeferred();
+		}
+		finally
+		{
+			_isLoadingLeaderboard = false;
 		}
 	}
 
@@ -2002,9 +2146,9 @@ namespace BarBox.Games.Racing
 				if (currentSession != null)
 				{
 					// First, try to get username from cached GlobalData if available
-					if (currentSession.GlobalData != null && !string.IsNullOrEmpty(currentSession.GlobalData.UserName))
+					if (!string.IsNullOrEmpty(currentSession.UserName))
 					{
-						return currentSession.GlobalData.UserName;
+						return currentSession.UserName;
 					}
 
 					// Privacy-safe fallback - never expose phone numbers in display
@@ -2115,10 +2259,10 @@ namespace BarBox.Games.Racing
 	/// <summary>
 	/// Enhance track metadata with player's best scores from DataStore
 	/// </summary>
-	private async Task<Dictionary<string, TrackMetadata>> EnhanceTrackMetadataWithScores(Dictionary<string, TrackMetadata> baseMetadata, string playerId)
+	private Task<Dictionary<string, TrackMetadata>> EnhanceTrackMetadataWithScores(Dictionary<string, TrackMetadata> baseMetadata, string playerId)
 	{
 		var enhancedMetadata = new Dictionary<string, TrackMetadata>();
-		
+
 		// Copy base metadata
 		foreach (var kvp in baseMetadata)
 		{
@@ -2133,37 +2277,18 @@ namespace BarBox.Games.Racing
 			};
 		}
 
+		// TODO: Event-sourced - backend handles data persistence
+		// For now, return basic metadata (backend will provide enhanced data via events)
 		try
 		{
-			var dataStore = DataStore.GetInstance();
-			if (dataStore == null)
-				return enhancedMetadata;
-
-			var globalDataResult = await dataStore.GetGlobalDataAsync(playerId);
-			if (!globalDataResult.IsSuccess)
-				return enhancedMetadata;
-
-			var racingData = globalDataResult.Value.RaceDb;
-			
-			// Enhance each track with score data
-			foreach (var track in enhancedMetadata.Values)
-			{
-				// Get best race time (use default laps)
-				track.BestRaceTime = racingData.GetBestRaceTime(track.TrackId, track.DefaultLaps);
-
-				// Mark if player has scores
-				track.HasPlayerScores = track.BestRaceTime > 0f;
-
-				// Get total race count for this track
-				track.RaceCount = racingData.GetRaceCountForTrack(track.TrackId);
-			}
+			// No score enhancement available yet - backend will aggregate from racing events
 		}
 		catch (System.Exception ex)
 		{
 			GD.PrintErr($"[RacingUIManager] Exception enhancing track metadata: {ex.Message}");
 		}
 
-		return enhancedMetadata;
+		return Task.FromResult(enhancedMetadata);
 	}
 
 	/// <summary>

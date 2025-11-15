@@ -36,10 +36,13 @@ public abstract partial class GameController : Node2D, IGameUIIntegration
 	{
 		_gameMetadata = GameRegistry.GetAutoload()?.GetGameData(GameId);
 		_gameHost = GameHost.GetInstance();
-		
+
 		SetupGameTimer();
-		InitializeGame();
-		SetupUI();
+		SetupUI(); // Setup UI first to ensure signal connections are established
+
+		// Defer game initialization to ensure all signals are connected
+		// This prevents StartGame() from emitting signals before GameHost is ready
+		CallDeferred(MethodName.InitializeGame);
 	}
 
 	public override void _Process(double delta)

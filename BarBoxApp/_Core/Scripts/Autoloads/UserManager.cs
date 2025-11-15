@@ -33,13 +33,13 @@ public partial class UserManager : AutoloadBase
 	public string GetCurrentUserName()
 	{
 		var session = GetCurrentUserSession();
-		return session?.GlobalData?.UserName ?? string.Empty;
+		return session?.UserName ?? string.Empty;
 	}
 
 	public int GetCurrentUserCredits()
 	{
 		var session = GetCurrentUserSession();
-		return session?.GlobalData?.GlobalCredits ?? 0;
+		return session?.Credits ?? 0;
 	}
 
 	public bool IsUserLoggedIn()
@@ -67,14 +67,14 @@ public partial class UserManager : AutoloadBase
 	}
 
 	// Phone number authentication methods
-	public async Task<bool> LoginUserByPhoneAsync(string phoneNumber, string pin)
+	public async Task<Result<UserSession>> LoginUserByPhoneAsync(string phoneNumber, string pin)
 	{
 		var sessionManager = SessionManager.GetInstance();
 		if (sessionManager != null)
 		{
 			return await sessionManager.LoginUserByPhoneAsync(phoneNumber, pin);
 		}
-		return false;
+		return Result<UserSession>.Failure("SessionManager not available");
 	}
 
 	public async Task<Result<string>> CreateUserAccountAsync(string phoneNumber, string pin, string username)
@@ -97,6 +97,15 @@ public partial class UserManager : AutoloadBase
 		return Result<bool>.Failure("SessionManager not available");
 	}
 
+	public async Task<Result<PlayerValidationResponse>> ValidatePlayerCreationAsync(string phoneNumber, string pin, string username)
+	{
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager != null)
+		{
+			return await sessionManager.ValidatePlayerCreationAsync(phoneNumber, pin, username);
+		}
+		return Result<PlayerValidationResponse>.Failure("SessionManager not available");
+	}
 
 	public void AddCredits(string userId, int amount)
 	{
@@ -161,7 +170,7 @@ public partial class UserManager : AutoloadBase
 		// Convert SessionManager's UserLoggedIn(string) to UserManager's UserLoggedIn(string, string)
 		var sessionManager = SessionManager.GetInstance();
 		var session = sessionManager?.GetUserSession(phoneNumber);
-		var userName = session?.GlobalData?.UserName ?? string.Empty;
+		var userName = session?.UserName ?? string.Empty;
 
 		EmitSignal(SignalName.UserLoggedIn, phoneNumber, userName);
 		LogInfo($"UserLoggedIn signal emitted for user: {phoneNumber} ({userName})");

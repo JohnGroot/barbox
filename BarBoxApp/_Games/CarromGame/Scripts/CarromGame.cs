@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -59,7 +60,9 @@ public partial class CarromGame : GameController
 	private CarromGameMode _carromGameMode = CarromGameMode.Practice;
 	private CarromBoard _board;
 	private CarromInputController _inputController;
-	
+	private EventService _eventService;
+	private Guid _activitySessionId;
+
 	// Managers
 	private CarromPracticeModeManager _practiceModeManager;
 	private CarromCompetitiveModeManager _competitiveModeManager;
@@ -93,12 +96,15 @@ public partial class CarromGame : GameController
 		GameId = "carrom_game";
 		SetGameMode(GameMode.Practice); // Start in practice mode
 
+		// Initialize event service
+		_eventService = EventService.GetInstance();
+
 		// Initialize physics config
 		if (PhysicsConfig == null)
 		{
 			PhysicsConfig = new CarromPhysicsConfig();
 		}
-		
+
 		// Initialize systems in explicit order
 		SetupBoard();
 		SetupCameraController();
@@ -498,6 +504,12 @@ public partial class CarromGame : GameController
 	/// </summary>
 	public virtual void StartPracticeMode()
 	{
+		// Cancel current game if somehow still active (safety check)
+		if (_isGameActive)
+		{
+			EndGame();
+		}
+
 		// Clean up competitive mode before switching
 		_competitiveModeManager?.CleanupMode();
 
@@ -519,6 +531,40 @@ public partial class CarromGame : GameController
 
 		// Setup state machine for practice mode
 		SetupStateMachineForCurrentMode();
+	}
+
+	/// <summary>
+	/// Return to practice mode with confirmation dialog
+	/// Follows same pattern as ReturnToMainMenu() for consistency
+	/// </summary>
+	protected virtual async void ReturnToPractice()
+	{
+		var uiManager = UIManager.GetInstance();
+		if (uiManager != null)
+		{
+			bool confirmed = await uiManager.ShowConfirmationAsync(
+				"Return to Practice",
+				"Are you sure you want to return to practice mode?\n\nThe current competitive match will be cancelled.",
+				"Return to Practice",
+				"Cancel"
+			);
+
+			if (!confirmed)
+			{
+				return; // User cancelled
+			}
+		}
+
+		// Cancel current game if active - emits GameEnded signal
+		if (_isGameActive)
+		{
+			EndGame();
+		}
+
+		StartPracticeMode();
+
+		// Refresh UI to update button states (re-enable logout button, etc.)
+		RefreshUI();
 	}
 
 	/// <summary>
@@ -1243,13 +1289,13 @@ public partial class CarromGame : GameController
 		if (gameHost != null && GodotObject.IsInstanceValid(gameHost))
 		{
 			// Production context - integrate with platform
-			var playerSession = gameHost.GetPlayerSession("default");
-			if (playerSession != null)
+			var userSession = gameHost.GetUserSession("default");
+			if (userSession != null)
 			{
 				// Setup player integration
 				var player = new CarromPlayer();
-				player.PlayerId = playerSession.PlayerId;
-				player.SetUserSession(playerSession.UserSession);
+				player.PlayerId = userSession.PhoneNumber;
+				player.SetUserSession(userSession);
 				AddPlayer(player);
 			}
 		}
@@ -1262,109 +1308,56 @@ public partial class CarromGame : GameController
 	// ================================================================
 
 	/// <summary>
-	/// Load user data from DataStore on game startup
+	/// Load user data - event-sourced persistence
+	/// Backend rebuilds state from events
 	/// </summary>
 	private async void LoadUserDataAsync()
 	{
-		var dataStore = DataStore.GetInstance();
-		if (dataStore == null) return;
-
-		string phoneNumber = GetCurrentUserPhoneNumber();
-		if (string.IsNullOrEmpty(phoneNumber)) return;
-
-		// Fire-and-forget load with proper error handling
-		try
-		{
-			var globalDataResult = await dataStore.GetGlobalDataAsync(phoneNumber);
-			if (globalDataResult.IsSuccess)
-			{
-				var carromData = globalDataResult.Value.Carrom;
-				// Thread-safe logging via CallDeferred
-				CallDeferred(MethodName.LogLoadedData, $"Loaded global data - Wins: {carromData.GlobalWins}, Losses: {carromData.GlobalLosses}, Best Streak: {carromData.BestWinStreak}");
-			}
-
-			var localDataResult = await dataStore.GetLocalDataAsync(phoneNumber);
-			if (localDataResult.IsSuccess)
-			{
-				var carromLocalData = localDataResult.Value.Carrom;
-				// Thread-safe logging via CallDeferred
-				CallDeferred(MethodName.LogLoadedData, $"Loaded local data - Games at location: {carromLocalData.GamesAtLocation}");
-			}
-		}
-		catch (System.Exception ex)
-		{
-			// Thread-safe error logging via CallDeferred
-			CallDeferred(MethodName.LogAsyncError, $"Exception loading user data: {ex.Message}");
-		}
+		// Event-sourced persistence - no DataStore loading needed
+		// Backend will rebuild state from events when queried
+		await Task.CompletedTask;
 	}
 
 	/// <summary>
-	/// Save win/loss statistics to DataStore
+	/// Save game result via event-sourced persistence
 	/// </summary>
 	private async void SaveGameResultAsync(string playerId, bool isWin)
 	{
-		var dataStore = DataStore.GetInstance();
-		if (dataStore == null) return;
-
 		string phoneNumber = GetCurrentUserPhoneNumber();
 		if (string.IsNullOrEmpty(phoneNumber)) return;
 
-		// Fire-and-forget save with proper error handling
 		try
 		{
-			// Update global data
-			var globalDataResult = await dataStore.GetGlobalDataAsync(phoneNumber);
-			if (globalDataResult.IsSuccess)
+			// Emit event to backend (event-sourced persistence)
+			if (_eventService != null)
 			{
-				var globalData = globalDataResult.Value;
-				
-				if (isWin)
+				// Build scores dictionary with player scores
+				// For single-player competitive mode, we only have one player's score
+				var scores = new Dictionary<string, int>();
+				if (_competitiveModeManager != null)
 				{
-					globalData.Carrom.GlobalWins++;
-					// Update best win streak if current streak is better
-					var currentStreak = GetCurrentWinStreak(playerId);
-					if (currentStreak > globalData.Carrom.BestWinStreak)
-					{
-						globalData.Carrom.BestWinStreak = currentStreak;
-					}
-				}
-				else
-				{
-					globalData.Carrom.GlobalLosses++;
+					// Get player score from competitive mode manager
+					// Assuming a method exists to get current score
+					scores[playerId] = 0; // TODO: Get actual score from competitive mode
 				}
 
-				await dataStore.SetGlobalDataAsync(phoneNumber, globalData);
+				var mode = _carromGameMode.ToString().ToLowerInvariant();
+				var winnerId = isWin ? playerId : "";
+
+				var payload = new { mode = mode, winner = winnerId, scores = scores };
+			_ = _eventService.EmitEventAsync("carrom/round_finish", payload);
+
 				// Thread-safe logging via CallDeferred
-				CallDeferred(MethodName.LogSavedData, $"Saved global data - Win: {isWin}");
-			}
-
-			// Update local data
-			var localDataResult = await dataStore.GetLocalDataAsync(phoneNumber);
-			if (localDataResult.IsSuccess)
-			{
-				var localData = localDataResult.Value;
-				localData.Carrom.GamesAtLocation++;
-				localData.Carrom.LastPlayedAt = System.DateTime.UtcNow;
-				
-				if (isWin)
-				{
-					localData.Carrom.SessionWins++;
-					localData.Carrom.CurrentWinStreak++;
-				}
-				else
-				{
-					localData.Carrom.SessionLosses++;
-					localData.Carrom.CurrentWinStreak = 0;
-				}
-
-				await dataStore.SetLocalDataAsync(phoneNumber, localData);
+				CallDeferred(MethodName.LogSavedData, $"Emitted round_finish event - Win: {isWin}");
 			}
 		}
 		catch (System.Exception ex)
 		{
 			// Thread-safe error logging via CallDeferred
-			CallDeferred(MethodName.LogAsyncError, $"Exception saving game result: {ex.Message}");
+			CallDeferred(MethodName.LogAsyncError, $"Exception emitting game result event: {ex.Message}");
 		}
+
+		await Task.CompletedTask;
 	}
 
 	/// <summary>
@@ -1478,7 +1471,7 @@ public partial class CarromGame : GameController
 			buttons.Add(new ContextButtonData("Return to Practice", () => {
 				var userManager = UserManager.GetAutoload();
 				userManager?.ResetUserIdleTimer();
-				StartPracticeMode();
+				ReturnToPractice();
 			}, "🔄", true, "Return to practice mode"));
 		}
 
@@ -2206,8 +2199,57 @@ public partial class CarromGame : GameController
 	/// <summary>
 	/// Handle player setup menu game start request
 	/// </summary>
-	private void OnPlayerSetupMenuGameStartRequested()
+	private async void OnPlayerSetupMenuGameStartRequested()
 	{
+		// Get logged-in player IDs from the setup menu
+		var playerIds = _playerSetupMenu?.GetLoggedInPlayerIds();
+
+		// Create backend multiplayer session if we have multiple players
+		if (playerIds != null && playerIds.Length >= 2)
+		{
+			// Get box ID from LocationManager
+			var locationManager = LocationManager.GetAutoload();
+			if (locationManager != null && locationManager.IsConfigLoaded)
+			{
+				var boxId = locationManager.BoxId;
+
+				// Create multiplayer activity session using new API
+				var playerIdStrings = playerIds.Select(id => id.ToString()).ToList();
+				var sessionResult = await _eventService.CreateActivitySessionAsync(
+					boxId: boxId,
+					playerId: playerIds[0], // Host player
+					gameTag: "carrom",
+					playerIds: playerIdStrings
+				);
+
+				if (!sessionResult.IsSuccess)
+				{
+					GD.PrintErr($"[CarromGame] Failed to create multiplayer session: {sessionResult.Error}");
+
+					// Show error notification
+					_notificationSystem?.ShowNotification(
+						NotificationType.Foul,
+						$"Session creation failed: {sessionResult.Error}",
+						duration: 3.0f
+					);
+
+					// Return to player setup menu
+					return;
+				}
+
+				_activitySessionId = sessionResult.Value;
+				GD.Print($"[CarromGame] Multiplayer session created successfully: {_activitySessionId}");
+			}
+			else
+			{
+				GD.PrintErr("[CarromGame] LocationManager not available - cannot create backend session");
+			}
+		}
+		else
+		{
+			GD.PrintErr($"[CarromGame] Invalid player count for multiplayer session: {playerIds?.Length ?? 0}");
+		}
+
 		// Use the stored player count from when the menu was shown
 		StartCompetitiveModeInternal(_pendingPlayerCount);
 	}
@@ -2224,6 +2266,12 @@ public partial class CarromGame : GameController
 	public override void _ExitTree()
 	{
 		base._ExitTree();
+
+		// Close activity session if active
+		if (_activitySessionId != Guid.Empty && _eventService != null)
+		{
+			_ = _eventService.CloseActivitySessionAsync(_activitySessionId);
+		}
 
 		// Clean up signals and references
 		if (_board != null && GodotObject.IsInstanceValid(_board))

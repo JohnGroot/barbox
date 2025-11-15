@@ -5,6 +5,11 @@
 .godot/
 godot.env
 
+# Environment configuration
+.env.local
+.env
+!.env.example
+
 # Mono (C#) specific
 .mono/
 data_*/  # Godot's C# build output
@@ -85,3 +90,4 @@ __pycache__/
 
 # sqlite
 app.db
+BarBoxServices/app.db.ready

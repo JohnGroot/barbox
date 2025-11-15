@@ -1,6 +1,6 @@
-[gd_scene load_steps=9 format=3 uid="uid://bxrmj1t8vqp6k"]
+[gd_scene load_steps=10 format=3 uid="uid://bxrmj1t8vqp6k"]
 
-[ext_resource type="Script" uid="uid://bo1ute767cjbn" path="res://_Games/CarromGame/Scripts/CarromGame.cs" id="1_0jy4h"]
+[ext_resource type="Script" uid="uid://ch0ujsxw08t74" path="res://_Games/CarromGame/Scripts/CarromGame.cs" id="1_0jy4h"]
 [ext_resource type="PackedScene" uid="uid://dadysaqeaqd5s" path="res://_Games/CarromGame/Scenes/Pieces/WhitePiece.tscn" id="2_1b4uc"]
 [ext_resource type="Script" path="res://_Games/CarromGame/Scripts/Visual/CarromBoard.cs" id="2_mm0sl"]
 [ext_resource type="Resource" uid="uid://dqa1j8i4cv7rx" path="res://_Games/CarromGame/Resources/CarromPhysicsConfig.tres" id="2_pw2n5"]

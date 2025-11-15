@@ -88,7 +88,7 @@ public partial class GameHost : AutoloadBase
 		LogInfo($"Loaded {gameId} as overlay");
 	}
 
-	public void StopCurrentGame()
+	public async void StopCurrentGame()
 	{
 		if (_currentGame != null)
 		{
@@ -101,6 +101,12 @@ public partial class GameHost : AutoloadBase
 			EmitSignal(SignalName.GameEnded, _currentGameId);
 			_currentGame.QueueFree();
 			_currentGame = null;
+		}
+
+		// Log out all non-primary users when exiting game
+		if (_sessionManager != null)
+		{
+			await _sessionManager.LogoutNonPrimaryUsersAsync();
 		}
 
 		// Show main menu UI when returning from game
@@ -173,21 +179,13 @@ public partial class GameHost : AutoloadBase
 	public Node GetCurrentGame() => _currentGame;
 
 	/// <summary>
-	/// Get player session - redirects to SessionManager
+	/// Get user session - redirects to SessionManager
 	/// Falls back to primary user if specific playerId not found (single-user game fallback)
 	/// </summary>
-	public PlayerSession GetPlayerSession(string playerId)
+	public UserSession GetUserSession(string playerId)
 	{
 		var sessionManager = SessionManager.GetInstance();
-		var userSession = sessionManager?.GetUserSession(playerId) ?? sessionManager?.GetPrimaryUserSession();
-
-		if (userSession != null)
-		{
-			// Convert UserSession to PlayerSession
-			return new PlayerSession(userSession.PhoneNumber, userSession);
-		}
-
-		return null;
+		return sessionManager?.GetUserSession(playerId) ?? sessionManager?.GetPrimaryUserSession();
 	}
 
 	/// <summary>

@@ -18,7 +18,7 @@ using System.Threading.Tasks;
 ///   * TopMenuBar/UI display (showing "a" user)
 ///   * Single-user game contexts (Racing, Mining)
 ///   * Auto-populate convenience (first slot in multiplayer setup)
-///   * Fallback scenarios (GameHost.GetPlayerSession)
+///   * Fallback scenarios (GameHost.GetUserSession)
 ///
 /// MULTI-USER PATTERNS:
 /// - Multi-user games MUST use GetUserSession(phoneNumber) for explicit targeting
@@ -40,13 +40,23 @@ public partial class SessionManager : AutoloadBase
 
 	public static SessionManager Instance { get; private set; }
 
-	private DataStore _dataStore;
+	private EventService _eventService;
+	private CreditService _creditService;
 	private Dictionary<string, UserSession> _activeSessions = new();
+	private Dictionary<Guid, UserSession> _sessionsByPlayerId = new(); // Secondary index for O(1) lookup by PlayerId
 	private Timer _idleTimer;
 	private const float IDLE_CHECK_INTERVAL = 30.0f; // 30 seconds
 	private const float IDLE_TIMEOUT = 600.0f; // 10 minutes
 
-	public string CurrentLocationId => _dataStore?.GetCurrentLocationId() ?? "unknown";
+	public string CurrentLocationId
+	{
+		get
+		{
+			var locationManager = LocationManager.GetAutoload();
+			return locationManager?.LocationId ??
+			       System.Environment.MachineName.ToLowerInvariant().Replace("-", "_");
+		}
+	}
 
 	protected override void OnServiceReady()
 	{
@@ -56,63 +66,269 @@ public partial class SessionManager : AutoloadBase
 
 	protected override void OnServiceInitialize()
 	{
-		// Now safe to access DataStore - it's been initialized by SceneManager
-		_dataStore = DataStore.GetInstance();
-		if (_dataStore == null)
+		// Initialize EventService for event-sourced persistence
+		_eventService = EventService.GetInstance();
+		if (_eventService == null)
 		{
-			LogError("DataStore not found - SessionManager requires DataStore");
-			return;
+			LogWarning("EventService not found - user events will not be persisted to backend");
+		}
+
+		// Initialize CreditService and connect to credit changes
+		_creditService = CreditService.Instance;
+		if (_creditService != null)
+		{
+			_creditService.CreditsChanged += OnCreditsChanged;
+			LogInfo("SessionManager connected to CreditService for credit change notifications");
+		}
+		else
+		{
+			LogWarning("CreditService not found - credit change signals will not be emitted");
 		}
 
 		SetupIdleTimer();
-		
-		LogInfo("SessionManager initialized with DataStore dependency");
+
+		LogInfo("SessionManager initialized with event-sourced persistence");
+	}
+
+	/// <summary>
+	/// Relay CreditService.CreditsChanged signal as SessionManager.CreditsEarned
+	/// This allows UI components to listen to SessionManager instead of CreditService directly
+	/// </summary>
+	private void OnCreditsChanged(string playerIdStr, int newBalance)
+	{
+		// Parse playerId to Guid to match against active sessions
+		if (!Guid.TryParse(playerIdStr, out var playerId))
+		{
+			LogWarning($"Invalid player ID format in credit change: {playerIdStr}");
+			return;
+		}
+
+		// Find the session with matching player ID (O(1) lookup via secondary index)
+		if (_sessionsByPlayerId.TryGetValue(playerId, out var matchedSession))
+		{
+			// Calculate amount changed
+			int previousBalance = matchedSession.Credits;
+			int amountChanged = newBalance - previousBalance;
+
+			// Update session credits
+			matchedSession.Credits = newBalance;
+
+			// Emit signal with phone number (not player ID UUID)
+			EmitSignal(SignalName.CreditsEarned, matchedSession.PhoneNumber, amountChanged, "Credit balance updated");
+			LogInfo($"Credit change relayed for {matchedSession.UserName}: {previousBalance} -> {newBalance} ({amountChanged:+#;-#;0})");
+		}
+		else
+		{
+			// No active session found - log but don't emit (UI won't show anyway)
+			LogInfo($"Credit changed for player {playerId} but no active session found (balance: {newBalance})");
+		}
+	}
+
+	public override void _Notification(int what)
+	{
+		if (what == NotificationWMCloseRequest)
+		{
+			// Intercept application shutdown to properly logout all users
+			GetTree().AutoAcceptQuit = false;
+			_ = ShutdownGracefullyAsync();
+		}
+	}
+
+	/// <summary>
+	/// Gracefully shutdown by logging out all active users with timeout
+	/// </summary>
+	private async Task ShutdownGracefullyAsync()
+	{
+		try
+		{
+			LogInfo("SessionManager: Beginning graceful shutdown...");
+
+			var phoneNumbers = GetActivePhoneNumbers();
+			if (phoneNumbers.Length == 0)
+			{
+				LogInfo("SessionManager: No active sessions to cleanup");
+				GetTree().Quit();
+				return;
+			}
+
+			LogInfo($"SessionManager: Logging out {phoneNumbers.Length} active user(s)...");
+
+			// Create logout tasks for all active users
+			var logoutTasks = new List<Task<bool>>();
+			foreach (var phoneNumber in phoneNumbers)
+			{
+				logoutTasks.Add(LogoutUserAsync(phoneNumber));
+			}
+
+			// Wait for all logouts with 5-second timeout
+			var allLogoutsTask = Task.WhenAll(logoutTasks);
+			var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
+			var completedTask = await Task.WhenAny(allLogoutsTask, timeoutTask);
+
+			if (completedTask == timeoutTask)
+			{
+				GD.PushWarning("SessionManager: Logout timeout during shutdown - some sessions may not have completed logout");
+			}
+			else
+			{
+				LogInfo("SessionManager: All user sessions logged out successfully");
+			}
+
+			// Proceed with shutdown
+			GetTree().Quit();
+		}
+		catch (System.Exception ex)
+		{
+			GD.PushError($"SessionManager: Error during graceful shutdown: {ex.Message}");
+			// Proceed with shutdown even if error occurred
+			GetTree().Quit();
+		}
 	}
 
 	/// <summary>
 	/// Authenticate and log in a user by phone number and PIN
+	/// Returns Result with UserSession on success or specific error message on failure
 	/// </summary>
-	public async Task<bool> LoginUserByPhoneAsync(string phoneNumber, string pin)
+	public async Task<Result<UserSession>> LoginUserByPhoneAsync(string phoneNumber, string pin)
 	{
 		if (string.IsNullOrEmpty(phoneNumber))
-			return false;
+			return Result<UserSession>.Failure("Phone number is required");
 
 		// Clean phone number for consistency
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
-			return false;
+			return Result<UserSession>.Failure("Invalid phone number format");
 
 		// Clean PIN for consistency
 		var cleanedPin = InputValidator.CleanPin(pin);
-		if (!GameHost.IsDevelopmentContext() && !InputValidator.IsValidPin(cleanedPin))
-			return false;
+		if (!InputValidator.IsValidPin(cleanedPin))
+			return Result<UserSession>.Failure("PIN must be exactly 4 digits");
 
 		try
 		{
-			// Authenticate with backend
-			var authResult = await _dataStore.AuthenticateByPhoneAsync(cleanedPhone, cleanedPin);
-			if (!authResult.IsSuccess)
-			{
-				LogWarning($"Authentication failed for phone {cleanedPhone}: {authResult.Error}");
-				return false;
-			}
-
-			var userData = authResult.Value;
-			var userPhoneNumber = userData.PhoneNumber;
+			// Event-sourced persistence - authentication delegated to backend
+			// For now, create session directly (backend validates via events)
 
 			// Don't allow duplicate sessions for the same user
-			if (_activeSessions.ContainsKey(userPhoneNumber))
+			if (_activeSessions.ContainsKey(cleanedPhone))
 			{
-				LogWarning($"User {userPhoneNumber} already has an active session");
-				return false;
+				LogWarning($"User {cleanedPhone} already has an active session");
+				return Result<UserSession>.Failure("User already logged in");
 			}
 
-			return await CreateUserSessionFromGlobalData(userData);
+			// Generate deterministic player ID from phone number
+			var playerId = EventService.GetPlayerIdFromPhone(cleanedPhone);
+
+			// Register player with backend (idempotent)
+			if (_eventService != null && _eventService.IsReady)
+			{
+				var username = cleanedPhone.Substring(Math.Max(0, cleanedPhone.Length - 7)); // Last 7 digits
+				var boxId = _eventService.GetCurrentBoxId();
+
+				var registrationResult = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, boxId);
+
+				if (!registrationResult.IsSuccess)
+				{
+					// Only continue if error indicates player already exists
+					if (registrationResult.Error != null &&
+					    (registrationResult.Error.Contains("already exists") ||
+					     registrationResult.Error.Contains("409") ||
+					     registrationResult.Error.Contains("conflict", StringComparison.OrdinalIgnoreCase)))
+					{
+						LogInfo($"Player already registered (continuing with login): {playerId}");
+					}
+					else
+					{
+						LogError($"Player registration failed: {registrationResult.Error}");
+						return Result<UserSession>.Failure($"Unable to register player: {registrationResult.Error}");
+					}
+				}
+				else
+				{
+					LogInfo($"Player registered in backend: {playerId}");
+				}
+			}
+
+			// Create local session
+			var session = new UserSession
+			{
+				PhoneNumber = cleanedPhone,
+				UserName = cleanedPhone.Substring(Math.Max(0, cleanedPhone.Length - 7)), // Last 7 digits as temp username
+				LocationId = CurrentLocationId,
+				PlayerId = playerId,
+				LoginTime = DateTime.UtcNow,
+				LastActivity = DateTime.UtcNow,
+				Credits = 0 // Will be populated from backend below
+			};
+
+			// Fetch initial credit balance from backend BEFORE adding to active sessions
+			// This prevents race condition where UI queries session before credits are loaded
+			if (_creditService != null)
+			{
+				var balanceResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+				if (balanceResult.IsSuccess)
+				{
+					session.Credits = balanceResult.Value;
+					LogInfo($"Initial credit balance loaded: {session.Credits} credits for {session.UserName}");
+				}
+				else
+				{
+					LogWarning($"Failed to fetch initial credit balance: {balanceResult.Error}");
+					// Keep Credits = 0 as fallback
+				}
+			}
+			else
+			{
+				LogWarning("CreditService not available - credit balance will remain 0 until updated");
+			}
+
+			// Add session to active sessions AFTER initialization is complete
+			_activeSessions[cleanedPhone] = session;
+			_sessionsByPlayerId[playerId] = session; // Maintain secondary index
+
+			// Create lobby session for user-scoped events
+			if (_eventService != null && _eventService.IsReady)
+			{
+				var boxId = _eventService.GetCurrentBoxId();
+				var lobbySessionResult = await _eventService.CreateLobbySessionAsync(boxId, playerId);
+
+				if (lobbySessionResult.IsSuccess)
+				{
+					session.LobbySessionId = lobbySessionResult.Value;
+					LogInfo($"Lobby session created: {session.LobbySessionId}");
+
+					// Emit user/login event to lobby session
+					var payload = new
+					{
+						username = session.UserName,
+						location_id = CurrentLocationId
+					};
+					var loginEventResult = await _eventService.EmitUserEventAsync(playerId, "user/login", payload);
+					if (!loginEventResult.IsSuccess)
+					{
+						LogWarning($"Failed to emit login event: {loginEventResult.Error}");
+					}
+				}
+				else
+				{
+					LogWarning($"Failed to create lobby session: {lobbySessionResult.Error}");
+					// Continue with login but warn that events won't be persisted
+				}
+			}
+			else
+			{
+				LogWarning("EventService not available - user events will not be persisted");
+			}
+
+			LogInfo($"User session created for phone {cleanedPhone}");
+			EmitSignal(SignalName.UserLoggedIn, cleanedPhone);
+
+			return Result<UserSession>.Success(session);
 		}
 		catch (Exception ex)
 		{
 			LogError($"Error logging in user with phone {cleanedPhone}: {ex.Message}");
-			return false;
+			return Result<UserSession>.Failure($"Unexpected error: {ex.Message}");
 		}
 	}
 
@@ -134,38 +350,115 @@ public partial class SessionManager : AutoloadBase
 		if (!InputValidator.IsValidUsername(cleanedUsername))
 			return Result<string>.Failure("Username must be 1-7 characters, alphanumeric and underscore only");
 
+		if (_eventService == null)
+		{
+			LogError("EventService not available for account creation");
+			return Result<string>.Failure("Backend service unavailable - please try again later");
+		}
+
 		try
 		{
-			// Check if phone number is already registered
-			var phoneResult = await _dataStore.IsPhoneNumberRegisteredAsync(cleanedPhone);
-			if (!phoneResult.IsSuccess)
-				return Result<string>.Failure($"Error checking phone number: {phoneResult.Error}");
+			LogInfo($"User account creation requested: {cleanedUsername} ({cleanedPhone})");
 
-			if (phoneResult.Value)
-				return Result<string>.Failure("Phone number is already registered");
+			// Generate deterministic player ID from phone number
+			var playerId = EventService.GetPlayerIdFromPhone(cleanedPhone);
 
-			// Check if username is already taken
-			var usernameResult = await _dataStore.IsUsernameTakenAsync(cleanedUsername);
-			if (!usernameResult.IsSuccess)
-				return Result<string>.Failure($"Error checking username: {usernameResult.Error}");
+			// Get box ID from LocationManager
+			var locationManager = LocationManager.GetAutoload();
+			if (locationManager == null || !locationManager.IsConfigLoaded)
+			{
+				LogError("LocationManager not available for account creation");
+				return Result<string>.Failure("Location service unavailable - please try again later");
+			}
 
-			if (usernameResult.Value)
-				return Result<string>.Failure("Username is already taken");
+			var boxId = locationManager.BoxId;
 
-			// Create the user account
-			var createResult = await _dataStore.CreateUserAccountAsync(cleanedPhone, cleanedPin, cleanedUsername, CurrentLocationId);
-			if (!createResult.IsSuccess)
-				return Result<string>.Failure($"Failed to create account: {createResult.Error}");
+			// Create player account via direct REST call to backend
+			var result = await _eventService.CreatePlayerAsync(playerId, cleanedUsername, boxId);
 
-			var userData = createResult.Value;
-			LogInfo($"User account created successfully: {userData.UserName} ({userData.PhoneNumber})");
+			if (result.IsSuccess)
+			{
+				LogInfo($"Account created successfully for {cleanedUsername} ({cleanedPhone})");
+				return Result<string>.Success(cleanedPhone);
+			}
+			else
+			{
+				LogError($"Account creation failed: {result.Error}");
 
-			return Result<string>.Success(userData.PhoneNumber);
+				// Provide user-friendly error messages
+				if (result.Error.Contains("409") || result.Error.Contains("already exists"))
+					return Result<string>.Failure("An account with this phone number or username already exists");
+				else if (result.Error.Contains("timeout"))
+					return Result<string>.Failure("Connection timeout - please check your network and try again");
+				else
+					return Result<string>.Failure($"Account creation failed: {result.Error}");
+			}
 		}
 		catch (Exception ex)
 		{
 			LogError($"Error creating user account: {ex.Message}");
 			return Result<string>.Failure($"Account creation failed: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Validate player creation before attempting to create (pre-flight check)
+	/// Checks: box exists, username available, player ID unique
+	/// </summary>
+	public async Task<Result<PlayerValidationResponse>> ValidatePlayerCreationAsync(string phoneNumber, string pin, string username)
+	{
+		// Clean and validate inputs
+		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
+		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
+			return Result<PlayerValidationResponse>.Failure("Invalid phone number format");
+
+		var cleanedPin = InputValidator.CleanPin(pin);
+		if (!InputValidator.IsValidPin(cleanedPin))
+			return Result<PlayerValidationResponse>.Failure("PIN must be exactly 4 digits");
+
+		var cleanedUsername = InputValidator.CleanUsername(username);
+		if (!InputValidator.IsValidUsername(cleanedUsername))
+			return Result<PlayerValidationResponse>.Failure("Username must be 1-7 characters, alphanumeric and underscore only");
+
+		if (_eventService == null)
+		{
+			LogError("EventService not available for validation");
+			return Result<PlayerValidationResponse>.Failure("Backend service unavailable - please try again later");
+		}
+
+		try
+		{
+			// Generate deterministic player ID from phone number
+			var playerId = EventService.GetPlayerIdFromPhone(cleanedPhone);
+
+			// Get box ID from LocationManager
+			var locationManager = LocationManager.GetAutoload();
+			if (locationManager == null || !locationManager.IsConfigLoaded)
+			{
+				LogError("LocationManager not available for validation");
+				return Result<PlayerValidationResponse>.Failure("Location service unavailable - please try again later");
+			}
+
+			var boxId = locationManager.BoxId;
+
+			// Validate via backend
+			var result = await _eventService.ValidatePlayerCreationAsync(playerId, cleanedUsername, boxId);
+
+			if (result.IsSuccess)
+			{
+				LogInfo($"Validation result for {cleanedUsername}: Valid={result.Value.Valid}, ErrorCount={result.Value.Errors?.Length ?? 0}");
+				return result;
+			}
+			else
+			{
+				LogWarning($"Validation failed: {result.Error}");
+				return Result<PlayerValidationResponse>.Failure(result.Error);
+			}
+		}
+		catch (Exception ex)
+		{
+			LogError($"Error validating player creation: {ex.Message}");
+			return Result<PlayerValidationResponse>.Failure($"Validation error: {ex.Message}");
 		}
 	}
 
@@ -180,11 +473,24 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			var result = await _dataStore.IsUsernameTakenAsync(cleanedUsername);
-			if (!result.IsSuccess)
-				return Result<bool>.Failure(result.Error);
+			if (_eventService == null)
+			{
+				// Fallback to optimistic validation if backend unavailable
+				LogWarning("EventService not available, optimistically allowing username");
+				return Result<bool>.Success(true);
+			}
 
-			return Result<bool>.Success(!result.Value); // Available if NOT taken
+			var result = await _eventService.IsUsernameAvailableAsync(cleanedUsername);
+			if (result.IsSuccess)
+			{
+				LogInfo($"Username '{cleanedUsername}' availability: {result.Value}");
+				return Result<bool>.Success(result.Value);
+			}
+			else
+			{
+				LogWarning($"Failed to check username: {result.Error}");
+				return Result<bool>.Failure(result.Error);
+			}
 		}
 		catch (Exception ex)
 		{
@@ -202,25 +508,36 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			// Sync user data before logout
-			await _dataStore.SyncUserDataAsync(phoneNumber);
-
-			// Update local data with final session info
-			var localDataResult = await _dataStore.GetLocalDataAsync(phoneNumber);
-			if (localDataResult.IsSuccess)
+			// Emit user/logout event to lobby session (before closing it)
+			if (_eventService != null && _eventService.IsReady && session.LobbySessionId != Guid.Empty)
 			{
-				var localData = localDataResult.Value;
-				localData.LastLoginTime = DateTime.UtcNow;
-				var saveResult = await _dataStore.SetLocalDataAsync(phoneNumber, localData);
-				if (!saveResult.IsSuccess)
-					LogWarning($"Failed to save logout time for phone {phoneNumber}: {saveResult.Error}");
-			}
-			else
-			{
-				LogWarning($"Failed to get local data for logout of phone {phoneNumber}: {localDataResult.Error}");
+				var payload = new
+				{
+					phone_number = phoneNumber,
+					location_id = CurrentLocationId,
+					session_duration = session.SessionDuration.TotalSeconds
+				};
+				var logoutResult = await _eventService.EmitUserEventAsync(session.PlayerId, "user/logout", payload);
+				if (!logoutResult.IsSuccess)
+				{
+					LogWarning($"Failed to emit logout event: {logoutResult.Error}");
+				}
+
+				// Close lobby session
+				var closeResult = await _eventService.CloseActivitySessionAsync(session.LobbySessionId);
+				if (!closeResult.IsSuccess)
+				{
+					LogWarning($"Failed to close lobby session: {closeResult.Error}");
+				}
+				else
+				{
+					LogInfo($"Lobby session closed: {session.LobbySessionId}");
+				}
 			}
 
+			// Remove local session
 			_activeSessions.Remove(phoneNumber);
+			_sessionsByPlayerId.Remove(session.PlayerId); // Maintain secondary index
 			EmitSignal(SignalName.UserLoggedOut, phoneNumber);
 
 			LogInfo($"Phone {phoneNumber} logged out");
@@ -234,6 +551,42 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	/// <summary>
+	/// Log out all users except the primary (earliest logged-in) user
+	/// Used when exiting to main menu from multi-player games
+	/// </summary>
+	public async Task LogoutNonPrimaryUsersAsync()
+	{
+		var primarySession = GetPrimaryUserSession();
+		if (primarySession == null)
+		{
+			LogInfo("No primary user found - nothing to logout");
+			return;
+		}
+
+		var sessionsToLogout = new List<string>();
+		foreach (var phoneNumber in _activeSessions.Keys)
+		{
+			if (phoneNumber != primarySession.PhoneNumber)
+			{
+				sessionsToLogout.Add(phoneNumber);
+			}
+		}
+
+		if (sessionsToLogout.Count == 0)
+		{
+			LogInfo("No non-primary users to logout");
+			return;
+		}
+
+		LogInfo($"Logging out {sessionsToLogout.Count} non-primary user(s)");
+
+		foreach (var phoneNumber in sessionsToLogout)
+		{
+			await LogoutUserAsync(phoneNumber);
+		}
+	}
+
+	/// <summary>
 	/// Get active user session
 	/// </summary>
 	public UserSession GetUserSession(string phoneNumber)
@@ -242,15 +595,29 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Get primary user session (first logged-in user)
+	/// Get primary user session (earliest logged-in user)
 	/// Use for: UI display (TopMenuBar), single-user game contexts, auto-populate convenience
 	/// Multi-user games: use GetUserSession(phoneNumber) for explicit targeting
 	/// </summary>
 	public UserSession GetPrimaryUserSession()
 	{
+		if (_activeSessions.Count == 0)
+			return null;
+
+		// Return the session with the earliest login time
+		UserSession primarySession = null;
+		DateTime earliestLoginTime = DateTime.MaxValue;
+
 		foreach (var session in _activeSessions.Values)
-			return session;
-		return null;
+		{
+			if (session.LoginTime < earliestLoginTime)
+			{
+				earliestLoginTime = session.LoginTime;
+				primarySession = session;
+			}
+		}
+
+		return primarySession;
 	}
 
 	/// <summary>
@@ -290,94 +657,176 @@ public partial class SessionManager : AutoloadBase
 			return true;
 		}
 
-		// Check if user has enough credits
-		var globalDataResult = await _dataStore.GetGlobalDataAsync(phoneNumber);
-		if (!globalDataResult.IsSuccess)
+		// Event-sourced persistence - backend tracks credit balance
+		// Check local session cache for credits
+		if (!_activeSessions.TryGetValue(phoneNumber, out var session))
 		{
-			LogError($"Failed to get global data for user {phoneNumber}: {globalDataResult.Error}");
+			LogWarning($"No active session for user {phoneNumber}");
 			return false;
 		}
 
-		var globalData = globalDataResult.Value;
-		if (globalData.GlobalCredits < amount)
+		if (session.Credits < amount)
 		{
-			LogInfo($"User {phoneNumber} has insufficient global credits ({globalData.GlobalCredits}/{amount})");
+			LogInfo($"User {phoneNumber} has insufficient credits ({session.Credits}/{amount})");
 			// TODO: Show buy credits dialog
 			return false;
 		}
 
 		// Show confirmation dialog (simplified for prototype)
-		bool confirmed = await ShowCreditConfirmationAsync(phoneNumber, amount, reason, globalData.GlobalCredits);
+		bool confirmed = await ShowCreditConfirmationAsync(phoneNumber, amount, reason, session.Credits);
 		if (!confirmed)
 		{
 			LogInfo($"User {phoneNumber} cancelled credit spending for {reason}");
 			return false;
 		}
 
-		// Spend the credits
-		var spendResult = await _dataStore.SpendGlobalCreditsAsync(phoneNumber, amount, reason);
-		if (spendResult.IsSuccess)
-		{
-			// Update cached session data
-			if (_activeSessions.TryGetValue(phoneNumber, out var session) && session.GlobalData != null)
-			{
-				session.GlobalData.GlobalCredits -= amount;
-			}
+		// Update local session cache
+		session.Credits -= amount;
+		EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, reason);
 
-			EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, reason);
+		// Emit credit/spend event to backend
+		if (_eventService != null)
+		{
+			var payload = new
+			{
+				phone_number = phoneNumber,
+				amount = amount,
+				reason = reason,
+				new_balance = session.Credits
+			};
+			_ = _eventService.EmitEventAsync("credit/spend", payload);
 		}
 
-		return spendResult.IsSuccess;
+		return true;
 	}
 
 
 	/// <summary>
 	/// Add credits to user account
 	/// </summary>
-	public async Task<bool> AddGlobalCreditsAsync(string phoneNumber, int amount, string reason)
+	public async Task<bool> AddGlobalCreditsAsync(string phoneNumber, int amount, string reason = "")
 	{
-		var addResult = await _dataStore.AddGlobalCreditsAsync(phoneNumber, amount, reason);
-		if (addResult.IsSuccess)
+		if (amount <= 0)
 		{
-			// Update cached session data
-			if (_activeSessions.TryGetValue(phoneNumber, out var session) && session.GlobalData != null)
-			{
-				session.GlobalData.GlobalCredits += amount;
-			}
-
-			EmitSignal(SignalName.CreditsEarned, phoneNumber, amount, reason);
+			LogWarning("Cannot add non-positive credits");
+			return false;
 		}
 
-		return addResult.IsSuccess;
+		try
+		{
+			var playerId = EventService.GetPlayerIdFromPhone(phoneNumber);
+
+			if (_eventService != null && _eventService.IsReady)
+			{
+				var result = await _eventService.AddCreditsAsync(playerId, amount, reason);
+				if (result.IsSuccess)
+				{
+					LogInfo($"Added {amount} credits for {phoneNumber}");
+
+					// Update local session cache if available
+					if (_activeSessions.TryGetValue(phoneNumber, out var session))
+					{
+						session.Credits += amount;
+					}
+
+					EmitSignal(SignalName.CreditsEarned, phoneNumber, amount, reason);
+					return true;
+				}
+				else
+				{
+					LogError($"Failed to add credits: {result.Error}");
+					return false;
+				}
+			}
+			else
+			{
+				if (_eventService == null)
+					LogWarning("EventService not available, cannot sync credits");
+				else
+					LogWarning("EventService not ready (backend not initialized), cannot sync credits");
+				return false;
+			}
+		}
+		catch (Exception ex)
+		{
+			LogError($"Error adding credits: {ex.Message}");
+			return false;
+		}
 	}
 
 	/// <summary>
 	/// Transfer credits from user's account to machine game credits
-	/// Updates both DataStore and session cache atomically
 	/// </summary>
-	public async Task<bool> TransferCreditsToMachineAsync(string phoneNumber, string gameId, int amount, string reason)
+	public async Task<bool> TransferCreditsToMachineAsync(string phoneNumber, string gameId, int amount, string reason = "")
 	{
+		if (amount <= 0) return false;
+
 		if (!IsUserLoggedIn(phoneNumber))
 		{
 			LogWarning($"User {phoneNumber} not logged in for credit transfer");
 			return false;
 		}
 
-		// Perform the transfer via DataStore
-		var transferSuccess = await _dataStore.TransferCreditsToMachineAsync(phoneNumber, gameId, amount, reason);
-
-		if (transferSuccess)
+		try
 		{
-			// Update cached session data
-			if (_activeSessions.TryGetValue(phoneNumber, out var session) && session.GlobalData != null)
+			var playerId = EventService.GetPlayerIdFromPhone(phoneNumber);
+
+			if (_eventService != null)
 			{
-				session.GlobalData.GlobalCredits -= amount;
+				// Query current balance
+				var balanceResult = await _eventService.GetPlayerCreditsAsync(playerId);
+				if (!balanceResult.IsSuccess || balanceResult.Value < amount)
+				{
+					LogWarning($"Insufficient credits: has {balanceResult.Value}, needs {amount}");
+					return false;
+				}
+
+				// Spend credits from player account
+				var spendResult = await _eventService.SpendCreditsAsync(playerId, amount, $"Transfer to {gameId}: {reason}");
+				if (spendResult.IsSuccess)
+				{
+					LogInfo($"Transferred {amount} credits for {phoneNumber}");
+
+					// Update local session cache if available
+					if (_activeSessions.TryGetValue(phoneNumber, out var session))
+					{
+						session.Credits -= amount;
+
+						// Deposit credits to machine pot (backend tracking)
+						var locationManager = LocationManager.GetAutoload();
+						if (locationManager != null && session.LobbySessionId != Guid.Empty)
+						{
+							var boxId = locationManager.BoxId;
+							// Use "carrom" game tag (not "carrom_game" ID) to match backend queries
+							var gameTag = gameId.Replace("_game", "");
+							var depositResult = await _eventService.DepositMachineCreditsAsync(
+								gameTag,
+								boxId,
+								playerId,
+								amount,
+								session.LobbySessionId
+							);
+
+							if (!depositResult.IsSuccess)
+							{
+								LogWarning($"Failed to deposit to machine pot: {depositResult.Error}");
+								// Continue anyway - player credits already deducted
+							}
+						}
+					}
+
+					EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, $"Transfer to {gameId}: {reason}");
+					return true;
+				}
 			}
 
-			EmitSignal(SignalName.CreditsSpent, phoneNumber, amount, $"Transfer to {gameId}: {reason}");
+			return false;
 		}
-
-		return transferSuccess;
+		catch (Exception ex)
+		{
+			LogError($"Error transferring credits: {ex.Message}");
+			return false;
+		}
 	}
 
 	/// <summary>
@@ -404,58 +853,6 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	// Private helper methods
-
-	private async Task<bool> CreateUserSessionFromGlobalData(DataStore.GlobalUserData globalData)
-	{
-		var phoneNumber = globalData.PhoneNumber;
-
-		// Load or create local data
-		var localDataResult = await _dataStore.GetLocalDataAsync(phoneNumber);
-		DataStore.LocalUserData localData;
-
-		if (!localDataResult.IsSuccess)
-		{
-			// Create new local data if it doesn't exist
-			localData = new DataStore.LocalUserData
-			{
-				PhoneNumber = phoneNumber,
-				LocationId = CurrentLocationId,
-				LastLoginTime = DateTime.UtcNow
-			};
-
-			var saveResult = await _dataStore.SetLocalDataAsync(phoneNumber, localData);
-			if (!saveResult.IsSuccess)
-				LogWarning($"Failed to save initial local data for phone {phoneNumber}: {saveResult.Error}");
-		}
-		else
-		{
-			localData = localDataResult.Value;
-		}
-
-		// Create session
-		var session = new UserSession
-		{
-			PhoneNumber = phoneNumber,
-			LocationId = CurrentLocationId,
-			LoginTime = DateTime.UtcNow,
-			LastActivity = DateTime.UtcNow,
-			GlobalData = globalData,
-			LocalData = localData
-		};
-
-		_activeSessions[phoneNumber] = session;
-
-		// Update login time in local data
-		localData.LastLoginTime = DateTime.UtcNow;
-		var updateResult = await _dataStore.SetLocalDataAsync(phoneNumber, localData);
-		if (!updateResult.IsSuccess)
-			LogWarning($"Failed to update login time for phone {phoneNumber}: {updateResult.Error}");
-
-		EmitSignal(SignalName.UserLoggedIn, phoneNumber);
-		LogInfo($"User {globalData.UserName} (phone: {globalData.PhoneNumber}) logged in at location {CurrentLocationId}");
-
-		return true;
-	}
 
 	private void SetupIdleTimer()
 	{
@@ -517,7 +914,9 @@ public partial class SessionManager : AutoloadBase
 
 	protected override void OnServiceDestroyed()
 	{
-		// Logout all users before shutdown
+		GD.PushWarning("SessionManager: OnServiceDestroyed() called - graceful shutdown notification may have been missed");
+
+		// Logout all users before shutdown (fallback path - fire and forget)
 		var phoneNumbers = GetActivePhoneNumbers();
 		foreach (var phoneNumber in phoneNumbers)
 		{
@@ -526,22 +925,32 @@ public partial class SessionManager : AutoloadBase
 
 		_idleTimer?.Stop();
 		_idleTimer?.QueueFree();
-		
+
+		// Disconnect from CreditService
+		if (_creditService != null && GodotObject.IsInstanceValid(_creditService))
+		{
+			_creditService.CreditsChanged -= OnCreditsChanged;
+		}
+		_creditService = null;
+
 		Instance = null;
 	}
 }
 
 /// <summary>
 /// User session data structure
+/// Represents authentication session (login → logout), not gameplay session
 /// </summary>
 public class UserSession
 {
 	public string PhoneNumber { get; set; } = string.Empty;
+	public string UserName { get; set; } = string.Empty;
 	public string LocationId { get; set; } = string.Empty;
+	public Guid PlayerId { get; set; } = Guid.Empty;
+	public Guid LobbySessionId { get; set; } = Guid.Empty;  // Lobby session for user-scoped events
 	public DateTime LoginTime { get; set; }
 	public DateTime LastActivity { get; set; }
-	public DataStore.GlobalUserData GlobalData { get; set; }
-	public DataStore.LocalUserData LocalData { get; set; }
+	public int Credits { get; set; }
 
 	public TimeSpan SessionDuration => DateTime.UtcNow - LoginTime;
 	public TimeSpan IdleTime => DateTime.UtcNow - LastActivity;

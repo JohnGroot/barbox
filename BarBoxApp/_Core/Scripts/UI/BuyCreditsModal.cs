@@ -204,7 +204,7 @@ public partial class BuyCreditsModal : Control
 		}
 
 		_targetPhoneNumber = phoneNumber;
-		UpdateCurrentCreditsDisplay(session.GlobalData?.GlobalCredits ?? 0);
+		UpdateCurrentCreditsDisplay(session.Credits);
 
 		Visible = true;
 		ClearStatusMessage();
@@ -281,7 +281,9 @@ public partial class BuyCreditsModal : Control
 
 		try
 		{
-			var result = await _paymentService.PurchaseCreditsAsync(_targetPhoneNumber, creditPack);
+			// Convert phone number to playerId for backend consistency
+			var playerId = EventService.GetPlayerIdFromPhone(_targetPhoneNumber);
+			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 			if (result.IsSuccess)
 			{
@@ -289,9 +291,9 @@ public partial class BuyCreditsModal : Control
 
 				// Update credits display for the target user
 				var session = _sessionManager?.GetUserSession(_targetPhoneNumber);
-				if (session?.GlobalData != null)
+				if (session != null)
 				{
-					UpdateCurrentCreditsDisplay(session.GlobalData.GlobalCredits);
+					UpdateCurrentCreditsDisplay(session.Credits);
 				}
 
 				// Emit signal for UI updates

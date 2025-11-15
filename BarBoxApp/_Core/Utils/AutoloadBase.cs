@@ -1,5 +1,8 @@
 using Godot;
+using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 /// <summary>
 /// Abstract base class for all autoload services in the project
@@ -10,12 +13,26 @@ using System.Collections.Generic;
 public abstract partial class AutoloadBase : Node
 {
 	/// <summary>
+	/// Service lifecycle states for staged initialization
+	/// </summary>
+	public enum ServiceState
+	{
+		Constructed,	// _Ready() called, basic setup done
+		Initializing,	// InitializeAsync() called, async work in progress
+		Ready,			// Fully operational, can service requests
+		Failed			// Initialization failed, degraded mode
+	}
+
+	/// <summary>
 	/// The service name used for group registration and logging
 	/// Defaults to the class name but can be overridden
 	/// </summary>
 	protected virtual string ServiceName => GetType().Name;
 
 	private bool _isInitialized = false;
+	private ServiceState _state = ServiceState.Constructed;
+	private string _failureReason = string.Empty;
+	private TaskCompletionSource<bool> _readySignal = new();
 
 	/// <summary>
 	/// Called during _Ready() to perform service-specific setup (minimal initialization only)
@@ -32,6 +49,17 @@ public abstract partial class AutoloadBase : Node
 		// Default implementation does nothing - override in derived classes
 	}
 
+	/// <summary>
+	/// Called explicitly by SceneManager to perform async service initialization
+	/// Override this in services that need async operations (backend health checks, etc.)
+	/// </summary>
+	protected virtual async Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
+	{
+		// Default: synchronous services call OnServiceInitialize()
+		OnServiceInitialize();
+		await Task.CompletedTask;
+	}
+
 	public override void _Ready()
 	{
 		// Automatic group registration using service name
@@ -46,6 +74,7 @@ public abstract partial class AutoloadBase : Node
 
 	/// <summary>
 	/// Explicitly initialize the service - called by SceneManager in dependency order
+	/// Legacy synchronous method maintained for backward compatibility
 	/// </summary>
 	public void Initialize()
 	{
@@ -58,13 +87,101 @@ public abstract partial class AutoloadBase : Node
 		LogInfo($"{ServiceName} initializing...");
 		OnServiceInitialize();
 		_isInitialized = true;
+		_state = ServiceState.Ready;
+		_readySignal.TrySetResult(true);
 		LogInfo($"{ServiceName} initialized");
 	}
 
 	/// <summary>
-	/// Check if this service has been explicitly initialized
+	/// Async initialization with proper error handling and cancellation support
+	/// Called by SceneManager for staged initialization
+	/// </summary>
+	public async Task<bool> InitializeAsync(CancellationToken cancellationToken = default)
+	{
+		if (_state >= ServiceState.Initializing)
+		{
+			LogWarning($"{ServiceName} already initializing/ready, waiting for completion");
+			return await WaitForReadyAsync(30.0f, cancellationToken);
+		}
+
+		_state = ServiceState.Initializing;
+		LogInfo($"{ServiceName} initializing...");
+
+		try
+		{
+			await OnServiceInitializeAsync(cancellationToken);
+			_state = ServiceState.Ready;
+			_isInitialized = true;
+			_readySignal.TrySetResult(true);
+			LogInfo($"{ServiceName} ready");
+			return true;
+		}
+		catch (OperationCanceledException)
+		{
+			_state = ServiceState.Failed;
+			_failureReason = "Initialization cancelled";
+			_readySignal.TrySetResult(false);
+			LogWarning($"{ServiceName} initialization cancelled");
+			return false;
+		}
+		catch (Exception ex)
+		{
+			_state = ServiceState.Failed;
+			_failureReason = ex.Message;
+			_readySignal.TrySetResult(false);
+			LogError($"{ServiceName} initialization failed: {ex.Message}");
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Wait for service to become ready with timeout
+	/// Used by dependent services to wait for initialization to complete
+	/// </summary>
+	public async Task<bool> WaitForReadyAsync(float timeoutSeconds = 30.0f, CancellationToken cancellationToken = default)
+	{
+		if (_state == ServiceState.Ready)
+			return true;
+
+		if (_state == ServiceState.Failed)
+		{
+			LogWarning($"Cannot wait for {ServiceName} - service failed: {_failureReason}");
+			return false;
+		}
+
+		using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+
+		try
+		{
+			return await _readySignal.Task.WaitAsync(cts.Token);
+		}
+		catch (OperationCanceledException)
+		{
+			LogWarning($"{ServiceName} ready wait timed out after {timeoutSeconds}s");
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Check if this service has been explicitly initialized (legacy property)
 	/// </summary>
 	public bool IsInitialized => _isInitialized;
+
+	/// <summary>
+	/// Check if this service is ready to handle requests
+	/// </summary>
+	public bool IsReady => _state == ServiceState.Ready;
+
+	/// <summary>
+	/// Get the current lifecycle state of the service
+	/// </summary>
+	public ServiceState State => _state;
+
+	/// <summary>
+	/// Get the failure reason if service is in Failed state
+	/// </summary>
+	public string FailureReason => _failureReason;
 
 	/// <summary>
 	/// Generic service discovery method for finding other autoloads
