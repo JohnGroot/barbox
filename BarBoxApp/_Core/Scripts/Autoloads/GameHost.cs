@@ -122,37 +122,27 @@ public partial class GameHost : AutoloadBase
 	}
 
 	/// <summary>
-	/// Attempts to pause the current game by calling game-specific pause methods
-	/// Games should implement their own pause logic (PauseRace, etc.)
+	/// Pauses the current game using the GameController base class pattern
+	/// Games override OnPause() to implement game-specific pause behavior
 	/// </summary>
 	public void PauseGame()
 	{
-		// Try common pause method names
-		if (_currentGame?.HasMethod("PauseRace") == true)
-		{
-			_currentGame.Call("PauseRace");
-		}
-		else if (_currentGame?.HasMethod("PauseGame") == true)
-		{
-			_currentGame.Call("PauseGame");
-		}
+		if (_currentGame == null) 
+			return;
+
+		_currentGame.Pause();
 	}
 
 	/// <summary>
-	/// Attempts to resume the current game by calling game-specific resume methods
-	/// Games should implement their own resume logic (ResumeRace, etc.)
+	/// Resumes the current game using the GameController base class pattern
+	/// Games override OnResume() to implement game-specific resume behavior
 	/// </summary>
 	public void ResumeGame()
 	{
-		// Try common resume method names
-		if (_currentGame?.HasMethod("ResumeRace") == true)
-		{
-			_currentGame.Call("ResumeRace");
-		}
-		else if (_currentGame?.HasMethod("ResumeGame") == true)
-		{
-			_currentGame.Call("ResumeGame");
-		}
+		if (_currentGame == null) 
+			return;
+
+		_currentGame.Resume();
 	}
 
 	public void ReturnToMainMenu()
