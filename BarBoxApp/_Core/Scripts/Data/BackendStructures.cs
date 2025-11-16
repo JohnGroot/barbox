@@ -9,131 +9,131 @@ using System.Text.Json.Serialization;
 /// <summary>
 /// Response for username availability check
 /// </summary>
-public partial class UsernameAvailabilityResponse
+public record class UsernameAvailabilityResponse
 {
 	[JsonPropertyName("username")]
-	public string Username { get; set; }
+	public string Username { get; init; }
 
 	[JsonPropertyName("is_available")]
-	public bool IsAvailable { get; set; }
+	public bool IsAvailable { get; init; }
 }
 
 /// <summary>
 /// Response for player credits query
 /// </summary>
-public partial class PlayerCreditsResponse
+public record class PlayerCreditsResponse
 {
 	[JsonPropertyName("player_id")]
-	public string PlayerId { get; set; }
+	public string PlayerId { get; init; }
 
 	[JsonPropertyName("location_id")]
-	public string LocationId { get; set; }
+	public string LocationId { get; init; }
 
 	[JsonPropertyName("credits")]
-	public int Credits { get; set; }
+	public int Credits { get; init; }
 }
 
 /// <summary>
 /// Request for creating a new player account
 /// </summary>
-public partial class PlayerCreateRequest
+public record class PlayerCreateRequest
 {
 	[JsonPropertyName("id")]
-	public string Id { get; set; }
+	public string Id { get; init; }
 
 	[JsonPropertyName("tag")]
-	public string Tag { get; set; }
+	public string Tag { get; init; }
 
 	[JsonPropertyName("origin_id")]
-	public string OriginId { get; set; }
+	public string OriginId { get; init; }
 }
 
 /// <summary>
 /// Response for player creation
 /// </summary>
-public partial class PlayerDetailResponse
+public record class PlayerDetailResponse
 {
 	[JsonPropertyName("id")]
-	public string Id { get; set; }
+	public string Id { get; init; }
 }
 
 /// <summary>
 /// Request for registering a new box (physical terminal)
 /// </summary>
-public partial class BoxCreateRequest
+public record class BoxCreateRequest
 {
 	[JsonPropertyName("id")]
-	public string Id { get; set; }
+	public string Id { get; init; }
 
 	[JsonPropertyName("name")]
-	public string Name { get; set; }
+	public string Name { get; init; }
 
 	[JsonPropertyName("tag")]
-	public string Tag { get; set; }
+	public string Tag { get; init; }
 }
 
 /// <summary>
 /// Response for box registration
 /// </summary>
-public partial class BoxDetailResponse
+public record class BoxDetailResponse
 {
 	[JsonPropertyName("id")]
-	public string Id { get; set; }
+	public string Id { get; init; }
 }
 
 /// <summary>
 /// Validation error detail for a specific field
 /// </summary>
-public partial class ValidationErrorDetail
+public record class ValidationErrorDetail
 {
 	[JsonPropertyName("field")]
-	public string Field { get; set; }
+	public string Field { get; init; }
 
 	[JsonPropertyName("message")]
-	public string Message { get; set; }
+	public string Message { get; init; }
 
 	[JsonPropertyName("value")]
-	public string Value { get; set; }
+	public string Value { get; init; }
 }
 
 /// <summary>
 /// Response for player creation validation (pre-flight check)
 /// </summary>
-public partial class PlayerValidationResponse
+public record class PlayerValidationResponse
 {
 	[JsonPropertyName("valid")]
-	public bool Valid { get; set; }
+	public bool Valid { get; init; }
 
 	[JsonPropertyName("errors")]
-	public ValidationErrorDetail[] Errors { get; set; } = [];
+	public ValidationErrorDetail[] Errors { get; init; } = [];
 }
 
 /// <summary>
 /// Individual player contribution to machine credit pot
 /// </summary>
-public partial class MachinePlayerContribution
+public record class MachinePlayerContribution
 {
 	[JsonPropertyName("player_id")]
-	public string PlayerId { get; set; }
+	public string PlayerId { get; init; }
 
 	[JsonPropertyName("amount")]
-	public int Amount { get; set; }
+	public int Amount { get; init; }
 }
 
 /// <summary>
 /// Response for machine credit pot query (per box+game)
 /// </summary>
-public partial class MachineCreditsResponse
+public record class MachineCreditsResponse
 {
 	[JsonPropertyName("box_id")]
-	public string BoxId { get; set; }
+	public string BoxId { get; init; }
 
 	[JsonPropertyName("game_tag")]
-	public string GameTag { get; set; }
+	public string GameTag { get; init; }
 
 	[JsonPropertyName("balance")]
-	public int Balance { get; set; }
+	public int Balance { get; init; }
 
 	[JsonPropertyName("contributions")]
-	public MachinePlayerContribution[] Contributions { get; set; } = [];
+	public MachinePlayerContribution[] Contributions { get; init; } = [];
 }
