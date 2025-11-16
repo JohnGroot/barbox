@@ -302,7 +302,7 @@ public partial class EventService : AutoloadBase
 			}
 
 			// Parse response to get session ID
-			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
+			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			if (string.IsNullOrEmpty(bodyText))
@@ -391,7 +391,7 @@ public partial class EventService : AutoloadBase
 			if (responseCode == 201)
 			{
 				// This prevents POST-then-GET state interference by clearing the Body state
-				var responseBody = await _httpClient.ReadResponseBodyOptimizedAsync();
+				var responseBody = await _httpClient.ReadResponseBodyAsync();
 
 #if DEBUG_HTTP_LIFECYCLE
 				LogInfo($"[HTTP] POST succeeded, consumed {responseBody.Length} bytes");
@@ -404,7 +404,7 @@ public partial class EventService : AutoloadBase
 			}
 
 			// CRITICAL: Read error response body to see actual backend validation error
-			var errorBodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
+			var errorBodyBytes = await _httpClient.ReadResponseBodyAsync();
 			var errorBody = errorBodyBytes.GetStringFromUtf8();
 
 			var failureMsg = $"Event submission failed with code {responseCode}";
@@ -489,7 +489,7 @@ public partial class EventService : AutoloadBase
 			{
 				// Read response body to complete the request cycle
 				// Using reactive polling
-				var responseBodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
+				var responseBodyBytes = await _httpClient.ReadResponseBodyAsync();
 			var responseBody = responseBodyBytes.GetStringFromUtf8();
 
 #if DEBUG_HTTP_LIFECYCLE
@@ -571,7 +571,7 @@ public partial class EventService : AutoloadBase
 				return Result.Failure<TResponse>($"Query failed with code {responseCode}");
 			}
 
-			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
+			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			// Validate body before deserializing
@@ -631,7 +631,7 @@ public partial class EventService : AutoloadBase
 			// CRITICAL: Poll to ensure body is fully received
 			// Using reactive polling
 			var responseCode = _httpClient.GetResponseCode();
-			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
+			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			if (responseCode != 200)
@@ -738,7 +738,7 @@ public partial class EventService : AutoloadBase
 			var responseCode = _httpClient.GetResponseCode();
 			if (responseCode != expectedStatusCode)
 			{
-				var errorBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
+				var errorBytes = await _httpClient.ReadResponseBodyAsync();
 				var errorText = errorBytes.GetStringFromUtf8();
 
 				// Close connection to allow recovery on next request
@@ -749,7 +749,7 @@ public partial class EventService : AutoloadBase
 
 			// Ensure response body is fully received (Godot HttpClient timing issue)
 			// Using reactive polling
-			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
+			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 #if DEBUG_HTTP_LIFECYCLE
@@ -808,7 +808,7 @@ public partial class EventService : AutoloadBase
 			var responseCode = _httpClient.GetResponseCode();
 			if (responseCode != expectedStatusCode)
 			{
-				var errorBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
+				var errorBytes = await _httpClient.ReadResponseBodyAsync();
 				var errorText = errorBytes.GetStringFromUtf8();
 
 				// Close connection to allow recovery on next request
@@ -817,7 +817,7 @@ public partial class EventService : AutoloadBase
 				return Result.Failure<TResponse>($"PUT failed with code {responseCode}: {errorText}");
 			}
 
-			var bodyBytes = await _httpClient.ReadResponseBodyOptimizedAsync();
+			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
