@@ -1,4 +1,5 @@
 using Godot;
+using System.Collections.Generic;
 
 [GlobalClass]
 public partial class MainController : Control
@@ -8,12 +9,17 @@ public partial class MainController : Control
 	[Export] public VBoxContainer GameList { get; set; }
 	[Export] public Label UserInfoLabel { get; set; }
 
+	private const string GAME_BUTTON_TEXT_FORMAT = "{0}\nPractice Mode: FREE\nPremium features: {1} credit{2}";
+	private const string USER_INFO_FORMAT = "User: {0}\nCredits: {1}";
+	private const string NOT_LOGGED_IN_TEXT = "Not logged in\nPractice mode only";
+
 	private SessionManager _sessionManager;
 	private GameRegistry _gameRegistry;
-	private SceneManager _sceneManager;
+	private ApplicationBootstrap _appBootstrap;
 	private GameHost _gameHost;
 	private UIManager _uiManager;
 	private Node _onscreenKeyboard;
+	private readonly List<Button> _activeGameButtons = new();
 	
 	public override void _Ready()
 	{
@@ -28,16 +34,16 @@ public partial class MainController : Control
 
 		// MainController _Ready() starting
 
-		// Get SceneManager reference to check if services are ready
-		_sceneManager = SceneManager.GetAutoload();
-		if (_sceneManager == null)
+		// Get ApplicationBootstrap reference to check if services are ready
+		_appBootstrap = ApplicationBootstrap.GetAutoload();
+		if (_appBootstrap == null)
 		{
-			GD.PrintErr("[MainController] CRITICAL: SceneManager not available");
+			GD.PrintErr("[MainController] CRITICAL: ApplicationBootstrap not available");
 			return;
 		}
 
 		// Check if services are already initialized
-		if (_sceneManager.AreServicesReady())
+		if (_appBootstrap.AreServicesReady())
 		{
 			// Services already ready, initializing UI
 			InitializeUI();
@@ -45,7 +51,7 @@ public partial class MainController : Control
 		else
 		{
 			// Waiting for services to be ready
-			_sceneManager.AllServicesReady += InitializeUI;
+			_appBootstrap.AllServicesReady += InitializeUI;
 		}
 	}
 
@@ -80,8 +86,6 @@ public partial class MainController : Control
 		ConnectSignals();
 		SetupUI();
 		UpdateUI();
-		
-		// UI initialization completed
 	}
 
 	public override void _Notification(int what)
@@ -89,19 +93,22 @@ public partial class MainController : Control
 		if (what == NotificationExitTree)
 		{
 			DisconnectSignals();
-			
-			// Disconnect from SceneManager signal
-			if (GodotObject.IsInstanceValid(_sceneManager))
+
+			// Disconnect from ApplicationBootstrap signal
+			if (IsInstanceValid(_appBootstrap))
 			{
-				_sceneManager.AllServicesReady -= InitializeUI;
+				_appBootstrap.AllServicesReady -= InitializeUI;
 			}
-			
+
 			// Disconnect from UIManager (it's an autoload now, don't QueueFree)
-			if (GodotObject.IsInstanceValid(_uiManager))
+			if (IsInstanceValid(_uiManager))
 			{
 				_uiManager.LogoutRequested -= OnLogoutRequested;
 			}
-			
+
+			// Clear game button references
+			ClearGameList();
+
 			// Clear references to prevent memory leaks
 			_onscreenKeyboard = null;
 			_uiManager = null;
@@ -119,7 +126,7 @@ public partial class MainController : Control
 
 	private void DisconnectSignals()
 	{
-		if (GodotObject.IsInstanceValid(_sessionManager))
+		if (IsInstanceValid(_sessionManager))
 		{
 			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
 			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
@@ -129,27 +136,21 @@ public partial class MainController : Control
 
 	private void SetupUI()
 	{
-		// SetupUI() starting
-		
 		// Always show game selection panel - login is handled by UIManager modal
 		if (GameSelectionPanel != null)
 			GameSelectionPanel.Visible = true; // Always show game selection
 
 		// Always populate game list, regardless of login status
 		PopulateGameList();
-		
-		// SetupUI() completed
 	}
 
 	private void PopulateGameList()
 	{
-		if (GameList == null || _gameRegistry == null) return;
+		if (GameList == null || _gameRegistry == null)
+			return;
 
-		// Clear existing game buttons
-		foreach (Node child in GameList.GetChildren())
-		{
-			child.QueueFree();
-		}
+		// Clear existing game buttons properly
+		ClearGameList();
 
 		// Add game buttons
 		var availableGames = _gameRegistry.GetAvailableGames();
@@ -162,15 +163,30 @@ public partial class MainController : Control
 		}
 	}
 
+	private void ClearGameList()
+	{
+		// Properly cleanup button references
+		foreach (var button in _activeGameButtons)
+		{
+			if (IsInstanceValid(button))
+			{
+				GameList.RemoveChild(button);
+				button.QueueFree();
+			}
+		}
+		_activeGameButtons.Clear();
+	}
+
 	private void CreateGameButton(GameMetadata gameData)
 	{
 		var button = new Button();
-		// Show that practice mode is free
-		button.Text = $"{gameData.DisplayName}\nPractice Mode: FREE\nPremium features: {gameData.CreditCost} credit{(gameData.CreditCost != 1 ? "s" : "")}";
+		var creditPlural = gameData.CreditCost != 1 ? "s" : "";
+		button.Text = string.Format(GAME_BUTTON_TEXT_FORMAT, gameData.DisplayName, gameData.CreditCost, creditPlural);
 		button.CustomMinimumSize = new Vector2(250, 100);
-		
+
 		button.Pressed += () => OnGameSelected(gameData.GameId);
-		
+
+		_activeGameButtons.Add(button);
 		GameList.AddChild(button);
 	}
 
@@ -194,12 +210,6 @@ public partial class MainController : Control
 		}
 	}
 
-	private void ShowInsufficientCreditsMessage()
-	{
-		// Show popup or notification about insufficient credits
-		// Insufficient credits
-	}
-
 	private void UpdateUI()
 	{
 		// Show primary user info in main menu UI
@@ -209,11 +219,11 @@ public partial class MainController : Control
 		{
 			if (currentUserSession != null)
 			{
-				UserInfoLabel.Text = $"User: {currentUserSession.UserName}\nCredits: {currentUserSession.Credits}";
+				UserInfoLabel.Text = string.Format(USER_INFO_FORMAT, currentUserSession.UserName, currentUserSession.Credits);
 			}
 			else
 			{
-				UserInfoLabel.Text = "Not logged in\nPractice mode only";
+				UserInfoLabel.Text = NOT_LOGGED_IN_TEXT;
 			}
 		}
 	}
@@ -331,7 +341,7 @@ public partial class MainController : Control
 	/// </summary>
 	private void DismissKeyboard()
 	{
-		if (GodotObject.IsInstanceValid(_onscreenKeyboard) && _onscreenKeyboard.HasMethod("hide"))
+		if (IsInstanceValid(_onscreenKeyboard) && _onscreenKeyboard.HasMethod("hide"))
 		{
 			_onscreenKeyboard.Call("hide");
 		}
@@ -342,7 +352,7 @@ public partial class MainController : Control
 	/// </summary>
 	private void DisableKeyboardAutoShow()
 	{
-		if (GodotObject.IsInstanceValid(_onscreenKeyboard))
+		if (IsInstanceValid(_onscreenKeyboard))
 		{
 			_onscreenKeyboard.Set("auto_show", false);
 			_onscreenKeyboard.Call("hide");
@@ -354,7 +364,7 @@ public partial class MainController : Control
 	/// </summary>
 	private void EnableKeyboardAutoShow()
 	{
-		if (GodotObject.IsInstanceValid(_onscreenKeyboard))
+		if (IsInstanceValid(_onscreenKeyboard))
 		{
 			_onscreenKeyboard.Set("auto_show", true);
 		}

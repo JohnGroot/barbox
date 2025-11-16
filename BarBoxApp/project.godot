@@ -17,7 +17,8 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-SceneManager="*res://_Core/Scripts/Services/SceneManager.cs"
+ApplicationBootstrap="*res://_Core/Scripts/Autoloads/ApplicationBootstrap.cs"
+SceneManager="*res://_Core/Scripts/Autoloads/SceneManager.cs"
 LocationManager="*res://_Core/Scripts/Autoloads/LocationManager.cs"
 GameRegistry="*res://_Core/Scripts/Autoloads/GameRegistry.cs"
 SessionManager="*res://_Core/Scripts/Autoloads/SessionManager.cs"
@@ -26,7 +27,7 @@ BackendManager="*res://_Core/Scripts/Autoloads/BackendManager.cs"
 EventService="*res://_Core/Scripts/Autoloads/EventService.cs"
 GameHost="*res://_Core/Scripts/Autoloads/GameHost.cs"
 InputManager="*res://_Core/Scripts/Autoloads/InputManager.cs"
-UIManager="*res://_Core/Scripts/UI/UIManager.cs"
+UIManager="*res://_Core/Scripts/Autoloads/UIManager.cs"
 PaymentService="*res://_Core/Scripts/Autoloads/PaymentService.cs"
 
 [display]
