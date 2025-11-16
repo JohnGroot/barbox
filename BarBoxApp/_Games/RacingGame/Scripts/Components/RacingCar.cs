@@ -586,26 +586,6 @@ namespace BarBox.Games.Racing
 		}
 
 		// ================================================================
-		// PLAYER INTEGRATION
-		// ================================================================
-
-		/// <summary>
-		/// Set user session for the car player (for GameHost integration)
-		/// </summary>
-		public new void SetUserSession(UserSession userSession)
-		{
-			base.SetUserSession(userSession);
-		}
-
-		/// <summary>
-		/// Get the underlying BasePlayer instance for game controller integration
-		/// </summary>
-		public BasePlayer GetPlayer()
-		{
-			return this;
-		}
-
-		// ================================================================
 		// PUBLIC ACCESSORS
 		// ================================================================
 		

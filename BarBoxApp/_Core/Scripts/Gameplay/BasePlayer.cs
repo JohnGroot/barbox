@@ -19,10 +19,15 @@ public abstract partial class BasePlayer : Node2D
 		EmitSignal(SignalName.PlayerReady);
 	}
 
-	protected virtual void InitializePlayer()
-	{
-	}
+	/// <summary>
+	/// Called during _Ready BEFORE PlayerReady signal emitted
+	/// </summary>
+	protected virtual void InitializePlayer() { }
 
+	/// <summary>
+	/// Called AFTER _Ready and InitializePlayer
+	/// </summary>
+	/// <param name="userSession"></param>
 	public virtual void SetUserSession(UserSession userSession)
 	{
 		_userSession = userSession;
@@ -36,13 +41,6 @@ public abstract partial class BasePlayer : Node2D
 	{
 		_isActive = false;
 		EmitSignal(SignalName.PlayerDestroyed);
-	}
-
-	public override void _ExitTree()
-	{
-		// Clean up any signals that might be connected
-		// Subclasses should override this to disconnect their specific signals
-		base._ExitTree();
 	}
 
 	public UserSession GetUserSession() => _userSession;

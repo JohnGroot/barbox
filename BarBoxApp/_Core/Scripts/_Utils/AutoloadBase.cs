@@ -41,29 +41,20 @@ public abstract partial class AutoloadBase : Node
 	/// Override this for critical service setup (NO async/await, NO CallDeferred allowed)
 	/// All autoloads will have completed OnServiceEnterTree() before any scene loads
 	/// </summary>
-	protected virtual void OnServiceEnterTree()
-	{
-		// Default implementation does nothing - override in derived classes for sync initialization
-	}
+	protected virtual void OnServiceEnterTree() { }
 
 	/// <summary>
 	/// Called during _Ready() to perform service-specific setup (async work allowed)
 	/// By this point, all autoloads have completed OnServiceEnterTree() synchronously
 	/// Override this for async initialization or signal connections
 	/// </summary>
-	protected virtual void OnServiceReady()
-	{
-		// Default implementation does nothing - override in derived classes
-	}
+	protected virtual void OnServiceReady() { }
 
 	/// <summary>
 	/// Called explicitly by SceneManager to perform full service initialization
 	/// Override this for services that need explicit initialization order
 	/// </summary>
-	protected virtual void OnServiceInitialize()
-	{
-		// Default implementation does nothing - override in derived classes
-	}
+	protected virtual void OnServiceInitialize() { }
 
 	/// <summary>
 	/// Called explicitly by SceneManager to perform async service initialization

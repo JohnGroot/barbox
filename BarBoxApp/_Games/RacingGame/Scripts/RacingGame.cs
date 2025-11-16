@@ -379,16 +379,7 @@ public partial class RacingGame : GameController
 		_racingCar.CarMoved += OnCarMoved;
 		
 		// Add player to game controller
-		var player = _racingCar.GetPlayer();
-		if (player != null)
-		{
-			_playerMgmt.AddPlayer(player);
-		}
-		else
-		{
-			GD.PrintErr("[RacingGame] Failed to get player from car controller");
-			return;
-		}
+		_playerMgmt.AddPlayer(_racingCar);
 		
 		// Initialize visual feedback renderer
 		SetupVisualRenderer();
@@ -1441,10 +1432,6 @@ public partial class RacingGame : GameController
 		if (body != _racingCar.GetCarBody())
 			return;
 
-		BasePlayer player = _racingCar.GetPlayer();
-		if (player == null)
-			return;
-
 		string playerId = GetCurrentGamePlayerId();
 		if (GetRacingMode() == RacingMode.TimeTrial && GetPlayerCurrentLap(playerId) > 0)
 		{
@@ -1473,10 +1460,6 @@ public partial class RacingGame : GameController
 			return;
 
 		if (body != _racingCar.GetCarBody())
-			return;
-
-		BasePlayer player = _racingCar.GetPlayer();
-		if (player == null)
 			return;
 
 		string playerId = GetCurrentGamePlayerId();
@@ -1508,10 +1491,6 @@ public partial class RacingGame : GameController
 			return;
 
 		if (body != _racingCar.GetCarBody()) 
-			return;
-
-		BasePlayer player = _racingCar.GetPlayer();
-		if (player == null) 
 			return;
 
 		string playerId = GetCurrentGamePlayerId();
@@ -2242,9 +2221,8 @@ public partial class RacingGame : GameController
 	private string GetCurrentGamePlayerId()
 	{
 		// First try to get from the racing car (already initialized with phone number)
-		var player = _racingCar?.GetPlayer();
-		if (player != null && !string.IsNullOrEmpty(player.PlayerId) && player.PlayerId != "player1")
-			return player.PlayerId;
+		if (_racingCar is not null && !string.IsNullOrEmpty(_racingCar.PlayerId) && _racingCar.PlayerId != "player1")
+			return _racingCar.PlayerId;
 
 		// Fallback to phone number lookup
 		var phoneNumber = GetCurrentPlayerPhoneNumber();
@@ -2263,7 +2241,7 @@ public partial class RacingGame : GameController
 	public float GetPlayerCurrentLapTime(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerCurrentLapTime(playerId) : 0.0f;
 	public float GetPlayerBestLapTime(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerBestLapTime(playerId) : 0.0f;
 	public float GetPlayerGapTime(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerGapTime(playerId) : 0.0f;
-	public List<float> GetPlayerLapTimes(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerLapTimes(playerId) : new List<float>();
+	public List<float> GetPlayerLapTimes(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerLapTimes(playerId) : [];
 
 	/// <summary>
 	/// Get checkpoint times for a player as an array for race entry creation
@@ -2274,7 +2252,7 @@ public partial class RacingGame : GameController
 		{
 			return _timingSystem.GetPlayerCheckpointTimes(playerId).ToArray();
 		}
-		return Array.Empty<CheckpointTime>();
+		return [];
 	}
 	public RacingTimingSystem.RacingState GetRacingState() => IsInstanceValid(_timingSystem) ? _timingSystem.CurrentRacingState : RacingTimingSystem.RacingState.Idle;
 	public bool IsInCountdown() => IsInstanceValid(_timingSystem) && _timingSystem.IsInCountdown;
