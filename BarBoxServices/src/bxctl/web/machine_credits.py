@@ -143,10 +143,7 @@ async def get_machine_credits(
 @router.post("/{game_tag}/machine-credits/deposit", status_code=201)
 async def deposit_machine_credits(
 	game_tag: str,
-	box_id: UUID,
-	player_id: UUID,
-	amount: int,
-	lobby_session_id: UUID,
+	request: structures.MachineCreditsDepositRequest,
 	db_service: dependencies.Database,
 ) -> structures.MachineCreditsResponse:
 	"""Deposit credits to machine pot (from player account)
@@ -156,23 +153,20 @@ async def deposit_machine_credits(
 
 	Args:
 		game_tag: Game type identifier
-		box_id: Physical box identifier (query param)
-		player_id: Player making the deposit (query param)
-		amount: Credits to deposit (query param)
-		lobby_session_id: Player's lobby session ID (query param)
+		request: Deposit request containing box_id, player_id, amount, lobby_session_id
 
 	Returns:
 		Updated machine credit pot balance and contributions
 
 	Example:
-		POST /game/carrom/machine-credits/deposit?box_id={box}&player_id={player}&amount=5&lobby_session_id={session}
+		POST /game/carrom/machine-credits/deposit
+		{
+			"box_id": "...",
+			"player_id": "...",
+			"amount": 5,
+			"lobby_session_id": "..."
+		}
 	"""
-
-	if amount <= 0:
-		raise HTTPException(
-			status_code=status.HTTP_400_BAD_REQUEST,
-			detail="Deposit amount must be positive"
-		)
 
 	# Create machine_credit/deposit event
 	event_id = uuid4()
@@ -182,66 +176,61 @@ async def deposit_machine_credits(
 		target=defs.BoxSessionEvent,
 		data={
 			"id": event_id,
-			"session_id": lobby_session_id,
+			"session_id": request.lobby_session_id,
 			"type": "machine_credit/deposit",
 			"timestamp": now,
 			"payload": {
-				"box_id": box_id.hex,
+				"box_id": request.box_id.hex,
 				"game_tag": game_tag,
-				"player_id": player_id.hex,
-				"amount": amount,
+				"player_id": request.player_id.hex,
+				"amount": request.amount,
 			}
 		}
 	)
 
 	logger.info(
 		"machine_credit_deposited",
-		box_id=str(box_id),
+		box_id=str(request.box_id),
 		game_tag=game_tag,
-		player_id=str(player_id),
-		amount=amount,
+		player_id=str(request.player_id),
+		amount=request.amount,
 		event_id=str(event_id),
 	)
 
 	# Return updated balance
-	return await get_machine_credits(game_tag, box_id, db_service)
+	return await get_machine_credits(game_tag, request.box_id, db_service)
 
 
 @router.post("/{game_tag}/machine-credits/consume", status_code=200)
 async def consume_machine_credits(
 	game_tag: str,
-	box_id: UUID,
-	amount: int,
-	game_session_id: UUID,
+	request: structures.MachineCreditsConsumeRequest,
 	db_service: dependencies.Database,
 ) -> structures.MachineCreditsResponse:
 	"""Consume credits from machine pot (for game start)
 
 	Args:
 		game_tag: Game type identifier
-		box_id: Physical box identifier (query param)
-		amount: Credits to consume (query param)
-		game_session_id: Game session ID (query param)
+		request: Consume request containing box_id, amount, game_session_id
 
 	Returns:
 		Updated machine credit pot balance (should be reduced by amount)
 
 	Example:
-		POST /game/carrom/machine-credits/consume?box_id={box}&amount=8&game_session_id={session}
+		POST /game/carrom/machine-credits/consume
+		{
+			"box_id": "...",
+			"amount": 8,
+			"game_session_id": "..."
+		}
 	"""
 
-	if amount <= 0:
-		raise HTTPException(
-			status_code=status.HTTP_400_BAD_REQUEST,
-			detail="Consume amount must be positive"
-		)
-
 	# Verify sufficient balance
-	current = await get_machine_credits(game_tag, box_id, db_service)
-	if current.balance < amount:
+	current = await get_machine_credits(game_tag, request.box_id, db_service)
+	if current.balance < request.amount:
 		raise HTTPException(
 			status_code=status.HTTP_400_BAD_REQUEST,
-			detail=f"Insufficient machine credits: have {current.balance}, need {amount}"
+			detail=f"Insufficient machine credits: have {current.balance}, need {request.amount}"
 		)
 
 	# Create machine_credit/consume event
@@ -252,24 +241,24 @@ async def consume_machine_credits(
 		target=defs.BoxSessionEvent,
 		data={
 			"id": event_id,
-			"session_id": game_session_id,
+			"session_id": request.game_session_id,
 			"type": "machine_credit/consume",
 			"timestamp": now,
 			"payload": {
-				"box_id": box_id.hex,
+				"box_id": request.box_id.hex,
 				"game_tag": game_tag,
-				"amount": amount,
+				"amount": request.amount,
 			}
 		}
 	)
 
 	logger.info(
 		"machine_credit_consumed",
-		box_id=str(box_id),
+		box_id=str(request.box_id),
 		game_tag=game_tag,
-		amount=amount,
+		amount=request.amount,
 		event_id=str(event_id),
 	)
 
 	# Return updated balance
-	return await get_machine_credits(game_tag, box_id, db_service)
+	return await get_machine_credits(game_tag, request.box_id, db_service)

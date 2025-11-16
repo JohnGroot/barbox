@@ -1,11 +1,14 @@
 """Business logic and database queries for Racing game."""
 
 from fastapi import HTTPException
+from structlog import get_logger
 
 from bxctl.db import service as db_service
 from bxctl.games import common
 
 from . import schemas
+
+logger = get_logger(__name__)
 
 
 async def get_racing_leaderboard(
@@ -132,21 +135,22 @@ async def get_racing_leaderboard(
 
     except ValueError as e:
         # Handle UUID conversion errors
-        import traceback
-        error_trace = traceback.format_exc()
-        print(f"[ERROR] Invalid player ID format: {str(e)}")
-        print(f"[ERROR] Traceback: {error_trace}")
+        logger.error("invalid_player_id_format", error=str(e), exc_info=True)
         raise HTTPException(
             status_code=400,
             detail=f"Invalid player ID format in database: {str(e)}"
         )
     except Exception as e:
         # Handle SQL and other errors
-        import traceback
-        error_trace = traceback.format_exc()
-        print(f"[ERROR] Leaderboard query failed: {str(e)}")
-        print(f"[ERROR] Traceback: {error_trace}")
-        print(f"[ERROR] Query parameters: track_id={track_id}, metric={metric}, laps={laps}, limit={limit}")
+        logger.error(
+            "leaderboard_query_failed",
+            error=str(e),
+            track_id=track_id,
+            metric=metric,
+            laps=laps,
+            limit=limit,
+            exc_info=True
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to query leaderboard: {str(e)}"

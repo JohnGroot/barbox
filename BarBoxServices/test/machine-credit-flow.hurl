@@ -62,7 +62,14 @@ jsonpath "$.balance" == 0
 jsonpath "$.contributions" count == 0
 
 # Step 8: Player 1 deposits 5 credits to machine pot
-POST http://127.0.0.1:8000/game/carrom/machine-credits/deposit?box_id=a206c3ee-733d-48a5-8906-a653f1b9f7ce&player_id=06f25980-a5b0-2d84-f050-79903e7187ab&amount=5&lobby_session_id={{lobby_session_1}}
+POST http://127.0.0.1:8000/game/carrom/machine-credits/deposit
+Content-Type: application/json
+{
+  "box_id": "a206c3ee-733d-48a5-8906-a653f1b9f7ce",
+  "player_id": "06f25980-a5b0-2d84-f050-79903e7187ab",
+  "amount": 5,
+  "lobby_session_id": "{{lobby_session_1}}"
+}
 HTTP 201
 [Asserts]
 jsonpath "$.balance" == 5
@@ -101,7 +108,14 @@ Content-Type: application/json
 HTTP 201
 
 # Step 12: Player 2 deposits 3 credits to machine pot
-POST http://127.0.0.1:8000/game/carrom/machine-credits/deposit?box_id=a206c3ee-733d-48a5-8906-a653f1b9f7ce&player_id=a72ed0d2-e24d-fac9-b1d8-02db969c18d4&amount=3&lobby_session_id={{lobby_session_2}}
+POST http://127.0.0.1:8000/game/carrom/machine-credits/deposit
+Content-Type: application/json
+{
+  "box_id": "a206c3ee-733d-48a5-8906-a653f1b9f7ce",
+  "player_id": "a72ed0d2-e24d-fac9-b1d8-02db969c18d4",
+  "amount": 3,
+  "lobby_session_id": "{{lobby_session_2}}"
+}
 HTTP 201
 [Asserts]
 jsonpath "$.balance" == 8
@@ -122,7 +136,13 @@ Player-Id: 06f25980-a5b0-2d84-f050-79903e7187ab
 HTTP 202
 
 # Step 15: Consume 8 credits from machine pot for game start
-POST http://127.0.0.1:8000/game/carrom/machine-credits/consume?box_id=a206c3ee-733d-48a5-8906-a653f1b9f7ce&amount=8&game_session_id=c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1
+POST http://127.0.0.1:8000/game/carrom/machine-credits/consume
+Content-Type: application/json
+{
+  "box_id": "a206c3ee-733d-48a5-8906-a653f1b9f7ce",
+  "amount": 8,
+  "game_session_id": "c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1"
+}
 HTTP 200
 [Asserts]
 jsonpath "$.balance" == 0
@@ -134,7 +154,13 @@ HTTP 200
 jsonpath "$.balance" == 0
 
 # Step 17: Test insufficient balance error
-POST http://127.0.0.1:8000/game/carrom/machine-credits/consume?box_id=a206c3ee-733d-48a5-8906-a653f1b9f7ce&amount=10&game_session_id=c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1
+POST http://127.0.0.1:8000/game/carrom/machine-credits/consume
+Content-Type: application/json
+{
+  "box_id": "a206c3ee-733d-48a5-8906-a653f1b9f7ce",
+  "amount": 10,
+  "game_session_id": "c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1"
+}
 HTTP 400
 [Asserts]
 jsonpath "$.detail" contains "Insufficient machine credits"

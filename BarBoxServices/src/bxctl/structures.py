@@ -148,6 +148,21 @@ class MachineCreditsResponse(BaseModel):
     contributions: list[MachinePlayerContribution]
 
 
+class MachineCreditsDepositRequest(BaseModel):
+    """Request body for depositing credits to machine pot"""
+    box_id: UUID
+    player_id: UUID
+    amount: Annotated[int, Field(gt=0, description="Credits to deposit (must be positive)")]
+    lobby_session_id: UUID
+
+
+class MachineCreditsConsumeRequest(BaseModel):
+    """Request body for consuming credits from machine pot"""
+    box_id: UUID
+    amount: Annotated[int, Field(gt=0, description="Credits to consume (must be positive)")]
+    game_session_id: UUID
+
+
 # ============= ERROR HANDLING STRUCTURES =============
 
 class ErrorCode(str):

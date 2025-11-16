@@ -2,6 +2,9 @@
 
 import json
 from typing import Any
+from structlog import get_logger
+
+logger = get_logger(__name__)
 
 
 def parse_json_field(value: Any) -> list | dict | None:
@@ -43,11 +46,11 @@ def parse_json_field(value: Any) -> list | dict | None:
         try:
             return json.loads(value)
         except (json.JSONDecodeError, ValueError, TypeError) as e:
-            print(f"[ERROR] Failed to parse JSON: {value} - {e}")
+            logger.error("json_parse_failed", value=str(value)[:100], error=str(e))
             return None
 
     # Unexpected type - log warning
-    print(f"[WARNING] Unexpected JSON field type: {type(value)} - {value}")
+    logger.warning("unexpected_json_type", value_type=type(value).__name__, value_sample=str(value)[:100])
     return None
 
 
@@ -76,13 +79,13 @@ def parse_float_list(value: Any) -> list[float] | None:
         return None
 
     if not isinstance(parsed, list):
-        print(f"[WARNING] Expected list but got {type(parsed)}: {parsed}")
+        logger.warning("expected_list_got_other", value_type=type(parsed).__name__, value_sample=str(parsed)[:100])
         return None
 
     try:
         return [float(x) for x in parsed]
     except (ValueError, TypeError) as e:
-        print(f"[ERROR] Failed to convert list elements to float: {parsed} - {e}")
+        logger.error("float_conversion_failed", value=str(parsed)[:100], error=str(e))
         return None
 
 
@@ -112,7 +115,7 @@ def parse_uuid_safe(value: Any) -> Any:
     try:
         return UUID(str(value))
     except (ValueError, TypeError) as e:
-        print(f"[WARNING] Invalid UUID: {value}, using zero UUID - {e}")
+        logger.warning("invalid_uuid_using_zero", value=str(value)[:100], error=str(e))
         return UUID("00000000-0000-0000-0000-000000000000")
 
 
@@ -172,146 +175,7 @@ def safe_parse_leaderboard[T](
             entry = parser_fn(row)
             entries.append(entry)
         except Exception as e:
-            print(f"[ERROR] Failed to parse leaderboard entry: row={row}, error={e}")
+            logger.error("leaderboard_entry_parse_failed", row=str(row)[:200], error=str(e))
             # Continue processing remaining rows instead of crashing
             continue
     return entries
-
-
-def build_player_leaderboard_query(
-    event_type: str,
-    metric_field: str,
-    aggregate_func: str = "MAX",
-    order: str = "DESC",
-    additional_where: str = "",
-) -> str:
-    """
-    Build a standard leaderboard query for player-based metrics.
-
-    This extracts the common pattern used across all game leaderboards:
-    - Join sessions with events
-    - Extract metric from JSON payload
-    - Group by player
-    - Order by metric
-    - Include player username
-
-    Args:
-        event_type: Event type to query (e.g., "carrom/round_finish")
-        metric_field: JSON path to metric in payload (e.g., "$.points")
-        aggregate_func: SQL aggregate function (MAX, MIN, SUM, AVG, COUNT)
-        order: Sort order (ASC for times, DESC for scores)
-        additional_where: Extra WHERE conditions (e.g., "AND json_extract(...) = :param")
-
-    Returns:
-        SQL query string with placeholders for :limit and additional params
-
-    Example:
-        >>> build_player_leaderboard_query(
-        ...     event_type="foo/score",
-        ...     metric_field="$.points",
-        ...     aggregate_func="MAX",
-        ...     order="DESC"
-        ... )
-        "SELECT bs.host_player_id, ... WHERE bse.type = 'foo/score' ..."
-    """
-    return f"""
-    SELECT
-        bs.host_player_id,
-        COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.host_player_id, 1, 8)) as username,
-        {aggregate_func}(CAST(json_extract(bse.payload, '{metric_field}') AS REAL)) as metric_value,
-        MAX(bse.timestamp) as entry_date
-    FROM box_session_event bse
-    JOIN box_session bs ON bse.session_id = bs.id
-    LEFT JOIN player p ON bs.host_player_id = p.id
-    WHERE bse.type = '{event_type}'
-    {additional_where}
-    GROUP BY bs.host_player_id, COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.host_player_id, 1, 8))
-    ORDER BY metric_value {order}
-    LIMIT :limit
-    """
-
-
-def build_multiplayer_leaderboard_query(
-    event_type: str,
-    metric_field_template: str,
-    aggregate_func: str = "SUM",
-    order: str = "DESC",
-    additional_where: str = "",
-) -> str:
-    """
-    Build a leaderboard query for multiplayer games with player_ids array.
-
-    This handles the more complex case where multiple players participate
-    in a single session and each has their own score/metric.
-
-    Args:
-        event_type: Event type to query (e.g., "carrom/round_finish")
-        metric_field_template: JSON path template with {player_id} placeholder
-                              (e.g., "$.scores.{player_id}")
-        aggregate_func: SQL aggregate function (SUM, MAX, MIN, AVG, COUNT)
-        order: Sort order (ASC for times, DESC for scores)
-        additional_where: Extra WHERE conditions
-
-    Returns:
-        SQL query string with placeholders for :limit
-
-    Example:
-        >>> build_multiplayer_leaderboard_query(
-        ...     event_type="carrom/round_finish",
-        ...     metric_field_template="$.scores.{player_id}",
-        ...     aggregate_func="SUM"
-        ... )
-        "WITH player_sessions AS ... WHERE bse.type = 'carrom/round_finish' ..."
-    """
-    # Replace {player_id} placeholder with SQL concatenation
-    metric_extraction = metric_field_template.replace(
-        "{player_id}", "' || ps.player_id"
-    ).replace("$.", "'$.")
-
-    return f"""
-    WITH player_sessions AS (
-        SELECT
-            bs.id as session_id,
-            json_extract(player_data.value, '$') as player_id
-        FROM box_session bs,
-             json_each(bs.player_ids) as player_data
-    )
-    SELECT
-        ps.player_id,
-        p.tag as username,
-        {aggregate_func}(
-            CAST(
-                json_extract(bse.payload, {metric_extraction})
-                AS REAL
-            )
-        ) as metric_value,
-        MAX(bse.timestamp) as entry_date
-    FROM player_sessions ps
-    JOIN box_session_event bse ON bse.session_id = ps.session_id
-    JOIN player p ON p.id = ps.player_id
-    WHERE bse.type = '{event_type}'
-    {additional_where}
-    GROUP BY ps.player_id, p.tag
-    ORDER BY metric_value {order}
-    LIMIT :limit
-    """
-
-
-# Common SQL patterns as constants
-
-# Unnest player_ids JSON array
-UNNEST_PLAYER_IDS_CTE = """
-WITH player_sessions AS (
-    SELECT
-        bs.id as session_id,
-        json_extract(player_data.value, '$') as player_id
-    FROM box_session bs,
-         json_each(bs.player_ids) as player_data
-)
-"""
-
-# Get username with fallback
-USERNAME_COALESCE = "COALESCE(p.tag, json_extract(bse.payload, '$.username'), 'Player ' || SUBSTR(bs.host_player_id, 1, 8))"
-
-# Common WHERE clause for game-specific queries
-EVENT_TYPE_WHERE = "WHERE bse.type = :event_type"

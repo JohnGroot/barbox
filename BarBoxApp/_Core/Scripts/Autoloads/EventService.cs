@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -1062,15 +1063,15 @@ public partial class EventService : AutoloadBase
 		int amount,
 		Guid lobbySessionId)
 	{
-		// Build URL with query parameters
-		var url = $"/game/{gameTag}/machine-credits/deposit?" +
-			$"box_id={boxId}&" +
-			$"player_id={playerId}&" +
-			$"amount={amount}&" +
-			$"lobby_session_id={lobbySessionId}";
-
-		// POST request with no body (parameters in URL)
-		return await PostAsync<object, MachineCreditsResponse>(url, null, 201);
+		var request = new MachineCreditsDepositRequest
+		{
+			BoxId = boxId,
+			PlayerId = playerId,
+			Amount = amount,
+			LobbySessionId = lobbySessionId
+		};
+		return await PostAsync<MachineCreditsDepositRequest, MachineCreditsResponse>(
+			$"/game/{gameTag}/machine-credits/deposit", request, 201);
 	}
 
 	/// <summary>
@@ -1082,14 +1083,14 @@ public partial class EventService : AutoloadBase
 		int amount,
 		Guid gameSessionId)
 	{
-		// Build URL with query parameters
-		var url = $"/game/{gameTag}/machine-credits/consume?" +
-			$"box_id={boxId}&" +
-			$"amount={amount}&" +
-			$"game_session_id={gameSessionId}";
-
-		// POST request with no body (parameters in URL)
-		return await PostAsync<object, MachineCreditsResponse>(url, null, 200);
+		var request = new MachineCreditsConsumeRequest
+		{
+			BoxId = boxId,
+			Amount = amount,
+			GameSessionId = gameSessionId
+		};
+		return await PostAsync<MachineCreditsConsumeRequest, MachineCreditsResponse>(
+			$"/game/{gameTag}/machine-credits/consume", request, 200);
 	}
 
 	// Private helper methods
@@ -1314,4 +1315,32 @@ public partial class EventService : AutoloadBase
 		_httpClient?.Close();
 		_httpClient = null;
 	}
+}
+
+// Machine Credits DTOs for request body payloads
+public partial class MachineCreditsDepositRequest
+{
+	[JsonPropertyName("box_id")]
+	public Guid BoxId { get; set; }
+
+	[JsonPropertyName("player_id")]
+	public Guid PlayerId { get; set; }
+
+	[JsonPropertyName("amount")]
+	public int Amount { get; set; }
+
+	[JsonPropertyName("lobby_session_id")]
+	public Guid LobbySessionId { get; set; }
+}
+
+public partial class MachineCreditsConsumeRequest
+{
+	[JsonPropertyName("box_id")]
+	public Guid BoxId { get; set; }
+
+	[JsonPropertyName("amount")]
+	public int Amount { get; set; }
+
+	[JsonPropertyName("game_session_id")]
+	public Guid GameSessionId { get; set; }
 }

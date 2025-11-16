@@ -24,7 +24,7 @@ HTTP 201
 player-id: jsonpath "$['id']"
 
 # Player starts mining session
-PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}
+PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=mining
 Player-Id: {{player-id}}
 HTTP 202
 [Captures]

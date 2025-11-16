@@ -408,35 +408,6 @@ async def get_player_credits(
     AND json_extract(bse.payload, '$.location_id') = :location_id
     """
 
-    # Diagnostic: Test each WHERE condition independently
-    diagnostic_sql = """
-    SELECT
-        COUNT(*) as total_credit_events,
-        SUM(CASE WHEN bs.host_player_id = :player_id THEN 1 ELSE 0 END) as player_id_matches,
-        SUM(CASE WHEN json_extract(bse.payload, '$.location_id') = :location_id THEN 1 ELSE 0 END) as location_id_matches,
-        SUM(CASE WHEN bs.host_player_id = :player_id AND json_extract(bse.payload, '$.location_id') = :location_id THEN 1 ELSE 0 END) as both_match
-    FROM box_session_event bse
-    JOIN box_session bs ON bse.session_id = bs.id
-    WHERE bse.type IN ('credit/earn', 'credit/spend')
-    """
-
-    diagnostic_result = await db_service.get_many_raw(diagnostic_sql, {
-        "player_id": player_id.hex,
-        "location_id": location_id
-    })
-
-    diagnostic_row = diagnostic_result.first()
-    logger.info(
-        "credit_query_diagnostic",
-        player_id=str(player_id),
-        player_id_type=type(player_id).__name__,
-        location_id=location_id,
-        total_events=diagnostic_row[0] if diagnostic_row else 0,
-        player_matches=diagnostic_row[1] if diagnostic_row else 0,
-        location_matches=diagnostic_row[2] if diagnostic_row else 0,
-        both_match=diagnostic_row[3] if diagnostic_row else 0,
-    )
-
     result = await db_service.get_many_raw(sql, {
         "player_id": player_id.hex,
         "location_id": location_id

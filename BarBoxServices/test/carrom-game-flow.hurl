@@ -35,7 +35,7 @@ HTTP 201
 player2-id: jsonpath "$['id']"
 
 # Player 1 starts session and plays round 1 (wins)
-PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}
+PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=carrom
 Player-Id: {{player1-id}}
 HTTP 202
 [Captures]
@@ -73,7 +73,7 @@ POST http://127.0.0.1:8000/box/session/{{session1-id}}
 HTTP 201
 
 # Player 2 starts session and plays round 1 (wins)
-PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}
+PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=carrom
 Player-Id: {{player2-id}}
 HTTP 202
 [Captures]

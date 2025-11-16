@@ -22,7 +22,7 @@ HTTP 201
 player-id: jsonpath "$['id']"
 
 # begin a session
-PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}
+PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=carrom
 Player-Id: {{player-id}}
 HTTP 202
 [Captures]
@@ -58,8 +58,8 @@ HTTP 200
 jsonpath "$.events" count == 3
 
 # should all end up in the leaderboard
-GET http://127.0.0.1:8000/game/leaderboard/carrom
+GET http://127.0.0.1:8000/game/carrom/leaderboard?metric=total_score
 HTTP 200
 [Asserts]
-jsonpath "$[0]['player']['id']" == "{{player-id}}"
-jsonpath "$[0]['score']" == 10
+jsonpath "$.leaderboard[0]['player']['id']" == "{{player-id}}"
+jsonpath "$.leaderboard[0]['score']" == 10
