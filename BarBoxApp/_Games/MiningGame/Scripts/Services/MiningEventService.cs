@@ -352,41 +352,41 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 /// <summary>
 /// Mining inventory data structure
 /// </summary>
-public class MiningInventoryData
+public record class MiningInventoryData
 {
-	public Guid PlayerId { get; set; }
-	public Dictionary<string, int> Gems { get; set; }
-	public DateTime LastUpdated { get; set; }
+	public Guid PlayerId { get; init; }
+	public Dictionary<string, int> Gems { get; init; }
+	public DateTime LastUpdated { get; init; }
 }
 
 /// <summary>
 /// Mining upgrades data structure
 /// </summary>
-public class MiningUpgradesData
+public record class MiningUpgradesData
 {
-	public Guid PlayerId { get; set; }
-	public Dictionary<string, int> Upgrades { get; set; }
-	public DateTime LastUpdated { get; set; }
+	public Guid PlayerId { get; init; }
+	public Dictionary<string, int> Upgrades { get; init; }
+	public DateTime LastUpdated { get; init; }
 }
 
 /// <summary>
 /// Mining timestamp data structure
 /// </summary>
-public class MiningTimestampData
+public record class MiningTimestampData
 {
-	public Guid PlayerId { get; set; }
-	public string LocationId { get; set; }
-	public DateTime LastMiningTime { get; set; }
+	public Guid PlayerId { get; init; }
+	public string LocationId { get; init; }
+	public DateTime LastMiningTime { get; init; }
 }
 
 /// <summary>
 /// Mining metadata data structure
 /// </summary>
-public class MiningMetadataData
+public record class MiningMetadataData
 {
-	public Guid PlayerId { get; set; }
-	public bool HasReceivedBonus { get; set; }
-	public int TotalEvents { get; set; }
-	public DateTime? FirstEventTime { get; set; }
-	public DateTime? LastEventTime { get; set; }
+	public Guid PlayerId { get; init; }
+	public bool HasReceivedBonus { get; init; }
+	public int TotalEvents { get; init; }
+	public DateTime? FirstEventTime { get; init; }
+	public DateTime? LastEventTime { get; init; }
 }

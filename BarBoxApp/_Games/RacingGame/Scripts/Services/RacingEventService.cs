@@ -329,24 +329,26 @@ public class RacingEventService : GameEventServiceBase
 			if (!entryDateResult.IsSuccess(out var entryDate))
 				return Result.Failure<RacingLeaderboardData>("Failed to parse entry date");
 
+			// Parse lap_times if present (only for best_race metric)
+			float[] lapTimes = null;
+			if (!JsonParsingHelpers.IsNullOrMissing(entryDict, JsonFieldNames.LapTimes))
+			{
+				var lapTimesArray = entryDict[JsonFieldNames.LapTimes].AsGodotArray();
+				lapTimes = new float[lapTimesArray.Count];
+				for (int i = 0; i < lapTimesArray.Count; i++)
+				{
+					lapTimes[i] = (float)lapTimesArray[i].AsDouble();
+				}
+			}
+
 			var leaderboardEntry = new RacingLeaderboardEntry
 			{
 				PlayerId = playerId,
 				Username = entryDict[JsonFieldNames.Username].AsString(),
 				MetricValue = (float)entryDict[JsonFieldNames.MetricValue].AsDouble(),
-				EntryDate = entryDate
+				EntryDate = entryDate,
+				LapTimes = lapTimes
 			};
-
-			// Parse lap_times if present (only for best_race metric)
-			if (!JsonParsingHelpers.IsNullOrMissing(entryDict, JsonFieldNames.LapTimes))
-			{
-				var lapTimesArray = entryDict[JsonFieldNames.LapTimes].AsGodotArray();
-				leaderboardEntry.LapTimes = new float[lapTimesArray.Count];
-				for (int i = 0; i < lapTimesArray.Count; i++)
-				{
-					leaderboardEntry.LapTimes[i] = (float)lapTimesArray[i].AsDouble();
-				}
-			}
 
 			leaderboardData.Leaderboard.Add(leaderboardEntry);
 		}
@@ -406,21 +408,21 @@ public class RacingEventService : GameEventServiceBase
 /// <summary>
 /// Racing leaderboard data structure
 /// </summary>
-public class RacingLeaderboardData
+public record class RacingLeaderboardData
 {
-	public string TrackId { get; set; }
-	public string Metric { get; set; }
-	public List<RacingLeaderboardEntry> Leaderboard { get; set; }
+	public string TrackId { get; init; }
+	public string Metric { get; init; }
+	public List<RacingLeaderboardEntry> Leaderboard { get; init; }
 }
 
 /// <summary>
 /// Racing leaderboard entry
 /// </summary>
-public class RacingLeaderboardEntry
+public record class RacingLeaderboardEntry
 {
-	public Guid PlayerId { get; set; }
-	public string Username { get; set; }
-	public float MetricValue { get; set; }
-	public DateTime EntryDate { get; set; }
-	public float[] LapTimes { get; set; }
+	public Guid PlayerId { get; init; }
+	public string Username { get; init; }
+	public float MetricValue { get; init; }
+	public DateTime EntryDate { get; init; }
+	public float[] LapTimes { get; init; }
 }
