@@ -25,32 +25,39 @@ async def get_carrom_leaderboard(
 
     if metric == "total_score":
         # Aggregate total scores from carrom/round_finish events
-        # Use json_each() to unnest player_ids array and extract each player's score
+        # Carrom stores scores as {"scores": {"player_id": score, ...}}
+        # We need to extract scores for each player from the dynamic JSON keys
+        # SQLite stores UUIDs without hyphens, but JSON keys have hyphens
         sql = """
-        WITH player_sessions AS (
+        WITH player_scores AS (
             SELECT
-                bs.id as session_id,
-                json_extract(player_data.value, '$') as player_id
-            FROM box_session bs,
-                 json_each(bs.player_ids) as player_data
+                bs.host_player_id as player_id,
+                -- Format UUID with hyphens: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+                SUBSTR(bs.host_player_id, 1, 8) || '-' ||
+                SUBSTR(bs.host_player_id, 9, 4) || '-' ||
+                SUBSTR(bs.host_player_id, 13, 4) || '-' ||
+                SUBSTR(bs.host_player_id, 17, 4) || '-' ||
+                SUBSTR(bs.host_player_id, 21) as player_id_formatted,
+                bse.payload,
+                bse.timestamp
+            FROM box_session bs
+            JOIN box_session_event bse ON bse.session_id = bs.id
+            WHERE bse.type = 'carrom/round_finish'
+              AND bs.game_tag = 'carrom'
         )
         SELECT
             ps.player_id,
-            p.tag as username,
+            COALESCE(p.tag, 'Player ' || SUBSTR(ps.player_id, 1, 8)) as username,
             SUM(
                 CAST(
-                    json_extract(
-                        bse.payload,
-                        '$.scores.' || ps.player_id
-                    ) AS INTEGER
+                    json_extract(ps.payload, '$.scores."' || ps.player_id_formatted || '"') AS INTEGER
                 )
             ) as total_score,
-            MAX(bse.timestamp) as entry_date
-        FROM player_sessions ps
-        JOIN box_session_event bse ON bse.session_id = ps.session_id
-        JOIN player p ON p.id = ps.player_id
-        WHERE bse.type = 'carrom/round_finish'
-        GROUP BY ps.player_id, p.tag
+            MAX(ps.timestamp) as entry_date
+        FROM player_scores ps
+        LEFT JOIN player p ON ps.player_id = p.id
+        WHERE json_extract(ps.payload, '$.scores."' || ps.player_id_formatted || '"') IS NOT NULL
+        GROUP BY ps.player_id, COALESCE(p.tag, 'Player ' || SUBSTR(ps.player_id, 1, 8))
         ORDER BY total_score DESC
         LIMIT :limit
         """
@@ -70,27 +77,35 @@ async def get_carrom_leaderboard(
 
     elif metric == "total_wins":
         # Count wins from carrom/round_finish events where winner = player_id
-        # Use json_each() to unnest player_ids array
+        # JSON payload has UUIDs with hyphens, need to convert DB UUIDs for matching
         sql = """
-        WITH player_sessions AS (
+        WITH win_events AS (
             SELECT
-                bs.id as session_id,
-                json_extract(player_data.value, '$') as player_id
-            FROM box_session bs,
-                 json_each(bs.player_ids) as player_data
+                json_extract(bse.payload, '$.winner') as winner_formatted,
+                bs.host_player_id,
+                bse.timestamp
+            FROM box_session bs
+            JOIN box_session_event bse ON bse.session_id = bs.id
+            WHERE bse.type = 'carrom/round_finish'
+              AND bs.game_tag = 'carrom'
+              AND json_extract(bse.payload, '$.winner') IS NOT NULL
+        ),
+        winner_ids AS (
+            SELECT
+                -- Convert hyphenated UUID back to non-hyphenated for player lookup
+                REPLACE(we.winner_formatted, '-', '') as player_id,
+                we.timestamp
+            FROM win_events we
         )
         SELECT
-            ps.player_id,
-            p.tag as username,
+            wi.player_id,
+            COALESCE(p.tag, 'Player ' || SUBSTR(wi.player_id, 1, 8)) as username,
             COUNT(*) as total_wins,
             0 as total_score,
-            MAX(bse.timestamp) as entry_date
-        FROM player_sessions ps
-        JOIN box_session_event bse ON bse.session_id = ps.session_id
-        JOIN player p ON p.id = ps.player_id
-        WHERE bse.type = 'carrom/round_finish'
-        AND json_extract(bse.payload, '$.winner') = ps.player_id
-        GROUP BY ps.player_id, p.tag
+            MAX(wi.timestamp) as entry_date
+        FROM winner_ids wi
+        LEFT JOIN player p ON wi.player_id = p.id
+        GROUP BY wi.player_id, COALESCE(p.tag, 'Player ' || SUBSTR(wi.player_id, 1, 8))
         ORDER BY total_wins DESC
         LIMIT :limit
         """

@@ -4,7 +4,7 @@ from bxctl import db, structures
 
 from . import dependencies
 
-router = APIRouter(prefix="/game")
+router = APIRouter(prefix="/games", tags=["Core: Games"])
 
 
 @router.post("/", status_code=201)
