@@ -57,7 +57,7 @@ public partial class SessionManager : AutoloadBase
 		{
 			var locationManager = LocationManager.GetAutoload();
 			return locationManager?.LocationId ??
-			       System.Environment.MachineName.ToLowerInvariant().Replace("-", "_");
+				   System.Environment.MachineName.ToLowerInvariant().Replace("-", "_");
 		}
 	}
 
@@ -113,12 +113,18 @@ public partial class SessionManager : AutoloadBase
 
 			// Emit signal with phone number (not player ID UUID)
 			EmitSignal(SignalName.CreditsEarned, matchedSession.PhoneNumber, amountChanged, "Credit balance updated");
-			LogInfo($"Credit change relayed for {matchedSession.UserName}: {previousBalance} -> {newBalance} ({amountChanged:+#;-#;0})");
+
+			// Only log if there was an actual change (reduce noise from initial balance load)
+			if (amountChanged != 0)
+			{
+				LogInfo($"Credit change relayed for {matchedSession.UserName}: {previousBalance} -> {newBalance} ({amountChanged:+#;-#;0})");
+			}
 		}
 		else
 		{
-			// No active session found - log but don't emit (UI won't show anyway)
-			LogInfo($"Credit changed for player {playerId} but no active session found (balance: {newBalance})");
+			// No active session found - this is expected for background updates (e.g., admin adjustments)
+			// after Phase 1 fix, should be rare during login since session is indexed before credit fetch
+			LogInfo($"Credit event received for player {playerId} without active session (balance: {newBalance}, likely background update)");
 		}
 	}
 
@@ -204,9 +210,6 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			// Event-sourced persistence - authentication delegated to backend
-			// For now, create session directly (backend validates via events)
-
 			// Don't allow duplicate sessions for the same user
 			if (_activeSessions.ContainsKey(cleanedPhone))
 			{
@@ -214,53 +217,89 @@ public partial class SessionManager : AutoloadBase
 				return Result.Failure<UserSession>("User already logged in");
 			}
 
-			// Generate deterministic player ID from phone number
-			var playerId = EventService.GetPlayerIdFromPhone(cleanedPhone);
-
-			// Register player with backend (idempotent)
-			if (_eventService != null && _eventService.IsReady)
+			// Authenticate with backend and get JWT token
+			if (_eventService == null || !_eventService.IsReady)
 			{
-				var username = cleanedPhone.Substring(Math.Max(0, cleanedPhone.Length - 7)); // Last 7 digits
-				var boxId = _eventService.GetCurrentBoxId();
-
-				var registrationResult = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, boxId);
-
-				if (registrationResult.IsFailure(out var regError))
-				{
-					// Only continue if error indicates player already exists
-					if (regError.Message != null &&
-					    (regError.Message.Contains("already exists") ||
-					     regError.Message.Contains("409") ||
-					     regError.Message.Contains("conflict", StringComparison.OrdinalIgnoreCase)))
-					{
-						LogInfo($"Player already registered (continuing with login): {playerId}");
-					}
-					else
-					{
-						LogError($"Player registration failed: {regError.Message}");
-						return Result.Failure<UserSession>($"Unable to register player: {regError.Message}");
-					}
-				}
-				else
-				{
-					LogInfo($"Player registered in backend: {playerId}");
-				}
+				LogError("EventService not available - cannot authenticate");
+				return Result.Failure<UserSession>("Backend service not available");
 			}
 
-			// Create local session
+			var boxId = _eventService.GetCurrentBoxId();
+			var loginRequest = new PlayerLoginRequest
+			{
+				PhoneNumber = cleanedPhone,
+				Pin = cleanedPin,
+				BoxId = boxId.ToString()
+			};
+
+			var loginResult = await _eventService.PostAsync<PlayerLoginRequest, PlayerLoginResponse>(
+				"/player/auth/login",
+				loginRequest,
+				expectedStatusCode: 200
+			);
+
+			if (loginResult.IsFailure(out var loginError))
+			{
+				LogError($"Backend authentication failed: {loginError.Message}");
+				return Result.Failure<UserSession>($"Authentication failed: {loginError.Message}");
+			}
+
+			if (!loginResult.IsSuccess(out var loginData))
+			{
+				LogError("Login result was neither success nor failure - unexpected state");
+				return Result.Failure<UserSession>("Unexpected authentication state");
+			}
+
+			// Validate response contains all required fields
+			var validationResult = loginData.ValidateRequired();
+			if (validationResult.IsFailure(out var validationError))
+			{
+				LogError($"Backend response validation failed: {validationError.Message}");
+				return Result.Failure<UserSession>($"Invalid response: {validationError.Message}");
+			}
+
+			// Now safe to parse - validation guarantees non-empty strings
+			var playerId = Guid.Parse(loginData.PlayerId);
+
+			// Validate player ID is not empty/zero GUID
+			if (playerId == Guid.Empty)
+			{
+				LogError($"Backend returned invalid player ID (all zeros) for phone {cleanedPhone}");
+				return Result.Failure<UserSession>("Invalid player ID received from backend");
+			}
+
+			// Parse token expiration (ISO 8601 format from backend)
+			// CRITICAL: Use DateTimeStyles.RoundtripKind to preserve the UTC timezone from the Z suffix
+			// Without this, DateTime.TryParse() may parse as local time, causing 4+ hour timezone mismatch
+			if (!DateTime.TryParse(loginData.ExpiresAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var tokenExpiration))
+			{
+				LogError($"Failed to parse token expiration: {loginData.ExpiresAt}");
+				return Result.Failure<UserSession>("Invalid token expiration format");
+			}
+
+			// Create local session with JWT token
 			var session = new UserSession
 			{
 				PhoneNumber = cleanedPhone,
-				UserName = cleanedPhone.Substring(Math.Max(0, cleanedPhone.Length - 7)), // Last 7 digits as temp username
+				UserName = loginData.Username, // Use username from backend response
 				LocationId = CurrentLocationId,
 				PlayerId = playerId,
 				LoginTime = DateTime.UtcNow,
 				LastActivity = DateTime.UtcNow,
-				Credits = 0 // Will be populated from backend below
+				Credits = 0, // Will be populated from backend below
+				JwtToken = loginData.AccessToken,
+				TokenExpiration = tokenExpiration
 			};
 
-			// Fetch initial credit balance from backend BEFORE adding to active sessions
-			// This prevents race condition where UI queries session before credits are loaded
+			LogInfo($"User authenticated successfully - Token expires at: {tokenExpiration:u}");
+
+			// Add session to dictionaries BEFORE fetching credits
+			// This ensures credit change events can find the session
+			_activeSessions[cleanedPhone] = session;
+			_sessionsByPlayerId[playerId] = session; // Maintain secondary index
+
+			// Fetch initial credit balance from backend after session is indexed
+			// This allows OnCreditsChanged event handler to find and update the session
 			if (_creditService != null)
 			{
 				var balanceResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
@@ -280,16 +319,12 @@ public partial class SessionManager : AutoloadBase
 				LogWarning("CreditService not available - credit balance will remain 0 until updated");
 			}
 
-			// Add session to active sessions AFTER initialization is complete
-			_activeSessions[cleanedPhone] = session;
-			_sessionsByPlayerId[playerId] = session; // Maintain secondary index
 
 			// Create lobby session for user-scoped events
 			if (_eventService != null && _eventService.IsReady)
 			{
-				var boxId = _eventService.GetCurrentBoxId();
-				var lobbySessionResult = await _eventService.CreateLobbySessionAsync(boxId, playerId);
-
+				var lobbyBoxId = _eventService.GetCurrentBoxId();
+				var lobbySessionResult = await _eventService.CreateLobbySessionAsync(lobbyBoxId, playerId);
 				if (lobbySessionResult.IsSuccess(out var lobbySessionId))
 				{
 					session.LobbySessionId = lobbySessionId;
@@ -302,15 +337,16 @@ public partial class SessionManager : AutoloadBase
 						location_id = CurrentLocationId
 					};
 					var loginEventResult = await _eventService.EmitUserEventAsync(playerId, "user/login", payload);
-					if (loginEventResult.IsFailure(out var loginError))
+					if (loginEventResult.IsFailure(out var eventError))
 					{
-						LogWarning($"Failed to emit login event: {loginError.Message}");
+						LogWarning($"Failed to emit login event: {eventError.Message}");
 					}
 				}
 				else if (lobbySessionResult.IsFailure(out var lobbyError))
 				{
 					LogWarning($"Failed to create lobby session: {lobbyError.Message}");
-					// Continue with login but warn that events won't be persisted
+					LogWarning("User logged in without lobby session - credit operations will require lazy lobby creation");
+					session.LobbySessionId = Guid.Empty; // Explicitly mark as missing
 				}
 			}
 			else
@@ -358,8 +394,8 @@ public partial class SessionManager : AutoloadBase
 		{
 			LogInfo($"User account creation requested: {cleanedUsername} ({cleanedPhone})");
 
-			// Generate deterministic player ID from phone number
-			var playerId = EventService.GetPlayerIdFromPhone(cleanedPhone);
+			// Generate new player ID (UUID v4)
+			var playerId = Guid.NewGuid();
 
 			// Get box ID from LocationManager
 			var locationManager = LocationManager.GetAutoload();
@@ -370,11 +406,9 @@ public partial class SessionManager : AutoloadBase
 			}
 
 			var boxId = locationManager.BoxId;
-
 			// Create player account via direct REST call to backend
-			var result = await _eventService.CreatePlayerAsync(playerId, cleanedUsername, boxId);
-
-			if (result.IsSuccess(out var _))
+			var result = await _eventService.CreatePlayerAsync(playerId, cleanedUsername, cleanedPhone, cleanedPin, boxId);
+			if (result.IsSuccess(out _))
 			{
 				LogInfo($"Account created successfully for {cleanedUsername} ({cleanedPhone})");
 				return Result.Success(cleanedPhone);
@@ -428,8 +462,9 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			// Generate deterministic player ID from phone number
-			var playerId = EventService.GetPlayerIdFromPhone(cleanedPhone);
+			// Generate temporary player ID for validation
+			// NOTE: Cannot use GetPlayerIdFromPhone() here because user hasn't registered yet (no session exists)
+			var playerId = Guid.NewGuid();
 
 			// Get box ID from LocationManager
 			var locationManager = LocationManager.GetAutoload();
@@ -442,8 +477,7 @@ public partial class SessionManager : AutoloadBase
 			var boxId = locationManager.BoxId;
 
 			// Validate via backend
-			var result = await _eventService.ValidatePlayerCreationAsync(playerId, cleanedUsername, boxId);
-
+			var result = await _eventService.ValidatePlayerCreationAsync(playerId, cleanedUsername, cleanedPhone, cleanedPin, boxId);
 			if (result.IsSuccess(out var validationResponse))
 			{
 				LogInfo($"Validation result for {cleanedUsername}: Valid={validationResponse.Valid}, ErrorCount={validationResponse.Errors?.Length ?? 0}");
@@ -516,6 +550,30 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
+			// Revoke JWT token on backend
+			if (_eventService != null && _eventService.IsReady && !string.IsNullOrEmpty(session.JwtToken))
+			{
+				// Create a simple logout request (backend reads JWT from Authorization header)
+				var logoutRequest = new { };
+
+				// Pass playerId to include Authorization header
+				var revokeResult = await _eventService.PostAsync<object, object>(
+					"/player/auth/logout",
+					logoutRequest,
+					expectedStatusCode: 200,
+					playerId: session.PlayerId
+				);
+
+				if (revokeResult.IsFailure(out var revokeError))
+				{
+					LogWarning($"Failed to revoke JWT token: {revokeError.Message}");
+				}
+				else
+				{
+					LogInfo("JWT token revoked successfully");
+				}
+			}
+
 			// Emit user/logout event to lobby session (before closing it)
 			if (_eventService != null && _eventService.IsReady && session.LobbySessionId != Guid.Empty)
 			{
@@ -633,6 +691,15 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	/// <summary>
+	/// Get user session by player ID (for credit operations and lobby session management)
+	/// Uses secondary index for O(1) lookup performance
+	/// </summary>
+	public UserSession GetUserSessionByPlayerId(Guid playerId)
+	{
+		return _sessionsByPlayerId.GetValueOrDefault(playerId);
+	}
+
+	/// <summary>
 	/// Check if user is logged in
 	/// </summary>
 	public bool IsUserLoggedIn(string phoneNumber)
@@ -712,7 +779,6 @@ public partial class SessionManager : AutoloadBase
 		return true;
 	}
 
-
 	/// <summary>
 	/// Add credits to user account
 	/// </summary>
@@ -731,7 +797,7 @@ public partial class SessionManager : AutoloadBase
 			if (_eventService != null && _eventService.IsReady)
 			{
 				var result = await _eventService.AddCreditsAsync(playerId, amount, reason);
-				if (result.IsSuccess(out var _))
+				if (result.IsSuccess(out _))
 				{
 					LogInfo($"Added {amount} credits for {phoneNumber}");
 
@@ -744,7 +810,8 @@ public partial class SessionManager : AutoloadBase
 					EmitSignal(SignalName.CreditsEarned, phoneNumber, amount, reason);
 					return true;
 				}
-				else if (result.IsFailure(out var error))
+
+				if (result.IsFailure(out var error))
 				{
 					LogError($"Failed to add credits: {error.Message}");
 					return false;
@@ -753,14 +820,12 @@ public partial class SessionManager : AutoloadBase
 				// Fallback - should not reach here due to exhaustive Result<T> pattern
 				return false;
 			}
+
+			if (_eventService == null)
+				LogWarning("EventService not available, cannot sync credits");
 			else
-			{
-				if (_eventService == null)
-					LogWarning("EventService not available, cannot sync credits");
-				else
-					LogWarning("EventService not ready (backend not initialized), cannot sync credits");
-				return false;
-			}
+				LogWarning("EventService not ready (backend not initialized), cannot sync credits");
+			return false;
 		}
 		catch (Exception ex)
 		{
@@ -790,7 +855,7 @@ public partial class SessionManager : AutoloadBase
 			{
 				// Query current balance
 				var balanceResult = await _eventService.GetPlayerCreditsAsync(playerId);
-				if (balanceResult.IsFailure(out var _) || !balanceResult.IsSuccess(out var currentBalance) || currentBalance < amount)
+				if (balanceResult.IsFailure(out _) || !balanceResult.IsSuccess(out var currentBalance) || currentBalance < amount)
 				{
 					if (balanceResult.IsSuccess(out var balance))
 					{
@@ -801,7 +866,7 @@ public partial class SessionManager : AutoloadBase
 
 				// Spend credits from player account
 				var spendResult = await _eventService.SpendCreditsAsync(playerId, amount, $"Transfer to {gameId}: {reason}");
-				if (spendResult.IsSuccess(out var _))
+				if (spendResult.IsSuccess(out _))
 				{
 					LogInfo($"Transferred {amount} credits for {phoneNumber}");
 
@@ -868,6 +933,59 @@ public partial class SessionManager : AutoloadBase
 		{
 			session.LastActivity = now;
 		}
+	}
+
+	/// <summary>
+	/// Get JWT token for a specific player (for EventService Authorization header)
+	/// Returns null if session not found or token expired
+	/// </summary>
+	public string GetJwtToken(Guid playerId)
+	{
+		// Skip logging for empty GUID (expected during initialization)
+		if (playerId == Guid.Empty)
+			return null;
+
+		if (!_sessionsByPlayerId.TryGetValue(playerId, out var session))
+		{
+			// Use Info level - session may still be initializing
+			LogInfo($"[GetJwtToken] No session found for player {playerId} (may be initializing, {_sessionsByPlayerId.Count} active sessions)");
+			return null;
+		}
+
+		if (session.IsTokenExpired)
+		{
+			LogWarning($"[GetJwtToken] JWT token expired for player {playerId}");
+			LogWarning($"[GetJwtToken] Token expiration: {session.TokenExpiration:u}, Current time: {DateTime.UtcNow:u}");
+			return null;
+		}
+
+		if (string.IsNullOrEmpty(session.JwtToken))
+		{
+			// Use Info level - token may still be loading
+			LogInfo($"[GetJwtToken] Session found for player {playerId} but JwtToken is null/empty (may be initializing)");
+			return null;
+		}
+
+		// Successful token retrieval - use debug level to reduce noise
+		return session.JwtToken;
+	}
+	/// <summary>
+	/// Get JWT token for the primary (first logged-in) user
+	/// Returns null if no users logged in or token expired
+	/// </summary>
+	public string GetPrimaryUserJwtToken()
+	{
+		var primarySession = GetPrimaryUserSession();
+		if (primarySession == null)
+			return null;
+
+		if (primarySession.IsTokenExpired)
+		{
+			LogWarning($"JWT token expired for primary user {primarySession.PhoneNumber}");
+			return null;
+		}
+
+		return primarySession.JwtToken;
 	}
 
 	// Private helper methods
@@ -970,6 +1088,11 @@ public class UserSession
 	public DateTime LoginTime { get; set; }
 	public DateTime LastActivity { get; set; }
 	public int Credits { get; set; }
+
+	// JWT authentication fields
+	public string JwtToken { get; set; } = string.Empty;
+	public DateTime TokenExpiration { get; set; } = DateTime.MinValue;
+	public bool IsTokenExpired => DateTime.UtcNow >= TokenExpiration;
 
 	public TimeSpan SessionDuration => DateTime.UtcNow - LoginTime;
 	public TimeSpan IdleTime => DateTime.UtcNow - LastActivity;

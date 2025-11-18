@@ -17,6 +17,9 @@ using System.Threading.Tasks;
 public partial class EventService : AutoloadBase
 {
 	// Configuration with environment variable support (matches BackendManager)
+	// Supports two configuration modes:
+	// 1. Full URL: BARBOX_BACKEND_URL="http://127.0.0.1:8000" (preferred)
+	// 2. Host+Port: BARBOX_BACKEND_HOST="127.0.0.1" + BARBOX_BACKEND_PORT="8000" (fallback)
 	private static readonly string BACKEND_HOST =
 		System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_HOST") ?? "127.0.0.1";
 
@@ -25,7 +28,24 @@ public partial class EventService : AutoloadBase
 			? port
 			: 8000;
 
-	private static readonly string BASE_URL = $"http://{BACKEND_HOST}:{BACKEND_PORT}";
+	// Allow full URL override for deployment flexibility (supports http:// or https://)
+	private static readonly string BASE_URL =
+		System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_URL")
+		?? $"http://{BACKEND_HOST}:{BACKEND_PORT}";
+
+	// Detect HTTPS from URL scheme (not from port or environment flags)
+	private static readonly bool USE_HTTPS = BASE_URL.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+	// Deprecation warning for old BARBOX_USE_HTTPS environment variable
+	static EventService()
+	{
+		var oldEnvVar = System.Environment.GetEnvironmentVariable("BARBOX_USE_HTTPS");
+		if (oldEnvVar != null)
+		{
+			GD.PrintErr("[EventService] WARNING: BARBOX_USE_HTTPS environment variable is deprecated.");
+			GD.PrintErr("[EventService] Use BARBOX_BACKEND_URL instead (e.g., BARBOX_BACKEND_URL=\"https://api.barbox.com\")");
+		}
+	}
 
 	private const int REQUEST_TIMEOUT_MS = 5000;
 	private const int POLL_INTERVAL_MS = 10;
@@ -41,6 +61,7 @@ public partial class EventService : AutoloadBase
 	private Godot.HttpClient _httpClient;
 	private string _locationId;
 	private Guid _boxId;
+	private string _boxApiKey;
 	private Guid _currentSessionId;
 	private Guid _currentBoxId;
 
@@ -56,12 +77,28 @@ public partial class EventService : AutoloadBase
 		try
 		{
 			_boxId = GetBoxId();
-			LogInfo($"Box ID: {_boxId}");
+			_boxApiKey = GetBoxApiKey();
+			LogInfo($"Box ID: {_boxId}, API Key: {(string.IsNullOrEmpty(_boxApiKey) ? "NOT SET" : "SET")}");
+
+			// FAIL LOUDLY in editor mode if API key missing
+			if (string.IsNullOrEmpty(_boxApiKey) && OS.HasFeature("editor"))
+			{
+				LogError("╔════════════════════════════════════════════════════════════╗");
+				LogError("║ CRITICAL: EventService API Key Configuration Missing!     ║");
+				LogError("║                                                            ║");
+				LogError("║ HTTP requests to backend will fail with 401/403 errors!   ║");
+				LogError("║                                                            ║");
+				LogError("║ Fix: Add to .env.local file:                               ║");
+				LogError("║   BARBOX_API_KEY=<api-key>                                ║");
+				LogError("║                                                            ║");
+				LogError("║ Get key: curl -X POST http://127.0.0.1:8000/test/seed     ║");
+				LogError("╚════════════════════════════════════════════════════════════╝");
+			}
 		}
 		catch (Exception ex)
 		{
-			LogError($"Failed to get Box ID: {ex.Message}");
-			throw new Exception($"EventService requires valid Box ID: {ex.Message}\nStack Trace: {ex.StackTrace}");
+			LogError($"Failed to get Box configuration: {ex.Message}");
+			throw new Exception($"EventService requires valid Box configuration: {ex.Message}\nStack Trace: {ex.StackTrace}");
 		}
 
 		// Wait for BackendManager to be ready
@@ -123,11 +160,7 @@ public partial class EventService : AutoloadBase
 				url += $"&player_ids={Uri.EscapeDataString(playerIdsJson)}";
 			}
 
-			var headers = new[]
-			{
-				$"Player-Id: {playerId}",
-				"User-Agent: BarBox-Client/1.0"
-			};
+			var headers = BuildPlayerHeaders(playerId).ToArray();
 
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] CreateActivitySession - PUT {url}");
@@ -152,8 +185,41 @@ public partial class EventService : AutoloadBase
 
 			if (responseCode != 202)
 			{
+				// Read response body for detailed error information
+				_httpClient.Poll();
+				await DelayAsync(0.05f);
+				_httpClient.Poll();
+
+				var errorBodyBytes = _httpClient.ReadResponseBodyChunk();
+				var errorBody = errorBodyBytes.GetStringFromUtf8();
+
 				_httpClient.Close();
-				return Result.Failure<Guid>($"Activity session creation failed with code {responseCode}");
+
+				// Provide detailed error logging to help diagnose authentication issues
+				LogError($"[EventService] Activity session creation failed:");
+				LogError($"  Status Code: {responseCode}");
+				LogError($"  Endpoint: PUT {url}");
+				LogError($"  Box ID: {boxId}");
+				LogError($"  Player ID: {playerId}");
+				LogError($"  Game Tag: {gameTag}");
+
+				if (!string.IsNullOrEmpty(errorBody))
+				{
+					LogError($"  Response Body: {errorBody}");
+				}
+
+				// Provide helpful hints based on status code
+				if (responseCode == 404)
+				{
+					LogError($"  [HINT] 404 usually means the box is not registered in the database.");
+					LogError($"  [HINT] Check that RegisterBoxAsync was called before session creation.");
+				}
+				else if (responseCode == 401 || responseCode == 403)
+				{
+					LogError($"  [HINT] Authentication failed - verify API key is correct for this box.");
+				}
+
+				return Result.Failure<Guid>($"Activity session creation failed with code {responseCode}: {errorBody}");
 			}
 
 			_currentSessionId = sessionId;
@@ -195,7 +261,7 @@ public partial class EventService : AutoloadBase
 			await EnsureConnectedAsync();
 
 			var url = $"/box/session/{sessionId}/close";
-			var headers = new[] { "User-Agent: BarBox-Client/1.0" };
+			var headers = BuildHeaders().ToArray();
 
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] CloseActivitySession - POST {url}");
@@ -268,11 +334,8 @@ public partial class EventService : AutoloadBase
 			await EnsureConnectedAsync();
 
 			var url = $"/box/{boxId}/lobby/session";
-			var headers = new[]
-			{
-				$"Player-Id: {playerId}",
-				"User-Agent: BarBox-Client/1.0"
-			};
+			var headers = BuildHeaders(playerId);
+			headers.Add($"Player-Id: {playerId}");
 
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] CreateLobbySession - POST {url}");
@@ -281,7 +344,7 @@ public partial class EventService : AutoloadBase
 			var error = _httpClient.Request(
 				Godot.HttpClient.Method.Post,
 				url,
-				headers
+				headers.ToArray()
 			);
 
 			if (error != Godot.Error.Ok)
@@ -297,16 +360,34 @@ public partial class EventService : AutoloadBase
 
 			if (responseCode != 201)
 			{
+				// CRITICAL: Read error response body to understand backend error
+				var errorBodyBytes = await _httpClient.ReadResponseBodyAsync();
+				var errorBody = errorBodyBytes.GetStringFromUtf8();
+
 				_httpClient.Close();
-				return Result.Failure<Guid>($"Lobby session creation failed with code {responseCode}");
+
+				// Log full error details for debugging
+				LogError($"[EventService] Lobby session creation failed:");
+				LogError($"  Endpoint: POST /box/{{boxId}}/lobby/session");
+				LogError($"  Status Code: {responseCode}");
+				LogError($"  Response Body: {errorBody}");
+				LogError($"  Player ID: {playerId}");
+
+				return Result.Failure<Guid>($"Lobby session creation failed with code {responseCode}: {errorBody}");
 			}
 
 			// Parse response to get session ID
+			// Poll to ensure body is fully received
+			_httpClient.Poll();
+			await DelayAsync(0.05f);
+			_httpClient.Poll();
+
 			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			if (string.IsNullOrEmpty(bodyText))
 			{
+				LogError("[EventService] Empty response body from successful lobby session creation (201)");
 				return Result.Failure<Guid>("Empty response body from lobby session creation");
 			}
 
@@ -321,14 +402,12 @@ public partial class EventService : AutoloadBase
 				return Result.Success(sessionId);
 			}
 
-			return Result.Failure<Guid>("Failed to parse lobby session ID from response");
+			LogError($"[EventService] Failed to parse lobby session ID from response: {bodyText}");
+			return Result.Failure<Guid>($"Failed to parse lobby session ID from response: {bodyText}");
 		}
 		catch (Exception ex)
 		{
-#if DEBUG_HTTP_LIFECYCLE
-			LogError($"[HTTP] CreateLobbySession - Exception: {ex.Message}");
-#endif
-
+			LogError($"[EventService] Lobby session creation exception: {ex.Message}\nStack: {ex.StackTrace}");
 			_httpClient.Close();
 			return Result.Failure<Guid>($"Lobby session creation exception: {ex.Message}");
 		}
@@ -364,12 +443,7 @@ public partial class EventService : AutoloadBase
 
 			await EnsureConnectedAsync();
 
-			var headers = new[]
-			{
-				"User-Agent: BarBox-Client/1.0",
-				"Accept: application/json",
-				"Content-Type: application/json"
-			};
+			var headers = BuildJsonHeaders().ToArray();
 
 			var error = _httpClient.Request(
 				Godot.HttpClient.Method.Post,
@@ -427,23 +501,27 @@ public partial class EventService : AutoloadBase
 
 	/// <summary>
 	/// Submit user-level event to backend (login, logout, credit purchases)
-	/// Posts events to the active lobby session
+	/// Posts events to the specified or active lobby session
 	/// </summary>
-	public async Task<Result<bool>> EmitUserEventAsync(Guid playerId, string eventType, object payload)
+	/// <param name="lobbySessionId">Optional explicit lobby session ID. If null, uses global _lobbySessionId</param>
+	public async Task<Result<bool>> EmitUserEventAsync(Guid playerId, string eventType, object payload, Guid? lobbySessionId = null)
 	{
 		if (!IsReady)
 			return Result.Failure<bool>("EventService not initialized - backend not ready");
 
+		// Use provided lobby session ID or fall back to global
+		var sessionId = lobbySessionId ?? _lobbySessionId;
+
 		// Check if we have an active lobby session
-		if (_lobbySessionId == Guid.Empty)
+		if (sessionId == Guid.Empty)
 		{
-			return Result.Failure<bool>("No active lobby session - call CreateLobbySessionAsync first");
+			return Result.Failure<bool>("No active lobby session - call CreateLobbySessionAsync first or provide explicit lobby session ID");
 		}
 
 		try
 		{
 #if DEBUG_HTTP_LIFECYCLE
-			LogInfo($"[HTTP] EmitUserEvent - {eventType} to lobby session {_lobbySessionId}");
+			LogInfo($"[HTTP] EmitUserEvent - {eventType} to lobby session {sessionId}");
 #endif
 
 			await EnsureConnectedAsync();
@@ -455,13 +533,11 @@ public partial class EventService : AutoloadBase
 				payload = JsonSerializer.Deserialize<Dictionary<string, object>>(payloadJson)
 			}, JsonOptions);
 
-			var url = $"/box/session/{_lobbySessionId}";
-			var headers = new[]
-			{
-				"User-Agent: BarBox-Client/1.0",
-				"Content-Type: application/json",
-				$"Content-Length: {Encoding.UTF8.GetByteCount(eventJson)}"
-			};
+			var url = $"/box/session/{sessionId}";
+			var headers = BuildHeaders();
+			headers.Add("Content-Type: application/json");
+			headers.Add($"Content-Length: {Encoding.UTF8.GetByteCount(eventJson)}");
+			var headersArray = headers.ToArray();
 
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] EmitUserEvent - POST {url}");
@@ -470,7 +546,7 @@ public partial class EventService : AutoloadBase
 			var error = _httpClient.Request(
 				Godot.HttpClient.Method.Post,
 				url,
-				headers,
+				headersArray,
 				eventJson
 			);
 
@@ -531,9 +607,11 @@ public partial class EventService : AutoloadBase
 	/// <summary>
 	/// Execute GET query against backend API
 	/// </summary>
+	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
 	public async Task<Result<TResponse>> QueryAsync<TResponse>(
 		string endpoint,
-		Dictionary<string, string> queryParams = null
+		Dictionary<string, string> queryParams = null,
+		Guid? playerId = null
 	) where TResponse : class
 	{
 		if (!IsReady)
@@ -551,13 +629,11 @@ public partial class EventService : AutoloadBase
 				url = $"{endpoint}?{query}";
 			}
 
-			var headers = new[]
-			{
-				"User-Agent: BarBox-Client/1.0",
-				"Accept: application/json"
-			};
+			var headers = BuildHeaders(playerId);
+			headers.Add("Accept: application/json");
+			var headersArray = headers.ToArray();
 
-			var error = _httpClient.Request(Godot.HttpClient.Method.Get, url, headers);
+			var error = _httpClient.Request(Godot.HttpClient.Method.Get, url, headersArray);
 			if (error != Godot.Error.Ok)
 				return Result.Failure<TResponse>($"Query request failed: {error}");
 
@@ -596,9 +672,11 @@ public partial class EventService : AutoloadBase
 	/// Execute GET query against backend API, returning raw JSON string
 	/// Used by game event services for custom JSON parsing
 	/// </summary>
+	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
 	public async Task<Result<string>> QueryRawAsync(
 		string endpoint,
-		Dictionary<string, string> queryParams = null
+		Dictionary<string, string> queryParams = null,
+		Guid? playerId = null
 	)
 	{
 		if (!IsReady)
@@ -616,13 +694,11 @@ public partial class EventService : AutoloadBase
 				url = $"{endpoint}?{query}";
 			}
 
-			var headers = new[]
-			{
-				"User-Agent: BarBox-Client/1.0",
-				"Accept: application/json"
-			};
+			var headers = BuildHeaders(playerId);
+			headers.Add("Accept: application/json");
+			var headersArray = headers.ToArray();
 
-			var error = _httpClient.Request(Godot.HttpClient.Method.Get, url, headers);
+			var error = _httpClient.Request(Godot.HttpClient.Method.Get, url, headersArray);
 			if (error != Godot.Error.Ok)
 				return Result.Failure<string>($"Query request failed: {error}");
 
@@ -707,10 +783,12 @@ public partial class EventService : AutoloadBase
 	/// <summary>
 	/// Execute POST request against backend API with JSON body
 	/// </summary>
+	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
 	public async Task<Result<TResponse>> PostAsync<TRequest, TResponse>(
 		string endpoint,
 		TRequest requestBody,
-		int expectedStatusCode = 201
+		int expectedStatusCode = 201,
+		Guid? playerId = null
 	) where TResponse : class
 	{
 		if (!IsReady)
@@ -722,12 +800,7 @@ public partial class EventService : AutoloadBase
 
 			var json = JsonSerializer.Serialize(requestBody, JsonOptions);
 
-			var headers = new[]
-			{
-				"User-Agent: BarBox-Client/1.0",
-				"Accept: application/json",
-				"Content-Type: application/json"
-			};
+			var headers = BuildJsonHeaders(playerId).ToArray();
 
 			var error = _httpClient.Request(Godot.HttpClient.Method.Post, endpoint, headers, json);
 			if (error != Godot.Error.Ok)
@@ -777,10 +850,12 @@ public partial class EventService : AutoloadBase
 	/// <summary>
 	/// Execute PUT request against backend API with JSON body
 	/// </summary>
+	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
 	public async Task<Result<TResponse>> PutAsync<TRequest, TResponse>(
 		string endpoint,
 		TRequest requestBody,
-		int expectedStatusCode = 200
+		int expectedStatusCode = 200,
+		Guid? playerId = null
 	) where TResponse : class
 	{
 		if (!IsReady)
@@ -792,12 +867,7 @@ public partial class EventService : AutoloadBase
 
 			var json = JsonSerializer.Serialize(requestBody, JsonOptions);
 
-			var headers = new[]
-			{
-				"User-Agent: BarBox-Client/1.0",
-				"Accept: application/json",
-				"Content-Type: application/json"
-			};
+			var headers = BuildJsonHeaders(playerId).ToArray();
 
 			var error = _httpClient.Request(Godot.HttpClient.Method.Put, endpoint, headers, json);
 			if (error != Godot.Error.Ok)
@@ -854,12 +924,14 @@ public partial class EventService : AutoloadBase
 	/// Validate player creation without actually creating the player (pre-flight check)
 	/// Performs all validation checks: box exists, username available, player ID unique
 	/// </summary>
-	public async Task<Result<PlayerValidationResponse>> ValidatePlayerCreationAsync(Guid playerId, string username, Guid originBoxId)
+	public async Task<Result<PlayerValidationResponse>> ValidatePlayerCreationAsync(Guid playerId, string username, string phoneNumber, string pin, Guid originBoxId)
 	{
 		var request = new PlayerCreateRequest
 		{
 			Id = playerId.ToString(),
 			Tag = username,
+			PhoneNumber = phoneNumber,
+			Pin = pin,
 			OriginId = originBoxId.ToString()
 		};
 
@@ -893,12 +965,14 @@ public partial class EventService : AutoloadBase
 	/// <summary>
 	/// Create a new player account via backend API
 	/// </summary>
-	public async Task<Result<Guid>> CreatePlayerAsync(Guid playerId, string username, Guid originBoxId)
+	public async Task<Result<Guid>> CreatePlayerAsync(Guid playerId, string username, string phoneNumber, string pin, Guid originBoxId)
 	{
 		var request = new PlayerCreateRequest
 		{
 			Id = playerId.ToString(),
 			Tag = username,
+			PhoneNumber = phoneNumber,
+			Pin = pin,
 			OriginId = originBoxId.ToString()
 		};
 
@@ -924,12 +998,14 @@ public partial class EventService : AutoloadBase
 	/// This endpoint is safe to call multiple times - it will return existing player if already registered
 	/// Auto-creates temporary player record even if origin box doesn't exist
 	/// </summary>
-	public async Task<Result<Guid>> RegisterPlayerFirstPlayAsync(Guid playerId, string username, Guid originBoxId)
+	public async Task<Result<Guid>> RegisterPlayerFirstPlayAsync(Guid playerId, string username, string phoneNumber, string pin, Guid originBoxId)
 	{
 		var request = new PlayerCreateRequest
 		{
 			Id = playerId.ToString(),
 			Tag = username,
+			PhoneNumber = phoneNumber,
+			Pin = pin,
 			OriginId = originBoxId.ToString()
 		};
 
@@ -951,10 +1027,11 @@ public partial class EventService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Register box (physical terminal) with backend
+	/// Register or verify box with backend, returning full response including API key on first registration
 	/// Idempotent - safe to call multiple times
+	/// Returns BoxDetailResponse with ApiKey field populated ONLY on first-time registration
 	/// </summary>
-	public async Task<Result<Guid>> RegisterBoxAsync(Guid boxId, string locationName)
+	public async Task<Result<BoxDetailResponse>> RegisterBoxWithDetailAsync(Guid boxId, string locationName)
 	{
 		var request = new BoxCreateRequest
 		{
@@ -970,19 +1047,49 @@ public partial class EventService : AutoloadBase
 			200
 		);
 
-		if (result.IsSuccess(out var _))
+		if (result.IsSuccess(out var response))
 		{
-			LogInfo($"Box registered/verified: {locationName} ({boxId})");
-			return Result.Success(boxId);
+			// Security: Only log partial API key if present
+			if (!string.IsNullOrEmpty(response.ApiKey))
+			{
+				var maskedKey = response.ApiKey.Length > 12
+					? $"{response.ApiKey.Substring(0, 8)}...{response.ApiKey.Substring(response.ApiKey.Length - 4)}"
+					: "***";
+				LogInfo($"Box registered with new API key: {maskedKey}");
+			}
+			else
+			{
+				LogInfo($"Box verified: {locationName} ({boxId})");
+			}
+
+			return Result.Success(response);
 		}
 
 		if (result.IsFailure(out var error))
 		{
-			LogError($"Failed to register box: {error.Message}");
-			return Result.Failure<Guid>(error.Message);
+			LogError($"Box registration failed: {error.Message}");
+			return Result.Failure<BoxDetailResponse>(error.Message);
 		}
 
-		return Result.Failure<Guid>("Unknown error registering box");
+		return Result.Failure<BoxDetailResponse>("Unknown error registering box");
+	}
+
+	/// <summary>
+	/// Register box (physical terminal) with backend
+	/// Idempotent - safe to call multiple times
+	/// Backward compatibility wrapper - use RegisterBoxWithDetailAsync for full response
+	/// </summary>
+	public async Task<Result<Guid>> RegisterBoxAsync(Guid boxId, string locationName)
+	{
+		var result = await RegisterBoxWithDetailAsync(boxId, locationName);
+
+		if (result.IsSuccess(out var detail))
+			return Result.Success(Guid.Parse(detail.Id));
+
+		if (result.IsFailure(out var error))
+			return Result.Failure<Guid>(error.Message);
+
+		return Result.Failure<Guid>("Unknown error");
 	}
 
 	/// <summary>
@@ -1009,7 +1116,8 @@ public partial class EventService : AutoloadBase
 	/// Emit credit earn event to backend
 	/// Uses user-scoped events - does not require ActivitySession
 	/// </summary>
-	public async Task<Result<bool>> AddCreditsAsync(Guid playerId, int amount, string reason = "")
+	/// <param name="lobbySessionId">Optional explicit lobby session ID. If null, uses global _lobbySessionId</param>
+	public async Task<Result<bool>> AddCreditsAsync(Guid playerId, int amount, string reason = "", Guid? lobbySessionId = null)
 	{
 		var payload = new
 		{
@@ -1018,14 +1126,15 @@ public partial class EventService : AutoloadBase
 			reason = reason
 		};
 
-		return await EmitUserEventAsync(playerId, "credit/earn", payload);
+		return await EmitUserEventAsync(playerId, "credit/earn", payload, lobbySessionId);
 	}
 
 	/// <summary>
 	/// Emit credit spend event to backend
 	/// Uses user-scoped events - does not require ActivitySession
 	/// </summary>
-	public async Task<Result<bool>> SpendCreditsAsync(Guid playerId, int amount, string reason = "")
+	/// <param name="lobbySessionId">Optional explicit lobby session ID. If null, uses global _lobbySessionId</param>
+	public async Task<Result<bool>> SpendCreditsAsync(Guid playerId, int amount, string reason = "", Guid? lobbySessionId = null)
 	{
 		var payload = new
 		{
@@ -1034,7 +1143,7 @@ public partial class EventService : AutoloadBase
 			reason = reason
 		};
 
-		return await EmitUserEventAsync(playerId, "credit/spend", payload);
+		return await EmitUserEventAsync(playerId, "credit/spend", payload, lobbySessionId);
 	}
 
 	/// <summary>
@@ -1071,7 +1180,7 @@ public partial class EventService : AutoloadBase
 			LobbySessionId = lobbySessionId
 		};
 		return await PostAsync<MachineCreditsDepositRequest, MachineCreditsResponse>(
-			$"/game/{gameTag}/machine-credits/deposit", request, 201);
+			$"/game/{gameTag}/machine-credits/deposit", request, 201, playerId: playerId);
 	}
 
 	/// <summary>
@@ -1094,6 +1203,80 @@ public partial class EventService : AutoloadBase
 	}
 
 	// Private helper methods
+
+	/// <summary>
+	/// Build HTTP headers with Box API key and optional player Authorization token
+	/// </summary>
+	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
+	private List<string> BuildHeaders(Guid? playerId = null)
+	{
+		// Validate API key is configured
+		if (string.IsNullOrEmpty(_boxApiKey))
+		{
+			LogError("CRITICAL: Attempting HTTP request without API key configured!");
+			throw new InvalidOperationException("Box API key not configured - check .env.local file");
+		}
+
+		var headers = new List<string>
+		{
+			$"X-Box-API-Key: {_boxApiKey}",
+			"User-Agent: BarBox-Client/1.0"
+		};
+
+	// Add player Authorization header if playerId provided
+	if (playerId.HasValue)
+	{
+		// Skip logging for empty GUID (expected during initialization)
+		if (playerId.Value == Guid.Empty)
+		{
+			// Silent skip - this is expected during service initialization
+			return headers;
+		}
+
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager != null)
+		{
+			var jwtToken = sessionManager.GetJwtToken(playerId.Value);
+			if (!string.IsNullOrEmpty(jwtToken))
+			{
+				headers.Add($"Authorization: Bearer {jwtToken}");
+			}
+			else
+			{
+				// Log error when auth requested but token missing
+				GD.PushError($"[EventService] Authenticated request for player {playerId.Value} failed: JWT token not found");
+			}
+		}
+		else
+		{
+			GD.PushError($"[EventService] Authenticated request failed: SessionManager not available");
+		}
+	}
+
+		return headers;
+	}
+
+	/// <summary>
+	/// Build headers for JSON request/response operations
+	/// </summary>
+	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
+	private List<string> BuildJsonHeaders(Guid? playerId = null)
+	{
+		var headers = BuildHeaders(playerId);
+		headers.Add("Accept: application/json");
+		headers.Add("Content-Type: application/json");
+		return headers;
+	}
+
+	/// <summary>
+	/// Build headers with player ID for player-scoped operations
+	/// </summary>
+	private List<string> BuildPlayerHeaders(Guid playerId)
+	{
+		var headers = BuildHeaders();
+		headers.Add($"Player-Id: {playerId}");
+		return headers;
+	}
 
 	private async Task EnsureConnectedAsync()
 	{
@@ -1172,10 +1355,19 @@ public partial class EventService : AutoloadBase
 
 		// Establish new connection
 #if DEBUG_HTTP_LIFECYCLE
-		LogInfo($"[HTTP] Establishing new connection to {BACKEND_HOST}:{BACKEND_PORT}");
+		LogInfo($"[HTTP] Establishing new connection to {BACKEND_HOST}:{BACKEND_PORT} (HTTPS: {USE_HTTPS})");
 #endif
 
-		var error = _httpClient.ConnectToHost(BACKEND_HOST, BACKEND_PORT);
+		// Configure TLS options for HTTPS
+		TlsOptions tlsOptions = null;
+		if (USE_HTTPS)
+		{
+			tlsOptions = TlsOptions.Client();
+			// In development with self-signed certificates, we may need to allow unsafe connections
+			// For production, proper CA-signed certificates should be used
+		}
+
+		var error = _httpClient.ConnectToHost(BACKEND_HOST, BACKEND_PORT, tlsOptions);
 		if (error != Godot.Error.Ok)
 			throw new Exception($"Failed to connect to backend: {error}");
 
@@ -1248,25 +1440,46 @@ public partial class EventService : AutoloadBase
 		return boxId;
 	}
 
+	private string GetBoxApiKey()
+	{
+		var locationManager = LocationManager.GetAutoload();
+		if (locationManager != null && locationManager.IsConfigLoaded)
+		{
+			return locationManager.BoxApiKey;
+		}
+
+		// Fallback
+		var apiKey = System.Environment.GetEnvironmentVariable("BARBOX_API_KEY");
+		if (string.IsNullOrEmpty(apiKey))
+		{
+			LogWarning("BARBOX_API_KEY not set - authenticated requests will fail");
+			return "";
+		}
+
+		return apiKey;
+	}
+
 	/// <summary>
-	/// Generate deterministic player UUID from phone number
-	/// Uses consistent hashing to ensure same phone always gets same UUID
+	/// Get player ID from phone number by looking up active session
+	/// This is a compatibility helper for the phone-based auth system
 	/// </summary>
 	public static Guid GetPlayerIdFromPhone(string phoneNumber)
 	{
-		if (string.IsNullOrEmpty(phoneNumber))
-			throw new ArgumentException("Phone number cannot be null or empty");
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager == null)
+		{
+			GD.PrintErr("[EventService] SessionManager not available - cannot get player ID from phone");
+			return Guid.Empty;
+		}
 
-		// Use SHA256 for consistent hashing
-		using var sha256 = System.Security.Cryptography.SHA256.Create();
-		var phoneBytes = System.Text.Encoding.UTF8.GetBytes(phoneNumber);
-		var hashBytes = sha256.ComputeHash(phoneBytes);
+		var session = sessionManager.GetUserSession(phoneNumber);
+		if (session == null)
+		{
+			GD.PrintErr($"[EventService] No active session found for phone: {phoneNumber}");
+			return Guid.Empty;
+		}
 
-		// Take first 16 bytes for UUID
-		var guidBytes = new byte[16];
-		Array.Copy(hashBytes, guidBytes, 16);
-
-		return new Guid(guidBytes);
+		return session.PlayerId;
 	}
 
 	/// <summary>

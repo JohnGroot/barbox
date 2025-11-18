@@ -20,14 +20,25 @@ public static class InputValidator
 	#region Phone Number Validation
 
 	/// <summary>
-	/// Clean and format phone number input (remove non-digits, limit to 10 digits)
+	/// Clean and format phone number input.
+	/// Supports both US format (XXXXXXXXXX) and E.164 format (+1XXXXXXXXXX).
+	/// E.164 format is preserved for backend communication.
 	/// </summary>
 	public static string CleanPhoneNumber(string input)
 	{
 		if (string.IsNullOrEmpty(input))
 			return string.Empty;
 
-		// Remove all non-digit characters
+		// Check if input is E.164 format (starts with +)
+		if (input.StartsWith("+"))
+		{
+			// E.164 format: preserve + and all digits
+			// Remove non-digit characters except leading +
+			var e164 = "+" + Regex.Replace(input.Substring(1), @"[^\d]", "");
+			return e164;
+		}
+
+		// US format: remove all non-digit characters and limit to 10 digits
 		var digitsOnly = Regex.Replace(input, @"[^\d]", "");
 
 		// Limit to 10 digits
@@ -57,11 +68,21 @@ public static class InputValidator
 	}
 
 	/// <summary>
-	/// Validate phone number (must be exactly 10 digits)
+	/// Validate phone number.
+	/// Accepts US format (10 digits) or E.164 format (+1 followed by 10 digits).
 	/// </summary>
 	public static bool IsValidPhoneNumber(string phoneNumber)
 	{
 		var cleaned = CleanPhoneNumber(phoneNumber);
+
+		// Check E.164 format: +1 followed by 10 digits
+		if (cleaned.StartsWith("+"))
+		{
+			return cleaned.Length == 12 && cleaned.StartsWith("+1") &&
+			       Regex.IsMatch(cleaned.Substring(2), @"^\d{10}$");
+		}
+
+		// Check US format: exactly 10 digits
 		return PhoneNumberRegex.IsMatch(cleaned);
 	}
 

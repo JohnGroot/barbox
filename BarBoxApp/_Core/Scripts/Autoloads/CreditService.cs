@@ -175,6 +175,29 @@ public partial class CreditService : AutoloadBase
 			return Result.Failure<int>("Amount must be positive");
 		}
 
+		// LAZY LOBBY SESSION CREATION: Ensure session has lobby session ID
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager != null)
+		{
+			var session = sessionManager.GetUserSessionByPlayerId(playerId);
+			if (session != null && session.LobbySessionId == Guid.Empty)
+			{
+				LogInfo($"Lobby session missing for player {playerId} - creating on-demand for credit operation");
+				var boxId = eventService.GetCurrentBoxId();
+				var lobbyResult = await eventService.CreateLobbySessionAsync(boxId, playerId);
+
+				if (lobbyResult.IsSuccess(out var lobbySessionId))
+				{
+					session.LobbySessionId = lobbySessionId;
+					LogInfo($"Lazy lobby session created: {lobbySessionId}");
+				}
+				else if (lobbyResult.IsFailure(out var lobbyError))
+				{
+					return Result.Failure<int>($"Cannot add credits: Failed to create lobby session - {lobbyError.Message}");
+				}
+			}
+		}
+
 		// Get initial balance to detect when credits are added
 		var initialBalanceResult = await eventService.GetPlayerCreditsAsync(playerId);
 		if (initialBalanceResult.IsFailure(out var initialError))
@@ -184,7 +207,18 @@ public partial class CreditService : AutoloadBase
 		}
 		var initialBalance = initialBalanceResult.IsSuccess(out var initialValue) ? initialValue : 0;
 
-		var addResult = await eventService.AddCreditsAsync(playerId, amount, reason);
+		// Get lobby session ID to pass explicitly (multi-user safe)
+		Guid? sessionLobbyId = null;
+		if (sessionManager != null)
+		{
+			var session = sessionManager.GetUserSessionByPlayerId(playerId);
+			if (session != null && session.LobbySessionId != Guid.Empty)
+			{
+				sessionLobbyId = session.LobbySessionId;
+			}
+		}
+
+		var addResult = await eventService.AddCreditsAsync(playerId, amount, reason, sessionLobbyId);
 		if (addResult.IsFailure(out var addError))
 		{
 			LogWarning($"Credit add failed: {addError.Message}");

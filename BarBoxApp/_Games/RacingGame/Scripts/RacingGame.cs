@@ -2209,6 +2209,8 @@ public partial class RacingGame : GameController
 			GD.PrintErr($"[RacingGame] Error getting current player phone number: {ex.Message}");
 		}
 
+		
+		
 		// Return null if no user is logged in - no fallbacks
 		return null;
 	}

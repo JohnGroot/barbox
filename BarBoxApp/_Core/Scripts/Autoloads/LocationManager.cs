@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using System.Threading.Tasks;
 
 /// <summary>
 /// Environment configuration and location management service
@@ -12,6 +13,7 @@ public partial class LocationManager : AutoloadBase
 	private Guid _boxId;
 	private string _locationId;
 	private string _backendUrl;
+	private string _boxApiKey;
 	private bool _isConfigLoaded = false;
 
 	// Public typed accessors
@@ -19,12 +21,20 @@ public partial class LocationManager : AutoloadBase
 	public string LocationId => _locationId;
 	public string CurrentLocationId => _locationId; // Compatibility
 	public string BackendUrl => _backendUrl;
+	public string BoxApiKey => _boxApiKey;
 	public bool IsConfigLoaded => _isConfigLoaded;
 
 	protected override void OnServiceReady()
 	{
 		LoadEnvironmentConfiguration();
-		LogInfo($"LocationManager initialized - Location: {_locationId}, BoxId: {_boxId}");
+		var apiKeyStatus = string.IsNullOrEmpty(_boxApiKey) ? "NOT SET" : "SET";
+		LogInfo($"LocationManager initialized - Location: {_locationId}, BoxId: {_boxId}, ApiKey: {apiKeyStatus}");
+
+		// In production, schedule box verification after services are ready
+		if (!OS.HasFeature("editor"))
+		{
+			CallDeferred(MethodName.VerifyBoxRegistrationDeferred);
+		}
 	}
 
 	private void LoadEnvironmentConfiguration()
@@ -36,6 +46,7 @@ public partial class LocationManager : AutoloadBase
 		_locationId = LoadLocationId();
 		_boxId = LoadBoxId();
 		_backendUrl = LoadBackendUrl();
+		_boxApiKey = LoadBoxApiKey();
 		_isConfigLoaded = true;
 	}
 
@@ -121,6 +132,35 @@ public partial class LocationManager : AutoloadBase
 		       "http://localhost:8000";
 	}
 
+	private string LoadBoxApiKey()
+	{
+		var apiKey = System.Environment.GetEnvironmentVariable("BARBOX_API_KEY");
+
+		if (string.IsNullOrEmpty(apiKey))
+		{
+			// Development fallback
+			if (OS.HasFeature("editor"))
+			{
+				LogError("╔════════════════════════════════════════════════════════════╗");
+				LogError("║ CONFIGURATION ERROR: BARBOX_API_KEY is missing!           ║");
+				LogError("║                                                            ║");
+				LogError("║ All authenticated requests to the backend WILL FAIL!       ║");
+				LogError("║                                                            ║");
+				LogError("║ Fix by adding to .env.local:                               ║");
+				LogError("║   BARBOX_API_KEY=<your-api-key-here>                      ║");
+				LogError("║                                                            ║");
+				LogError("║ Get API key from backend seed:                             ║");
+				LogError("║   curl -X POST http://127.0.0.1:8000/test/seed            ║");
+				LogError("╚════════════════════════════════════════════════════════════╝");
+				return "";
+			}
+
+			throw new System.Exception("BARBOX_API_KEY required in production builds");
+		}
+
+		return apiKey;
+	}
+
 	// Keep compatibility method
 	public string GetCurrentLocationId() => _locationId;
 
@@ -136,6 +176,59 @@ public partial class LocationManager : AutoloadBase
 	public static LocationManager GetAutoload()
 	{
 		return AutoloadBase.GetAutoload<LocationManager>();
+	}
+
+	/// <summary>
+	/// Verify box registration asynchronously without blocking startup.
+	/// If API key is received (first registration), display it for operator.
+	/// </summary>
+	private async void VerifyBoxRegistrationDeferred()
+	{
+		try
+		{
+			// Wait for EventService to be ready
+			await AutoloadBase.StaticDelayAsync(1.0f); // Frame-aware timing
+
+			var eventService = EventService.GetInstance();
+			if (eventService == null || !eventService.IsReady)
+			{
+				LogWarning("EventService not ready - skipping box verification");
+				return;
+			}
+
+			var result = await eventService.RegisterBoxWithDetailAsync(_boxId, _locationId);
+
+			if (result.IsSuccess(out var response))
+			{
+				// If API key returned, this is first registration - must save it
+				if (!string.IsNullOrEmpty(response.ApiKey))
+				{
+					LogError("╔════════════════════════════════════════════════════════════╗");
+					LogError("║ NEW BOX REGISTERED - ACTION REQUIRED                       ║");
+					LogError("║                                                            ║");
+					LogError("║ An API key was generated for this box.                    ║");
+					LogError("║ Add this line to BarBoxApp/.env.local and RESTART:        ║");
+					LogError("║                                                            ║");
+					LogError($"║ BARBOX_API_KEY={response.ApiKey}");
+					LogError("║                                                            ║");
+					LogError("║ WARNING: Key will not be shown again!                     ║");
+					LogError("╚════════════════════════════════════════════════════════════╝");
+				}
+				else
+				{
+					LogInfo($"Box verified: {_locationId}");
+				}
+			}
+			else if (result.IsFailure(out var error))
+			{
+				LogWarning($"Box verification failed: {error.Message}");
+				LogWarning("Authenticated requests may fail until box is registered");
+			}
+		}
+		catch (Exception ex)
+		{
+			LogWarning($"Box verification exception: {ex.Message}");
+		}
 	}
 
 	protected override void OnServiceDestroyed()

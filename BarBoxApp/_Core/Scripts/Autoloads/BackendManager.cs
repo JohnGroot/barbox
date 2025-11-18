@@ -1,4 +1,5 @@
 using Godot;
+using LightResults;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -54,54 +55,30 @@ public partial class BackendManager : AutoloadBase
 
 	protected override async Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
-		LogInfo("BackendManager initializing...");
-
-		bool success;
+		Result<bool> result;
 
 		// In test mode, skip auto-start and wait for external backend
 		if (IS_TEST_MODE)
 		{
 			LogInfo("Test mode detected - waiting for external backend (no auto-start)");
-			success = await WaitForExternalBackendAsync(cancellationToken);
+			result = await WaitForExternalBackendAsync(cancellationToken);
 		}
 		else
 		{
 			// Normal mode: auto-start if needed
-			success = await EnsureBackendRunningAsync(cancellationToken);
+			result = await EnsureBackendRunningAsync(cancellationToken);
 		}
 
-		if (!success)
+		if (result.IsFailure(out var error))
 		{
-			// Backend failed to start - show error UI and throw exception
-			LogError($"Backend failed to become healthy within 30 seconds");
-			LogWarning($"Backend not available at {BACKEND_HOST}:{BACKEND_PORT}");
-			LogInfo("╔════════════════════════════════════════════════════════╗");
-			LogInfo("║  Backend Service Not Running                           ║");
-			LogInfo("╠════════════════════════════════════════════════════════╣");
-			LogInfo("║  Backend auto-start failed.                            ║");
-			LogInfo("║                                                        ║");
-			LogInfo("║  Possible causes:                                      ║");
-			LogInfo("║    - Backend script not found                          ║");
-			LogInfo("║    - Port 8000 blocked by firewall                     ║");
-			LogInfo("║    - Python dependencies missing                       ║");
-			LogInfo("║                                                        ║");
-			LogInfo("║  To start manually:                                    ║");
-			LogInfo("║    cd BarBoxServices                                   ║");
-			LogInfo("║    sh scripts/dev.sh                                   ║");
-			LogInfo("║                                                        ║");
-			LogInfo("║  Then restart the app or click Retry Connection       ║");
-			LogInfo("║                                                        ║");
-			LogInfo("║  Features requiring backend will be unavailable:       ║");
-			LogInfo("║    - Credit system                                     ║");
-			LogInfo("║    - Session persistence                               ║");
-			LogInfo("║    - Leaderboards                                      ║");
-			LogInfo("║    - Progress saving                                   ║");
-			LogInfo("╚════════════════════════════════════════════════════════╝");
+			// Backend failed to start - show concise error and throw exception
+			LogError($"Backend initialization failed: {error.Message}");
+			LogError($"Backend not available at {BACKEND_HOST}:{BACKEND_PORT}");
+			LogError("To start manually: cd BarBoxServices && sh scripts/dev.sh");
 
-			CallDeferred(MethodName.EmitSignal, SignalName.BackendStartFailed,
-				"Backend auto-start failed. Start manually with: cd BarBoxServices && sh scripts/dev.sh");
+			CallDeferred(MethodName.EmitSignal, SignalName.BackendStartFailed, error.Message);
 
-			throw new Exception($"Backend failed to start at {BACKEND_HOST}:{BACKEND_PORT}");
+			throw new Exception($"Backend failed: {error.Message}");
 		}
 
 		_isBackendRunning = true;
@@ -122,7 +99,7 @@ public partial class BackendManager : AutoloadBase
 	/// This method does NOT start a backend - it assumes an external test runner
 	/// has already started the backend and waits for it to become healthy.
 	/// </summary>
-	private async Task<bool> WaitForExternalBackendAsync(CancellationToken cancellationToken = default)
+	private async Task<Result<bool>> WaitForExternalBackendAsync(CancellationToken cancellationToken = default)
 	{
 		LogInfo($"Waiting for external test backend at {BACKEND_HOST}:{BACKEND_PORT}...");
 		const float EXTERNAL_BACKEND_TIMEOUT = 30.0f;
@@ -132,24 +109,23 @@ public partial class BackendManager : AutoloadBase
 		{
 			if (cancellationToken.IsCancellationRequested)
 			{
-				LogWarning("Backend initialization cancelled");
-				return false;
+				return Result.Failure<bool>("Backend initialization cancelled");
 			}
 
-			if (await IsBackendHealthyAsync())
+			var healthResult = await IsBackendHealthyAsync();
+			if (healthResult.IsSuccess(out var isHealthy) && isHealthy)
 			{
 				_isBackendRunning = true;
 				LogInfo($"External backend ready at {BACKEND_HOST}:{BACKEND_PORT}");
-				return true;
+				return Result.Success(true);
 			}
 
 			await DelayAsync(0.5f);
 		}
 
-		LogError($"External backend not ready within {EXTERNAL_BACKEND_TIMEOUT} seconds");
-		LogError("Ensure test backend is started before running tests:");
-		LogError("  cd BarBoxServices && sh scripts/test-backend.sh start");
-		return false;
+		return Result.Failure<bool>(
+			$"External backend not ready within {EXTERNAL_BACKEND_TIMEOUT}s. " +
+			"Ensure test backend is started: cd BarBoxServices && sh scripts/test-backend.sh start");
 	}
 
 	/// <summary>
@@ -210,15 +186,13 @@ public partial class BackendManager : AutoloadBase
 
 					// Wait for port to be fully released (TCP TIME_WAIT state cleanup)
 					// Multiple processes may need more time to release port bindings
-					LogInfo($"Waiting for port {port} to be fully released...");
-					const int MAX_WAIT_ATTEMPTS = 10; // 5 seconds total (10 * 500ms)
+					const int MAX_WAIT_ATTEMPTS = 10; // 2.5 seconds total (10 * 250ms)
 					for (int i = 0; i < MAX_WAIT_ATTEMPTS; i++)
 					{
-						await DelayAsync(0.5f); // Frame-aware async delay instead of blocking Thread.Sleep
+						await DelayAsync(0.25f); // Reduced from 0.5f - TCP cleanup typically completes in 100-300ms
 
 						if (!IsPortInUse(port))
 						{
-							LogInfo($"Port {port} released after {(i + 1) * 500}ms");
 							return;
 						}
 					}
@@ -226,14 +200,14 @@ public partial class BackendManager : AutoloadBase
 					// Port still in use after max wait time
 					if (IsPortInUse(port))
 					{
-						LogWarning($"Port {port} still in use after {MAX_WAIT_ATTEMPTS * 500}ms wait - may cause startup issues");
+						LogWarning($"Port {port} still in use after {MAX_WAIT_ATTEMPTS * 250}ms");
 					}
 				}
 			}
 		}
 		catch (Exception ex)
 		{
-			LogError($"Failed to kill process on port {port}: {ex.Message}\nStack Trace: {ex.StackTrace}");
+			LogWarning($"Port cleanup failed: {ex.Message}");
 		}
 	}
 
@@ -245,227 +219,206 @@ public partial class BackendManager : AutoloadBase
 	/// 3. Execute the backend start script
 	/// 4. Poll for health check with timeout
 	/// </summary>
-	private async Task<bool> EnsureBackendRunningAsync(CancellationToken cancellationToken = default)
+	private async Task<Result<bool>> EnsureBackendRunningAsync(CancellationToken cancellationToken = default)
 	{
-		try
+		// Check if backend already healthy
+		var healthResult = await IsBackendHealthyAsync();
+		if (healthResult.IsSuccess(out var isHealthy) && isHealthy)
 		{
-			// Check if backend already healthy
-			if (await IsBackendHealthyAsync())
-			{
-				LogInfo("Backend already running and healthy");
-				return true;
-			}
+			return Result.Success(true);
+		}
 
-			// Check for stale processes (but NOT in test mode!)
-			if (IsPortInUse(BACKEND_PORT))
+		// Check for stale processes (but NOT in test mode!)
+		if (IsPortInUse(BACKEND_PORT))
+		{
+			if (IS_TEST_MODE)
 			{
-				if (IS_TEST_MODE)
+				// In test mode, assume port usage is legitimate (test backend starting)
+				LogInfo($"Port {BACKEND_PORT} in use (test mode) - waiting for health check");
+
+				// Wait for health instead of killing
+				const float WAIT_TIMEOUT = 10.0f;
+				var waitStartTime = Time.GetTicksMsec();
+
+				while (Time.GetTicksMsec() - waitStartTime < WAIT_TIMEOUT * 1000)
 				{
-					// In test mode, assume port usage is legitimate (test backend starting)
-					LogInfo($"Port {BACKEND_PORT} in use (test mode) - waiting for health check");
-
-					// Wait for health instead of killing
-					const float WAIT_TIMEOUT = 10.0f;
-					var waitStartTime = Time.GetTicksMsec();
-
-					while (Time.GetTicksMsec() - waitStartTime < WAIT_TIMEOUT * 1000)
+					if (cancellationToken.IsCancellationRequested)
 					{
-						if (cancellationToken.IsCancellationRequested)
-						{
-							LogWarning("Backend health check cancelled");
-							return false;
-						}
-
-						if (await IsBackendHealthyAsync())
-						{
-							LogInfo("Backend became healthy");
-							return true;
-						}
-						await DelayAsync(0.5f);
+						return Result.Failure<bool>("Backend health check cancelled");
 					}
 
-					LogError("Backend on port but never became healthy");
-					return false;
-				}
-				else
-				{
-					// Normal mode: kill stale processes
-					LogWarning($"Port {BACKEND_PORT} is in use but backend not healthy - killing stale process");
-					KillProcessOnPort(BACKEND_PORT);
-				}
-			}
-
-			// Verify port is actually free before starting new backend
-			if (IsPortInUse(BACKEND_PORT))
-			{
-				LogError($"Port {BACKEND_PORT} still in use after cleanup - cannot start backend");
-				LogError("Please manually kill processes on port 8000 and try again");
-				return false;
-			}
-
-			// Find the backend start script
-			var projectPath = ProjectSettings.GlobalizePath("res://");
-			var backendServicesPath = System.IO.Path.Combine(
-				System.IO.Path.GetDirectoryName(projectPath.TrimEnd('/')),
-				"BarBoxServices"
-			);
-			var startScript = System.IO.Path.Combine(backendServicesPath, "scripts", "dev.sh");
-
-			if (!System.IO.File.Exists(startScript))
-			{
-				LogError($"Backend start script not found: {startScript}");
-				return false;
-			}
-
-			LogInfo($"Starting backend via: {startScript}");
-
-			// Create backend process as independent background process
-			// Note: OS.Execute would block forever since dev.sh runs a long-running server
-			// OS.CreateProcess returns immediately and gives us the PID for process tracking
-			var pid = OS.CreateProcess(startScript, new string[] {});
-
-			if (pid == -1)
-			{
-				LogError("Failed to create backend process");
-				LogError($"Script path: {startScript}");
-				LogError($"Script exists: {System.IO.File.Exists(startScript)}");
-				return false;
-			}
-
-			LogInfo($"Backend process started with PID: {pid}");
-			_backendProcessId = pid;
-
-			// Wait for backend to become healthy
-			LogInfo("Waiting for backend to start...");
-			const float STARTUP_TIMEOUT = 30.0f; // Increased from 10.0f to accommodate first-run uv dependency installation
-			var startTime = Time.GetTicksMsec();
-
-			while (Time.GetTicksMsec() - startTime < STARTUP_TIMEOUT * 1000)
-			{
-				if (cancellationToken.IsCancellationRequested)
-				{
-					LogWarning("Backend startup cancelled");
-					return false;
+					healthResult = await IsBackendHealthyAsync();
+					if (healthResult.IsSuccess(out isHealthy) && isHealthy)
+					{
+						LogInfo("Backend became healthy");
+						return Result.Success(true);
+					}
+					await DelayAsync(0.5f);
 				}
 
-				if (await IsBackendHealthyAsync())
-				{
-					LogInfo($"Backend started successfully at {BACKEND_HOST}:{BACKEND_PORT}");
-					return true;
-				}
-
-				await DelayAsync(0.5f);
+				return Result.Failure<bool>("Backend on port but never became healthy within 10s");
 			}
-
-			LogError($"Backend failed to become healthy within {STARTUP_TIMEOUT} seconds");
-			return false;
+			else
+			{
+				// Normal mode: kill stale processes
+				LogWarning($"Port {BACKEND_PORT} is in use but backend not healthy - killing stale process");
+				KillProcessOnPort(BACKEND_PORT);
+			}
 		}
-		catch (Exception ex)
+
+		// Verify port is actually free before starting new backend
+		if (IsPortInUse(BACKEND_PORT))
 		{
-			LogError($"Exception during backend startup: {ex.Message}\nStack Trace: {ex.StackTrace}");
-			return false;
+			return Result.Failure<bool>($"Port {BACKEND_PORT} still in use after cleanup");
 		}
+
+		// Find the backend start script
+		var projectPath = ProjectSettings.GlobalizePath("res://");
+		var backendServicesPath = System.IO.Path.Combine(
+			System.IO.Path.GetDirectoryName(projectPath.TrimEnd('/')),
+			"BarBoxServices"
+		);
+		var startScript = System.IO.Path.Combine(backendServicesPath, "scripts", "dev.sh");
+
+		if (!System.IO.File.Exists(startScript))
+		{
+			return Result.Failure<bool>($"Backend start script not found: {startScript}");
+		}
+
+		LogInfo($"Starting backend via: {startScript}");
+
+		// Create backend process as independent background process
+		// Note: OS.Execute would block forever since dev.sh runs a long-running server
+		// OS.CreateProcess returns immediately and gives us the PID for process tracking
+		var pid = OS.CreateProcess(startScript, new string[] {});
+
+		if (pid == -1)
+		{
+			return Result.Failure<bool>("Failed to create backend process");
+		}
+
+		LogInfo($"Backend process started with PID: {pid}");
+		_backendProcessId = pid;
+
+		// Wait for backend to become healthy
+		const float STARTUP_TIMEOUT = 30.0f; // Increased from 10.0f to accommodate first-run uv dependency installation
+		var startTime = Time.GetTicksMsec();
+
+		while (Time.GetTicksMsec() - startTime < STARTUP_TIMEOUT * 1000)
+		{
+			if (cancellationToken.IsCancellationRequested)
+			{
+				return Result.Failure<bool>("Backend startup cancelled");
+			}
+
+			healthResult = await IsBackendHealthyAsync();
+			if (healthResult.IsSuccess(out isHealthy) && isHealthy)
+			{
+				LogInfo($"Backend started successfully at {BACKEND_HOST}:{BACKEND_PORT}");
+				return Result.Success(true);
+			}
+
+			await DelayAsync(0.5f);
+		}
+
+		return Result.Failure<bool>($"Backend failed to become healthy within {STARTUP_TIMEOUT} seconds");
 	}
 
 	/// <summary>
 	/// Check if backend is healthy via HTTP /alive endpoint
 	/// </summary>
-	private async Task<bool> IsBackendHealthyAsync()
+	private async Task<Result<bool>> IsBackendHealthyAsync()
 	{
-		try
-		{
-			var httpClient = new HttpClient();
-			var error = httpClient.ConnectToHost(BACKEND_HOST, BACKEND_PORT);
+		var httpClient = new HttpClient();
+		var error = httpClient.ConnectToHost(BACKEND_HOST, BACKEND_PORT);
 
-			if (error != Error.Ok)
+		if (error != Godot.Error.Ok)
+		{
+			httpClient.Close();
+			return Result.Failure<bool>($"Failed to initiate connection: {error}");
+		}
+
+		// Poll for connection
+		var startTime = Time.GetTicksMsec();
+		while (Time.GetTicksMsec() - startTime < CONNECTION_TIMEOUT_SECONDS * 1000)
+		{
+			httpClient.Poll();
+			var status = httpClient.GetStatus();
+
+			if (status == HttpClient.Status.Resolving ||
+			    status == HttpClient.Status.Connecting)
 			{
-				httpClient.Close();
-				return false;
+				await DelayAsync(0.05f);
+				continue;
 			}
 
-			// Poll for connection
-			var startTime = Time.GetTicksMsec();
-			while (Time.GetTicksMsec() - startTime < CONNECTION_TIMEOUT_SECONDS * 1000)
+			if (status == HttpClient.Status.Connected)
 			{
-				httpClient.Poll();
-				var status = httpClient.GetStatus();
+				// Request /alive endpoint
+				var headers = new[] { "Accept: application/json" };
+				var requestError = httpClient.Request(HttpClient.Method.Get, "/alive", headers);
 
-				if (status == HttpClient.Status.Resolving ||
-				    status == HttpClient.Status.Connecting)
+				if (requestError != Godot.Error.Ok)
 				{
-					await DelayAsync(0.05f);
-					continue;
+					httpClient.Close();
+					return Result.Failure<bool>($"Failed to send request: {requestError}");
 				}
 
-				if (status == HttpClient.Status.Connected)
+				// Wait for response
+				var responseStartTime = Time.GetTicksMsec();
+				while (Time.GetTicksMsec() - responseStartTime < HEALTH_CHECK_TIMEOUT_SECONDS * 1000)
 				{
-					// Request /alive endpoint
-					var headers = new[] { "Accept: application/json" };
-					var requestError = httpClient.Request(HttpClient.Method.Get, "/alive", headers);
+					httpClient.Poll();
+					var currentStatus = httpClient.GetStatus();
 
-					if (requestError != Error.Ok)
+					// Success: got response body
+					if (currentStatus == HttpClient.Status.Body)
+					{
+						var responseCode = httpClient.GetResponseCode();
+						httpClient.Close();
+
+						if (responseCode == 200)
+							return Result.Success(true);
+
+						return Result.Failure<bool>($"Unexpected response code: {responseCode}");
+					}
+
+					// Still processing - continue waiting
+					if (currentStatus == HttpClient.Status.Requesting ||
+					    currentStatus == HttpClient.Status.Connected)
+					{
+						await DelayAsync(0.05f);
+						continue;
+					}
+
+					// Error states - bail out early
+					if (currentStatus == HttpClient.Status.CantConnect ||
+					    currentStatus == HttpClient.Status.ConnectionError)
 					{
 						httpClient.Close();
-						return false;
+						return Result.Failure<bool>("Connection error while waiting for response");
 					}
 
-					// Wait for response
-					var responseStartTime = Time.GetTicksMsec();
-					while (Time.GetTicksMsec() - responseStartTime < HEALTH_CHECK_TIMEOUT_SECONDS * 1000)
-					{
-						httpClient.Poll();
-						var currentStatus = httpClient.GetStatus();
-
-						// Success: got response body
-						if (currentStatus == HttpClient.Status.Body)
-						{
-							var responseCode = httpClient.GetResponseCode();
-							httpClient.Close();
-							return responseCode == 200;
-						}
-
-						// Still processing - continue waiting
-						if (currentStatus == HttpClient.Status.Requesting ||
-						    currentStatus == HttpClient.Status.Connected)
-						{
-							await DelayAsync(0.05f);
-							continue;
-						}
-
-						// Error states - bail out early
-						if (currentStatus == HttpClient.Status.CantConnect ||
-						    currentStatus == HttpClient.Status.ConnectionError)
-						{
-							httpClient.Close();
-							return false;
-						}
-
-						await DelayAsync(0.05f);
-					}
-
-					httpClient.Close();
-					return false;
+					await DelayAsync(0.05f);
 				}
 
-				if (status == HttpClient.Status.CantConnect ||
-				    status == HttpClient.Status.CantResolve ||
-				    status == HttpClient.Status.ConnectionError)
-				{
-					httpClient.Close();
-					return false;
-				}
-
-				await DelayAsync(0.05f);
+				httpClient.Close();
+				return Result.Failure<bool>($"Health check timeout after {HEALTH_CHECK_TIMEOUT_SECONDS}s");
 			}
 
-			httpClient.Close();
-			return false;
+			if (status == HttpClient.Status.CantConnect ||
+			    status == HttpClient.Status.CantResolve ||
+			    status == HttpClient.Status.ConnectionError)
+			{
+				httpClient.Close();
+				return Result.Failure<bool>($"Connection failed: {status}");
+			}
+
+			await DelayAsync(0.05f);
 		}
-		catch (Exception ex)
-		{
-			LogError($"Backend health check failed: {ex.Message}\nStack Trace: {ex.StackTrace}");
-			return false;
-		}
+
+		httpClient.Close();
+		return Result.Failure<bool>($"Connection timeout after {CONNECTION_TIMEOUT_SECONDS}s");
 	}
 
 	/// <summary>
@@ -476,19 +429,18 @@ public partial class BackendManager : AutoloadBase
 	{
 		LogInfo("Retrying backend connection...");
 
-		var success = await EnsureBackendRunningAsync();
+		var result = await EnsureBackendRunningAsync();
 
-		if (success)
+		if (result.IsSuccess(out _))
 		{
 			_isBackendRunning = true;
 			LogInfo($"Backend reconnected successfully at {BACKEND_HOST}:{BACKEND_PORT}");
 			CallDeferred(MethodName.EmitSignal, SignalName.BackendReady);
 		}
-		else
+		else if (result.IsFailure(out var error))
 		{
-			LogWarning("Backend retry failed - still not available");
-			CallDeferred(MethodName.EmitSignal, SignalName.BackendStartFailed,
-				"Backend retry failed. Check logs for details.");
+			LogWarning($"Backend retry failed: {error.Message}");
+			CallDeferred(MethodName.EmitSignal, SignalName.BackendStartFailed, error.Message);
 		}
 	}
 

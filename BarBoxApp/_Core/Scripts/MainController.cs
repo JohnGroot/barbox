@@ -28,7 +28,8 @@ public partial class MainController : Control
 		if (System.Array.IndexOf(args, "--run-tests") >= 0)
 		{
 			// Load test runner instead of main UI
-			GetTree().ChangeSceneToFile("res://Tests/TestRunner.tscn");
+			// Use CallDeferred to avoid scene tree modification during _Ready()
+			GetTree().CallDeferred(SceneTree.MethodName.ChangeSceneToFile, "res://Tests/TestRunner.tscn");
 			return;
 		}
 

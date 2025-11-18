@@ -159,7 +159,7 @@ public partial class UIManager : AutoloadBase
 
 	private void DisconnectSignals()
 	{
-		if (GodotObject.IsInstanceValid(_topMenuBar))
+		if (IsInstanceValid(_topMenuBar))
 		{
 			_topMenuBar.LoginRequested -= OnLoginRequested;
 			_topMenuBar.LogoutRequested -= OnLogoutRequested;
@@ -167,18 +167,18 @@ public partial class UIManager : AutoloadBase
 			_topMenuBar.ReturnToMenuRequested -= OnReturnToMenuRequested;
 		}
 
-		if (GodotObject.IsInstanceValid(_loginModal))
+		if (IsInstanceValid(_loginModal))
 		{
 			_loginModal.ModalClosed -= OnLoginModalClosed;
 		}
 
-		if (GodotObject.IsInstanceValid(_buyCreditsModal))
+		if (IsInstanceValid(_buyCreditsModal))
 		{
 			_buyCreditsModal.ModalClosed -= OnBuyCreditsModalClosed;
 			_buyCreditsModal.CreditsAcquired -= OnCreditsAcquired;
 		}
 
-		if (GodotObject.IsInstanceValid(_sessionManager))
+		if (IsInstanceValid(_sessionManager))
 		{
 			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
 			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
@@ -186,7 +186,7 @@ public partial class UIManager : AutoloadBase
 		}
 
 		var gameHost = GameHost.GetInstance();
-		if (GodotObject.IsInstanceValid(gameHost))
+		if (IsInstanceValid(gameHost))
 		{
 			gameHost.GameStarted -= OnGameStarted;
 			gameHost.GameEnded -= OnGameEnded;
@@ -233,8 +233,6 @@ public partial class UIManager : AutoloadBase
 			_topMenuBar.SetGameTitle(_currentGameTitle);
 			_topMenuBar.ClearContextButtons();
 		}
-		
-		// Game context cleared, returned to main menu state
 	}
 
 	/// <summary>
@@ -243,18 +241,18 @@ public partial class UIManager : AutoloadBase
 	/// </summary>
 	public void RefreshTopMenuContext()
 	{
-		if (_topMenuBar != null)
-		{
-			_topMenuBar.SetGameTitle(_currentGameTitle);
+		if (_topMenuBar == null)
+			return;
+
+		_topMenuBar.SetGameTitle(_currentGameTitle);
 			
-			if (_currentContextButtons != null)
-			{
-				_topMenuBar.SetContextButtons(_currentContextButtons);
-			}
-			else
-			{
-				_topMenuBar.ClearContextButtons();
-			}
+		if (_currentContextButtons != null)
+		{
+			_topMenuBar.SetContextButtons(_currentContextButtons);
+		}
+		else
+		{
+			_topMenuBar.ClearContextButtons();
 		}
 	}
 
@@ -268,7 +266,6 @@ public partial class UIManager : AutoloadBase
 		{
 			// Trigger UI update for current game
 			RefreshTopMenuContext();
-			// Context button states updated
 		}
 	}
 
@@ -302,10 +299,7 @@ public partial class UIManager : AutoloadBase
 	/// </summary>
 	public void ShowLoginModal()
 	{
-		if (_loginModal != null)
-		{
-			_loginModal.ShowModal();
-		}
+		_loginModal?.ShowModal();
 	}
 
 	/// <summary>
@@ -313,10 +307,7 @@ public partial class UIManager : AutoloadBase
 	/// </summary>
 	public void HideLoginModal()
 	{
-		if (_loginModal != null)
-		{
-			_loginModal.HideModal();
-		}
+		_loginModal?.HideModal();
 	}
 
 	/// <summary>
@@ -325,10 +316,7 @@ public partial class UIManager : AutoloadBase
 	/// <param name="phoneNumber">Phone number of the user purchasing credits</param>
 	public void ShowBuyCreditsModal(string phoneNumber)
 	{
-		if (_buyCreditsModal != null)
-		{
-			_buyCreditsModal.ShowModal(phoneNumber);
-		}
+		_buyCreditsModal?.ShowModal(phoneNumber);
 	}
 
 	/// <summary>
@@ -336,10 +324,7 @@ public partial class UIManager : AutoloadBase
 	/// </summary>
 	public void HideBuyCreditsModal()
 	{
-		if (_buyCreditsModal != null)
-		{
-			_buyCreditsModal.HideModal();
-		}
+		_buyCreditsModal?.HideModal();
 	}
 
 	/// <summary>
@@ -411,17 +396,9 @@ public partial class UIManager : AutoloadBase
 		UpdateUserDisplay();
 	}
 
-	private void OnLoginModalClosed()
-	{
-		// Modal was closed, no additional action needed
-		// Login modal closed
-	}
+	private void OnLoginModalClosed() { }
 
-	private void OnBuyCreditsModalClosed()
-	{
-		// Modal was closed, no additional action needed
-		// Buy credits modal closed
-	}
+	private void OnBuyCreditsModalClosed() { }
 
 	private void OnCreditsAcquired(string userId, int amount)
 	{
@@ -745,7 +722,7 @@ public partial class UIManager : AutoloadBase
 	/// </summary>
 	private void CleanupHelpSystem()
 	{
-		if (GodotObject.IsInstanceValid(_helpToggleButton))
+		if (IsInstanceValid(_helpToggleButton))
 		{
 			_helpToggleButton.Pressed -= ToggleHelpMenu;
 		}
