@@ -37,11 +37,10 @@ public class CreditPurchaseFlowTests : BackendTestBase
 	{
 		// Arrange - Wait for all services to be ready
 		var servicesReady = await WaitForServicesReadyAsync();
-		if (!servicesReady)
-		{
-			TestHelpers.LogTestWarning("Services not ready - skipping test");
-			return;
-		}
+		servicesReady.ShouldBeTrue(
+			"Integration test requires backend services. " +
+			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
+			$"EventService: {_eventService?.IsReady ?? false}");
 
 		// Create and login user
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -171,11 +170,10 @@ public class CreditPurchaseFlowTests : BackendTestBase
 	{
 		// Arrange - Wait for services
 		var servicesReady = await WaitForServicesReadyAsync();
-		if (!servicesReady)
-		{
-			TestHelpers.LogTestWarning("Services not ready - skipping test");
-			return;
-		}
+		servicesReady.ShouldBeTrue(
+			"Integration test requires backend services. " +
+			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
+			$"EventService: {_eventService?.IsReady ?? false}");
 
 		// Create and login user
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -269,11 +267,10 @@ public class CreditPurchaseFlowTests : BackendTestBase
 
 		// Arrange - Wait for services
 		var servicesReady = await WaitForServicesReadyAsync();
-		if (!servicesReady)
-		{
-			TestHelpers.LogTestWarning("Services not ready - skipping test");
-			return;
-		}
+		servicesReady.ShouldBeTrue(
+			"Integration test requires backend services. " +
+			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
+			$"EventService: {_eventService?.IsReady ?? false}");
 
 		// Create and login user
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");

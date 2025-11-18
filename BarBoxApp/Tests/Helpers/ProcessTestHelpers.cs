@@ -177,7 +177,7 @@ public static class ProcessTestHelpers
 				return false;
 			}
 
-			await System.Threading.Tasks.Task.Delay((int)(pollDelaySeconds * 1000));
+			await AutoloadBase.StaticDelayAsync(pollDelaySeconds);
 		}
 
 		return true;

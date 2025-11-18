@@ -66,9 +66,9 @@ public abstract class FailureScenarioTestBase : BackendTestBase
 #if DEBUG
 		if (_eventService != null && _eventServiceStateModified)
 		{
-			_eventService.SetReadyStateForTesting(true);
+			_eventService.SetReadyStateForTesting(_originalEventServiceState);
 			_eventServiceStateModified = false;
-			TestHelpers.LogTestInfo("EventService restored to READY state");
+			TestHelpers.LogTestInfo($"EventService restored to original state: {(_originalEventServiceState ? "READY" : "NOT READY")}");
 		}
 #endif
 	}

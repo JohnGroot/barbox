@@ -5,8 +5,43 @@ using Godot;
 namespace BarBox.Tests.Fixtures;
 
 /// <summary>
-/// Mock backend service for testing without requiring actual backend or DEBUG builds.
-/// Provides controlled simulation of backend states and failures.
+/// Mock backend service for simulating backend behavior in test scenarios.
+///
+/// PURPOSE:
+/// Provides an alternative to DEBUG-only hooks for testing failure scenarios.
+/// Allows comprehensive failure testing without modifying production code or
+/// requiring DEBUG compilation flags.
+///
+/// WHEN TO USE:
+/// - Testing backend startup failures (slow startup, timeouts, connection errors)
+/// - Testing retry logic and error handling
+/// - Testing graceful degradation when backend is unavailable
+/// - Simulating specific failure scenarios in a controlled manner
+///
+/// WHEN NOT TO USE:
+/// - Integration tests that verify actual backend communication (use real test backend)
+/// - Testing backend API contracts (use Hurl integration tests)
+/// - Performance testing (mock doesn't reflect real network latency)
+///
+/// VS. DEBUG HOOKS:
+/// - DEBUG hooks (like EventService.SetReadyStateForTesting): Require DEBUG builds,
+///   modify real service state, tightly coupled to production code
+/// - BackendMockService: Works in all builds, isolated test fixture, no production
+///   code coupling
+///
+/// SIMULATED SCENARIOS:
+/// - Slow Startup: Backend takes extended time to become healthy
+/// - Connection Failure: Backend refuses connections
+/// - Timeout: Backend never responds to health checks
+/// - Health State: Backend healthy/unhealthy states
+///
+/// USAGE PATTERN:
+///   var mockBackend = SetupMockBackend(); // In BackendTestBase
+///   mockBackend.SimulateSlowStartup(10.0f); // Configure scenario
+///   mockBackend.BeginSlowStartupSequence(); // Start simulation
+///   var isHealthy = await mockBackend.SimulateHealthCheckAsync(); // Test response
+///   mockBackend.ResetAllSimulations(); // Cleanup
+///
 /// </summary>
 public partial class BackendMockService : Node
 {
@@ -68,7 +103,7 @@ public partial class BackendMockService : Node
 
 		GD.Print($"[BackendMockService] Simulating slow startup ({_simulatedStartupDelay}s delay)");
 
-		await Task.Delay((int)(_simulatedStartupDelay * 1000));
+		await AutoloadBase.StaticDelayAsync(_simulatedStartupDelay);
 
 		_isMockBackendHealthy = true;
 		_simulateSlowStartup = false;
@@ -136,7 +171,7 @@ public partial class BackendMockService : Node
 		if (_simulateTimeout)
 		{
 			GD.Print($"[BackendMockService] Health check timing out ({timeoutSeconds}s)");
-			await Task.Delay((int)(timeoutSeconds * 1000));
+			await AutoloadBase.StaticDelayAsync(timeoutSeconds);
 			GD.Print("[BackendMockService] Health check timed out");
 			return false;
 		}

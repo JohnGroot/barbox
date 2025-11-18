@@ -333,19 +333,19 @@ public class EventServiceTests : BackendTestBase
 		// Arrange
 		_eventService.ShouldNotBeNull("EventService must be available");
 
-		// Skip if service not ready
-		if (!_eventService.IsReady)
-		{
-			TestHelpers.LogTestInfo("EventService not ready - skipping player registration test");
-			return;
-		}
+		// Ensure service is ready for this test
+		_eventService.IsReady.ShouldBeTrue(
+			"EventService must be ready to test player registration. " +
+			"Check that backend is running and EventService initialized.");
 
 		var playerId = TestHelpers.GenerateTestPlayerId();
 		var username = "TestUser";
+		var phoneNumber = TestHelpers.GenerateTestPhoneNumber("RegisterPlayerFirstPlay_WithBackendReady_ReturnsSuccess".GetHashCode());
+		var pin = "1234";
 		var boxId = TestBoxId;
 
 		// Act
-		var result = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, boxId);
+		var result = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, phoneNumber, pin, boxId);
 
 		// Assert
 		if (result.IsSuccess(out var registeredPlayerId))
@@ -366,19 +366,19 @@ public class EventServiceTests : BackendTestBase
 		// Arrange
 		_eventService.ShouldNotBeNull("EventService must be available");
 
-		if (!_eventService.IsReady)
-		{
-			TestHelpers.LogTestInfo("EventService not ready - skipping idempotency test");
-			return;
-		}
+		_eventService.IsReady.ShouldBeTrue(
+			"EventService must be ready to test idempotency. " +
+			"Check that backend is running and EventService initialized.");
 
 		var playerId = TestHelpers.GenerateTestPlayerId();
 		var username = "IdempotentTest";
+		var phoneNumber = TestHelpers.GenerateTestPhoneNumber("RegisterPlayerFirstPlay_CalledTwice_IsIdempotent".GetHashCode());
+		var pin = "1234";
 		var boxId = TestBoxId;
 
 		// Act - Register same player twice
-		var result1 = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, boxId);
-		var result2 = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, boxId);
+		var result1 = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, phoneNumber, pin, boxId);
+		var result2 = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, phoneNumber, pin, boxId);
 
 		// Assert
 		var firstSuccess = result1.IsSuccess(out var playerId1);
@@ -414,10 +414,12 @@ public class EventServiceTests : BackendTestBase
 
 		var playerId = TestHelpers.GenerateTestPlayerId();
 		var username = "TestUser";
+		var phoneNumber = TestHelpers.GenerateTestPhoneNumber("RegisterPlayerFirstPlay_WithBackendReady_ReturnsSuccess".GetHashCode());
+		var pin = "1234";
 		var boxId = TestBoxId;
 
 		// Act
-		var result = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, boxId);
+		var result = await _eventService.RegisterPlayerFirstPlayAsync(playerId, username, phoneNumber, pin, boxId);
 
 		// Assert
 		result.IsFailure(out var error).ShouldBeTrue("Should fail when EventService not ready");
@@ -431,18 +433,18 @@ public class EventServiceTests : BackendTestBase
 		// Arrange
 		_eventService.ShouldNotBeNull("EventService must be available");
 
-		if (!_eventService.IsReady)
-		{
-			TestHelpers.LogTestInfo("EventService not ready - skipping validation test");
-			return;
-		}
+		_eventService.IsReady.ShouldBeTrue(
+			"EventService must be ready to test validation. " +
+			"Check that backend is running and EventService initialized.");
 
 		var playerId = TestHelpers.GenerateTestPlayerId();
 		var emptyUsername = "";
+		var phoneNumber = TestHelpers.GenerateTestPhoneNumber("RegisterPlayerFirstPlay_WithEmptyUsername_ReturnsFailure".GetHashCode());
+		var pin = "1234";
 		var boxId = TestBoxId;
 
 		// Act
-		var result = await _eventService.RegisterPlayerFirstPlayAsync(playerId, emptyUsername, boxId);
+		var result = await _eventService.RegisterPlayerFirstPlayAsync(playerId, emptyUsername, phoneNumber, pin, boxId);
 
 		// Assert
 		// Backend may or may not validate empty username - we're testing API contract
@@ -453,6 +455,107 @@ public class EventServiceTests : BackendTestBase
 		else if (result.IsFailure(out var error))
 		{
 			TestHelpers.LogTestInfo($"Empty username result: Rejected - {error.Message}");
+		}
+	}
+
+	[Test]
+	public void EventService_AfterInit_HasConfiguredApiKey()
+	{
+		// Arrange
+		_eventService.ShouldNotBeNull("EventService must exist");
+
+		// Act - Access API key field via reflection (test-only verification)
+		var apiKeyField = typeof(EventService).GetField("_boxApiKey",
+			System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+		var apiKey = apiKeyField?.GetValue(_eventService) as string;
+
+		// Assert
+		apiKey.ShouldNotBeNull("API key should be loaded from config");
+		apiKey.ShouldNotBeEmpty("API key should not be empty string");
+		apiKey.Length.ShouldBeGreaterThan(10, "API key should be substantial length");
+
+		TestHelpers.LogTestInfo($"✓ API key configured: {apiKey.Substring(0, System.Math.Min(8, apiKey.Length))}...");
+	}
+
+	[Test]
+	public void LocationManager_LoadsApiKeyFromEnvironment()
+	{
+		// Arrange
+		var expectedApiKey = System.Environment.GetEnvironmentVariable("BARBOX_API_KEY");
+		var locationManager = LocationManager.GetAutoload();
+
+		// Act
+		locationManager.ShouldNotBeNull("LocationManager must exist");
+
+		// Assert
+		if (string.IsNullOrEmpty(expectedApiKey))
+		{
+			TestHelpers.LogTestWarning("BARBOX_API_KEY not set - testing fallback behavior");
+
+			// In editor, should have some value (even if empty from fallback)
+			if (OS.HasFeature("editor"))
+			{
+				locationManager.BoxApiKey.ShouldNotBeNull("Editor should have API key reference");
+			}
+			else
+			{
+				// Production should fail initialization
+				false.ShouldBeTrue("Production build requires BARBOX_API_KEY environment variable");
+			}
+		}
+		else
+		{
+			locationManager.BoxApiKey.ShouldBe(expectedApiKey,
+				"LocationManager should load API key from environment");
+			TestHelpers.LogTestInfo($"✓ API key loaded from environment: {expectedApiKey.Substring(0, 8)}...");
+		}
+	}
+
+	[Test]
+	public async Task EventService_SuccessfulRequest_ImpliesValidHeaders()
+	{
+		// Arrange
+		_eventService.ShouldNotBeNull("EventService must be available");
+
+		// Ensure service is ready for auth header testing
+		_eventService.IsReady.ShouldBeTrue(
+			"EventService must be ready to test authentication headers. " +
+			"Check that backend is running and EventService initialized.");
+
+		var locationManager = LocationManager.GetAutoload();
+		var apiKey = locationManager?.BoxApiKey;
+		apiKey.ShouldNotBeNullOrEmpty("API key must be configured for authentication");
+
+		TestHelpers.LogTestInfo($"Using API key: {apiKey.Substring(0, 8)}...");
+
+		// Act - Create session (internally sends HTTP request with headers)
+		var result = await _eventService.CreateActivitySessionAsync(
+			TestBoxId,
+			TestPlayerId,
+			"test_game"
+		);
+
+		// Assert
+		if (result.IsFailure(out var error))
+		{
+			// Check if failure is auth-related
+			if (error.Message.Contains("401") || error.Message.Contains("Unauthorized") ||
+				error.Message.Contains("403") || error.Message.Contains("Forbidden"))
+			{
+				false.ShouldBeTrue($"Auth failure detected - headers may be missing or invalid: {error.Message}");
+			}
+
+			// Other failures acceptable (box doesn't exist, etc.)
+			TestHelpers.LogTestInfo($"Request failed (not auth-related): {error.Message}");
+		}
+		else if (result.IsSuccess(out var sessionId))
+		{
+			sessionId.ShouldNotBe(Guid.Empty, "Valid session ID should be returned");
+			TestHelpers.LogTestInfo($"✓ Session created successfully: {sessionId}");
+			TestHelpers.LogTestInfo("✓ Headers must have been valid (request succeeded)");
+
+			// Cleanup
+			await _eventService.CloseActivitySessionAsync(sessionId);
 		}
 	}
 

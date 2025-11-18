@@ -18,7 +18,35 @@ public static class TestHelpers
 	}
 
 	/// <summary>
-	/// Create a unique box ID for testing
+	/// Seeded test box ID that matches backend test seed data.
+	/// This box ID is created by the test backend seed endpoint and has an associated API key.
+	/// Tests MUST use this box ID to authenticate successfully.
+	/// </summary>
+	public static readonly Guid SeededTestBoxId = TestConstants.TEST_BOX_ID_1;
+
+	/// <summary>
+	/// Get a seeded test player ID and credentials for integration tests.
+	/// These players are pre-registered in the test database.
+	/// Use these instead of GenerateTestPlayerId() for backend integration tests.
+	/// </summary>
+	public static (Guid playerId, string phone, string pin, string username) GetSeededTestPlayer(int playerNumber = 1)
+	{
+		return playerNumber switch
+		{
+			1 => (TestConstants.TEST_PLAYER_ID_1, TestConstants.TEST_PLAYER_1_PHONE,
+			      TestConstants.TEST_PLAYER_1_PIN, TestConstants.TEST_PLAYER_1_USERNAME),
+			2 => (TestConstants.TEST_PLAYER_ID_2, TestConstants.TEST_PLAYER_2_PHONE,
+			      TestConstants.TEST_PLAYER_2_PIN, TestConstants.TEST_PLAYER_2_USERNAME),
+			3 => (TestConstants.TEST_PLAYER_ID_3, TestConstants.TEST_PLAYER_3_PHONE,
+			      TestConstants.TEST_PLAYER_3_PIN, TestConstants.TEST_PLAYER_3_USERNAME),
+			_ => throw new ArgumentException($"Player number must be 1-3, got {playerNumber}")
+		};
+	}
+
+	/// <summary>
+	/// Create a unique box ID for testing.
+	/// WARNING: For backend integration tests, use SeededTestBoxId instead.
+	/// Random box IDs will fail authentication because they don't match the API key.
 	/// </summary>
 	public static Guid GenerateTestBoxId()
 	{
@@ -63,7 +91,7 @@ public static class TestHelpers
 				return true;
 			}
 
-			await Task.Delay((int)(pollDelaySeconds * 1000));
+			await AutoloadBase.StaticDelayAsync(pollDelaySeconds);
 		}
 
 		return false;
@@ -74,65 +102,12 @@ public static class TestHelpers
 	/// </summary>
 	public static async Task<bool> IsTestBackendHealthyAsync()
 	{
-		try
-		{
-			var httpClient = new HttpClient();
-			var error = httpClient.ConnectToHost("127.0.0.1", TestConfig.TestBackendPort);
-			if (error != Error.Ok)
-			{
-				httpClient.Close();
-				return false;
-			}
+		var (success, responseCode, _) = await ExecuteSimpleHttpRequestAsync(
+			Godot.HttpClient.Method.Get,
+			"/alive"
+		);
 
-			// Poll for connection
-			for (int i = 0; i < 50; i++)
-			{
-				httpClient.Poll();
-				var status = httpClient.GetStatus();
-
-				if (status == HttpClient.Status.Connected)
-				{
-					// Connection successful, now try a request
-					var headers = new string[] { "Accept: application/json" };
-					var requestError = httpClient.Request(Godot.HttpClient.Method.Get, "/alive", headers);
-					if (requestError != Error.Ok)
-					{
-						httpClient.Close();
-						return false;
-					}
-
-					// Wait for response
-					while (httpClient.GetStatus() == HttpClient.Status.Requesting)
-					{
-						httpClient.Poll();
-						await Task.Delay(50);
-					}
-
-					var responseCode = httpClient.GetResponseCode();
-					httpClient.Close();
-
-					return responseCode == 200;
-				}
-
-				if (status == HttpClient.Status.CantConnect ||
-				    status == HttpClient.Status.CantResolve ||
-				    status == HttpClient.Status.ConnectionError)
-				{
-					httpClient.Close();
-					return false;
-				}
-
-				await Task.Delay(100);
-			}
-
-			httpClient.Close();
-			return false;
-		}
-		catch (Exception ex)
-		{
-			GD.PrintErr($"[TestHelpers] Error checking backend health: {ex.Message}");
-			return false;
-		}
+		return success && responseCode == 200;
 	}
 
 	/// <summary>
@@ -146,23 +121,37 @@ public static class TestHelpers
 	/// <summary>
 	/// Create a deterministic test phone number based on test name or seed.
 	/// This ensures reproducible test data and prevents collisions.
+	/// Returns E.164 format (+1XXXXXXXXXX) as required by backend.
+	/// Uses XXX-555-01XX format which is reserved for testing/fictional use and passes libphonenumber validation.
 	/// </summary>
 	/// <param name="seed">Seed for deterministic generation (use test name hash)</param>
 	public static string GenerateTestPhoneNumber(int seed)
 	{
 		var random = new Random(seed);
-		return $"555{random.Next(1000000, 9999999)}"; // 555-XXX-XXXX format
+		// Format: +1-XXX-555-01XX (testing/fictional number range)
+		// Area code: Valid US area code (212=NYC, 415=SF, 310=LA, etc.)
+		// Exchange: 555 (reserved for testing/fictional use)
+		// Suffix: 01XX (reserved range 0100-0199 for testing)
+		var areaCodes = new[] { 212, 415, 310, 312, 617, 202, 713, 305, 602, 503 };
+		var areaCode = areaCodes[random.Next(areaCodes.Length)];
+		var suffix = random.Next(100, 200); // 0100-0199 reserved for testing
+		return $"+1{areaCode}555{suffix:D4}"; // E.164 format: +1-XXX-555-01XX
 	}
 
 	/// <summary>
 	/// Create a test phone number with random generation.
 	/// WARNING: Non-deterministic. Prefer GenerateTestPhoneNumber(int seed) for reproducible tests.
+	/// Returns E.164 format (+1XXXXXXXXXX) as required by backend.
+	/// Uses XXX-555-01XX format which is reserved for testing/fictional use.
 	/// </summary>
 	[Obsolete("Use GenerateTestPhoneNumber(int seed) for deterministic test data")]
 	public static string GenerateTestPhoneNumber()
 	{
 		var random = new Random();
-		return $"555{random.Next(1000000, 9999999)}"; // 555-XXX-XXXX format
+		var areaCodes = new[] { 212, 415, 310, 312, 617, 202, 713, 305, 602, 503 };
+		var areaCode = areaCodes[random.Next(areaCodes.Length)];
+		var suffix = random.Next(100, 200); // 0100-0199 reserved for testing
+		return $"+1{areaCode}555{suffix:D4}"; // E.164 format: +1-XXX-555-01XX
 	}
 
 	/// <summary>
@@ -432,5 +421,82 @@ public static class TestHelpers
 #else
 		return false;
 #endif
+	}
+
+	/// <summary>
+	/// Execute a simple HTTP request to the test backend with proper cleanup.
+	/// Consolidates common HTTP client logic to reduce duplication.
+	/// </summary>
+	/// <param name="method">HTTP method to use</param>
+	/// <param name="endpoint">Endpoint path (e.g., "/alive")</param>
+	/// <param name="headers">Optional request headers</param>
+	/// <param name="timeoutSeconds">Request timeout in seconds</param>
+	/// <returns>Tuple of (success, responseCode, responseBody)</returns>
+	public static async Task<(bool Success, int ResponseCode, string ResponseBody)> ExecuteSimpleHttpRequestAsync(
+		Godot.HttpClient.Method method,
+		string endpoint,
+		string[] headers = null,
+		float timeoutSeconds = 5.0f)
+	{
+		HttpClient httpClient = null;
+		try
+		{
+			httpClient = new HttpClient();
+			var error = httpClient.ConnectToHost("127.0.0.1", TestConfig.TestBackendPort);
+			if (error != Error.Ok)
+			{
+				return (false, 0, $"Connection failed: {error}");
+			}
+
+			// Poll for connection
+			for (int i = 0; i < 50; i++)
+			{
+				httpClient.Poll();
+				var status = httpClient.GetStatus();
+
+				if (status == HttpClient.Status.Connected)
+				{
+					// Send request
+					headers ??= new string[] { "Accept: application/json" };
+					var requestError = httpClient.Request(method, endpoint, headers);
+					if (requestError != Error.Ok)
+					{
+						return (false, 0, $"Request failed: {requestError}");
+					}
+
+					// Wait for response
+					while (httpClient.GetStatus() == HttpClient.Status.Requesting)
+					{
+						httpClient.Poll();
+						await AutoloadBase.StaticDelayAsync(0.05f);
+					}
+
+					var responseCode = httpClient.GetResponseCode();
+					var bodyBytes = httpClient.ReadResponseBodyChunk();
+					var bodyText = bodyBytes.GetStringFromUtf8();
+
+					return (true, responseCode, bodyText);
+				}
+
+				if (status == HttpClient.Status.CantConnect ||
+				    status == HttpClient.Status.CantResolve ||
+				    status == HttpClient.Status.ConnectionError)
+				{
+					return (false, 0, $"Connection error: {status}");
+				}
+
+				await AutoloadBase.StaticDelayAsync(0.1f);
+			}
+
+			return (false, 0, "Connection timeout");
+		}
+		catch (Exception ex)
+		{
+			return (false, 0, $"Exception: {ex.Message}");
+		}
+		finally
+		{
+			httpClient?.Close();
+		}
 	}
 }

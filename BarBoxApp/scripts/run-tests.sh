@@ -67,6 +67,47 @@ done
 
 echo ""
 
+# Phase 1.5: Seed test database with known API key
+print_header "Phase 1.5: Seeding Test Database"
+echo ""
+
+# Reset database to ensure clean state
+print_info "Resetting test database to clean state..."
+RESET_RESPONSE=$(curl -sf -X POST "http://127.0.0.1:8001/test/reset" 2>&1)
+if [ $? -eq 0 ]; then
+	print_success "Test database reset successfully"
+else
+	print_error "Failed to reset test database"
+	print_info "Response: $RESET_RESPONSE"
+	sh scripts/test-backend.sh stop
+	exit 1
+fi
+
+print_info "Seeding test database with deterministic data..."
+SEED_RESPONSE=$(curl -sf -X POST "http://127.0.0.1:8001/test/seed" 2>&1)
+if [ $? -eq 0 ]; then
+	print_success "Test database seeded successfully"
+
+	# Extract API key and Box ID from response using Python
+	export BARBOX_API_KEY=$(echo "$SEED_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['box_api_key'])" 2>/dev/null)
+	export BARBOX_BOX_ID=$(echo "$SEED_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['box_id'])" 2>/dev/null)
+
+	if [ -n "$BARBOX_API_KEY" ] && [ -n "$BARBOX_BOX_ID" ]; then
+		print_success "Captured API key: ${BARBOX_API_KEY:0:8}..."
+		print_success "Captured Box ID: $BARBOX_BOX_ID"
+	else
+		print_warning "Failed to extract API key from seed response"
+		print_info "Response: $SEED_RESPONSE"
+	fi
+else
+	print_error "Failed to seed test database"
+	print_info "Response: $SEED_RESPONSE"
+	sh scripts/test-backend.sh stop
+	exit 1
+fi
+
+echo ""
+
 # Phase 2: Run backend Hurl tests (if not frontend-only)
 if [ "$TEST_MODE" != "frontend" ]; then
 	print_header "Phase 2: Running Backend Integration Tests (Hurl)"
@@ -141,6 +182,13 @@ if [ "$TEST_MODE" != "backend" ]; then
 	# Set environment variables for test backend
 	export BARBOX_BACKEND_PORT=8001
 	export BARBOX_TEST_MODE=1
+	# BARBOX_API_KEY and BARBOX_BOX_ID already exported from seed step
+
+	# Debug: Verify environment variables are set
+	print_info "Environment variables for Godot:"
+	print_info "  BARBOX_API_KEY=${BARBOX_API_KEY:0:8}..."
+	print_info "  BARBOX_BOX_ID=$BARBOX_BOX_ID"
+	print_info "  BARBOX_BACKEND_PORT=$BARBOX_BACKEND_PORT"
 
 	# Run tests with godot
 	if $GODOT_CMD --path . --headless --run-tests --quit-on-finish; then

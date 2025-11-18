@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using Chickensoft.GoDotTest;
 using Godot;
@@ -35,15 +36,30 @@ public class PlayerRegistrationTests : BackendTestBase
 	[Test]
 	public async Task PlayerLogin_WithBackendReady_RegistersPlayerAutomatically()
 	{
-		// Arrange - Wait for backend
+		// Arrange - Wait for backend and register player
 		var servicesReady = await WaitForServicesReadyAsync();
-		if (!servicesReady)
+		servicesReady.ShouldBeTrue(
+			"Integration test requires backend services. " +
+			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
+			$"EventService: {_eventService?.IsReady ?? false}");
+
+		// Register player account before login
+		var registrationResult = await _sessionManager.CreateUserAccountAsync(TestPlayerPhone, "1234", TestPlayerUsername);
+		if (registrationResult.IsFailure(out var registrationError))
 		{
-			TestHelpers.LogTestWarning("Services not ready - skipping test");
-			return;
+			// Only accept "already exists" errors - fail on other errors
+			if (!registrationError.Message.Contains("already exists") && !registrationError.Message.Contains("409"))
+			{
+				registrationResult.IsSuccess(out var _).ShouldBeTrue($"Registration should succeed or fail with 'already exists', but failed with: {registrationError.Message}");
+			}
+			TestHelpers.LogTestInfo($"Player already registered (expected): {registrationError.Message}");
+		}
+		else
+		{
+			TestHelpers.LogTestInfo($"Player registered successfully: {TestPlayerPhone}");
 		}
 
-		// Act - Login user (should trigger automatic registration)
+		// Act - Login user
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
 
 		// Assert
@@ -54,6 +70,8 @@ public class PlayerRegistrationTests : BackendTestBase
 
 		var session = _sessionManager.GetUserSession(TestPlayerPhone);
 		session.ShouldNotBeNull("User session should exist after login");
+		session.LobbySessionId.ShouldNotBe(Guid.Empty,
+			"Lobby session MUST be created during login (session creation 404 bug check!)");
 
 		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 		TestHelpers.LogTestInfo($"Player logged in with ID: {playerId}");
@@ -75,17 +93,33 @@ public class PlayerRegistrationTests : BackendTestBase
 	[Test]
 	public async Task PlayerLogin_MultipleTimesWithSamePhone_IsIdempotent()
 	{
-		// Arrange
+		// Arrange - Register player
 		var servicesReady = await WaitForServicesReadyAsync();
-		if (!servicesReady)
+		servicesReady.ShouldBeTrue(
+			"Integration test requires backend services. " +
+			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
+			$"EventService: {_eventService?.IsReady ?? false}");
+
+		// Register player account before first login
+		var registrationResult = await _sessionManager.CreateUserAccountAsync(TestPlayerPhone, "1234", TestPlayerUsername);
+		if (registrationResult.IsFailure(out var registrationError))
 		{
-			TestHelpers.LogTestWarning("Services not ready - skipping test");
-			return;
+			// Only accept "already exists" errors - fail on other errors
+			if (!registrationError.Message.Contains("already exists") && !registrationError.Message.Contains("409"))
+			{
+				registrationResult.IsSuccess(out var _).ShouldBeTrue($"Registration should succeed or fail with 'already exists', but failed with: {registrationError.Message}");
+			}
+			TestHelpers.LogTestInfo($"Player already registered (expected): {registrationError.Message}");
+		}
+		else
+		{
+			TestHelpers.LogTestInfo($"Player registered successfully: {TestPlayerPhone}");
 		}
 
 		// Act - Login same user multiple times (logout between logins)
 		var login1 = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		login1.IsSuccess(out var _).ShouldBeTrue("First login should succeed");
+		login1.IsSuccess(out var session1).ShouldBeTrue("First login should succeed");
+		session1.LobbySessionId.ShouldNotBe(Guid.Empty, "First login must create lobby session");
 		await _sessionManager.LogoutUserAsync(TestPlayerPhone);
 
 		var login2 = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -113,17 +147,33 @@ public class PlayerRegistrationTests : BackendTestBase
 	[Test]
 	public async Task PlayerLogin_ThenCreditPurchase_BalanceUpdatesCorrectly()
 	{
-		// Arrange
+		// Arrange - Register player
 		var servicesReady = await WaitForServicesReadyAsync();
-		if (!servicesReady)
+		servicesReady.ShouldBeTrue(
+			"Integration test requires backend services. " +
+			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
+			$"EventService: {_eventService?.IsReady ?? false}");
+
+		// Register player account before login
+		var registrationResult = await _sessionManager.CreateUserAccountAsync(TestPlayerPhone, "1234", TestPlayerUsername);
+		if (registrationResult.IsFailure(out var registrationError))
 		{
-			TestHelpers.LogTestWarning("Services not ready - skipping test");
-			return;
+			// Only accept "already exists" errors - fail on other errors
+			if (!registrationError.Message.Contains("already exists") && !registrationError.Message.Contains("409"))
+			{
+				registrationResult.IsSuccess(out var _).ShouldBeTrue($"Registration should succeed or fail with 'already exists', but failed with: {registrationError.Message}");
+			}
+			TestHelpers.LogTestInfo($"Player already registered (expected): {registrationError.Message}");
+		}
+		else
+		{
+			TestHelpers.LogTestInfo($"Player registered successfully: {TestPlayerPhone}");
 		}
 
-		// Act - Login (registers player) then add credits
+		// Act - Login then add credits
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		loginResult.IsSuccess(out var _).ShouldBeTrue("Login should succeed");
+		loginResult.IsSuccess(out var session).ShouldBeTrue("Login should succeed");
+		session.LobbySessionId.ShouldNotBe(Guid.Empty, "Lobby session required for credit operations");
 
 		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 		TestHelpers.LogTestInfo($"Player registered: {playerId}");
@@ -165,12 +215,31 @@ public class PlayerRegistrationTests : BackendTestBase
 	[Test]
 	public async Task PlayerRegistration_WithBackendUnavailable_ContinuesGracefully()
 	{
-		// This test validates graceful degradation when backend is unavailable
+		// Arrange - Check backend status and attempt registration
 		var isBackendRunning = _backendManager?.IsBackendRunning() ?? false;
 		var isEventServiceReady = _eventService?.IsReady ?? false;
 
 		TestHelpers.LogTestInfo($"Backend running: {isBackendRunning}");
 		TestHelpers.LogTestInfo($"EventService ready: {isEventServiceReady}");
+
+		// Attempt registration (may fail if backend unavailable)
+		if (isBackendRunning && isEventServiceReady)
+		{
+			var registrationResult = await _sessionManager.CreateUserAccountAsync(TestPlayerPhone, "1234", TestPlayerUsername);
+			if (registrationResult.IsFailure(out var registrationError))
+			{
+				// Only accept "already exists" errors - fail on other errors
+				if (!registrationError.Message.Contains("already exists") && !registrationError.Message.Contains("409"))
+				{
+					registrationResult.IsSuccess(out var _).ShouldBeTrue($"Registration should succeed or fail with 'already exists', but failed with: {registrationError.Message}");
+				}
+				TestHelpers.LogTestInfo($"Player already registered (expected): {registrationError.Message}");
+			}
+			else
+			{
+				TestHelpers.LogTestInfo($"Player registered successfully: {TestPlayerPhone}");
+			}
+		}
 
 		// Act - Attempt login
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");

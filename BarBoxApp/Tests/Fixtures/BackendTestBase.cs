@@ -16,6 +16,13 @@ public abstract class BackendTestBase : TestClass
 	protected string TestPlayerUsername { get; private set; }
 	protected string TestPlayerPhone { get; private set; }
 
+	// Cached service references for performance
+	private EventService _cachedEventService;
+	private SessionManager _cachedSessionManager;
+	private CreditService _cachedCreditService;
+	private PaymentService _cachedPaymentService;
+	private BackendManager _cachedBackendManager;
+
 	protected BackendTestBase(Node testScene) : base(testScene)
 	{
 	}
@@ -66,18 +73,24 @@ public abstract class BackendTestBase : TestClass
 
 	/// <summary>
 	/// Setup run before each individual test.
-	/// Creates unique test identifiers to ensure test isolation.
+	/// Uses seeded test data pre-registered in the backend database.
 	/// </summary>
 	[Setup]
 	public void SetupTestIdentifiers()
 	{
-		// Generate unique identifiers for this test
-		TestBoxId = TestHelpers.GenerateTestBoxId();
-		TestPlayerId = TestHelpers.GenerateTestPlayerId();
-		TestPlayerUsername = TestHelpers.GenerateTestUsername();
-		TestPlayerPhone = TestHelpers.GenerateTestPhoneNumber(GetType().Name.GetHashCode());
+		// Use seeded box ID that matches backend test data and API key authentication
+		// The test backend seed creates box 00000000-0000-0000-0000-000000000001
+		// and the API key authenticates to this specific box
+		TestBoxId = TestHelpers.SeededTestBoxId;
 
-		TestHelpers.LogTestInfo($"Test identifiers created - Box: {TestBoxId}, Player: {TestPlayerId}");
+		// Use seeded player data instead of random generation
+		// This player is pre-registered in the test database with known credentials
+		var (playerId, phone, pin, username) = TestHelpers.GetSeededTestPlayer(1);
+		TestPlayerId = playerId;
+		TestPlayerPhone = phone;
+		TestPlayerUsername = username;
+
+		TestHelpers.LogTestInfo($"Test identifiers loaded - Box: {TestBoxId}, Player: {TestPlayerId}, Phone: {TestPlayerPhone}");
 	}
 
 	/// <summary>
@@ -87,6 +100,13 @@ public abstract class BackendTestBase : TestClass
 	[Cleanup]
 	public virtual Task CleanupTestResources()
 	{
+		// Clear cached service references to ensure fresh state for next test
+		_cachedEventService = null;
+		_cachedSessionManager = null;
+		_cachedCreditService = null;
+		_cachedPaymentService = null;
+		_cachedBackendManager = null;
+
 		// Derived classes can override to clean up test data
 		TestHelpers.LogTestInfo($"Test cleanup complete for {GetType().Name}");
 		return Task.CompletedTask;
@@ -101,69 +121,126 @@ public abstract class BackendTestBase : TestClass
 		TestHelpers.LogTestInfo($"Backend connection cleanup complete for {GetType().Name}");
 	}
 
+	// ============================================================
+	// SERVICE DISCOVERY PATTERN
+	// ============================================================
+	//
+	// All service getters follow this pattern:
+	//
+	// 1. Cache Check: Return cached reference if valid
+	//    - Uses GodotObject.IsInstanceValid() to verify node is not freed
+	//    - Avoids repeated GetNode() calls for performance
+	//
+	// 2. Lazy Discovery: Fetch and cache on first use
+	//    - Uses TestScene.GetNode<T>("/root/ServiceName")
+	//    - Logs error if service not found
+	//
+	// 3. Automatic Cleanup: Cache cleared in [Cleanup]
+	//    - Ensures fresh state between tests
+	//    - Prevents stale references across test runs
+	//
+	// USAGE:
+	//    var eventService = GetEventService();
+	//    if (eventService != null && eventService.IsReady) { ... }
+	//
+	// NOTE: Services may legitimately be null in some test scenarios
+	//       (e.g., testing graceful degradation). Always null-check.
+	//
+	// ============================================================
+
 	/// <summary>
 	/// Get EventService autoload for testing.
+	/// Uses cached reference with validation for performance.
 	/// </summary>
 	protected EventService GetEventService()
 	{
-		var eventService = TestScene.GetNode<EventService>("/root/EventService");
-		if (eventService == null)
+		if (_cachedEventService != null && GodotObject.IsInstanceValid(_cachedEventService))
+		{
+			return _cachedEventService;
+		}
+
+		_cachedEventService = TestScene.GetNode<EventService>("/root/EventService");
+		if (_cachedEventService == null)
 		{
 			TestHelpers.LogTestError("EventService autoload not found!");
 		}
-		return eventService;
+		return _cachedEventService;
 	}
 
 	/// <summary>
 	/// Get SessionManager autoload for testing.
+	/// Uses cached reference with validation for performance.
 	/// </summary>
 	protected SessionManager GetSessionManager()
 	{
-		var sessionManager = TestScene.GetNode<SessionManager>("/root/SessionManager");
-		if (sessionManager == null)
+		if (_cachedSessionManager != null && GodotObject.IsInstanceValid(_cachedSessionManager))
+		{
+			return _cachedSessionManager;
+		}
+
+		_cachedSessionManager = TestScene.GetNode<SessionManager>("/root/SessionManager");
+		if (_cachedSessionManager == null)
 		{
 			TestHelpers.LogTestError("SessionManager autoload not found!");
 		}
-		return sessionManager;
+		return _cachedSessionManager;
 	}
 
 	/// <summary>
 	/// Get CreditService autoload for testing.
+	/// Uses cached reference with validation for performance.
 	/// </summary>
 	protected CreditService GetCreditService()
 	{
-		var creditService = TestScene.GetNode<CreditService>("/root/CreditService");
-		if (creditService == null)
+		if (_cachedCreditService != null && GodotObject.IsInstanceValid(_cachedCreditService))
+		{
+			return _cachedCreditService;
+		}
+
+		_cachedCreditService = TestScene.GetNode<CreditService>("/root/CreditService");
+		if (_cachedCreditService == null)
 		{
 			TestHelpers.LogTestError("CreditService autoload not found!");
 		}
-		return creditService;
+		return _cachedCreditService;
 	}
 
 	/// <summary>
 	/// Get PaymentService autoload for testing.
+	/// Uses cached reference with validation for performance.
 	/// </summary>
 	protected PaymentService GetPaymentService()
 	{
-		var paymentService = TestScene.GetNode<PaymentService>("/root/PaymentService");
-		if (paymentService == null)
+		if (_cachedPaymentService != null && GodotObject.IsInstanceValid(_cachedPaymentService))
+		{
+			return _cachedPaymentService;
+		}
+
+		_cachedPaymentService = TestScene.GetNode<PaymentService>("/root/PaymentService");
+		if (_cachedPaymentService == null)
 		{
 			TestHelpers.LogTestError("PaymentService autoload not found!");
 		}
-		return paymentService;
+		return _cachedPaymentService;
 	}
 
 	/// <summary>
 	/// Get BackendManager autoload for testing.
+	/// Uses cached reference with validation for performance.
 	/// </summary>
 	protected BackendManager GetBackendManager()
 	{
-		var backendManager = TestScene.GetNode<BackendManager>("/root/BackendManager");
-		if (backendManager == null)
+		if (_cachedBackendManager != null && GodotObject.IsInstanceValid(_cachedBackendManager))
+		{
+			return _cachedBackendManager;
+		}
+
+		_cachedBackendManager = TestScene.GetNode<BackendManager>("/root/BackendManager");
+		if (_cachedBackendManager == null)
 		{
 			TestHelpers.LogTestError("BackendManager autoload not found!");
 		}
-		return backendManager;
+		return _cachedBackendManager;
 	}
 
 	/// <summary>
@@ -305,14 +382,14 @@ public abstract class BackendTestBase : TestClass
 	{
 		TestHelpers.LogTestInfo($"Resetting mining state for player {playerId}");
 
+		HttpClient httpClient = null;
 		try
 		{
-			var httpClient = new HttpClient();
+			httpClient = new HttpClient();
 			var error = httpClient.ConnectToHost("127.0.0.1", TestConfig.TestBackendPort);
 			if (error != Error.Ok)
 			{
 				TestHelpers.LogTestWarning($"Failed to connect to test backend: {error}");
-				httpClient.Close();
 				return false;
 			}
 
@@ -336,7 +413,6 @@ public abstract class BackendTestBase : TestClass
 					if (requestError != Error.Ok)
 					{
 						TestHelpers.LogTestWarning($"Failed to send DELETE request: {requestError}");
-						httpClient.Close();
 						return false;
 					}
 
@@ -344,11 +420,10 @@ public abstract class BackendTestBase : TestClass
 					while (httpClient.GetStatus() == HttpClient.Status.Requesting)
 					{
 						httpClient.Poll();
-						await Task.Delay(50);
+						await AutoloadBase.StaticDelayAsync(0.05f);
 					}
 
 					var responseCode = httpClient.GetResponseCode();
-					httpClient.Close();
 
 					if (responseCode == 200)
 					{
@@ -367,21 +442,23 @@ public abstract class BackendTestBase : TestClass
 				    status == HttpClient.Status.ConnectionError)
 				{
 					TestHelpers.LogTestWarning($"Connection failed with status: {status}");
-					httpClient.Close();
 					return false;
 				}
 
-				await Task.Delay(100);
+				await AutoloadBase.StaticDelayAsync(0.1f);
 			}
 
 			TestHelpers.LogTestWarning("Connection timeout while resetting mining state");
-			httpClient.Close();
 			return false;
 		}
 		catch (Exception ex)
 		{
 			TestHelpers.LogTestError($"Error resetting mining state: {ex.Message}");
 			return false;
+		}
+		finally
+		{
+			httpClient?.Close();
 		}
 	}
 }

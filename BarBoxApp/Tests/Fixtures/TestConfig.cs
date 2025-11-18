@@ -25,14 +25,29 @@ public static class TestConfig
 	public const int DefaultTimeoutSeconds = 30;
 
 	/// <summary>
+	/// Extended timeout for slow operations (e.g., backend startup)
+	/// </summary>
+	public const float ExtendedTimeoutSeconds = 30.0f;
+
+	/// <summary>
 	/// Delay between test backend polls in seconds
 	/// </summary>
 	public const float BackendPollDelaySeconds = 0.1f;
 
 	/// <summary>
+	/// Fast polling delay for quick response operations (50ms)
+	/// </summary>
+	public const float FastPollDelaySeconds = 0.05f;
+
+	/// <summary>
 	/// Maximum attempts to check backend readiness
 	/// </summary>
 	public const int MaxBackendReadinessAttempts = 30;
+
+	/// <summary>
+	/// Maximum connection retry attempts for HTTP requests
+	/// </summary>
+	public const int MaxConnectionRetries = 50;
 
 	/// <summary>
 	/// Test database path (should match test-backend.sh)
