@@ -11,26 +11,29 @@ from structlog import get_logger
 from bxctl import db, structures
 from bxctl.games import validation as game_validation
 
-from . import dependencies
+from . import auth, dependencies
 
 logger = get_logger()
-router = APIRouter(prefix="/box")
+router = APIRouter(prefix="/box", tags=["Core: Boxes & Sessions"])
 
 
 @router.post("/", status_code=201)
 async def create_box(
     new_box: structures.BoxCreate,
     db_service: dependencies.Database,
-) -> structures.BoxDetail:
-    """Create a new box.
+    now: dependencies.Now,
+) -> structures.BoxDetailWithAPIKey:
+    """Create a new box and return API key.
 
-    Standard creation endpoint for test suites and API clients.
+    **IMPORTANT**: The API key is returned only once and cannot be retrieved later.
+    Save it securely before the response is lost.
+
     Validates that:
     - Box ID is unique
     - Box tag (identifier) is unique
 
     Returns:
-        201: Box created successfully
+        201: Box created successfully with API key
         409: Box already exists (duplicate ID or tag)
         500: Internal server error
 
@@ -68,20 +71,40 @@ async def create_box(
             },
         )
 
-    # Attempt to create box
+    # Generate API key for the box
+    api_key = auth.generate_box_api_key()
+    api_key_hash = auth.hash_api_key(api_key)
+    api_key_hash_lookup = auth.hash_api_key_lookup(api_key)
+
+    # Attempt to create box with both hashes
     try:
-        result = await db_service.create(
+        box_data = new_box.model_dump() | {
+            "api_key_hash": api_key_hash,
+            "api_key_hash_lookup": api_key_hash_lookup,
+            "created_at": now,
+            "last_seen": None,
+        }
+
+        await db_service.create(
             target=db.defs.Box,
-            data=new_box,
-            read_as=structures.BoxDetail,
+            data=box_data,
         )
-        logger.info(
-            "box_created",
+
+        logger.warning(
+            "box_created_with_api_key",
             box_id=str(new_box.id),
             name=new_box.name,
             tag=new_box.tag,
+            message="API key generated - save securely, it will not be shown again"
         )
-        return result
+
+        # Return box details with plaintext API key (only time it's visible)
+        return structures.BoxDetailWithAPIKey(
+            id=new_box.id,
+            name=new_box.name,
+            tag=new_box.tag,
+            api_key=api_key,
+        )
 
     except IntegrityError as e:
         # Catch any database constraint violations that weren't caught above
@@ -124,36 +147,153 @@ async def register_box(
     box_id: UUID,
     box_data: structures.BoxCreate,
     db_service: dependencies.Database,
-) -> structures.BoxDetail:
+    now: dependencies.Now,
+) -> structures.BoxDetail | structures.BoxDetailWithAPIKey:
+    """
+    Idempotent box registration - creates if not exists, returns existing if found.
+
+    This endpoint is safe to call multiple times with the same box_id.
+    Used by clients to ensure box exists before creating sessions.
+
+    **Authentication**: Not required (needed for initial box setup).
+
+    On first call (box doesn't exist):
+    - Creates the box with generated API key
+    - Returns BoxDetailWithAPIKey with the API key (ONLY TIME IT'S VISIBLE!)
+    - Client must save this API key securely for future requests
+
+    On subsequent calls (box already exists):
+    - Returns BoxDetail without API key (confirmation only)
+    - Idempotent operation
+
+    Args:
+        box_id: Box ID from path parameter
+        box_data: Box creation data (id, name, tag)
+        db_service: Database service
+        now: Current timestamp
+
+    Returns:
+        200: BoxDetailWithAPIKey (first call) or BoxDetail (subsequent calls)
+        400: Box ID in path does not match request body
+        500: Internal server error
+    """
+    # Verify path box_id matches request body
+    if box_id != box_data.id:
+        logger.warning(
+            "box_registration_id_mismatch",
+            path_box_id=str(box_id),
+            body_box_id=str(box_data.id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "message": "Box ID in path does not match request body.",
+                "details": {
+                    "path_box_id": str(box_id),
+                    "body_box_id": str(box_data.id),
+                },
+            },
+        )
+
     # Check if box already exists
-    result = await db_service.session.execute(
+    existing_box_result = await db_service.session.execute(
         select(db.defs.Box).where(db.defs.Box.id == box_id)
     )
-    existing_box = result.scalar_one_or_none()
+    existing_box = existing_box_result.scalar_one_or_none()
 
     if existing_box is not None:
-        # Box already exists - return existing (idempotent)
-        logger.info("box_already_registered", box_id=str(box_id))
+        # Box already exists - return it (idempotent)
+        logger.info(
+            "box_already_registered",
+            box_id=str(box_id),
+            name=existing_box.name,
+        )
         return structures.BoxDetail.model_validate(existing_box, from_attributes=True)
 
     # Box doesn't exist - create it
-    logger.info("registering_new_box", box_id=str(box_id), name=box_data.name)
-    return await db_service.create(
-        target=db.defs.Box,
-        data=box_data,
-        read_as=structures.BoxDetail,
-    )
+    # Generate API key for the box (only returned this one time!)
+    api_key = auth.generate_box_api_key()
+    api_key_hash = auth.hash_api_key(api_key)
+    api_key_hash_lookup = auth.hash_api_key_lookup(api_key)
+
+    try:
+        box_data_dict = box_data.model_dump() | {
+            "api_key_hash": api_key_hash,
+            "api_key_hash_lookup": api_key_hash_lookup,
+            "created_at": now,
+            "last_seen": None,
+        }
+
+        await db_service.create(
+            target=db.defs.Box,
+            data=box_data_dict,
+        )
+
+        logger.warning(
+            "box_registered_via_put",
+            box_id=str(box_id),
+            name=box_data.name,
+            tag=box_data.tag,
+            message="API key generated - save securely, it will not be shown again",
+        )
+
+        # Return box details with plaintext API key (only time it's visible)
+        return structures.BoxDetailWithAPIKey(
+            id=box_data.id,
+            name=box_data.name,
+            tag=box_data.tag,
+            api_key=api_key,
+        )
+
+    except IntegrityError as e:
+        # Catch any database constraint violations
+        logger.error(
+            "box_registration_integrity_error",
+            error=str(e),
+            box_id=str(box_id),
+            tag=box_data.tag,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": structures.ErrorCode.UNIQUE_CONSTRAINT,
+                "message": "Box registration failed due to a constraint violation.",
+                "details": {"error": str(e.orig) if hasattr(e, 'orig') else str(e)},
+            },
+        )
+
+    except Exception as e:
+        # Catch unexpected errors
+        logger.error(
+            "box_registration_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            box_id=str(box_id),
+            tag=box_data.tag,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": structures.ErrorCode.INTERNAL_ERROR,
+                "message": "An unexpected error occurred during box registration.",
+                "details": {"error_type": type(e).__name__},
+            },
+        )
 
 
 @router.post("/{box_id}/lobby/session", status_code=status.HTTP_201_CREATED)
 async def create_lobby_session(
     box_id: UUID,
-    player_id: Annotated[UUID, Header()],
+    authenticated_box: dependencies.BoxAuthenticatedWithPath,
+    authenticated_player: dependencies.AuthenticatedPlayer,
     db_service: dependencies.Database,
     now: dependencies.Now,
 ) -> structures.BoxSessionDetail:
     """
     Create a lobby session for a logged-in player.
+
+    **Authentication**: Requires both Box API key AND Player JWT token.
 
     Lobby sessions are long-lived sessions that persist while a player is logged in
     but not actively playing a game. They receive user-scoped events like:
@@ -161,14 +301,28 @@ async def create_lobby_session(
     - user/login, user/logout (authentication events)
 
     The lobby session is closed when the player logs out.
+
+    Headers:
+        X-Box-API-Key: Box API key for authentication
+        Authorization: Bearer <player_jwt_token>
     """
+    # Verify box_id matches authenticated box
+    if box_id != authenticated_box.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "message": "Box ID in path does not match authenticated box.",
+            },
+        )
+
     session_id = uuid4()  # Server-generated session ID
 
     logger.info(
         "creating_lobby_session",
         session_id=str(session_id),
         box_id=str(box_id),
-        player_id=str(player_id),
+        player_id=str(authenticated_player),
     )
 
     await db_service.create(
@@ -176,8 +330,8 @@ async def create_lobby_session(
         data={
             "id": session_id,
             "box_id": box_id,
-            "host_player_id": player_id,
-            "player_ids": [str(player_id)],
+            "host_player_id": authenticated_player,
+            "player_ids": [str(authenticated_player)],
             "game_tag": "lobby",
             "session_type": "lobby",
             "start_time": now,
@@ -192,6 +346,7 @@ async def create_box_session(
     box_id: UUID,
     session_id: UUID,
     game_tag: Annotated[str, Query()],  # Required: Game type identifier
+    authenticated_box: dependencies.BoxAuthenticatedWithPath,
     db_service: dependencies.Database,
     now: dependencies.Now,
     player_id: Annotated[UUID | None, Header()] = None,  # Optional: Required for logged-in play, None for practice mode
@@ -199,6 +354,8 @@ async def create_box_session(
 ) -> structures.BoxSessionDetail:
     """
     Create a game session for single or multiple players, or practice mode.
+
+    **Authentication**: Requires Box API key.
 
     For practice mode (anonymous gameplay):
     - Omit player_id header
@@ -214,7 +371,20 @@ async def create_box_session(
     - Pass player_ids as JSON array via query parameter: ?player_ids=["uuid1","uuid2","uuid3"]
     - Pass game_tag as query parameter: ?game_tag=carrom
     - First player in array becomes host_player_id
+
+    Headers:
+        X-Box-API-Key: Box API key for authentication
+        Player-Id: (Optional) Player UUID for logged-in play
     """
+    # Verify box_id matches authenticated box
+    if box_id != authenticated_box.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "message": "Box ID in path does not match authenticated box.",
+            },
+        )
     # Determine session type and player list
     if player_id is None and (player_ids is None or player_ids == ""):
         # Practice mode: No player information provided
@@ -282,14 +452,20 @@ async def create_box_session(
 async def add_session_event(
     event: structures.SessionEventBase,
     session_id: UUID,
+    authenticated_box: dependencies.BoxAuthenticated,
     db_service: dependencies.Database,
     now: dependencies.Now,
 ) -> structures.Identifiable:
     """
     Add an event to a session with payload validation.
 
+    **Authentication**: Requires Box API key.
+
     Events are validated against game-specific schemas when available.
     Unknown event types are rejected to prevent typos and data corruption.
+
+    Headers:
+        X-Box-API-Key: Box API key for authentication
     """
     # Validate event type
     if not game_validation.is_valid_event_type(event.type):
@@ -371,13 +547,19 @@ async def add_session_event(
 @router.post("/session/{session_id}/close", status_code=status.HTTP_200_OK)
 async def close_box_session(
     session_id: UUID,
+    authenticated_box: dependencies.BoxAuthenticated,
     db_service: dependencies.Database,
     now: dependencies.Now,
 ) -> structures.Identifiable:
     """
     Close an activity session by setting end_time.
 
+    **Authentication**: Requires Box API key.
+
     Call this when a game exits to properly close the session.
+
+    Headers:
+        X-Box-API-Key: Box API key for authentication
     """
     from sqlalchemy import update
 
