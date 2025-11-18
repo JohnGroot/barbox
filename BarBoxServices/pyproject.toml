@@ -12,6 +12,10 @@ dependencies = [
     "aiosqlite>=0.21.0",
     "pydantic-settings>=2.10.1",
     "pottery>=3.0.1",
+    "python-jose[cryptography]>=3.5.0",
+    "bcrypt>=5.0.0",
+    "slowapi>=0.1.9",
+    "phonenumbers>=8.13.0",
 ]
 
 [build-system]
