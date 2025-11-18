@@ -11,9 +11,9 @@ from structlog import get_logger
 
 from bxctl import db, env, structures
 
-from . import dependencies
+from . import auth, dependencies
 
-router = APIRouter(prefix="/test")
+router = APIRouter(prefix="/test", tags=["Testing"])
 logger = get_logger()
 
 
@@ -60,7 +60,10 @@ async def reset_database(db_service: dependencies.Database) -> dict:
 
 
 @router.post("/seed", status_code=200)
-async def seed_test_data(db_service: dependencies.Database) -> dict:
+async def seed_test_data(
+    db_service: dependencies.Database,
+    now: dependencies.Now,
+) -> dict:
     """Seed the database with test data.
 
     Creates sample boxes, players, and sessions for testing.
@@ -82,30 +85,57 @@ async def seed_test_data(db_service: dependencies.Database) -> dict:
         test_player1_id = UUID("11111111-1111-1111-1111-111111111111")
         test_player2_id = UUID("22222222-2222-2222-2222-222222222222")
 
-        # Create test box
-        test_box = structures.BoxCreate(
-            id=test_box_id,
-            name="Test Box",
-            tag="testbox",
-        )
-        await db_service.create(target=db.defs.Box, data=test_box)
+        # Use fixed test API key for development consistency (matches .env.local)
+        # This prevents API key mismatch when database is reset during testing
+        TEST_API_KEY = "ndE63953HvBEqNP5XKPFe3vN4Ei9bDF-g9p13KoOmKs"
+        api_key = TEST_API_KEY
+        api_key_hash = auth.hash_api_key(api_key)
+        api_key_hash_lookup = auth.hash_api_key_lookup(api_key)
+
+        # Create test box with API key
+        test_box_data = {
+            "id": test_box_id,
+            "name": "Test Box",
+            "tag": "testbox",
+            "api_key_hash": api_key_hash,
+            "api_key_hash_lookup": api_key_hash_lookup,
+            "created_at": now,
+            "last_seen": None,
+        }
+        await db_service.create(target=db.defs.Box, data=test_box_data)
         logger.info("test_box_created", box_id=str(test_box_id))
 
-        # Create test players
-        test_player1 = structures.PlayerCreate(
-            id=test_player1_id,
-            tag="testuser1",
-            origin_id=test_box_id,
+        # Create test players with hashed PINs and normalized phones
+        test_player1_phone = "+12125551111"
+        test_player1_pin_hash = auth.hash_player_pin("1111")
+        normalized_phone1 = auth.validate_and_normalize_phone(test_player1_phone)
+
+        await db_service.create(
+            target=db.defs.Player,
+            data={
+                "id": test_player1_id,
+                "tag": "testuser1",
+                "phone_number": normalized_phone1,
+                "pin_hash": test_player1_pin_hash,
+                "origin_id": test_box_id,
+            },
         )
-        await db_service.create(target=db.defs.Player, data=test_player1)
         logger.info("test_player_created", player_id=str(test_player1_id))
 
-        test_player2 = structures.PlayerCreate(
-            id=test_player2_id,
-            tag="testuser2",
-            origin_id=test_box_id,
+        test_player2_phone = "+12125552222"
+        test_player2_pin_hash = auth.hash_player_pin("2222")
+        normalized_phone2 = auth.validate_and_normalize_phone(test_player2_phone)
+
+        await db_service.create(
+            target=db.defs.Player,
+            data={
+                "id": test_player2_id,
+                "tag": "testuser2",
+                "phone_number": normalized_phone2,
+                "pin_hash": test_player2_pin_hash,
+                "origin_id": test_box_id,
+            },
         )
-        await db_service.create(target=db.defs.Player, data=test_player2)
         logger.info("test_player_created", player_id=str(test_player2_id))
 
         return {
@@ -113,6 +143,7 @@ async def seed_test_data(db_service: dependencies.Database) -> dict:
             "message": "Test data seeded successfully",
             "data": {
                 "box_id": str(test_box_id),
+                "box_api_key": api_key,
                 "player_ids": [str(test_player1_id), str(test_player2_id)],
             },
         }
@@ -143,88 +174,3 @@ async def get_environment_info() -> dict:
     }
 
 
-@router.delete("/player/{player_id}/mining-state", status_code=200)
-async def reset_player_mining_state(
-    player_id: UUID,
-    db_service: dependencies.Database,
-) -> dict:
-    """Reset a player's mining state by deleting all mining-related events.
-
-    This is a surgical reset that only affects mining game data for the specified player.
-    Other game data and the player account remain intact.
-
-    WARNING: This deletes all mining progress for the player.
-    Only available in dev/test environments.
-
-    Args:
-        player_id: UUID of the player whose mining state should be reset
-
-    Returns:
-        200: Mining state reset successfully with count of deleted events
-        404: Endpoint not available in production
-    """
-    if env.is_production():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Test endpoints are not available in production",
-        )
-
-    try:
-        # First, count events that will be deleted
-        count_sql = """
-        WITH mining_sessions AS (
-            SELECT id
-            FROM box_session
-            WHERE host_player_id = :player_id
-            AND game_tag = 'mining'
-        )
-        SELECT COUNT(*)
-        FROM box_session_event
-        WHERE session_id IN (SELECT id FROM mining_sessions)
-        AND type LIKE 'mining/%'
-        """
-
-        count_result = await db_service.session.execute(
-            text(count_sql),
-            {"player_id": str(player_id)},
-        )
-        deleted_count = count_result.scalar()
-
-        # Then delete all mining events for this player
-        delete_sql = """
-        WITH mining_sessions AS (
-            SELECT id
-            FROM box_session
-            WHERE host_player_id = :player_id
-            AND game_tag = 'mining'
-        )
-        DELETE FROM box_session_event
-        WHERE session_id IN (SELECT id FROM mining_sessions)
-        AND type LIKE 'mining/%'
-        """
-
-        await db_service.session.execute(
-            text(delete_sql),
-            {"player_id": str(player_id)},
-        )
-        await db_service.session.commit()
-
-        logger.info(
-            "mining_state_reset",
-            player_id=str(player_id),
-            deleted_events=deleted_count,
-        )
-
-        return {
-            "status": "success",
-            "message": f"Mining state reset for player {player_id}",
-            "deleted_events": deleted_count,
-            "player_id": str(player_id),
-        }
-
-    except Exception as e:
-        logger.error("mining_state_reset_failed", player_id=str(player_id), error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "OPERATION_FAILED", "message": str(e)},
-        )
