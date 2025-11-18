@@ -50,6 +50,10 @@ def fk_to(model: type[Base]) -> MappedColumn[Any]:
 class Box(Base):
     name: Mapped[str]
     tag: Mapped[str]
+    api_key_hash: Mapped[str]  # bcrypt hash of API key (secure storage)
+    api_key_hash_lookup: Mapped[str] = mapped_column(index=True, unique=True)  # SHA256 hash for fast O(1) DB lookups (indexed)
+    created_at: Mapped[datetime]
+    last_seen: Mapped[datetime | None]
 
 
 type BoxFk = Annotated[UUID, fk_to(Box)]
@@ -63,6 +67,8 @@ class Game(Base):
 class Player(Base):
     tag: Mapped[str]
     origin_id: Mapped[BoxFk]
+    pin_hash: Mapped[str]  # bcrypt hash of player PIN
+    phone_number: Mapped[str]  # E.164 format phone number (e.g., +15551234567)
 
 
 class BoxSession(Base):
@@ -82,3 +88,10 @@ class BoxSessionEvent(Base):
     timestamp: Mapped[datetime]
     payload: Mapped[JsonObject]
     session: Mapped["BoxSession"] = relationship(back_populates="events")
+
+
+class FailedLoginAttempt(Base):
+    """Track failed login attempts for account lockout protection"""
+    phone_number: Mapped[str]  # Phone number that failed to authenticate
+    attempted_at: Mapped[datetime]  # When the failed attempt occurred
+    ip_address: Mapped[str | None]  # IP address of the attempt (optional)
