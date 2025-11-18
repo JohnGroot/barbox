@@ -11,12 +11,16 @@ POST http://127.0.0.1:8000/box/
 HTTP 201
 [Captures]
 box-id: jsonpath "$['id']"
+box-api-key: jsonpath "$['api_key']"
 
 # Setup: Create player 1
 POST http://127.0.0.1:8000/player/
+X-Box-API-Key: {{box-api-key}}
 {
   "id": "{{newUuid}}",
   "tag": "carrom_player1",
+  "phone_number": "+14155552001",
+  "pin": "1234",
   "origin_id": "{{box-id}}"
 }
 HTTP 201
@@ -25,9 +29,12 @@ player1-id: jsonpath "$['id']"
 
 # Setup: Create player 2
 POST http://127.0.0.1:8000/player/
+X-Box-API-Key: {{box-api-key}}
 {
   "id": "{{newUuid}}",
   "tag": "carrom_player2",
+  "phone_number": "+13105551002",
+  "pin": "1234",
   "origin_id": "{{box-id}}"
 }
 HTTP 201
@@ -36,12 +43,14 @@ player2-id: jsonpath "$['id']"
 
 # Player 1 starts session and plays round 1 (wins)
 PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=carrom
+X-Box-API-Key: {{box-api-key}}
 Player-Id: {{player1-id}}
 HTTP 202
 [Captures]
 session1-id: jsonpath "$['id']"
 
 POST http://127.0.0.1:8000/box/session/{{session1-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "carrom/round_finish",
   "timestamp": "{{newDate}}",
@@ -58,6 +67,7 @@ HTTP 201
 
 # Player 1 plays round 2 (wins again)
 POST http://127.0.0.1:8000/box/session/{{session1-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "carrom/round_finish",
   "timestamp": "{{newDate}}",
@@ -74,12 +84,14 @@ HTTP 201
 
 # Player 2 starts session and plays round 1 (wins)
 PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=carrom
+X-Box-API-Key: {{box-api-key}}
 Player-Id: {{player2-id}}
 HTTP 202
 [Captures]
 session2-id: jsonpath "$['id']"
 
 POST http://127.0.0.1:8000/box/session/{{session2-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "carrom/round_finish",
   "timestamp": "{{newDate}}",

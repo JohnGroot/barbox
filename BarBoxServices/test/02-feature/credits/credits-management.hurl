@@ -6,25 +6,30 @@ POST http://127.0.0.1:8000/box/
 Content-Type: application/json
 {
   "id": "{{newUuid}}",
-  "name": "Test Box",
-  "tag": "testbox"
+  "name": "Credits Test Box",
+  "tag": "credits_test_box"
 }
 HTTP 201
 [Captures]
 box-id: jsonpath "$['id']"
+box-api-key: jsonpath "$['api_key']"
 
 POST http://127.0.0.1:8000/player/
+X-Box-API-Key: {{box-api-key}}
 Content-Type: application/json
 {
   "id": "{{newUuid}}",
   "tag": "credit_test_user",
+  "phone_number": "+19175551234",
+  "pin": "1234",
   "origin_id": "{{box-id}}"
 }
 HTTP 201
 [Captures]
 player-id: jsonpath "$['id']"
 
-PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}
+PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=lobby
+X-Box-API-Key: {{box-api-key}}
 Player-Id: {{player-id}}
 HTTP 202
 [Captures]
@@ -40,6 +45,7 @@ jsonpath "$.credits" == 0
 
 # Test 2: Add credits via event emission
 POST http://127.0.0.1:8000/box/session/{{session-id}}
+X-Box-API-Key: {{box-api-key}}
 Content-Type: application/json
 {
   "type": "credit/earn",
@@ -60,6 +66,7 @@ jsonpath "$.credits" == 50
 
 # Test 4: Spend some credits
 POST http://127.0.0.1:8000/box/session/{{session-id}}
+X-Box-API-Key: {{box-api-key}}
 Content-Type: application/json
 {
   "type": "credit/spend",
@@ -80,6 +87,7 @@ jsonpath "$.credits" == 30
 
 # Test 6: Add more credits
 POST http://127.0.0.1:8000/box/session/{{session-id}}
+X-Box-API-Key: {{box-api-key}}
 Content-Type: application/json
 {
   "type": "credit/earn",

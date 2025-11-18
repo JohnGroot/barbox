@@ -11,12 +11,16 @@ POST http://127.0.0.1:8000/box/
 HTTP 201
 [Captures]
 box-id: jsonpath "$['id']"
+box-api-key: jsonpath "$['api_key']"
 
 # Setup: Create player 1
 POST http://127.0.0.1:8000/player/
+X-Box-API-Key: {{box-api-key}}
 {
   "id": "{{newUuid}}",
   "tag": "racer1",
+  "phone_number": "+16175554001",
+  "pin": "1234",
   "origin_id": "{{box-id}}"
 }
 HTTP 201
@@ -25,9 +29,12 @@ player1-id: jsonpath "$['id']"
 
 # Setup: Create player 2
 POST http://127.0.0.1:8000/player/
+X-Box-API-Key: {{box-api-key}}
 {
   "id": "{{newUuid}}",
   "tag": "racer2",
+  "phone_number": "+13105559999",
+  "pin": "1234",
   "origin_id": "{{box-id}}"
 }
 HTTP 201
@@ -36,6 +43,7 @@ player2-id: jsonpath "$['id']"
 
 # Player 1 starts racing session
 PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=racing
+X-Box-API-Key: {{box-api-key}}
 Player-Id: {{player1-id}}
 HTTP 202
 [Captures]
@@ -43,6 +51,7 @@ session1-id: jsonpath "$['id']"
 
 # Player 1 completes lap 1
 POST http://127.0.0.1:8000/box/session/{{session1-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "racing/lap_complete",
   "timestamp": "{{newDate}}",
@@ -59,6 +68,7 @@ HTTP 201
 
 # Player 1 completes lap 2
 POST http://127.0.0.1:8000/box/session/{{session1-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "racing/lap_complete",
   "timestamp": "{{newDate}}",
@@ -75,6 +85,7 @@ HTTP 201
 
 # Player 1 finishes race
 POST http://127.0.0.1:8000/box/session/{{session1-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "racing/race_finish",
   "timestamp": "{{newDate}}",
@@ -89,6 +100,7 @@ HTTP 201
 
 # Player 2 starts racing session
 PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=racing
+X-Box-API-Key: {{box-api-key}}
 Player-Id: {{player2-id}}
 HTTP 202
 [Captures]
@@ -96,6 +108,7 @@ session2-id: jsonpath "$['id']"
 
 # Player 2 finishes race with worse time
 POST http://127.0.0.1:8000/box/session/{{session2-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "racing/race_finish",
   "timestamp": "{{newDate}}",

@@ -2,7 +2,7 @@
 # Tests entering game, emitting events, exiting game, and logging out
 
 # Setup: Create test box
-POST http://127.0.0.1:8001/box/
+POST http://127.0.0.1:8000/box/
 {
   "id": "{{newUuid}}",
   "name": "Test Box Sessions",
@@ -11,12 +11,16 @@ POST http://127.0.0.1:8001/box/
 HTTP 201
 [Captures]
 box-id: jsonpath "$['id']"
+box-api-key: jsonpath "$['api_key']"
 
 # Setup: Create test player
-POST http://127.0.0.1:8001/player/
+POST http://127.0.0.1:8000/player/
+X-Box-API-Key: {{box-api-key}}
 {
   "id": "{{newUuid}}",
   "tag": "sessionuser",
+  "phone_number": "+14155550401",
+  "pin": "1234",
   "origin_id": "{{box-id}}"
 }
 HTTP 201
@@ -24,7 +28,8 @@ HTTP 201
 player-id: jsonpath "$['id']"
 
 # Test 1: Enter game (create activity session for mining)
-PUT http://127.0.0.1:8001/box/{{box-id}}/session/{{newUuid}}?game_tag=mining
+PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=mining
+X-Box-API-Key: {{box-api-key}}
 Player-Id: {{player-id}}
 HTTP 202
 [Captures]
@@ -33,7 +38,8 @@ mining-session-id: jsonpath "$['id']"
 jsonpath "$.game_tag" == "mining"
 
 # Test 2: Emit game begin event
-POST http://127.0.0.1:8001/box/session/{{mining-session-id}}
+POST http://127.0.0.1:8000/box/session/{{mining-session-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "play/begin",
   "timestamp": "{{newDate}}",
@@ -45,7 +51,8 @@ POST http://127.0.0.1:8001/box/session/{{mining-session-id}}
 HTTP 201
 
 # Test 3: Emit gameplay events
-POST http://127.0.0.1:8001/box/session/{{mining-session-id}}
+POST http://127.0.0.1:8000/box/session/{{mining-session-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "mining/extract_complete",
   "timestamp": "{{newDate}}",
@@ -57,7 +64,8 @@ POST http://127.0.0.1:8001/box/session/{{mining-session-id}}
 }
 HTTP 201
 
-POST http://127.0.0.1:8001/box/session/{{mining-session-id}}
+POST http://127.0.0.1:8000/box/session/{{mining-session-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "mining/tick_update",
   "timestamp": "{{newDate}}",
@@ -69,7 +77,8 @@ POST http://127.0.0.1:8001/box/session/{{mining-session-id}}
 HTTP 201
 
 # Test 4: Emit game finish event
-POST http://127.0.0.1:8001/box/session/{{mining-session-id}}
+POST http://127.0.0.1:8000/box/session/{{mining-session-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "play/finish",
   "timestamp": "{{newDate}}",
@@ -81,20 +90,22 @@ POST http://127.0.0.1:8001/box/session/{{mining-session-id}}
 HTTP 201
 
 # Test 5: Exit game (close activity session)
-POST http://127.0.0.1:8001/box/session/{{mining-session-id}}/close
+POST http://127.0.0.1:8000/box/session/{{mining-session-id}}/close
+X-Box-API-Key: {{box-api-key}}
 HTTP 200
 [Asserts]
 jsonpath "$.id" == "{{mining-session-id}}"
 
 # Test 6: Query closed session to verify events were recorded
-GET http://127.0.0.1:8001/box/session/{{mining-session-id}}
+GET http://127.0.0.1:8000/box/session/{{mining-session-id}}
 HTTP 200
 [Asserts]
 jsonpath "$.game_tag" == "mining"
 jsonpath "$.events" count >= 4
 
 # Test 7: Enter different game (carrom) for same player
-PUT http://127.0.0.1:8001/box/{{box-id}}/session/{{newUuid}}?game_tag=carrom
+PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=carrom
+X-Box-API-Key: {{box-api-key}}
 Player-Id: {{player-id}}
 HTTP 202
 [Captures]
@@ -103,7 +114,8 @@ carrom-session-id: jsonpath "$['id']"
 jsonpath "$.game_tag" == "carrom"
 
 # Test 8: Emit carrom events
-POST http://127.0.0.1:8001/box/session/{{carrom-session-id}}
+POST http://127.0.0.1:8000/box/session/{{carrom-session-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "play/begin",
   "timestamp": "{{newDate}}",
@@ -114,7 +126,8 @@ POST http://127.0.0.1:8001/box/session/{{carrom-session-id}}
 }
 HTTP 201
 
-POST http://127.0.0.1:8001/box/session/{{carrom-session-id}}
+POST http://127.0.0.1:8000/box/session/{{carrom-session-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "play/score",
   "timestamp": "{{newDate}}",
@@ -127,18 +140,21 @@ POST http://127.0.0.1:8001/box/session/{{carrom-session-id}}
 HTTP 201
 
 # Test 9: Exit carrom game
-POST http://127.0.0.1:8001/box/session/{{carrom-session-id}}/close
+POST http://127.0.0.1:8000/box/session/{{carrom-session-id}}/close
+X-Box-API-Key: {{box-api-key}}
 HTTP 200
 
 # Test 10: Enter racing game
-PUT http://127.0.0.1:8001/box/{{box-id}}/session/{{newUuid}}?game_tag=racing
+PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=racing
+X-Box-API-Key: {{box-api-key}}
 Player-Id: {{player-id}}
 HTTP 202
 [Captures]
 racing-session-id: jsonpath "$['id']"
 
 # Test 11: Emit racing events
-POST http://127.0.0.1:8001/box/session/{{racing-session-id}}
+POST http://127.0.0.1:8000/box/session/{{racing-session-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "play/begin",
   "timestamp": "{{newDate}}",
@@ -149,7 +165,8 @@ POST http://127.0.0.1:8001/box/session/{{racing-session-id}}
 }
 HTTP 201
 
-POST http://127.0.0.1:8001/box/session/{{racing-session-id}}
+POST http://127.0.0.1:8000/box/session/{{racing-session-id}}
+X-Box-API-Key: {{box-api-key}}
 {
   "type": "play/finish",
   "timestamp": "{{newDate}}",
@@ -162,7 +179,8 @@ POST http://127.0.0.1:8001/box/session/{{racing-session-id}}
 HTTP 201
 
 # Test 12: Exit racing game (logout simulation - close final session)
-POST http://127.0.0.1:8001/box/session/{{racing-session-id}}/close
+POST http://127.0.0.1:8000/box/session/{{racing-session-id}}/close
+X-Box-API-Key: {{box-api-key}}
 HTTP 200
 [Asserts]
 jsonpath "$.id" == "{{racing-session-id}}"

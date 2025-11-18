@@ -1,13 +1,29 @@
 # Test username availability endpoint
 # Validates that SessionManager.IsUsernameAvailableAsync integrates correctly with backend
 
-# First, create a test player with a known username
+# First, create a box to get API key
+POST http://127.0.0.1:8000/box/
+Content-Type: application/json
+{
+  "id": "{{newUuid}}",
+  "name": "Username Test Box",
+  "tag": "username_test_box"
+}
+HTTP 201
+[Captures]
+box-id: jsonpath "$['id']"
+box-api-key: jsonpath "$['api_key']"
+
+# Then create a test player with a known username
 POST http://127.0.0.1:8000/player/
+X-Box-API-Key: {{box-api-key}}
 Content-Type: application/json
 {
   "id": "{{newUuid}}",
   "tag": "test_user_taken",
-  "origin_id": "{{newUuid}}"
+  "phone_number": "+19175559999",
+  "pin": "1234",
+  "origin_id": "{{box-id}}"
 }
 HTTP 201
 [Captures]
