@@ -5,7 +5,11 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from structlog import get_logger
 
 from bxctl import env
@@ -13,9 +17,14 @@ from bxctl.db.connectivity import engine
 from bxctl.db.defs import Base
 from bxctl.structures import GAMES
 
-from . import box, game, machine_credits, player, test
+from . import admin, box, game, machine_credits, player, test
 
 logger = get_logger()
+
+# Rate limiter for authentication endpoints
+# Disable in dev/test environments to avoid interfering with integration tests
+settings = env.acquire()
+limiter = Limiter(key_func=get_remote_address, enabled=settings.is_production())
 
 # Readiness signaling - set after full initialization
 _ready_event = asyncio.Event()
@@ -39,6 +48,63 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await conn.run_sync(Base.metadata.create_all)
         logger.info(f"Database ready in {settings.env} mode (drop_on_startup={settings.drop_db_on_startup})")
 
+    # Auto-seed test data in development mode for consistent editor/test experience
+    if settings.is_dev_mode():
+        from datetime import UTC, datetime
+        from uuid import UUID
+
+        from bxctl import db
+        from bxctl.web import auth
+
+        async with db.connectivity.db_session() as session:
+            db_service = db.service.CRUD(session)
+
+            try:
+                # Check if test box already exists (idempotent)
+                test_box_id = UUID("00000000-0000-0000-0000-000000000001")
+
+                from sqlalchemy import select
+
+                result = await session.execute(
+                    select(db.defs.Box).where(db.defs.Box.id == test_box_id)
+                )
+                existing_box = result.scalar_one_or_none()
+
+                if existing_box:
+                    logger.info(
+                        "dev_mode_seed_skipped",
+                        reason="test_box_already_exists",
+                        box_id=str(test_box_id),
+                    )
+                else:
+                    # Create test box with fixed API key matching .env.local
+                    TEST_API_KEY = "ndE63953HvBEqNP5XKPFe3vN4Ei9bDF-g9p13KoOmKs"
+                    api_key_hash = auth.hash_api_key(TEST_API_KEY)
+                    api_key_hash_lookup = auth.hash_api_key_lookup(TEST_API_KEY)
+                    now = datetime.now(tz=UTC)
+
+                    test_box_data = {
+                        "id": test_box_id,
+                        "name": "Test Box",
+                        "tag": "testbox",
+                        "api_key_hash": api_key_hash,
+                        "api_key_hash_lookup": api_key_hash_lookup,
+                        "created_at": now,
+                        "last_seen": None,
+                    }
+                    await db_service.create(target=db.defs.Box, data=test_box_data)
+                    logger.info(
+                        "dev_mode_test_box_created",
+                        box_id=str(test_box_id),
+                        message="Test box auto-seeded for editor compatibility",
+                    )
+            except Exception as e:
+                logger.warning(
+                    "dev_mode_seed_failed",
+                    error=str(e),
+                    message="Failed to auto-seed test box - use POST /test/seed if needed",
+                )
+
     # Signal that application is fully initialized and ready to serve traffic
     _ready_event.set()
     READY_FILE.write_text("ready")
@@ -51,7 +117,74 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("Application shutting down - ready file removed")
 
 
-app = FastAPI(title="BXCTL API", version="0.1.0", lifespan=lifespan)
+tags_metadata = [
+    {
+        "name": "Core: Boxes & Sessions",
+        "description": "Physical box registration and gameplay session management",
+    },
+    {
+        "name": "Core: Players",
+        "description": "Player accounts and registration",
+    },
+    {
+        "name": "Core: Machine Credits",
+        "description": "Shared credit pools per box+game (machine pot system)",
+    },
+    {
+        "name": "Core: Games",
+        "description": "Game type registration",
+    },
+    {
+        "name": "Auth",
+        "description": "Player authentication, token management, and session control",
+    },
+    {
+        "name": "Game: Carrom",
+        "description": "Carrom leaderboards and statistics",
+    },
+    {
+        "name": "Game: Racing",
+        "description": "Racing leaderboards and lap times",
+    },
+    {
+        "name": "Game: Mining",
+        "description": "Mining inventory and progression tracking",
+    },
+    {
+        "name": "Admin",
+        "description": "Administrative endpoints for system maintenance and cleanup (requires Admin API key)",
+    },
+    {
+        "name": "Testing",
+        "description": "Development and testing utilities (not available in production environments)",
+    },
+]
+
+app = FastAPI(
+    title="BarBox API",
+    version="0.1.0",
+    lifespan=lifespan,
+    openapi_tags=tags_metadata,
+)
+
+# Configure rate limiter (only in production)
+if settings.is_production():
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    logger.info("Rate limiting enabled for production environment")
+else:
+    logger.info(f"Rate limiting disabled for {settings.env} environment")
+
+# Configure CORS middleware
+origins = settings.cors_origins.split(",") if settings.cors_origins != "*" else ["*"]
+
+app.add_middleware(
+	CORSMiddleware,
+	allow_origins=origins,
+	allow_credentials=settings.cors_allow_credentials,
+	allow_methods=settings.cors_allow_methods.split(",") if settings.cors_allow_methods != "*" else ["*"],
+	allow_headers=settings.cors_allow_headers.split(",") if settings.cors_allow_headers != "*" else ["*"],
+)
 
 
 @app.middleware("http")
@@ -134,6 +267,7 @@ routers = (
     box.router,
     game.router,
     machine_credits.router,  # Machine credit pot management
+    admin.router,  # Administrative maintenance endpoints
     test.router,  # Test endpoints (only available in dev/test modes)
 )
 for router in routers:

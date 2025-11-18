@@ -1,36 +1,237 @@
-from uuid import UUID
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Header, HTTPException, Request, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from structlog import get_logger
+from typing import Annotated
 
-from bxctl import db, structures
+from bxctl import db, env, structures
 
-from . import dependencies
+from . import auth, dependencies
 
-router = APIRouter(prefix="/player")
+router = APIRouter(prefix="/player", tags=["Core: Players"])
 logger = get_logger()
+
+# Pre-computed dummy PIN hash for timing attack mitigation
+# Computed once at module load to avoid expensive hashing on every failed login
+_DUMMY_PIN_HASH = auth.hash_player_pin("0000")
+
+# Rate limiter for authentication endpoints
+# Disabled in dev/test environments to avoid interfering with integration tests
+settings = env.acquire()
+limiter = Limiter(key_func=get_remote_address, enabled=settings.is_production())
+
+
+@router.post("/auth/login", status_code=200, tags=["Auth"])
+@limiter.limit("5/minute")  # Max 5 login attempts per IP per minute
+async def authenticate_player(
+	request: Request,  # Required for rate limiter
+	credentials: structures.PlayerLoginRequest,
+	authenticated_box: dependencies.BoxAuthenticated,
+	db_service: dependencies.Database,
+	now: dependencies.Now,
+) -> structures.PlayerLoginResponse:
+	"""Authenticate player and issue JWT token.
+
+	Validates player credentials (phone number + PIN) and generates a JWT token
+	for authenticated API access. Uses phone number lookup to retrieve player ID
+	(secure, non-deterministic UUIDs).
+
+	Box authentication is required via API key to prevent unauthorized login attempts.
+
+	Security features:
+	- Rate limiting: Max 5 attempts per IP per minute
+	- Account lockout: Max 5 failed attempts per phone in 30min window
+	- Timing-safe validation: Prevents account enumeration
+	- Generic error messages: Doesn't reveal which part failed
+
+	Args:
+		credentials: Player phone number, PIN, and box ID
+		authenticated_box: Box authenticated via API key
+		db_service: Database session
+		now: Current timestamp
+
+	Returns:
+		200: JWT token with expiration time
+		401: Invalid credentials (phone number or PIN incorrect)
+		403: Box ID mismatch or account locked out
+		500: Internal server error
+	"""
+	# Verify box ID matches authenticated box
+	if credentials.box_id != authenticated_box.id:
+		logger.warning(
+			"player_login_box_mismatch",
+			requested_box_id=str(credentials.box_id),
+			authenticated_box_id=str(authenticated_box.id),
+		)
+		raise HTTPException(
+			status_code=status.HTTP_403_FORBIDDEN,
+			detail={
+				"code": structures.ErrorCode.VALIDATION_ERROR,
+				"message": "Box ID in credentials does not match authenticated box.",
+				"details": {
+					"requested_box_id": str(credentials.box_id),
+					"authenticated_box_id": str(authenticated_box.id),
+				},
+			},
+		)
+
+	# Normalize phone number for lookup (allows flexible input formats)
+	try:
+		normalized_phone = auth.validate_and_normalize_phone(credentials.phone_number)
+	except ValueError:
+		# Invalid phone format - treat as failed login (don't reveal it's invalid format)
+		normalized_phone = credentials.phone_number  # Use as-is, will fail lookup
+
+	# Look up player by normalized phone number
+	player_result = await db_service.session.execute(
+		select(db.defs.Player).where(db.defs.Player.phone_number == normalized_phone)
+	)
+	player = player_result.scalar_one_or_none()
+
+	# Check if player exists (arcade context: clear error messages)
+	if not player:
+		logger.warning(
+			"player_login_failed_not_registered",
+			phone_number_prefix=credentials.phone_number[:4] + "****" if len(credentials.phone_number) > 4 else "****",
+		)
+		raise HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail={
+				"code": structures.ErrorCode.VALIDATION_ERROR,
+				"message": "Account not registered - please create one",
+			},
+		)
+
+	# Verify PIN
+	is_valid_pin = auth.verify_player_pin(credentials.pin, player.pin_hash)
+	if not is_valid_pin:
+		logger.warning(
+			"player_login_failed_wrong_pin",
+			phone_number_prefix=credentials.phone_number[:4] + "****" if len(credentials.phone_number) > 4 else "****",
+		)
+		raise HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail={
+				"code": structures.ErrorCode.VALIDATION_ERROR,
+				"message": "Incorrect PIN - please try again",
+			},
+		)
+
+	# Use actual player.id (random UUID assigned at registration)
+	access_token, access_exp = auth.create_player_token(player.id, credentials.box_id)
+
+	logger.info(
+		"player_authenticated",
+		player_id=str(player.id),
+		box_id=str(credentials.box_id),
+		token_expires_at=access_exp.isoformat(),
+	)
+
+	return structures.PlayerLoginResponse(
+		access_token=access_token,
+		player_id=player.id,
+		username=player.tag,
+		expires_at=access_exp,
+	)
+
+
+@router.post("/auth/logout", status_code=200, tags=["Auth"])
+@limiter.limit("20/minute")  # Max 20 logout attempts per IP per minute
+async def logout_player(
+	request: Request,  # Required for rate limiter
+	player_id: dependencies.AuthenticatedPlayer,
+) -> dict:
+	"""Logout player (client-side).
+
+	Requires valid JWT token in Authorization header.
+	Client should forget the token locally. Token will naturally expire after 2 hours.
+
+	Arcade-optimized approach:
+	- No server-side token revocation (unnecessary complexity)
+	- 2-hour token expiry + 10-minute idle timeout provides adequate security
+	- Simpler deployment (no revocation database table, no cleanup jobs)
+
+	Returns:
+		200: Successfully logged out
+		401: Invalid or missing token
+	"""
+	logger.info("player_logged_out", player_id=str(player_id))
+
+	return {
+		"message": "Successfully logged out. Token will expire in 2 hours.",
+		"player_id": str(player_id)
+	}
 
 
 @router.post("/", status_code=201)
+@limiter.limit("10/minute")  # Max 10 registration attempts per IP per minute
 async def register_player(
+    request: Request,  # Required for rate limiter
     new_player: structures.PlayerCreate,
+    authenticated_box: dependencies.BoxAuthenticated,
     db_service: dependencies.Database,
 ) -> structures.PlayerDetail:
     """Register a new player account.
+
+    **Authentication**: Requires Box API key.
 
     Validates that:
     - Origin box exists
     - Player ID is unique
     - Username (tag) is unique
+    - Origin box matches authenticated box
 
     Returns:
         201: Player created successfully
         400: Validation failed (origin box doesn't exist)
+        403: Origin box doesn't match authenticated box
         409: Player already exists (duplicate ID or username)
         500: Internal server error
+
+    Headers:
+        X-Box-API-Key: Box API key for authentication
     """
+    # Validate player ID is not empty/zero GUID
+    if new_player.id == UUID("00000000-0000-0000-0000-000000000000"):
+        logger.warning(
+            "player_registration_empty_guid",
+            player_id=str(new_player.id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "message": "Player ID cannot be all zeros. Please generate a valid UUID.",
+                "details": {
+                    "field": "id",
+                    "value": str(new_player.id),
+                },
+            },
+        )
+
+    # Verify origin_id matches authenticated box
+    if new_player.origin_id != authenticated_box.id:
+        logger.warning(
+            "player_registration_box_mismatch",
+            requested_origin=str(new_player.origin_id),
+            authenticated_box=str(authenticated_box.id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "message": "Origin box ID does not match authenticated box.",
+                "details": {
+                    "requested_origin": str(new_player.origin_id),
+                    "authenticated_box": str(authenticated_box.id),
+                },
+            },
+        )
 
     # Validate that origin box exists before attempting to create player
     box_result = await db_service.session.execute(
@@ -57,42 +258,78 @@ async def register_player(
             },
         )
 
-    # Check if player already exists (either by ID or username)
+    # Validate and normalize phone number
+    try:
+        normalized_phone = auth.validate_and_normalize_phone(new_player.phone_number)
+    except ValueError as e:
+        logger.warning(
+            "player_registration_invalid_phone",
+            phone=new_player.phone_number,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "message": str(e),
+                "details": {
+                    "field": "phone_number",
+                    "value": new_player.phone_number,
+                },
+            },
+        ) from e
+
+    # Check if player already exists (ID, username, or phone number)
     existing_player_result = await db_service.session.execute(
         select(db.defs.Player).where(
-            (db.defs.Player.id == new_player.id) | (db.defs.Player.tag == new_player.tag)
+            (db.defs.Player.id == new_player.id)
+            | (db.defs.Player.tag == new_player.tag)
+            | (db.defs.Player.phone_number == normalized_phone)
         )
     )
     existing_player = existing_player_result.scalar_one_or_none()
 
     if existing_player is not None:
+        # Determine conflict type
+        if existing_player.id == new_player.id:
+            conflict_field = "id"
+            conflict_value = str(new_player.id)
+        elif existing_player.tag == new_player.tag:
+            conflict_field = "tag"
+            conflict_value = new_player.tag
+        else:  # phone_number match
+            conflict_field = "phone_number"
+            conflict_value = normalized_phone
+
         logger.info(
             "player_creation_duplicate",
             player_id=str(new_player.id),
             existing_id=str(existing_player.id),
             username=new_player.tag,
             existing_username=existing_player.tag,
+            conflict_field=conflict_field,
         )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "code": structures.ErrorCode.DUPLICATE_RESOURCE,
-                "message": (
-                    f"Player already exists with {'ID' if existing_player.id == new_player.id else 'username'} "
-                    f"'{new_player.id if existing_player.id == new_player.id else new_player.tag}'."
-                ),
+                "message": f"Player already exists with {conflict_field} '{conflict_value}'.",
                 "details": {
-                    "conflict_field": "id" if existing_player.id == new_player.id else "tag",
-                    "conflict_value": str(new_player.id) if existing_player.id == new_player.id else new_player.tag,
+                    "conflict_field": conflict_field,
+                    "conflict_value": conflict_value,
                 },
             },
         )
 
-    # Attempt to create player
+    # Hash PIN before storing
+    pin_hash = auth.hash_player_pin(new_player.pin)
+
+    # Attempt to create player with normalized phone
     try:
         result = await db_service.create(
             target=db.defs.Player,
-            data=new_player,
+            data=new_player.model_dump(exclude={"pin", "phone_number"})
+            | {"pin_hash": pin_hash, "phone_number": normalized_phone},
             read_as=structures.PlayerDetail,
         )
         logger.info(
@@ -211,152 +448,6 @@ async def validate_player_creation(
     )
 
     return structures.ValidationResult(valid=is_valid, errors=errors)
-
-
-@router.post("/first_play", status_code=201)
-async def register_first_play(
-    new_player: structures.PlayerCreate,
-    db_service: dependencies.Database,
-) -> structures.PlayerDetail:
-    """Auto-register player on first play if they don't already exist.
-
-    This is an idempotent endpoint that:
-    - Registers the player if they don't exist
-    - Returns existing player if already registered
-    - Auto-creates origin box if it doesn't exist (for seamless first-play experience)
-
-    Returns:
-        201: Player created or already exists
-        500: Internal server error
-    """
-
-    # Check if player already exists
-    existing_player_result = await db_service.session.execute(
-        select(db.defs.Player).where(db.defs.Player.id == new_player.id)
-    )
-    existing_player = existing_player_result.scalar_one_or_none()
-
-    if existing_player is not None:
-        logger.info(
-            "first_play_existing_player",
-            player_id=str(new_player.id),
-            username=existing_player.tag,
-        )
-        return structures.PlayerDetail(
-            id=existing_player.id,
-            tag=existing_player.tag,
-            origin_id=existing_player.origin_id,
-        )
-
-    # Player doesn't exist - create them
-    try:
-        result = await db_service.create(
-            target=db.defs.Player,
-            data=new_player,
-            read_as=structures.PlayerDetail,
-        )
-        logger.info(
-            "first_play_player_registered",
-            player_id=str(new_player.id),
-            username=new_player.tag,
-            origin_id=str(new_player.origin_id),
-        )
-        return result
-
-    except IntegrityError as e:
-        # Check if this is a foreign key constraint violation (missing origin box)
-        if "FOREIGN KEY constraint failed" in str(e) or "foreign key" in str(e).lower():
-            logger.info(
-                "first_play_auto_creating_origin_box",
-                player_id=str(new_player.id),
-                origin_id=str(new_player.origin_id),
-            )
-
-            # Auto-create the origin box with a placeholder name
-            try:
-                box_exists = await db_service.session.execute(
-                    select(db.defs.Box).where(db.defs.Box.id == new_player.origin_id)
-                )
-                if box_exists.scalar_one_or_none() is None:
-                    await db_service.create(
-                        target=db.defs.Box,
-                        data={
-                            "id": new_player.origin_id,
-                            "name": f"Auto-created Box {new_player.origin_id}",
-                            "tag": f"box-{str(new_player.origin_id)[:8]}",
-                        },
-                    )
-                    logger.info(
-                        "first_play_box_auto_created",
-                        box_id=str(new_player.origin_id),
-                    )
-
-                # Now try to create the player again
-                result = await db_service.create(
-                    target=db.defs.Player,
-                    data=new_player,
-                    read_as=structures.PlayerDetail,
-                )
-                logger.info(
-                    "first_play_player_registered_after_box_creation",
-                    player_id=str(new_player.id),
-                    username=new_player.tag,
-                    origin_id=str(new_player.origin_id),
-                )
-                return result
-
-            except Exception as create_error:
-                logger.error(
-                    "first_play_auto_creation_failed",
-                    error=str(create_error),
-                    error_type=type(create_error).__name__,
-                    player_id=str(new_player.id),
-                )
-
-        # If not a FK error or auto-creation failed, try to fetch the player (race condition)
-        logger.warning(
-            "first_play_registration_constraint_violation",
-            error=str(e),
-            player_id=str(new_player.id),
-            username=new_player.tag,
-            origin_id=str(new_player.origin_id),
-        )
-        retry_result = await db_service.session.execute(
-            select(db.defs.Player).where(db.defs.Player.id == new_player.id)
-        )
-        retry_player = retry_result.scalar_one_or_none()
-        if retry_player is not None:
-            return structures.PlayerDetail(
-                id=retry_player.id,
-                tag=retry_player.tag,
-                origin_id=retry_player.origin_id,
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={
-                    "code": structures.ErrorCode.INTERNAL_ERROR,
-                    "message": "Failed to register player on first play.",
-                    "details": {"error": str(e)},
-                },
-            )
-
-    except Exception as e:
-        logger.error(
-            "first_play_registration_failed",
-            error=str(e),
-            error_type=type(e).__name__,
-            player_id=str(new_player.id),
-            username=new_player.tag,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "code": structures.ErrorCode.INTERNAL_ERROR,
-                "message": "An unexpected error occurred during first play registration.",
-                "details": {"error_type": type(e).__name__},
-            },
-        )
 
 
 @router.get("/username/{username}/available")

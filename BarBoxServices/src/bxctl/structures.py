@@ -35,12 +35,39 @@ class BoxDetail(Identifiable):
     pass
 
 
+class BoxDetailWithAPIKey(Identifiable, Named, Tagged):
+    """Box details with API key - only returned on box creation."""
+    api_key: str
+    warning: str = "Save this API key securely - it will not be shown again"
+
+
 class PlayerCreate(Identifiable, Tagged):
     origin_id: UUID
+    pin: str  # Plaintext PIN (will be hashed before storage)
+    phone_number: str  # E.164 format phone number (e.g., +15551234567)
 
 
 class PlayerDetail(Identifiable, Tagged):
     origin_id: UUID
+    phone_number: str
+
+
+class PlayerLoginRequest(BaseModel):
+    """Player authentication request."""
+    phone_number: str
+    pin: str
+    box_id: UUID
+
+
+class PlayerLoginResponse(BaseModel):
+    """Player authentication response with JWT access token (arcade-optimized)."""
+    access_token: str
+    player_id: UUID
+    username: str  # Player's display name (tag)
+    expires_at: Annotated[
+        datetime,
+        PlainSerializer(lambda v: v.isoformat().replace('+00:00', 'Z')),
+    ]
 
 
 class GameCreate(Named, Tagged):
