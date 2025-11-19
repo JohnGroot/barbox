@@ -2,6 +2,8 @@ using Godot;
 using System;
 using System.Threading.Tasks;
 
+namespace BarBox.Core.Autoloads;
+
 /// <summary>
 /// Environment configuration and location management service
 /// Loads configuration from .env files and environment variables
@@ -52,7 +54,7 @@ public partial class LocationManager : AutoloadBase
 
 	private void TryLoadDotEnvFile()
 	{
-		var envPaths = new[] { "res://.env.local", "res://.env", "user://.env.local" };
+		string[] envPaths = ["res://.env.local", "res://.env", "user://.env.local"];
 
 		foreach (var path in envPaths)
 		{
@@ -161,11 +163,10 @@ public partial class LocationManager : AutoloadBase
 		return apiKey;
 	}
 
-	// Keep compatibility method
 	public string GetCurrentLocationId() => _locationId;
 
 	/// <summary>
-	/// Compatibility stub for location data access
+	/// Deprecated - functionality moved to DataStore
 	/// </summary>
 	public T GetLocationData<T>(string locationId) where T : Resource
 	{
@@ -179,8 +180,7 @@ public partial class LocationManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Verify box registration asynchronously without blocking startup.
-	/// If API key is received (first registration), display it for operator.
+	/// Displays one-time API key on first registration - save to .env.local
 	/// </summary>
 	private async void VerifyBoxRegistrationDeferred()
 	{

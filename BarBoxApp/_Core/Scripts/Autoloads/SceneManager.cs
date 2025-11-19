@@ -1,5 +1,7 @@
 using Godot;
 
+namespace BarBox.Core.Autoloads;
+
 public partial class SceneManager : AutoloadBase
 {
 	[Signal] public delegate void SceneChangedEventHandler(string scenePath);

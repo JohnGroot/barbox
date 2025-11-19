@@ -2,8 +2,11 @@ using Godot;
 using LightResults;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+
+namespace BarBox.Core.Autoloads;
 
 /// <summary>
 /// Multi-user session management service with Phone/Username/PIN authentication
@@ -63,15 +66,12 @@ public partial class SessionManager : AutoloadBase
 
 	protected override void OnServiceEnterTree()
 	{
-		// All autoloads guaranteed to exist after _EnterTree phase
-		// Initialize EventService for event-sourced persistence
 		_eventService = EventService.GetInstance();
 		if (_eventService == null)
 		{
 			LogWarning("EventService not found - user events will not be persisted to backend");
 		}
 
-		// Initialize CreditService and connect to credit changes
 		_creditService = CreditService.GetInstance();
 		if (_creditService != null)
 		{
@@ -89,12 +89,10 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Relay CreditService.CreditsChanged signal as SessionManager.CreditsEarned
-	/// This allows UI components to listen to SessionManager instead of CreditService directly
+	/// Relay CreditService.CreditsChanged as SessionManager.CreditsEarned
 	/// </summary>
 	private void OnCreditsChanged(string playerIdStr, int newBalance)
 	{
-		// Parse playerId to Guid to match against active sessions
 		if (!Guid.TryParse(playerIdStr, out var playerId))
 		{
 			LogWarning($"Invalid player ID format in credit change: {playerIdStr}");
@@ -671,23 +669,7 @@ public partial class SessionManager : AutoloadBase
 	/// </summary>
 	public UserSession GetPrimaryUserSession()
 	{
-		if (_activeSessions.Count == 0)
-			return null;
-
-		// Return the session with the earliest login time
-		UserSession primarySession = null;
-		DateTime earliestLoginTime = DateTime.MaxValue;
-
-		foreach (var session in _activeSessions.Values)
-		{
-			if (session.LoginTime < earliestLoginTime)
-			{
-				earliestLoginTime = session.LoginTime;
-				primarySession = session;
-			}
-		}
-
-		return primarySession;
+		return _activeSessions.Values.MinBy(s => s.LoginTime);
 	}
 
 	/// <summary>
@@ -712,9 +694,7 @@ public partial class SessionManager : AutoloadBase
 	/// </summary>
 	public string[] GetActivePhoneNumbers()
 	{
-		var phoneNumbers = new string[_activeSessions.Count];
-		_activeSessions.Keys.CopyTo(phoneNumbers, 0);
-		return phoneNumbers;
+		return _activeSessions.Keys.ToArray();
 	}
 
 	/// <summary>
@@ -1002,22 +982,11 @@ public partial class SessionManager : AutoloadBase
 	private async void OnIdleTimerTimeout()
 	{
 		var now = DateTime.UtcNow;
-		var usersToLogout = new List<string>();
+		var usersToLogout = _activeSessions
+			.Where(kvp => (now - kvp.Value.LastActivity).TotalSeconds >= IDLE_TIMEOUT)
+			.Select(kvp => kvp.Key)
+			.ToList();
 
-		// Find idle users
-		foreach (var kvp in _activeSessions)
-		{
-			var phoneNumber = kvp.Key;
-			var session = kvp.Value;
-			var idleTime = (now - session.LastActivity).TotalSeconds;
-
-			if (idleTime >= IDLE_TIMEOUT)
-			{
-				usersToLogout.Add(phoneNumber);
-			}
-		}
-
-		// Logout idle users
 		foreach (var phoneNumber in usersToLogout)
 		{
 			LogInfo($"Auto-logout user {phoneNumber} due to idle timeout");

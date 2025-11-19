@@ -3,12 +3,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace BarBox.Core.Autoloads;
+
 /// <summary>
 /// Simplified game lifecycle management for BarBox ecosystem
 /// Focuses on essential game hosting without UI management complexity
 /// </summary>
 public partial class GameHost : AutoloadBase
 {
+	private const string FEATURE_EDITOR = "editor";
+	private const string FEATURE_STANDALONE = "standalone";
+
 	[Signal] public delegate void GameStartedEventHandler(string gameId);
 	[Signal] public delegate void GameEndedEventHandler(string gameId);
 	[Signal] public delegate void GamePausedEventHandler(string gameId);
@@ -82,8 +87,11 @@ public partial class GameHost : AutoloadBase
 
 		// Hide main menu UI when game starts
 		var currentScene = GetTree().CurrentScene;
-		_mainController = currentScene as MainController;
-		_mainController?.HideMainUI();
+		if (currentScene is MainController mainController)
+		{
+			_mainController = mainController;
+			mainController.HideMainUI();
+		}
 
 		// Add as child of current scene (overlay pattern)
 		// Game's _Ready() will call SetTopMenuContext() during initialization
@@ -122,7 +130,6 @@ public partial class GameHost : AutoloadBase
 	}
 
 	/// <summary>
-	/// Pauses the current game using the GameController base class pattern
 	/// Games override OnPause() to implement game-specific pause behavior
 	/// </summary>
 	public void PauseGame()
@@ -134,7 +141,6 @@ public partial class GameHost : AutoloadBase
 	}
 
 	/// <summary>
-	/// Resumes the current game using the GameController base class pattern
 	/// Games override OnResume() to implement game-specific resume behavior
 	/// </summary>
 	public void ResumeGame()
@@ -157,8 +163,7 @@ public partial class GameHost : AutoloadBase
 	// ============================================================================
 
 	/// <summary>
-	/// Games call this when their domain-specific game session starts
-	/// (e.g., race starts, mining session starts, round starts)
+	/// Called when domain-specific game session starts (e.g., race starts, mining session starts)
 	/// Emits platform-level GameStarted signal for platform services
 	/// </summary>
 	public void NotifyGameStarted()
@@ -168,8 +173,7 @@ public partial class GameHost : AutoloadBase
 	}
 
 	/// <summary>
-	/// Games call this when their domain-specific game session ends
-	/// (e.g., race ends, mining session ends, round ends)
+	/// Called when domain-specific game session ends (e.g., race ends, mining session ends)
 	/// Emits platform-level GameEnded signal for platform services
 	/// </summary>
 	public void NotifyGameEnded()
@@ -179,8 +183,7 @@ public partial class GameHost : AutoloadBase
 	}
 
 	/// <summary>
-	/// Games call this when their domain-specific game session pauses
-	/// (e.g., race pauses)
+	/// Called when domain-specific game session pauses (e.g., race pauses)
 	/// Emits platform-level GamePaused signal for platform services
 	/// </summary>
 	public void NotifyGamePaused()
@@ -190,8 +193,7 @@ public partial class GameHost : AutoloadBase
 	}
 
 	/// <summary>
-	/// Games call this when their domain-specific game session resumes
-	/// (e.g., race resumes)
+	/// Called when domain-specific game session resumes (e.g., race resumes)
 	/// Emits platform-level GameResumed signal for platform services
 	/// </summary>
 	public void NotifyGameResumed()
@@ -205,7 +207,6 @@ public partial class GameHost : AutoloadBase
 	public GameController GetCurrentGame() => _currentGame;
 
 	/// <summary>
-	/// Register a game as the current game.
 	/// Called by GameController during direct scene loading.
 	/// LoadGameOverlay() takes precedence - this is a fallback for development.
 	/// </summary>
@@ -221,7 +222,6 @@ public partial class GameHost : AutoloadBase
 	}
 
 	/// <summary>
-	/// Get user session - redirects to SessionManager
 	/// Falls back to primary user if specific playerId not found (single-user game fallback)
 	/// </summary>
 	public UserSession GetUserSession(string playerId)
@@ -230,9 +230,6 @@ public partial class GameHost : AutoloadBase
 		return sessionManager.GetUserSession(playerId) ?? sessionManager.GetPrimaryUserSession();
 	}
 
-	/// <summary>
-	/// UI management methods - connects to UIManager when available
-	/// </summary>
 	public void SetTopMenuContext(string gameTitle, ContextButtonData[] contextButtons = null)
 	{
 		var uiManager = UIManager.GetInstance();
@@ -246,7 +243,6 @@ public partial class GameHost : AutoloadBase
 	}
 
 	/// <summary>
-	/// Sets the help content for the current game
 	/// Passes through to UIManager for centralized help system management
 	/// </summary>
 	public void SetGameHelpContent(HelpContentData helpContent)
@@ -256,7 +252,6 @@ public partial class GameHost : AutoloadBase
 	}
 
 	/// <summary>
-	/// Shows or hides the game help button
 	/// Passes through to UIManager for centralized help system management
 	/// </summary>
 	public void ShowGameHelp(bool show)
@@ -282,7 +277,6 @@ public partial class GameHost : AutoloadBase
 	}
 
 	/// <summary>
-	/// Static method for games to easily check if GameHost is available
 	/// Returns null if GameHost autoload is not present (development mode)
 	/// </summary>
 	public static GameHost GetInstance()
@@ -295,42 +289,32 @@ public partial class GameHost : AutoloadBase
 	// ============================================================================
 
 	/// <summary>
-	/// Determines if the game was launched from the Godot editor (Play button)
-	/// This includes both editor play mode and debug builds launched from editor
+	/// Includes both editor play mode and debug builds launched from editor
 	/// </summary>
-	/// <returns>True if launched from editor, false otherwise</returns>
 	public static bool IsLaunchedFromEditor()
 	{
-		const string editor = "editor";
-		return OS.HasFeature(editor);
+		return OS.HasFeature(FEATURE_EDITOR);
 	}
 
 	/// <summary>
-	/// Determines if the game is running as an exported standalone build
-	/// This is true for all exported builds (debug or release)
+	/// True for all exported builds (debug or release)
 	/// </summary>
-	/// <returns>True if exported build, false otherwise</returns>
 	public static bool IsExportedBuild()
 	{
-		const string standalone = "standalone";
-		return OS.HasFeature(standalone);
+		return OS.HasFeature(FEATURE_STANDALONE);
 	}
 
 	/// <summary>
-	/// Determines if code is running in editor tool script context
-	/// This is true during editor tool execution, @tool scripts, editor extensions
+	/// True during editor tool execution, @tool scripts, editor extensions
 	/// </summary>
-	/// <returns>True if in editor tool context, false otherwise</returns>
 	public static bool IsEditorToolContext()
 	{
 		return Engine.IsEditorHint();
 	}
 
 	/// <summary>
-	/// Determines if the game is running in any development context
 	/// Includes both editor play mode and tool script contexts
 	/// </summary>
-	/// <returns>True if in development context, false for production</returns>
 	public static bool IsDevelopmentContext()
 	{
 		return IsLaunchedFromEditor() || IsEditorToolContext();
@@ -341,31 +325,21 @@ public partial class GameHost : AutoloadBase
 	// ============================================================================
 
 	/// <summary>
-	/// Determines if the game is running in production context
 	/// Production context = exported standalone build
 	/// </summary>
-	/// <returns>True if in production context (exported build), false for development</returns>
 	public static bool IsProductionContext()
 	{
-		// Production = exported standalone build
 		return IsExportedBuild();
 	}
 
 	/// <summary>
-	/// Determines if credit costs should be bypassed for the current context
 	/// Credits are bypassed in any development context (editor play or tool scripts)
 	/// </summary>
-	/// <returns>True if credits should be bypassed (development), false if credits are required (production)</returns>
 	public static bool ShouldBypassCredits()
 	{
-		// Bypass credits in any development context
 		return IsDevelopmentContext();
 	}
 
-	/// <summary>
-	/// Gets a description of the current context for debugging purposes
-	/// </summary>
-	/// <returns>String describing the current context</returns>
 	public static string GetContextDescription()
 	{
 		if (IsEditorToolContext())

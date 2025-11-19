@@ -45,7 +45,6 @@ public partial class TopMenuBar : Control
 		SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopWide);
 		// Set minimum height, width handled by TopWide preset
 		CustomMinimumSize = new Vector2(0, BASE_HEIGHT);
-		// Layout setup completed
 	}
 
 	private void CreateUI()
@@ -157,8 +156,6 @@ public partial class TopMenuBar : Control
 		_contextButtonContainer.Alignment = BoxContainer.AlignmentMode.Begin;
 		_contextButtonContainer.AddThemeConstantOverride("separation", 15);
 		_contextSection.AddChild(_contextButtonContainer);
-
-		// Expandable UI created successfully
 	}
 
 	/// <summary>
@@ -182,7 +179,6 @@ public partial class TopMenuBar : Control
 		if (_gameStatusLabel != null)
 		{
 			_gameStatusLabel.Text = statusText ?? "";
-			// Center status set
 		}
 	}
 
@@ -194,11 +190,9 @@ public partial class TopMenuBar : Control
 		ClearContextButtons();
 		
 		bool hasButtons = buttonData != null && buttonData.Length > 0;
-		
+
 		if (hasButtons && _contextButtonContainer != null)
 		{
-			// Setting context buttons
-			
 			foreach (var data in buttonData)
 			{
 				var button = CreateContextButton(data);
@@ -211,11 +205,9 @@ public partial class TopMenuBar : Control
 		{
 			_contextSection.Visible = hasButtons;
 		}
-		
+
 		// Update TopMenuBar height dynamically
 		SetSize(new Vector2(0, hasButtons ? EXPANDED_HEIGHT : BASE_HEIGHT));
-		
-		// Context section visibility updated
 	}
 
 	/// <summary>
@@ -273,7 +265,6 @@ public partial class TopMenuBar : Control
 			};
 		}
 
-		// Created context button
 		return button;
 	}
 

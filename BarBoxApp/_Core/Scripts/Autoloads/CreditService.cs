@@ -1,7 +1,10 @@
 using Godot;
 using LightResults;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+
+namespace BarBox.Core.Autoloads;
 
 /// <summary>
 /// Credit management service with smart caching and event-driven invalidation
@@ -27,12 +30,12 @@ public partial class CreditService : AutoloadBase
 	private const float BALANCE_POLL_TIMEOUT_SECONDS = 1.5f;
 	private const float BALANCE_POLL_INTERVAL_SECONDS = 0.05f;  // Reduced from 0.1f for 2x faster UX responsiveness
 
-	private System.Collections.Generic.Dictionary<Guid, CachedBalance> _balanceCache = new();
+	private Dictionary<Guid, CachedBalance> _balanceCache = new();
 
-	private class CachedBalance
+	private class CachedBalance(int amount, DateTime lastUpdated)
 	{
-		public int Amount { get; set; }
-		public DateTime LastUpdated { get; set; }
+		public int Amount { get; set; } = amount;
+		public DateTime LastUpdated { get; set; } = lastUpdated;
 		public bool IsStale => (DateTime.UtcNow - LastUpdated).TotalSeconds > CACHE_TTL_SECONDS;
 	}
 
@@ -47,17 +50,13 @@ public partial class CreditService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Get player's credit balance
-	/// Uses cache if fresh (< 30 seconds), otherwise queries backend
+	/// Returns cached balance if fresh (< 30s TTL), otherwise queries backend
 	/// </summary>
 	public async Task<Result<int>> GetBalanceAsync(Guid playerId, bool forceRefresh = false)
 	{
-		var eventService = EventService.GetInstance();
-		if (eventService == null || !eventService.IsReady)
-		{
-			LogError($"EventService not available (exists: {eventService != null}, ready: {eventService?.IsReady ?? false})");
-			return Result.Failure<int>("Credit service unavailable");
-		}
+		var validation = ValidateEventService<int>();
+		if (validation.HasValue)
+			return validation.Value;
 
 		// Check cache if not forcing refresh
 		if (!forceRefresh && _balanceCache.TryGetValue(playerId, out var cached))
@@ -69,6 +68,7 @@ public partial class CreditService : AutoloadBase
 		}
 
 		// Query backend
+		var eventService = EventService.GetInstance();
 		var result = await eventService.GetPlayerCreditsAsync(playerId);
 		if (result.IsSuccess(out var credits))
 		{
@@ -80,30 +80,19 @@ public partial class CreditService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Spend credits with immediate backend sync
+	/// Spends credits via backend, polls up to 1.5s for event-sourced balance update
 	/// </summary>
 	public async Task<Result<int>> SpendAsync(Guid playerId, int amount, string reason)
 	{
-		var eventService = EventService.GetInstance();
-		if (eventService == null || !eventService.IsReady)
-		{
-			LogError($"EventService not available (exists: {eventService != null}, ready: {eventService?.IsReady ?? false})");
-			return Result.Failure<int>("Credit service unavailable");
-		}
+		var validation = ValidateEventService<int>();
+		if (validation.HasValue)
+			return validation.Value;
 
 		if (amount <= 0)
-		{
 			return Result.Failure<int>("Amount must be positive");
-		}
 
-		// Get initial balance to detect when credits are spent
-		var initialBalanceResult = await eventService.GetPlayerCreditsAsync(playerId);
-		if (initialBalanceResult.IsFailure(out var balanceError))
-		{
-			LogWarning($"Could not get initial balance: {balanceError.Message}");
-			// Continue anyway - backend will validate balance on spend
-		}
-		var initialBalance = initialBalanceResult.IsSuccess(out var balanceValue) ? balanceValue : 0;
+		var eventService = EventService.GetInstance();
+		var initialBalance = await GetInitialBalanceAsync(eventService, playerId);
 
 		// Backend validates balance and performs spend atomically
 		var spendResult = await eventService.SpendCreditsAsync(playerId, amount, reason);
@@ -159,21 +148,18 @@ public partial class CreditService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Add credits with immediate backend sync
+	/// Adds credits via backend, polls up to 1.5s for event-sourced balance update
 	/// </summary>
 	public async Task<Result<int>> AddAsync(Guid playerId, int amount, string reason)
 	{
-		var eventService = EventService.GetInstance();
-		if (eventService == null || !eventService.IsReady)
-		{
-			LogError($"EventService not available (exists: {eventService != null}, ready: {eventService?.IsReady ?? false})");
-			return Result.Failure<int>("Credit service unavailable");
-		}
+		var validation = ValidateEventService<int>();
+		if (validation.HasValue)
+			return validation.Value;
 
 		if (amount <= 0)
-		{
 			return Result.Failure<int>("Amount must be positive");
-		}
+
+		var eventService = EventService.GetInstance();
 
 		// LAZY LOBBY SESSION CREATION: Ensure session has lobby session ID
 		var sessionManager = SessionManager.GetInstance();
@@ -198,14 +184,7 @@ public partial class CreditService : AutoloadBase
 			}
 		}
 
-		// Get initial balance to detect when credits are added
-		var initialBalanceResult = await eventService.GetPlayerCreditsAsync(playerId);
-		if (initialBalanceResult.IsFailure(out var initialError))
-		{
-			LogWarning($"Could not get initial balance: {initialError.Message}");
-			// Continue anyway - backend might not have player record yet
-		}
-		var initialBalance = initialBalanceResult.IsSuccess(out var initialValue) ? initialValue : 0;
+		var initialBalance = await GetInitialBalanceAsync(eventService, playerId);
 
 		// Get lobby session ID to pass explicitly (multi-user safe)
 		Guid? sessionLobbyId = null;
@@ -271,15 +250,14 @@ public partial class CreditService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Force reconciliation with backend
-	/// Call before critical operations (game start, credit-dependent decisions)
+	/// Call before critical operations (game start, purchases) to ensure fresh balance
 	/// </summary>
 	public async Task ReconcileBalanceAsync(Guid playerId)
 	{
 		var eventService = EventService.GetInstance();
 		if (eventService == null || !eventService.IsReady)
 		{
-			LogWarning($"EventService not available for reconciliation (exists: {eventService != null}, ready: {eventService?.IsReady ?? false})");
+			LogWarning("EventService not available for reconciliation");
 			return;
 		}
 
@@ -318,12 +296,29 @@ public partial class CreditService : AutoloadBase
 		}
 		else
 		{
-			_balanceCache[playerId] = new CachedBalance
-			{
-				Amount = amount,
-				LastUpdated = DateTime.UtcNow
-			};
+			_balanceCache[playerId] = new CachedBalance(amount, DateTime.UtcNow);
 		}
+	}
+
+	private Result<T>? ValidateEventService<T>()
+	{
+		var eventService = EventService.GetInstance();
+		if (eventService == null || !eventService.IsReady)
+		{
+			LogError("EventService not available");
+			return Result.Failure<T>("Credit service unavailable");
+		}
+		return null; // Validation passed
+	}
+
+	private async Task<int> GetInitialBalanceAsync(EventService eventService, Guid playerId)
+	{
+		var result = await eventService.GetPlayerCreditsAsync(playerId);
+		if (result.IsFailure(out var error))
+		{
+			LogWarning($"Could not get initial balance: {error.Message}");
+		}
+		return result.IsSuccess(out var balance) ? balance : 0;
 	}
 
 	protected override void OnServiceDestroyed()

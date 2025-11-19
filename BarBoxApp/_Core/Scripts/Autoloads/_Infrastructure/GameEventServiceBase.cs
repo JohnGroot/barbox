@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 
+namespace BarBox.Core.Autoloads;
+
 /// <summary>
 /// Base class for game-specific event services
 /// Provides common validation, error handling, and HTTP query patterns
@@ -88,28 +90,25 @@ public class GameEventServiceBase
 
 		if (backendResult.IsFailure(out var error))
 		{
-			var errorMsg = error.Message;
-
-			// Map common backend errors to user-friendly messages
-			if (errorMsg.Contains("not initialized") || errorMsg.Contains("not ready") || errorMsg.Contains("not available"))
-				return Result.Failure<T>("Game service temporarily unavailable");
-
-			if (errorMsg.Contains("timeout") || errorMsg.Contains("Timeout"))
-				return Result.Failure<T>("Connection lost - your progress may not be saved");
-
-			if (errorMsg.Contains("No active session") || errorMsg.Contains("No active backend session"))
-				return Result.Failure<T>("Session expired - please restart the game");
-
-			if (errorMsg.Contains("Connection failed") || errorMsg.Contains("Connection timeout"))
-				return Result.Failure<T>("Unable to connect to game server");
-
-			// Generic fallback
-			return Result.Failure<T>("Unable to save game data");
+			var userMessage = MapErrorMessage(error.Message);
+			return Result.Failure<T>(userMessage);
 		}
 
-		// Fallback if neither success nor failure (shouldn't happen)
 		return Result.Failure<T>("Unknown error occurred");
 	}
+
+	private static string MapErrorMessage(string backendError) => backendError switch
+	{
+		_ when backendError.Contains("not initialized") => "Game service temporarily unavailable",
+		_ when backendError.Contains("not ready") => "Game service temporarily unavailable",
+		_ when backendError.Contains("not available") => "Game service temporarily unavailable",
+		_ when backendError.Contains("timeout", StringComparison.OrdinalIgnoreCase) => "Connection lost - your progress may not be saved",
+		_ when backendError.Contains("No active session") => "Session expired - please restart the game",
+		_ when backendError.Contains("No active backend session") => "Session expired - please restart the game",
+		_ when backendError.Contains("Connection failed") => "Unable to connect to game server",
+		_ when backendError.Contains("Connection timeout") => "Unable to connect to game server",
+		_ => "Unable to save game data"
+	};
 
 	/// <summary>
 	/// Log info message with service name prefix

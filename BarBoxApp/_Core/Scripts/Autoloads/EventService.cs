@@ -9,10 +9,11 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
+namespace BarBox.Core.Autoloads;
+
 /// <summary>
 /// Event-based persistence service for BarBox backend integration
 /// Forwards all game/session events to local BarBoxServices backend
-/// Replaces the old DataStore CRUD pattern with event sourcing
 /// </summary>
 public partial class EventService : AutoloadBase
 {
@@ -1210,7 +1211,6 @@ public partial class EventService : AutoloadBase
 	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
 	private List<string> BuildHeaders(Guid? playerId = null)
 	{
-		// Validate API key is configured
 		if (string.IsNullOrEmpty(_boxApiKey))
 		{
 			LogError("CRITICAL: Attempting HTTP request without API key configured!");
@@ -1223,36 +1223,24 @@ public partial class EventService : AutoloadBase
 			"User-Agent: BarBox-Client/1.0"
 		};
 
-	// Add player Authorization header if playerId provided
-	if (playerId.HasValue)
-	{
-		// Skip logging for empty GUID (expected during initialization)
-		if (playerId.Value == Guid.Empty)
+		if (!playerId.HasValue || playerId.Value == Guid.Empty)
+			return headers;
+
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager == null)
 		{
-			// Silent skip - this is expected during service initialization
+			GD.PushError("[EventService] Authenticated request failed: SessionManager not available");
 			return headers;
 		}
 
-		var sessionManager = SessionManager.GetInstance();
-		if (sessionManager != null)
+		var jwtToken = sessionManager.GetJwtToken(playerId.Value);
+		if (string.IsNullOrEmpty(jwtToken))
 		{
-			var jwtToken = sessionManager.GetJwtToken(playerId.Value);
-			if (!string.IsNullOrEmpty(jwtToken))
-			{
-				headers.Add($"Authorization: Bearer {jwtToken}");
-			}
-			else
-			{
-				// Log error when auth requested but token missing
-				GD.PushError($"[EventService] Authenticated request for player {playerId.Value} failed: JWT token not found");
-			}
+			GD.PushError($"[EventService] Authenticated request for player {playerId.Value} failed: JWT token not found");
+			return headers;
 		}
-		else
-		{
-			GD.PushError($"[EventService] Authenticated request failed: SessionManager not available");
-		}
-	}
 
+		headers.Add($"Authorization: Bearer {jwtToken}");
 		return headers;
 	}
 

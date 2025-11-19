@@ -1,20 +1,15 @@
 using System.Threading.Tasks;
 
+namespace BarBox.Core.Autoloads;
+
 /// <summary>
 /// Credit pack options for purchase
 /// </summary>
-public struct CreditPack
+public struct CreditPack(int credits, decimal price)
 {
-	public int Credits { get; init; }
-	public decimal Price { get; init; }
-	public string DisplayName { get; init; }
-
-	public CreditPack(int credits, decimal price)
-	{
-		Credits = credits;
-		Price = price;
-		DisplayName = $"{credits} Credits - ${price:F2}";
-	}
+	public int Credits { get; init; } = credits;
+	public decimal Price { get; init; } = price;
+	public string DisplayName { get; init; } = $"{credits} Credits - ${price:F2}";
 }
 
 /// <summary>

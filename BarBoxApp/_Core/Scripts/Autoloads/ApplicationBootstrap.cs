@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
+namespace BarBox.Core.Autoloads;
+
 /// <summary>
 /// Orchestrates phased initialization of all application services
 /// Ensures services are initialized in correct dependency order before MainController starts
@@ -23,14 +25,9 @@ public partial class ApplicationBootstrap : AutoloadBase
 
 	protected override void OnServiceReady()
 	{
-		// All autoloads have completed OnServiceEnterTree() by this point
-		// Safe to call async initialization directly (no CallDeferred needed)
 		InitializeAllServices();
 	}
 
-	/// <summary>
-	/// Initialize all autoload services in explicit dependency order with async support
-	/// </summary>
 	private async void InitializeAllServices()
 	{
 		LogInfo("Initializing all services in staged phases...");
@@ -40,28 +37,20 @@ public partial class ApplicationBootstrap : AutoloadBase
 
 		try
 		{
-			// Phase 1: Foundation services (parallel initialization where possible)
 			var phase1Success = await InitializePhase1Async(cancellationToken);
 			if (!phase1Success)
 			{
 				LogError("BackendManager failed to initialize - aborting service initialization");
 				LogError("App will continue with degraded functionality");
-				initCancellation.Cancel(); // Cancel remaining initialization
+				initCancellation.Cancel();
 				_servicesInitialized = false;
-				EmitSignal(SignalName.AllServicesReady); // Still emit so UI knows to proceed
+				EmitSignal(SignalName.AllServicesReady);
 				return;
 			}
 
-			// Phase 2: Event Service (depends on BackendManager)
 			await InitializePhase2Async(cancellationToken);
-
-			// Phase 3: Services that depend on EventService (can run in parallel)
 			await InitializePhase3Async(cancellationToken);
-
-			// Phase 4: Game Services (can run in parallel)
 			await InitializePhase4Async(cancellationToken);
-
-			// Phase 5: Input/UI Services (can run in parallel)
 			await InitializePhase5Async(cancellationToken);
 
 			_servicesInitialized = true;
@@ -142,9 +131,6 @@ public partial class ApplicationBootstrap : AutoloadBase
 		await Task.WhenAll(phase5Tasks);
 	}
 
-	/// <summary>
-	/// Initialize a single service with async support and error handling
-	/// </summary>
 	private async Task<bool> InitializeServiceAsync(string serviceName, AutoloadBase service, ServiceCriticality criticality, CancellationToken cancellationToken)
 	{
 		if (service == null)
@@ -185,9 +171,6 @@ public partial class ApplicationBootstrap : AutoloadBase
 		}
 	}
 
-	/// <summary>
-	/// Check if all services have been initialized
-	/// </summary>
 	public bool AreServicesReady() => _servicesInitialized;
 
 	public static ApplicationBootstrap GetAutoload()

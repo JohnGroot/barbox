@@ -2,6 +2,8 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace BarBox.Core.Autoloads;
+
 public partial class GameRegistry : AutoloadBase
 {
 	[Signal] public delegate void GameLoadedEventHandler(string gameId);
@@ -23,6 +25,17 @@ public partial class GameRegistry : AutoloadBase
 
 	public void RegisterGame(GameMetadata gameData)
 	{
+		if (gameData == null || string.IsNullOrEmpty(gameData.GameId))
+		{
+			LogError("[GameRegistry] Cannot register game: invalid metadata");
+			return;
+		}
+
+		if (_availableGames.ContainsKey(gameData.GameId))
+		{
+			LogWarning($"[GameRegistry] Overwriting existing game: {gameData.GameId}");
+		}
+
 		_availableGames[gameData.GameId] = gameData;
 	}
 

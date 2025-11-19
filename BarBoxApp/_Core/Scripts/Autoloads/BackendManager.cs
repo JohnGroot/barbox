@@ -4,6 +4,8 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
+namespace BarBox.Core.Autoloads;
+
 /// <summary>
 /// Manages lifecycle and connection to the BarBox backend service.
 ///
@@ -27,6 +29,11 @@ using System.Threading.Tasks;
 /// </summary>
 public partial class BackendManager : AutoloadBase
 {
+	// System commands
+	private const string CMD_LSOF = "lsof";
+	private const string CMD_KILL = "kill";
+	private static readonly string[] HEALTH_CHECK_HEADERS = ["Accept: application/json"];
+
 	// Configuration with environment variable support
 	private static readonly string BACKEND_HOST =
 		System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_HOST") ?? "127.0.0.1";
@@ -87,7 +94,7 @@ public partial class BackendManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Check if backend is ready via file-based signaling (legacy support)
+	/// Legacy file-based health check - prefer IsBackendHealthyAsync()
 	/// </summary>
 	private bool IsBackendReady()
 	{
@@ -128,15 +135,12 @@ public partial class BackendManager : AutoloadBase
 			"Ensure test backend is started: cd BarBoxServices && sh scripts/test-backend.sh start");
 	}
 
-	/// <summary>
-	/// Check if a port is in use on the local machine
-	/// </summary>
 	private bool IsPortInUse(int port)
 	{
 		try
 		{
 			var output = new Godot.Collections.Array();
-			var exitCode = OS.Execute("lsof", ["-i", $":{port}", "-t"], output);
+			var exitCode = OS.Execute(CMD_LSOF, ["-i", $":{port}", "-t"], output);
 
 			if (exitCode != 0 || output.Count <= 0)
 				return false;
@@ -152,15 +156,12 @@ public partial class BackendManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Kill backend process on specified port if we own it.
-	/// Only kills processes that match our tracked _backendProcessId.
-	/// This prevents BackendManager from killing manually-started dev.sh processes.
+	/// Only kills processes matching _backendProcessId to avoid killing external dev.sh instances
 	/// </summary>
 	private async void KillOwnedProcessOnPort(int port)
 	{
 		try
 		{
-			// If we haven't started a backend, don't kill anything
 			if (_backendProcessId == -1)
 			{
 				LogInfo($"No tracked backend process - skipping port {port} cleanup");
@@ -168,7 +169,7 @@ public partial class BackendManager : AutoloadBase
 			}
 
 			var output = new Godot.Collections.Array();
-			var exitCode = OS.Execute("lsof", ["-i", $":{port}", "-t"], output);
+			var exitCode = OS.Execute(CMD_LSOF, ["-i", $":{port}", "-t"], output);
 
 			if (exitCode == 0 && output.Count > 0)
 			{
@@ -187,15 +188,13 @@ public partial class BackendManager : AutoloadBase
 						{
 							if (pid == _backendProcessId)
 							{
-								// This is our process - kill it
 								LogWarning($"Killing our backend process on port {port} (PID: {pid})");
-								OS.Execute("kill", ["-9", trimmedPid]);
+								OS.Execute(CMD_KILL, ["-9", trimmedPid]);
 								killedOurProcess = true;
-								_backendProcessId = -1; // Clear tracked PID
+								_backendProcessId = -1;
 							}
 							else
 							{
-								// Not our process - leave it alone
 								LogInfo($"Port {port} in use by PID {pid} (not our process) - leaving it alone");
 							}
 						}
@@ -235,12 +234,8 @@ public partial class BackendManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Ensure backend is running, starting it automatically if needed.
-	/// This method will:
-	/// 1. Check if backend is already healthy
-	/// 2. Kill any stale processes on the backend port
-	/// 3. Execute the backend start script
-	/// 4. Poll for health check with timeout
+	/// Auto-starts backend via dev.sh if not healthy, with stale process cleanup
+	/// Returns failure if backend doesn't respond within 30s timeout
 	/// </summary>
 	private async Task<Result<bool>> EnsureBackendRunningAsync(CancellationToken cancellationToken = default)
 	{
@@ -372,9 +367,6 @@ public partial class BackendManager : AutoloadBase
 		return Result.Failure<bool>($"Backend failed to become healthy within {STARTUP_TIMEOUT} seconds");
 	}
 
-	/// <summary>
-	/// Check if backend is healthy via HTTP /alive endpoint
-	/// </summary>
 	private async Task<Result<bool>> IsBackendHealthyAsync()
 	{
 		var httpClient = new HttpClient();
@@ -402,9 +394,7 @@ public partial class BackendManager : AutoloadBase
 
 			if (status == HttpClient.Status.Connected)
 			{
-				// Request /alive endpoint
-				var headers = new[] { "Accept: application/json" };
-				var requestError = httpClient.Request(HttpClient.Method.Get, "/alive", headers);
+				var requestError = httpClient.Request(HttpClient.Method.Get, "/alive", HEALTH_CHECK_HEADERS);
 
 				if (requestError != Godot.Error.Ok)
 				{
@@ -470,8 +460,7 @@ public partial class BackendManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Retry connecting to backend (useful for UI "Retry" button).
-	/// This will attempt to auto-start the backend if not running.
+	/// UI retry handler - auto-starts backend if needed
 	/// </summary>
 	public async void RetryConnection()
 	{
@@ -494,17 +483,11 @@ public partial class BackendManager : AutoloadBase
 
 	public bool IsBackendRunning() => _isBackendRunning;
 
-	/// <summary>
-	/// Get backend connection info for diagnostics
-	/// </summary>
 	public string GetBackendInfo()
 	{
 		return $"{BACKEND_HOST}:{BACKEND_PORT}";
 	}
 
-	/// <summary>
-	/// Get the singleton instance
-	/// </summary>
 	public static BackendManager GetInstance()
 	{
 		return GetAutoload<BackendManager>();

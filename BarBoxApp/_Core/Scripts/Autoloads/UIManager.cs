@@ -1,10 +1,11 @@
 using Godot;
 using System.Threading.Tasks;
 
+namespace BarBox.Core.Autoloads;
+
 /// <summary>
 /// UI management service for global UI components
 /// Manages top menu bar, overlays, and global UI state
-/// Now an autoload service for persistence across all scenes
 /// </summary>
 public partial class UIManager : AutoloadBase
 {
@@ -64,57 +65,42 @@ public partial class UIManager : AutoloadBase
 		// Get service references - all autoloads guaranteed to exist
 		_sessionManager = SessionManager.GetInstance();
 
-		// Create top menu layer
-		_topMenuLayer = new CanvasLayer();
-		_topMenuLayer.Layer = LAYER_GAME_UI; // Game UI elements and top menu bar
+		_topMenuLayer = new() { Layer = LAYER_GAME_UI };
 		AddChild(_topMenuLayer);
 
-		// Create help layer
-		_helpLayer = new CanvasLayer();
-		_helpLayer.Layer = LAYER_HELP; // Help overlays appear above game UI
+		_helpLayer = new() { Layer = LAYER_HELP };
 		AddChild(_helpLayer);
 
-		// Create modal layer for system modals
-		_modalLayer = new CanvasLayer();
-		_modalLayer.Layer = LAYER_SYSTEM_MODAL; // System modals (login, buy credits) appear above game modals
+		_modalLayer = new() { Layer = LAYER_SYSTEM_MODAL };
 		AddChild(_modalLayer);
 
-		// Create top menu bar (now includes context buttons)
 		_topMenuBar = new TopMenuBar();
 		_topMenuLayer.AddChild(_topMenuBar);
 
-		// Set up help system
 		SetupHelpSystem();
 
-		// Create login modal
 		_loginModal = new LoginModal();
 		_modalLayer.AddChild(_loginModal);
 
-		// Create buy credits modal
 		_buyCreditsModal = new BuyCreditsModal();
 		_modalLayer.AddChild(_buyCreditsModal);
 
-		// Create confirmation dialog
 		_confirmationDialog = new ConfirmationDialog();
 		_modalLayer.AddChild(_confirmationDialog);
 	}
 
 	protected override void OnServiceReady()
 	{
-		// Connect signals
 		_topMenuBar.LoginRequested += OnLoginRequested;
 		_topMenuBar.LogoutRequested += OnLogoutRequested;
 		_topMenuBar.BuyCreditsRequested += OnBuyCreditsRequested;
 		_topMenuBar.ReturnToMenuRequested += OnReturnToMenuRequested;
 
-		// Connect login modal signals
 		_loginModal.ModalClosed += OnLoginModalClosed;
 
-		// Connect buy credits modal signals
 		_buyCreditsModal.ModalClosed += OnBuyCreditsModalClosed;
 		_buyCreditsModal.CreditsAcquired += OnCreditsAcquired;
-		
-		// Connect to session manager signals
+
 		if (_sessionManager != null)
 		{
 			_sessionManager.UserLoggedIn += OnUserLoggedIn;
@@ -122,7 +108,6 @@ public partial class UIManager : AutoloadBase
 			_sessionManager.CreditsEarned += OnCreditsEarned;
 		}
 
-		// Connect to GameHost signals to control logout button during active games
 		var gameHost = GameHost.GetInstance();
 		if (gameHost != null)
 		{
@@ -130,16 +115,11 @@ public partial class UIManager : AutoloadBase
 			gameHost.GameEnded += OnGameEnded;
 		}
 
-		// Initialize with current user state
 		UpdateUserDisplay();
-
-		// Apply any context that was set before initialization
 		RefreshTopMenuContext();
 
-		// Mark UI as ready
 		_isUIReady = true;
 
-		// Apply any queued game context
 		if (_queuedGameTitle != null)
 		{
 			SetGameContext(_queuedGameTitle, _queuedContextButtons);
@@ -193,9 +173,6 @@ public partial class UIManager : AutoloadBase
 		}
 	}
 
-	/// <summary>
-	/// Set the game context in the top menu bar using simplified ContextButtonData structures
-	/// </summary>
 	public void SetGameContext(string gameTitle, ContextButtonData[] contextButtons = null)
 	{
 		// If UI not ready yet, queue the context to apply later
@@ -445,79 +422,49 @@ public partial class UIManager : AutoloadBase
 		_helpToggleButton.Text = "❓";
 		_helpToggleButton.Size = new Vector2(60, 60);
 		_helpToggleButton.CustomMinimumSize = new Vector2(60, 60);
-		_helpToggleButton.ExpandIcon = false; // Prevent icon expansion to maintain square aspect
+		_helpToggleButton.ExpandIcon = false;
 
-		// Position in bottom-left corner with margin, moved up from edge
 		_helpToggleButton.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopRight);
-		_helpToggleButton.Position = new Vector2(-60, 20); // Adjusted for 60px button width
+		_helpToggleButton.Position = new Vector2(-60, 20);
+		_helpToggleButton.AddThemeFontSizeOverride("font_size", 24);
 
-		// Style the button as a circle
-		_helpToggleButton.AddThemeFontSizeOverride("font_size", 24); // Reduced font size for smaller button
+		_helpToggleButton.AddThemeStyleboxOverride("normal",
+			CreateCircularButtonStyle(new Color(0.2f, 0.4f, 0.8f, 0.6f), new Color(0.6f, 0.8f, 1.0f, 1.0f), 30));
+		_helpToggleButton.AddThemeStyleboxOverride("hover",
+			CreateCircularButtonStyle(new Color(0.3f, 0.5f, 0.9f, 0.95f), new Color(0.8f, 0.9f, 1.0f, 1.0f), 30));
+		_helpToggleButton.AddThemeStyleboxOverride("pressed",
+			CreateCircularButtonStyle(new Color(0.1f, 0.3f, 0.7f, 1.0f), new Color(0.4f, 0.6f, 0.8f, 1.0f), 30));
 
-		// Create circular style
-		var circularStyle = new StyleBoxFlat();
-		circularStyle.BgColor = new Color(0.2f, 0.4f, 0.8f, 0.6f); // Blue background with lighter alpha
-		circularStyle.BorderWidthTop = 2;
-		circularStyle.BorderWidthBottom = 2;
-		circularStyle.BorderWidthLeft = 2;
-		circularStyle.BorderWidthRight = 2;
-		circularStyle.BorderColor = new Color(0.6f, 0.8f, 1.0f, 1.0f); // Light blue border
-		circularStyle.CornerRadiusTopLeft = 30; // Half of button size (60/2)
-		circularStyle.CornerRadiusTopRight = 30;
-		circularStyle.CornerRadiusBottomLeft = 30;
-		circularStyle.CornerRadiusBottomRight = 30;
-		_helpToggleButton.AddThemeStyleboxOverride("normal", circularStyle);
-
-		// Hover state
-		var hoverStyle = new StyleBoxFlat();
-		hoverStyle.BgColor = new Color(0.3f, 0.5f, 0.9f, 0.95f); // Brighter blue on hover
-		hoverStyle.BorderWidthTop = 2;
-		hoverStyle.BorderWidthBottom = 2;
-		hoverStyle.BorderWidthLeft = 2;
-		hoverStyle.BorderWidthRight = 2;
-		hoverStyle.BorderColor = new Color(0.8f, 0.9f, 1.0f, 1.0f);
-		hoverStyle.CornerRadiusTopLeft = 30;
-		hoverStyle.CornerRadiusTopRight = 30;
-		hoverStyle.CornerRadiusBottomLeft = 30;
-		hoverStyle.CornerRadiusBottomRight = 30;
-		_helpToggleButton.AddThemeStyleboxOverride("hover", hoverStyle);
-
-		// Pressed state
-		var pressedStyle = new StyleBoxFlat();
-		pressedStyle.BgColor = new Color(0.1f, 0.3f, 0.7f, 1.0f); // Darker blue when pressed
-		pressedStyle.BorderWidthTop = 2;
-		pressedStyle.BorderWidthBottom = 2;
-		pressedStyle.BorderWidthLeft = 2;
-		pressedStyle.BorderWidthRight = 2;
-		pressedStyle.BorderColor = new Color(0.4f, 0.6f, 0.8f, 1.0f);
-		pressedStyle.CornerRadiusTopLeft = 30;
-		pressedStyle.CornerRadiusTopRight = 30;
-		pressedStyle.CornerRadiusBottomLeft = 30;
-		pressedStyle.CornerRadiusBottomRight = 30;
-		_helpToggleButton.AddThemeStyleboxOverride("pressed", pressedStyle);
-
-		// Connect the pressed signal
 		_helpToggleButton.Pressed += ToggleHelpMenu;
-
-		// Initially hidden until game provides content
 		_helpToggleButton.Visible = false;
-
-		// Add to help layer
 		_helpLayer.AddChild(_helpToggleButton);
 	}
 
-	/// <summary>
-	/// Creates the help overlay panel that displays help content
-	/// </summary>
+	private static StyleBoxFlat CreateCircularButtonStyle(Color bgColor, Color borderColor, int cornerRadius)
+	{
+		return new StyleBoxFlat
+		{
+			BgColor = bgColor,
+			BorderWidthTop = 2,
+			BorderWidthBottom = 2,
+			BorderWidthLeft = 2,
+			BorderWidthRight = 2,
+			BorderColor = borderColor,
+			CornerRadiusTopLeft = cornerRadius,
+			CornerRadiusTopRight = cornerRadius,
+			CornerRadiusBottomLeft = cornerRadius,
+			CornerRadiusBottomRight = cornerRadius
+		};
+	}
+
 	private void CreateHelpOverlay()
 	{
-		// Main overlay background - covers entire screen
 		_helpOverlay = new Control();
 		_helpOverlay.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 		_helpOverlay.Visible = false;
-		_helpOverlay.MouseFilter = Control.MouseFilterEnum.Stop; // Block input to game
+		_helpOverlay.MouseFilter = Control.MouseFilterEnum.Stop;
 
-		// Semi-transparent background - clicking it closes the help menu
+		// Clicking background closes help menu
 		var background = new ColorRect();
 		background.Color = new Color(0, 0, 0, 0.7f);
 		background.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
@@ -529,7 +476,6 @@ public partial class UIManager : AutoloadBase
 		};
 		_helpOverlay.AddChild(background);
 
-		// Content panel - centered with smaller margins for more text space
 		var contentPanel = new PanelContainer();
 		contentPanel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 		contentPanel.OffsetLeft = 50;
@@ -537,7 +483,6 @@ public partial class UIManager : AutoloadBase
 		contentPanel.OffsetTop = 80;
 		contentPanel.OffsetBottom = -80;
 
-		// Style the content panel
 		var panelStyle = new StyleBoxFlat();
 		panelStyle.BgColor = new Color(0.1f, 0.1f, 0.15f, 0.95f);
 		panelStyle.CornerRadiusTopLeft = 10;

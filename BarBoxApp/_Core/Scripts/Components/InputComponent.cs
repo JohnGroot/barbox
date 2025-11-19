@@ -13,7 +13,7 @@ public partial class InputComponent : Node
 
 	private BasePlayer _player;
 	private InputManager _inputManager;
-	private bool _isDragging = false;
+	private bool _isDragging;
 	private int _activeFingerId = -1;
 
 	public override void _Ready()

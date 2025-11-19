@@ -1,6 +1,8 @@
 using Godot;
 using System.Collections.Generic;
 
+namespace BarBox.Core.Autoloads;
+
 public partial class InputManager : AutoloadBase
 {
 	[Signal] public delegate void TouchStartedEventHandler(Vector2 position, int fingerId);

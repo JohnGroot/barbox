@@ -2,21 +2,25 @@ using Godot;
 using System;
 using System.Threading.Tasks;
 
+namespace BarBox.Core.Autoloads;
+
 /// <summary>
 /// Debug implementation of IPaymentService for development and testing
 /// Simulates payment processing with instant approval and logging
 /// </summary>
 public partial class DebugPaymentService : Node, IPaymentService
 {
-	private static readonly CreditPack[] _availablePacks = new[]
-	{
+	private const string TXN_PREFIX = "DEBUG_TXN";
+
+	private static readonly CreditPack[] _availablePacks =
+	[
 		new CreditPack(1, 1.00m),
 		new CreditPack(5, 5.00m),
 		new CreditPack(10, 10.00m),
 		new CreditPack(25, 25.00m),
 		new CreditPack(50, 50.00m),
 		new CreditPack(100, 100.00m)
-	};
+	];
 
 	public CreditPack[] GetAvailableCreditPacks()
 	{
@@ -31,7 +35,7 @@ public partial class DebugPaymentService : Node, IPaymentService
 		await Task.Delay(1000);
 
 		// Generate mock transaction ID
-		var transactionId = $"DEBUG_TXN_{DateTime.UtcNow:yyyyMMddHHmmss}_{GD.Randi() % 10000:D4}";
+		var transactionId = $"{TXN_PREFIX}_{DateTime.UtcNow:yyyyMMddHHmmss}_{GD.Randi() % 10000:D4}";
 
 		// In debug mode, always approve the transaction
 		var result = PaymentResult.Success(transactionId, creditPack);
