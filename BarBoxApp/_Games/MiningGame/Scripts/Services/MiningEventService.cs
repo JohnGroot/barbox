@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using BarBox.Games.MiningGame;
 
+namespace BarBox.Games.MiningGame;
+
 /// <summary>
 /// Mining game-specific event service
 /// Provides type-safe methods for emitting mining events
@@ -12,13 +14,16 @@ using BarBox.Games.MiningGame;
 /// </summary>
 public class MiningEventService : GameEventServiceBase
 {
+	private const string EVENT_EXTRACT_COMPLETE = "mining/extract_complete";
+	private const string EVENT_UPGRADE_PURCHASE = "mining/upgrade_purchase";
+	private const string EVENT_CREDIT_DEPOSIT = "mining/credit_deposit";
+	private const string EVENT_TICK_UPDATE = "mining/tick_update";
+	private const string EVENT_FIRST_TIME_BONUS = "mining/first_time_bonus";
+
 	public MiningEventService(EventService eventService = null) : base(eventService)
 	{
 	}
 
-	/// <summary>
-	/// Emit extraction complete event with validation
-	/// </summary>
 	public async Task<Result<bool>> EmitExtractCompleteAsync(GemType gemType, int quantity)
 	{
 		// Input validation
@@ -44,12 +49,9 @@ public class MiningEventService : GameEventServiceBase
 			location_id = locationId
 		};
 
-		return await EmitEventSafeAsync("mining/extract_complete", payload);
+		return await EmitEventSafeAsync(EVENT_EXTRACT_COMPLETE, payload);
 	}
 
-	/// <summary>
-	/// Emit upgrade purchase event with validation
-	/// </summary>
 	public async Task<Result<bool>> EmitUpgradePurchaseAsync(
 		UpgradeType upgradeType,
 		int level,
@@ -81,12 +83,9 @@ public class MiningEventService : GameEventServiceBase
 			location_id = locationId
 		};
 
-		return await EmitEventSafeAsync("mining/upgrade_purchase", payload);
+		return await EmitEventSafeAsync(EVENT_UPGRADE_PURCHASE, payload);
 	}
 
-	/// <summary>
-	/// Emit credit deposit event when gems are spent for credits with validation
-	/// </summary>
 	public async Task<Result<bool>> EmitCreditDepositAsync(
 		GemType gemType,
 		int gemsSpent,
@@ -106,12 +105,9 @@ public class MiningEventService : GameEventServiceBase
 			credits_earned = creditsEarned
 		};
 
-		return await EmitEventSafeAsync("mining/credit_deposit", payload);
+		return await EmitEventSafeAsync(EVENT_CREDIT_DEPOSIT, payload);
 	}
 
-	/// <summary>
-	/// Emit mining tick event to update backend timestamp during active gameplay
-	/// </summary>
 	public async Task<Result<bool>> EmitMiningTickAsync(string locationId, int pendingGems)
 {
 	// Input validation
@@ -128,7 +124,7 @@ public class MiningEventService : GameEventServiceBase
 		timestamp = System.DateTime.UtcNow
 	};
 
-	return await EmitEventSafeAsync("mining/tick_update", payload);
+	return await EmitEventSafeAsync(EVENT_TICK_UPDATE, payload);
 }
 
 /// <summary>
@@ -144,8 +140,7 @@ public class MiningEventService : GameEventServiceBase
 public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid playerId)
 	{
 		// Input validation
-		var validation = ValidateGuid(playerId, "Player ID");
-		if (validation.IsFailure(out var validationError))
+		if (ValidateGuid(playerId, "Player ID").IsFailure(out var validationError))
 			return Result.Failure<MiningInventoryData>(validationError.Message);
 
 		return await QueryBackendAsync(
@@ -189,8 +184,7 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 	public async Task<Result<MiningUpgradesData>> GetPlayerUpgradesAsync(Guid playerId)
 	{
 		// Input validation
-		var validation = ValidateGuid(playerId, "Player ID");
-		if (validation.IsFailure(out var validationError))
+		if (ValidateGuid(playerId, "Player ID").IsFailure(out var validationError))
 			return Result.Failure<MiningUpgradesData>(validationError.Message);
 
 		return await QueryBackendAsync(
@@ -235,8 +229,7 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 	public async Task<Result<MiningTimestampData>> GetPlayerMiningTimestampAsync(Guid playerId, string locationId)
 	{
 		// Input validation
-		var validation = ValidateGuid(playerId, "Player ID");
-		if (validation.IsFailure(out var validationError))
+		if (ValidateGuid(playerId, "Player ID").IsFailure(out var validationError))
 			return Result.Failure<MiningTimestampData>(validationError.Message);
 
 		if (string.IsNullOrEmpty(locationId))
@@ -285,8 +278,7 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 	public async Task<Result<MiningMetadataData>> GetPlayerMetadataAsync(Guid playerId)
 	{
 		// Input validation
-		var validation = ValidateGuid(playerId, "Player ID");
-		if (validation.IsFailure(out var validationError))
+		if (ValidateGuid(playerId, "Player ID").IsFailure(out var validationError))
 			return Result.Failure<MiningMetadataData>(validationError.Message);
 
 		return await QueryBackendAsync(
@@ -325,14 +317,10 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 		});
 	}
 
-	/// <summary>
-	/// Emit first-time bonus event
-	/// </summary>
 	public async Task<Result<bool>> EmitFirstTimeBonusAsync(Guid playerId, string locationId, int bonusAmount)
 	{
 		// Input validation
-		var validation = ValidateGuid(playerId, "Player ID");
-		if (validation.IsFailure(out var validationError))
+		if (ValidateGuid(playerId, "Player ID").IsFailure(out var validationError))
 			return Result.Failure<bool>(validationError.Message);
 
 		if (bonusAmount < 1)
@@ -345,48 +333,36 @@ public async Task<Result<MiningInventoryData>> GetPlayerInventoryAsync(Guid play
 			bonus_amount = bonusAmount
 		};
 
-		return await EmitEventSafeAsync("mining/first_time_bonus", payload);
+		return await EmitEventSafeAsync(EVENT_FIRST_TIME_BONUS, payload);
 	}
 }
 
-/// <summary>
-/// Mining inventory data structure
-/// </summary>
 public record class MiningInventoryData
 {
-	public Guid PlayerId { get; init; }
-	public Dictionary<string, int> Gems { get; init; }
-	public DateTime LastUpdated { get; init; }
+	public required Guid PlayerId { get; init; }
+	public required Dictionary<string, int> Gems { get; init; }
+	public required DateTime LastUpdated { get; init; }
 }
 
-/// <summary>
-/// Mining upgrades data structure
-/// </summary>
 public record class MiningUpgradesData
 {
-	public Guid PlayerId { get; init; }
-	public Dictionary<string, int> Upgrades { get; init; }
-	public DateTime LastUpdated { get; init; }
+	public required Guid PlayerId { get; init; }
+	public required Dictionary<string, int> Upgrades { get; init; }
+	public required DateTime LastUpdated { get; init; }
 }
 
-/// <summary>
-/// Mining timestamp data structure
-/// </summary>
 public record class MiningTimestampData
 {
-	public Guid PlayerId { get; init; }
-	public string LocationId { get; init; }
-	public DateTime LastMiningTime { get; init; }
+	public required Guid PlayerId { get; init; }
+	public required string LocationId { get; init; }
+	public required DateTime LastMiningTime { get; init; }
 }
 
-/// <summary>
-/// Mining metadata data structure
-/// </summary>
 public record class MiningMetadataData
 {
-	public Guid PlayerId { get; init; }
-	public bool HasReceivedBonus { get; init; }
-	public int TotalEvents { get; init; }
+	public required Guid PlayerId { get; init; }
+	public required bool HasReceivedBonus { get; init; }
+	public required int TotalEvents { get; init; }
 	public DateTime? FirstEventTime { get; init; }
 	public DateTime? LastEventTime { get; init; }
 }

@@ -6,7 +6,7 @@ namespace BarBox.Games.MiningGame.Logic;
 public partial class MiningEngine : Node
 {
 	private MiningGame _game;
-	private bool _isMiningActive = false;
+	private bool _isMiningActive;
 
 	public MiningEngine(MiningGame game)
 	{

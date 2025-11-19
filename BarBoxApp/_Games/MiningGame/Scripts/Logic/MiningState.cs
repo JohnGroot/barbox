@@ -51,7 +51,7 @@ public partial class MiningState : Node
 		_gameTime += delta;
 
 		// Auto-save every 30 seconds (replaces save timer)
-		if (!(_gameTime - _lastSaveTime >= AUTO_SAVE_INTERVAL))
+		if (_gameTime - _lastSaveTime < AUTO_SAVE_INTERVAL)
 			return;
 
 		_lastSaveTime = _gameTime;
@@ -74,8 +74,7 @@ public partial class MiningState : Node
 	public bool IsExtractionReady => _pendingGems > 0;
 	public bool FirstTimeBonus => _firstTimeBonus;
 	public double GameTime => _gameTime;
-		
-	// Cached calculated values
+
 	public int GetMaxCapacity()
 	{
 		RefreshCacheIfNeeded();
@@ -128,11 +127,10 @@ public partial class MiningState : Node
 #endregion
 
 #region Mining Calculations
-		
+
 	/// <summary>
-	/// Calculates mining progress using timestamps - works for both online and offline!
+	/// Calculates mining progress using timestamp-based calculation.
 	/// </summary>
-	/// <returns>Tuple of (ticksReady, progressToNextTick)</returns>
 	public (int ticksReady, float progressToNextTick) CalculateMiningProgress()
 	{
 		// Check if we're at capacity - no progress when full
@@ -160,9 +158,6 @@ public partial class MiningState : Node
 		return (ticksReady, progressToNextTick);
 	}
 		
-	/// <summary>
-	/// Process ready mining ticks and update timestamp
-	/// </summary>
 	public void ProcessReadyMiningTicks()
 	{
 		var (ticksReady, _) = CalculateMiningProgress();
@@ -195,7 +190,7 @@ public partial class MiningState : Node
 	}
 		
 	/// <summary>
-	/// Reset mining timestamp (called when starting fresh cycle - e.g. when mining was paused at capacity)
+	/// Called when starting fresh cycle (e.g. when mining was paused at capacity)
 	/// </summary>
 	public void ResetMiningTimer()
 	{
@@ -300,7 +295,7 @@ public partial class MiningState : Node
 			var upgradesResult = await _game.GetEventService().GetPlayerUpgradesAsync(playerId);
 			if (upgradesResult.IsSuccess(out var upgrades))
 			{
-				_upgradeLevels = new Dictionary<UpgradeType, int>();
+				_upgradeLevels = new();
 				foreach (var kvp in upgrades.Upgrades)
 				{
 					if (Enum.TryParse<UpgradeType>(kvp.Key, true, out var upgradeType))
@@ -315,7 +310,7 @@ public partial class MiningState : Node
 			}
 			else if (upgradesResult.IsFailure(out var upgError))
 			{
-				_upgradeLevels = new Dictionary<UpgradeType, int>();
+				_upgradeLevels = new();
 				_firstTimeBonus = true;
 
 				GD.Print($"[GameState] No upgrades found: {upgError.Message}");
@@ -529,9 +524,6 @@ public partial class MiningState : Node
 
 #region Helper Methods
 
-	/// <summary>
-	/// Helper method to emit mining tick events with error handling
-	/// </summary>
 	private async Task EmitMiningTickSafeAsync(string locationId, int pendingGems)
 	{
 		try

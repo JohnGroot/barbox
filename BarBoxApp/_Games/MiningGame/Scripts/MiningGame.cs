@@ -235,7 +235,6 @@ public partial class MiningGame : GameController
 	// ================================================================
 
 	/// <summary>
-	/// Check if a player is currently logged in and mining session is active
 	/// MiningGame uses login status as its primary state check
 	/// </summary>
 	public bool IsPlayerLoggedIn()
@@ -247,9 +246,6 @@ public partial class MiningGame : GameController
 	// DOMAIN-SPECIFIC LIFECYCLE - Mining session management
 	// ================================================================
 
-	/// <summary>
-	/// Start a mining session for the logged-in player
-	/// </summary>
 	public void StartMiningSession()
 	{
 		if (!IsPlayerLoggedIn())
@@ -264,9 +260,6 @@ public partial class MiningGame : GameController
 		GD.Print("[MiningGame] Mining session started");
 	}
 
-	/// <summary>
-	/// End the current mining session
-	/// </summary>
 	public void EndMiningSession()
 	{
 		if (IsInstanceValid(_engine))
@@ -423,10 +416,6 @@ public partial class MiningGame : GameController
 		}
 	}
 
-	/// <summary>
-	/// Provides comprehensive help content for the Mining Game
-	/// Explains all game mechanics, upgrades, and progression systems
-	/// </summary>
 	protected override HelpContentData GetHelpContent()
 	{
 		var locationData = GetLocationData();
@@ -577,36 +566,23 @@ public partial class MiningGame : GameController
 		if (IsInstanceValid(_ui))
 			_ui.UpdateAllUI();
 	}
-		
-	/// <summary>
-	/// Debug logging - only outputs when EnableDebugMode is true
-	/// </summary>
+
 	private void LogDebug(string message)
 	{
 		if (EnableDebugMode)
 			GD.Print($"[MiningGame] {message}");
 	}
 
-	/// <summary>
-	/// Error logging - always outputs
-	/// </summary>
 	private void LogError(string message)
 	{
 		GD.PrintErr($"[MiningGame] {message}");
 	}
 
-	/// <summary>
-	/// Thread-safe logging method for async errors
-	/// </summary>
 	private void LogAsyncError(string message)
 	{
 		GD.PrintErr($"[MiningGame] {message}");
 	}
 
-	/// <summary>
-	/// Get the current user's phone number from SessionManager
-	/// Returns null if no user is logged in
-	/// </summary>
 	internal string GetCurrentUserPhoneNumber()
 	{
 		try
