@@ -711,40 +711,12 @@ public partial class RacingGame : GameController
 	{
 		GD.Print($"[RacingGame] New best time saved: {totalTime:F3}s for {trackKey}");
 	}
-	
-	/// <summary>
-	/// Thread-safe logging method for high score errors
-	/// </summary>
-	private void LogHighScoreError(string error)
-	{
-		GD.PrintErr($"[RacingGame] Failed to save race data: {error}");
-	}
 
-	private void LogRaceSaved(float totalTime, string trackId)
-	{
-		GD.Print($"[RacingGame] Race completed and saved - Time: {totalTime:F3}s, Track: {trackId}");
-	}
-
-	private void LogPotentialBestLap(float lapTime, string trackId)
-	{
-		GD.Print($"[RacingGame] Potential best lap time - Time: {lapTime:F3}s, Track: {trackId} (will save on race completion)");
-	}
-	
-	/// <summary>
-	/// Thread-safe logging method for best lap saves
-	/// </summary>
-	private void LogBestLapSaved(float lapTime, string trackKey)
-	{
-		GD.Print($"[RacingGame] New best lap time saved: {lapTime:F3}s for {trackKey}");
-	}
-	
-	/// <summary>
-	/// Thread-safe logging method for async errors
-	/// </summary>
-	private void LogAsyncError(string message)
-	{
-		GD.PrintErr($"[RacingGame] {message}");
-	}
+	private void LogHighScoreError(string error) => GD.PrintErr($"[RacingGame] Failed to save race data: {error}");
+	private void LogRaceSaved(float totalTime, string trackId) => GD.Print($"[RacingGame] Race completed and saved - Time: {totalTime:F3}s, Track: {trackId}");
+	private void LogPotentialBestLap(float lapTime, string trackId) => GD.Print($"[RacingGame] Potential best lap time - Time: {lapTime:F3}s, Track: {trackId} (will save on race completion)");
+	private void LogBestLapSaved(float lapTime, string trackKey) => GD.Print($"[RacingGame] New best lap time saved: {lapTime:F3}s for {trackKey}");
+	private void LogAsyncError(string message) => GD.PrintErr($"[RacingGame] {message}");
 
 	/// <summary>
 	/// Emit lap complete event to backend
@@ -804,7 +776,7 @@ public partial class RacingGame : GameController
 		{
 			// Get box ID from LocationManager (matching SessionManager pattern)
 			var locationManager = LocationManager.GetAutoload();
-			if (locationManager == null || !locationManager.IsConfigLoaded)
+			if (locationManager is not { IsConfigLoaded: true })
 			{
 				GD.PrintErr("[RacingGame] LocationManager not available or config not loaded");
 				return;
@@ -860,21 +832,12 @@ public partial class RacingGame : GameController
 		// Can only start time trial when not already in time trial
 		if (GetRacingMode() == RacingMode.TimeTrial)
 		{
-			// Time trial cancelled - already in time trial mode
-			return;
-		}
-
-		// Always require login first, regardless of development mode
-		if (_sessionManager == null || !IsInstanceValid(_sessionManager))
-		{
-			GD.PrintErr("Time trial cancelled - user management system not available");
 			return;
 		}
 
 		bool isLoggedIn = _sessionManager.GetPrimaryUserSession() != null;
 		if (!isLoggedIn)
 		{
-			// Time trial cancelled - user must be logged in
 			return;
 		}
 
@@ -957,7 +920,7 @@ public partial class RacingGame : GameController
 		}
 		else
 		{
-			_timingSystem?.StartRacing(); // Set racing state
+			_timingSystem.StartRacing(); // Set racing state
 			StartRace();
 
 			// Refresh UI to show pause button now that race is active

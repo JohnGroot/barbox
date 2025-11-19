@@ -68,11 +68,6 @@ namespace BarBox.Games.Racing
 		_currentAccelerationPenaltyMultiplier = 1.0f;
 	}
 
-	/// <summary>
-	/// Note: Settings can be updated directly via the exported properties.
-	/// No separate UpdateSettings method needed - use the properties for configuration.
-	/// </summary>
-
 	// ================================================================
 	// TRACK VALIDATION
 	// ================================================================

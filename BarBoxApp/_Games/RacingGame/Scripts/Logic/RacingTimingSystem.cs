@@ -134,8 +134,7 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public void StartPlayerLap(string playerId)
 	{
-		if (!_playerCurrentLap.ContainsKey(playerId))
-			_playerCurrentLap[playerId] = 0;
+		_playerCurrentLap.TryAdd(playerId, 0);
 
 		_playerCurrentLap[playerId]++;
 		_playerCurrentLapTime[playerId] = 0.0f;
@@ -150,20 +149,19 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public void CompletePlayerLap(string playerId, float lapTime)
 	{
-		if (!_playerCurrentLap.ContainsKey(playerId))
+		if (!_playerCurrentLap.TryGetValue(playerId, out int lapNumber))
 			return;
-
-		int lapNumber = _playerCurrentLap[playerId];
 
 		// Ensure lap times list exists before adding
 		if (!_playerLapTimes.ContainsKey(playerId))
-			_playerLapTimes[playerId] = new List<float>();
+			_playerLapTimes[playerId] = [];
 		_playerLapTimes[playerId].Add(lapTime);
 
 		// Update best lap time
-		if (!_playerBestLapTime.ContainsKey(playerId) || lapTime < _playerBestLapTime[playerId])
-		{
-			_playerBestLapTime[playerId] = lapTime;
+		if (!_playerBestLapTime.TryGetValue(playerId, out float value) || lapTime < value)
+		{ 
+			value = lapTime;
+			_playerBestLapTime[playerId] = value;
 		}
 
 		EmitSignal(SignalName.LapCompleted, playerId, lapNumber, lapTime);
@@ -174,29 +172,30 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public void CompletePlayerRace(string playerId, List<BasePlayer> allPlayers = null)
 	{
-		if (!_playerLapTimes.ContainsKey(playerId)) return;
+		if (!_playerLapTimes.TryGetValue(playerId, out var time)) 
+			return;
 		
-		float totalTime = _playerLapTimes[playerId].Sum();
+		float totalTime = time.Sum();
 		
 		EmitSignal(SignalName.RaceCompleted, playerId, totalTime);
 		
 		// If all players finished, end the race
-		if (allPlayers != null)
+		if (allPlayers == null)
+			return;
+
+		bool allPlayersFinished = true;
+		foreach (var player in allPlayers)
 		{
-			bool allPlayersFinished = true;
-			foreach (var player in allPlayers)
+			if (GetPlayerCurrentLap(player.PlayerId) < TargetLaps)
 			{
-				if (GetPlayerCurrentLap(player.PlayerId) < TargetLaps)
-				{
-					allPlayersFinished = false;
-					break;
-				}
+				allPlayersFinished = false;
+				break;
 			}
+		}
 			
-			if (allPlayersFinished)
-			{
-				_racingState = RacingState.Finished;
-			}
+		if (allPlayersFinished)
+		{
+			_racingState = RacingState.Finished;
 		}
 	}
 
@@ -279,9 +278,6 @@ namespace BarBox.Games.Racing
 		_racingState = RacingState.WaitingForCredits;
 	}
 
-	/// <summary>
-	/// Set paused state
-	/// </summary>
 	public void SetPaused(bool paused)
 	{
 		if (paused)
@@ -291,10 +287,7 @@ namespace BarBox.Games.Racing
 		else
 		{
 			// Resume to appropriate state based on game mode
-			if (_currentGameMode == RacingMode.Practice)
-				_racingState = RacingState.PracticeMode;
-			else
-				_racingState = RacingState.Racing;
+			_racingState = _currentGameMode == RacingMode.Practice ? RacingState.PracticeMode : RacingState.Racing;
 		}
 	}
 
@@ -405,12 +398,10 @@ namespace BarBox.Games.Racing
 			// In practice mode, score is best lap time
 			return GetPlayerBestLapTime(playerId);
 		}
-		else
-		{
-			// In time trial, score is total time
-			var lapTimes = GetPlayerLapTimes(playerId);
-			return lapTimes.Sum();
-		}
+
+		// In time trial, score is total time
+		var lapTimes = GetPlayerLapTimes(playerId);
+		return lapTimes.Sum();
 	}
 }
 }
