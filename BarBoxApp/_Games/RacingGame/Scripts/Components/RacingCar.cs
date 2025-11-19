@@ -38,6 +38,19 @@ namespace BarBox.Games.Racing
 		[Export] public float MaxInputDistance { get; set; } = 300.0f;
 
 		// ================================================================
+		// CONSTANTS - POSITIONING RATIOS
+		// ================================================================
+
+		private const float CAR_VISUAL_OFFSET_RATIO = 0.125f;
+		private const float HEADLIGHT_CONE_HALF_WIDTH_RATIO = 0.5f;
+		private const float HEADLIGHT_HORIZONTAL_OFFSET_RATIO = 0.375f;
+		private const float HEADLIGHT_VERTICAL_OFFSET_RATIO = 0.25f;
+		private const float CAR_FRONT_HORIZONTAL_RATIO = 0.75f;
+		private const float CAR_FRONT_VERTICAL_RATIO = 0.25f;
+		private const float CAR_BACK_VERTICAL_RATIO = 1.5f;
+		private const float TIRE_OFFSET_RATIO = 0.625f;
+
+		// ================================================================
 		// SYSTEM DEPENDENCIES - RACING SYSTEMS
 		// ================================================================
 
@@ -106,13 +119,6 @@ namespace BarBox.Games.Racing
 			SetupInputManager();
 		}
 
-		/// <summary>
-		/// Initialize the racing car with system dependencies
-		/// </summary>
-		/// <param name="cameraController">Camera controller for coordinate transformation</param>
-		/// <param name="trackValidationSystem">Track validation system for penalties/bonuses</param>
-		/// <param name="playerId">Player ID for the car</param>
-		/// <param name="playerName">Player name for the car</param>
 		public void Initialize(RacingCameraController cameraController, RacingTrackValidationSystem trackValidationSystem, string playerId = "player1", string playerName = "Player")
 		{
 			// Validate required dependencies
@@ -138,9 +144,6 @@ namespace BarBox.Games.Racing
 			CarSize = new Vector2(40, 80);
 		}
 
-		/// <summary>
-		/// Update car settings from external configuration
-		/// </summary>
 		public void UpdateSettings(float maxSpeed, float minSpeed, float maxInputDistance, float accelerationRate, float decelerationRate, float rotationLerpSpeed, Vector2 carSize)
 		{
 			MaxSpeed = maxSpeed;
@@ -156,9 +159,6 @@ namespace BarBox.Games.Racing
 		// CAR BODY SETUP
 		// ================================================================
 
-		/// <summary>
-		/// Setup the car's physical body and visuals
-		/// </summary>
 		protected virtual void SetupCarBody()
 		{
 			_carBody = new CharacterBody2D();
@@ -168,7 +168,7 @@ namespace BarBox.Games.Racing
 			_carVisual = new ColorRect();
 			_carVisual.Size = CarSize;
 			_carVisual.Color = Colors.Red;
-			_carVisual.Position = new Vector2(-CarSize.X * 0.125f, -CarSize.Y * 0.125f);
+			_carVisual.Position = new Vector2(-CarSize.X * CAR_VISUAL_OFFSET_RATIO, -CarSize.Y * CAR_VISUAL_OFFSET_RATIO);
 			_carBody.AddChild(_carVisual);
 
 			// Car collision
@@ -185,9 +185,6 @@ namespace BarBox.Games.Racing
 			SetupHeadlightCone();
 		}
 
-		/// <summary>
-		/// Setup the car's headlight cone visual
-		/// </summary>
 		protected virtual void SetupHeadlightCone()
 		{
 			if (!HeadlightEnabled) return;
@@ -196,11 +193,11 @@ namespace BarBox.Games.Racing
 			_carBody.AddChild(_headlightCone);
 
 			// Create triangle cone shape pointing forward using cached car front position
-			var halfWidth = Mathf.DegToRad(HeadlightWidth * 0.5f);
+			var halfWidth = Mathf.DegToRad(HeadlightWidth * HEADLIGHT_CONE_HALF_WIDTH_RATIO);
 			var range = HeadlightRange;
 
 			// Use cached front position offset for consistent positioning with visual feedback
-			var carFrontOffset = CarRight * -CarSize.X * 0.375f + CarForward * CarSize.Y * 0.25f;
+			var carFrontOffset = CarRight * -CarSize.X * HEADLIGHT_HORIZONTAL_OFFSET_RATIO + CarForward * CarSize.Y * HEADLIGHT_VERTICAL_OFFSET_RATIO;
 			
 			// Triangle vertices: start at front center of car, cone extends forward
 			var vertices = new Vector2[]
@@ -221,9 +218,6 @@ namespace BarBox.Games.Racing
 		// INPUT SYSTEM SETUP
 		// ================================================================
 
-		/// <summary>
-		/// Setup input manager connection
-		/// </summary>
 		protected virtual void SetupInputManager()
 		{
 			_inputManager = InputManager.GetAutoload();
@@ -277,9 +271,6 @@ namespace BarBox.Games.Racing
 		// CAR PHYSICS AND MOVEMENT
 		// ================================================================
 
-		/// <summary>
-		/// Update car physics and movement
-		/// </summary>
 		protected virtual void UpdateCarPhysics(float delta)
 		{
 			if (_carBody == null) return;
@@ -357,7 +348,6 @@ namespace BarBox.Games.Racing
 			_carBody.Velocity = _velocity;
 			_carBody.MoveAndSlide();
 
-			// Invalidate position cache since car has moved/rotated
 			InvalidatePositionCache();
 
 			// Emit movement signals
@@ -369,10 +359,6 @@ namespace BarBox.Games.Racing
 		// POSITION CACHE MANAGEMENT
 		// ================================================================
 
-		/// <summary>
-		/// Update cached position data for performance optimization
-		/// Only recalculates when cache is marked dirty
-		/// </summary>
 		protected virtual void UpdatePositionCache()
 		{
 			if (!_positionCacheDirty || _carBody == null) return;
@@ -387,14 +373,14 @@ namespace BarBox.Games.Racing
 			var carPosition = _carBody.GlobalPosition;
 
 			// Cache front position (used by headlights and visual feedback)
-			var frontOffset = _cachedCarRight * -halfWidth * 0.75f + _cachedCarForward * halfLength * 0.25f;
+			var frontOffset = _cachedCarRight * -halfWidth * CAR_FRONT_HORIZONTAL_RATIO + _cachedCarForward * halfLength * CAR_FRONT_VERTICAL_RATIO;
 			_cachedCarFrontPosition = carPosition + frontOffset;
 
 			// Cache back position and tire positions (used by visual feedback)
-			var backOffset = _cachedCarRight * -halfWidth * 0.75f - _cachedCarForward * halfLength * 1.5f;
+			var backOffset = _cachedCarRight * -halfWidth * CAR_FRONT_HORIZONTAL_RATIO - _cachedCarForward * halfLength * CAR_BACK_VERTICAL_RATIO;
 			_cachedCarBackPosition = carPosition + backOffset;
-			
-			var tireOffset = halfWidth * 0.625f;
+
+			var tireOffset = halfWidth * TIRE_OFFSET_RATIO;
 			_cachedLeftTirePosition = _cachedCarBackPosition - _cachedCarRight * tireOffset;
 			_cachedRightTirePosition = _cachedCarBackPosition + _cachedCarRight * tireOffset;
 
@@ -413,9 +399,6 @@ namespace BarBox.Games.Racing
 			_positionCacheDirty = false;
 		}
 
-		/// <summary>
-		/// Mark position cache as dirty to force recalculation on next update
-		/// </summary>
 		protected virtual void InvalidatePositionCache()
 		{
 			_positionCacheDirty = true;
@@ -425,35 +408,23 @@ namespace BarBox.Games.Racing
 		// RACING-SPECIFIC INTEGRATIONS
 		// ================================================================
 
-		/// <summary>
-		/// Transform screen coordinates to world coordinates using racing game camera
-		/// </summary>
 		protected virtual Vector2 TransformScreenToWorldPosition(Vector2 screenPosition)
 		{
 			return _cameraController?.TransformScreenToWorldPosition(screenPosition) ?? screenPosition;
 		}
 
-		/// <summary>
-		/// Get speed modifier based on track validation (off-track penalties)
-		/// </summary>
 		protected virtual float GetSpeedModifier()
 		{
 			var carPosition = GetCarBody()?.GlobalPosition ?? Vector2.Zero;
 			return _trackValidationSystem?.GetSpeedModifier(carPosition) ?? 1.0f;
 		}
 
-		/// <summary>
-		/// Get acceleration modifier based on track validation (center line bonus, off-track penalties)
-		/// </summary>
 		protected virtual float GetAccelerationModifier()
 		{
 			var carPosition = GetCarBody()?.GlobalPosition ?? Vector2.Zero;
 			return _trackValidationSystem?.GetAccelerationModifier(carPosition) ?? 1.0f;
 		}
 
-		/// <summary>
-		/// Get turn modifier based on track validation (off-track penalties)
-		/// </summary>
 		protected virtual float GetTurnModifier()
 		{
 			var carPosition = GetCarBody()?.GlobalPosition ?? Vector2.Zero;
@@ -464,9 +435,6 @@ namespace BarBox.Games.Racing
 		// INPUT HANDLERS
 		// ================================================================
 
-		/// <summary>
-		/// Check if racing input should be enabled based on current racing state
-		/// </summary>
 		private bool IsRacingInputEnabled()
 		{
 			var racingGame = GetParent<RacingGame>();
@@ -510,8 +478,7 @@ namespace BarBox.Games.Racing
 		// ================================================================
 
 		/// <summary>
-		/// Position car at a specific world position and rotation
-		/// Also resets all physics state for clean repositioning
+		/// Resets all physics state to ensure clean positioning
 		/// </summary>
 		public void PositionCar(Vector2 position, float rotation = 0.0f)
 		{
@@ -524,31 +491,20 @@ namespace BarBox.Games.Racing
 			
 			// Reset all internal physics state to ensure clean positioning
 			ResetCarState();
-			
-			// Invalidate position cache since car position/rotation changed
+
 			InvalidatePositionCache();
 		}
 
-		/// <summary>
-		/// Get current car position
-		/// </summary>
 		public Vector2 GetCarPosition()
 		{
 			return GetCarBody()?.GlobalPosition ?? Vector2.Zero;
 		}
 
-		/// <summary>
-		/// Get current car speed
-		/// </summary>
 		public float GetCarSpeed()
 		{
 			return GetCurrentSpeed();
 		}
 
-		/// <summary>
-		/// Reset all car physics state to initial values
-		/// Called when repositioning car to ensure clean state
-		/// </summary>
 		public void ResetCarState()
 		{
 			_velocity = Vector2.Zero;
@@ -568,18 +524,12 @@ namespace BarBox.Games.Racing
 		// DEPENDENCY MANAGEMENT
 		// ================================================================
 
-		/// <summary>
-		/// Update system dependencies (useful when systems are recreated)
-		/// </summary>
 		public void UpdateDependencies(RacingCameraController cameraController, RacingTrackValidationSystem trackValidationSystem)
 		{
 			_cameraController = cameraController;
 			_trackValidationSystem = trackValidationSystem;
 		}
 
-		/// <summary>
-		/// Check if dependencies are properly initialized
-		/// </summary>
 		public bool HasValidDependencies()
 		{
 			return _cameraController != null && _trackValidationSystem != null;
@@ -608,9 +558,6 @@ namespace BarBox.Games.Racing
 		public Vector2 RightTirePosition { get { UpdatePositionCache(); return _cachedRightTirePosition; } }
 		public Vector2 ClampedTargetPosition { get { UpdatePositionCache(); return _cachedClampedTargetPosition; } }
 
-		/// <summary>
-		/// Update headlight configuration at runtime
-		/// </summary>
 		public void UpdateHeadlightSettings(bool enabled, float range, float width, Color color)
 		{
 			HeadlightEnabled = enabled;
@@ -625,8 +572,8 @@ namespace BarBox.Games.Racing
 				if (enabled)
 				{
 					// Recalculate cone shape with new parameters using cached positions
-					var halfWidth = Mathf.DegToRad(width * 0.5f);
-					var carFrontOffset = CarRight * -CarSize.X * 0.375f + CarForward * CarSize.Y * 0.25f;
+					var halfWidth = Mathf.DegToRad(width * HEADLIGHT_CONE_HALF_WIDTH_RATIO);
+					var carFrontOffset = CarRight * -CarSize.X * HEADLIGHT_HORIZONTAL_OFFSET_RATIO + CarForward * CarSize.Y * HEADLIGHT_VERTICAL_OFFSET_RATIO;
 					var vertices = new Vector2[]
 					{
 						carFrontOffset, // Start at front center of car (using cached calculation)

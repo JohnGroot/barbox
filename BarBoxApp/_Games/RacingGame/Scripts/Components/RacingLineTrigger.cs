@@ -1,5 +1,7 @@
 using Godot;
 
+namespace BarBox.Games.Racing;
+
 /// <summary>
 /// Base class for line-based triggers that coordinate Area2D collision and Line2D visual components
 /// Does not create or configure child components - only provides helper methods and signal coordination
@@ -41,9 +43,6 @@ public partial class RacingLineTrigger : Area2D
 		BodyEntered -= OnBodyEntered;
 	}
 
-	/// <summary>
-	/// Get the effective width of the trigger from collision shape or visual line
-	/// </summary>
 	public float GetWidth()
 	{
 		// Try to get width from collision shape first
@@ -63,29 +62,17 @@ public partial class RacingLineTrigger : Area2D
 		return 0.0f;
 	}
 
-	/// <summary>
-	/// Get the current color of the visual line
-	/// </summary>
 	public Color GetColor()
 	{
 		return VisualLine?.DefaultColor ?? Colors.White;
 	}
 
-	/// <summary>
-	/// Update the position and rotation of the trigger without modifying child properties
-	/// </summary>
-	/// <param name="position">World position</param>
-	/// <param name="direction">Direction vector (perpendicular to track)</param>
 	public void UpdatePosition(Vector2 position, Vector2 direction)
 	{
 		GlobalPosition = position;
 		Rotation = direction.Angle();
 	}
 
-	/// <summary>
-	/// Optional method to change the visual line color
-	/// </summary>
-	/// <param name="color">New color</param>
 	public void SetLineColor(Color color)
 	{
 		if (VisualLine != null)

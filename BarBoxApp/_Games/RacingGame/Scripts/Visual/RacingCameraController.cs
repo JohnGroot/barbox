@@ -30,7 +30,7 @@ namespace BarBox.Games.Racing
 
 	// Camera system
 	private Camera2D _trackCamera;
-	private List<StaticBody2D> _screenEdgeColliders = new List<StaticBody2D>();
+	private List<StaticBody2D> _screenEdgeColliders = [];
 
 	// Track reference for positioning
 	private IRacingTrackDefinition _trackDefinition;
@@ -64,8 +64,6 @@ namespace BarBox.Games.Racing
 			// Account for top menu bar - position camera in center of playable area
 			Vector2 playableCenter = new Vector2(screenSize.X / 2, TOP_MENU_HEIGHT + (screenSize.Y - TOP_MENU_HEIGHT) / 2);
 			_trackCamera.GlobalPosition = playableCenter;
-			
-			// Camera positioned at playable center
 		}
 	}
 
@@ -100,9 +98,7 @@ namespace BarBox.Games.Racing
 
 		Vector2 trackCenter = _trackDefinition.GetStartLinePosition(); // Use start line as reference
 		Rect2 trackBounds = GetTrackBounds();
-		
-		// Track center and bounds calculated
-		
+
 		if (trackBounds.Size == Vector2.Zero) 
 		{
 			GD.PrintErr("[CameraController] Track bounds size is zero - cannot calculate zoom");
@@ -132,14 +128,10 @@ namespace BarBox.Games.Racing
 			float scaleY = playableArea.Y / paddedTrackSize.Y;
 			float zoom = Mathf.Clamp(Mathf.Min(scaleX, scaleY), 0.2f, 1.0f);
 			_trackCamera.Zoom = new Vector2(zoom, zoom);
-			
-			// Track bounds and zoom calculated
-			
+
 			// Center camera in playable area
 			Vector2 playableCenter = new Vector2(viewportSize.X / 2, TOP_MENU_HEIGHT + playableArea.Y / 2);
 			_trackCamera.GlobalPosition = playableCenter;
-			
-			// Camera positioned at calculated center
 		}
 	}
 

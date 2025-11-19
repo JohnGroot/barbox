@@ -3,13 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 
-namespace BarBox.Games.Racing
-{
-	// ============= RACE DATABASE RECORDS =============
+namespace BarBox.Games.Racing;
 
-	/// <summary>
-	/// Immutable record representing a checkpoint timing entry
-	/// </summary>
+// ============= RACE DATABASE RECORDS =============
+
 	[Serializable]
 	public record CheckpointTime(
 		int Index,
@@ -18,7 +15,6 @@ namespace BarBox.Games.Racing
 	);
 
 	/// <summary>
-	/// Immutable record representing a complete race entry
 	/// Only created when races are fully completed
 	/// </summary>
 	[Serializable]
@@ -36,10 +32,6 @@ namespace BarBox.Games.Racing
 
 	// ============= RACE DATABASE =============
 
-	/// <summary>
-	/// NoSQL-friendly race database that stores complete race entries
-	/// bucketed by track ID for efficient querying
-	/// </summary>
 	[Serializable]
 	public class RaceDatabase
 	{
@@ -47,8 +39,7 @@ namespace BarBox.Games.Racing
 		public int TotalRacesCompleted { get; set; } = 0;
 
 		/// <summary>
-		/// Generate stable track ID from scene resource path.
-		/// Converts "res://_Games/RacingGame/Scenes/_Tracks/GoCartTrack.tscn" → "gocart_track"
+		/// Example: "GoCartTrack.tscn" → "go_cart_track"
 		/// </summary>
 		public static string GenerateTrackId(PackedScene trackScene)
 		{
@@ -62,9 +53,6 @@ namespace BarBox.Games.Racing
 				.ToLowerInvariant();	// "go_cart_track"
 		}
 
-		/// <summary>
-		/// Generate stable track ID from track name (fallback method)
-		/// </summary>
 		public static string GenerateTrackIdFromName(string trackName)
 		{
 			if (string.IsNullOrEmpty(trackName))
@@ -77,8 +65,7 @@ namespace BarBox.Games.Racing
 		}
 
 		/// <summary>
-		/// Add a completed race entry to the database
-		/// Only call this when a race is fully completed
+		/// Only call when race is fully completed
 		/// </summary>
 		public void AddRaceEntry(RaceEntry raceEntry)
 		{
@@ -93,17 +80,11 @@ namespace BarBox.Games.Racing
 			TotalRacesCompleted++;
 		}
 
-		/// <summary>
-		/// Generate a unique race ID
-		/// </summary>
 		public static string GenerateRaceId()
 		{
 			return Guid.NewGuid().ToString("N")[..12]; // Short unique ID
 		}
 
-		/// <summary>
-		/// Get best lap time for a track from race database
-		/// </summary>
 		public float GetBestLapTime(string trackId)
 		{
 			if (!RacesByTrack.ContainsKey(trackId))
@@ -116,9 +97,6 @@ namespace BarBox.Games.Racing
 				.Min();
 		}
 
-		/// <summary>
-		/// Get best lap time entry (with username) for a track
-		/// </summary>
 		public RaceEntry GetBestLapTimeEntry(string trackId)
 		{
 			if (!RacesByTrack.ContainsKey(trackId))
@@ -130,9 +108,6 @@ namespace BarBox.Games.Racing
 				.FirstOrDefault();
 		}
 
-		/// <summary>
-		/// Get best race time for a track with specific lap count
-		/// </summary>
 		public float GetBestRaceTime(string trackId, int laps)
 		{
 			if (!RacesByTrack.ContainsKey(trackId))
@@ -145,9 +120,6 @@ namespace BarBox.Games.Racing
 				.Min();
 		}
 
-		/// <summary>
-		/// Get best race time entry (with username) for a track with specific lap count
-		/// </summary>
 		public RaceEntry GetBestRaceTimeEntry(string trackId, int laps)
 		{
 			if (!RacesByTrack.ContainsKey(trackId))
@@ -159,9 +131,6 @@ namespace BarBox.Games.Racing
 				.FirstOrDefault();
 		}
 
-		/// <summary>
-		/// Get all races for a specific track, sorted by date
-		/// </summary>
 		public List<RaceEntry> GetRacesForTrack(string trackId)
 		{
 			if (!RacesByTrack.ContainsKey(trackId))
@@ -172,9 +141,6 @@ namespace BarBox.Games.Racing
 				.ToList();
 		}
 
-		/// <summary>
-		/// Get leaderboard for a track with specific lap count
-		/// </summary>
 		public List<RaceEntry> GetLeaderboard(string trackId, int laps, int maxEntries = 10)
 		{
 			if (!RacesByTrack.ContainsKey(trackId))
@@ -187,25 +153,16 @@ namespace BarBox.Games.Racing
 				.ToList();
 		}
 
-		/// <summary>
-		/// Get all tracks that have recorded races
-		/// </summary>
 		public HashSet<string> GetTracksWithRaces()
 		{
 			return new HashSet<string>(RacesByTrack.Keys.Where(trackId => RacesByTrack[trackId].Count > 0));
 		}
 
-		/// <summary>
-		/// Get total number of races for a specific track
-		/// </summary>
 		public int GetRaceCountForTrack(string trackId)
 		{
 			return RacesByTrack.ContainsKey(trackId) ? RacesByTrack[trackId].Count : 0;
 		}
 
-		/// <summary>
-		/// Get races by a specific player
-		/// </summary>
 		public List<RaceEntry> GetRacesByPlayer(string playerId)
 		{
 			return RacesByTrack.Values
@@ -215,4 +172,3 @@ namespace BarBox.Games.Racing
 				.ToList();
 		}
 	}
-}

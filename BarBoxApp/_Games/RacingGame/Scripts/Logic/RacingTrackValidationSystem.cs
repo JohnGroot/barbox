@@ -72,11 +72,6 @@ namespace BarBox.Games.Racing
 	// TRACK VALIDATION
 	// ================================================================
 
-	/// <summary>
-	/// Check if a position is on the track
-	/// </summary>
-	/// <param name="position">World position to check</param>
-	/// <returns>True if position is on track</returns>
 	public bool IsOnTrack(Vector2 position)
 	{
 		return _trackDefinition?.IsValidTrackPoint(position) ?? true;
@@ -98,11 +93,6 @@ namespace BarBox.Games.Racing
 	// PENALTY SYSTEM
 	// ================================================================
 
-	/// <summary>
-	/// Update off-track penalties based on car position
-	/// </summary>
-	/// <param name="carPosition">Current car position</param>
-	/// <param name="delta">Frame delta time</param>
 	public void UpdateOffTrackPenalties(Vector2 carPosition, float delta)
 	{
 		bool isOnTrack = IsOnTrack(carPosition);
@@ -119,10 +109,8 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Get speed modifier for car based on track position and penalties
+	/// Returns speed multiplier (1.0 = normal, less than 1.0 = penalty)
 	/// </summary>
-	/// <param name="carPosition">Current car position</param>
-	/// <returns>Speed multiplier (1.0 = normal, less than 1.0 = penalty)</returns>
 	public float GetSpeedModifier(Vector2 carPosition)
 	{
 		return _currentSpeedPenaltyMultiplier;
@@ -151,10 +139,8 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Get turn modifier for car based on track position and penalties
+	/// Returns turn multiplier (1.0 = normal, less than 1.0 = penalty)
 	/// </summary>
-	/// <param name="carPosition">Current car position</param>
-	/// <returns>Turn multiplier (1.0 = normal, less than 1.0 = penalty)</returns>
 	public float GetTurnModifier(Vector2 carPosition)
 	{
 		return _currentTurnPenaltyMultiplier;
@@ -164,9 +150,6 @@ namespace BarBox.Games.Racing
 	// UTILITY METHODS
 	// ================================================================
 
-	/// <summary>
-	/// Reset penalty state to normal values
-	/// </summary>
 	public void ResetPenalties()
 	{
 		_isCurrentlyOffTrack = false;
@@ -175,10 +158,6 @@ namespace BarBox.Games.Racing
 		_currentAccelerationPenaltyMultiplier = 1.0f;
 	}
 
-	/// <summary>
-	/// Check if the system is properly initialized
-	/// </summary>
-	/// <returns>True if track definition and curve are set</returns>
 	public bool IsInitialized()
 	{
 		return _trackDefinition != null && _trackCurve != null;

@@ -474,22 +474,10 @@ public partial class RacingGame : GameController
 			_timingSystem.UpdateRacingTimers((float)delta, _playerMgmt.GetPlayers());
 		}
 
-		// Update racing-specific systems
-		if (IsInstanceValid(_racingCar) && _racingCar.IsInitialized)
-		{
-			// Update track validation and penalties
-			if (IsInstanceValid(_trackValidationSystem))
-			{
-				_trackValidationSystem.UpdateOffTrackPenalties(_racingCar.GetCarPosition(), (float)delta);
-			}
-
-			// Update visual feedback renderer
-			if (IsInstanceValid(_visualRenderer))
-			{
-				_visualRenderer.UpdateVisualFeedback((float)delta);
-				_visualRenderer.UpdateTireTrails();
-			}
-		}
+		// Update racing-specific systems (guaranteed valid after Phase 2 initialization)
+		_trackValidationSystem.UpdateOffTrackPenalties(_racingCar.GetCarPosition(), (float)delta);
+		_visualRenderer.UpdateVisualFeedback((float)delta);
+		_visualRenderer.UpdateTireTrails();
 
 		UpdateUI();
 	}
@@ -497,12 +485,8 @@ public partial class RacingGame : GameController
 	public override void _Draw()
 	{
 		// Visual feedback is now handled by VisualFeedbackRenderer
-		// Update renderer visibility based on game state
-		if (!IsInstanceValid(_visualRenderer))
-			return;
-
-		_visualRenderer.ShouldRender = IsRaceActive() && !IsRacePaused() && 
-		                               IsInstanceValid(_racingCar) && _racingCar.IsInitialized;
+		// Update renderer visibility based on game state (guaranteed valid after Phase 2)
+		_visualRenderer.ShouldRender = IsRaceActive() && !IsRacePaused();
 	}
 
 	// ================================================================
@@ -2202,26 +2186,23 @@ public partial class RacingGame : GameController
 	// RACING DATA GETTERS
 	// ================================================================
 
-	public int GetPlayerCurrentLap(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerCurrentLap(playerId) : 0;
-	public float GetPlayerCurrentLapTime(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerCurrentLapTime(playerId) : 0.0f;
-	public float GetPlayerBestLapTime(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerBestLapTime(playerId) : 0.0f;
-	public float GetPlayerGapTime(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerGapTime(playerId) : 0.0f;
-	public List<float> GetPlayerLapTimes(string playerId) => IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerLapTimes(playerId) : [];
+	public int GetPlayerCurrentLap(string playerId) => _timingSystem.GetPlayerCurrentLap(playerId);
+	public float GetPlayerCurrentLapTime(string playerId) => _timingSystem.GetPlayerCurrentLapTime(playerId);
+	public float GetPlayerBestLapTime(string playerId) => _timingSystem.GetPlayerBestLapTime(playerId);
+	public float GetPlayerGapTime(string playerId) => _timingSystem.GetPlayerGapTime(playerId);
+	public List<float> GetPlayerLapTimes(string playerId) => _timingSystem.GetPlayerLapTimes(playerId);
 
 	/// <summary>
 	/// Get checkpoint times for a player as an array for race entry creation
 	/// </summary>
 	private CheckpointTime[] GetPlayerCheckpointTimes(string playerId)
 	{
-		if (IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId))
-		{
-			return _timingSystem.GetPlayerCheckpointTimes(playerId).ToArray();
-		}
-		return [];
+		return _timingSystem.GetPlayerCheckpointTimes(playerId).ToArray();
 	}
-	public RacingTimingSystem.RacingState GetRacingState() => IsInstanceValid(_timingSystem) ? _timingSystem.CurrentRacingState : RacingTimingSystem.RacingState.Idle;
-	public bool IsInCountdown() => IsInstanceValid(_timingSystem) && _timingSystem.IsInCountdown;
-	public int GetCountdownNumber() => IsInstanceValid(_timingSystem) ? _timingSystem.CountdownNumber : 0;
+
+	public RacingTimingSystem.RacingState GetRacingState() => _timingSystem.CurrentRacingState;
+	public bool IsInCountdown() => _timingSystem.IsInCountdown;
+	public int GetCountdownNumber() => _timingSystem.CountdownNumber;
 	
 	// ================================================================
 	// UI INTEGRATION OVERRIDES

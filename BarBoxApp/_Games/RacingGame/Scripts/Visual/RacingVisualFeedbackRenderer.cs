@@ -32,8 +32,8 @@ namespace BarBox.Games.Racing
 	// ================================================================
 
 	// Visual feedback tracking
-	private List<(Vector2 position, ulong timestamp)> _leftTireTrail = new List<(Vector2, ulong)>();
-	private List<(Vector2 position, ulong timestamp)> _rightTireTrail = new List<(Vector2, ulong)>();
+	private List<(Vector2 position, ulong timestamp)> _leftTireTrail = [];
+	private List<(Vector2 position, ulong timestamp)> _rightTireTrail = [];
 	private Vector2 _lastTrailPosition = Vector2.Zero;
 	private bool _wasInputActive = false;
 	private Vector2 _lastMousePosition = Vector2.Zero;
@@ -195,8 +195,7 @@ namespace BarBox.Games.Racing
 		
 		// Check if car has moved enough to add new trail points
 		if (_lastTrailPosition.DistanceTo(carPosition) < TrailUpdateDistance) return;
-		
-		// Invalidate cached values when car moves significantly (for visual consistency)
+
 		_cachedValuesValid = false;
 		
 		// Use cached tire positions from car controller for performance
@@ -300,19 +299,9 @@ namespace BarBox.Games.Racing
 	{
 		if (_carController?.IsInitialized == false) return;
 		
-		// Use direct target position if available (arc positioning fix)
 		var targetPosition = _carController.GetTargetPosition();
 		var hasInput = _carController.HasInput();
-		
-		// Debug coordinate information (remove in production)
-		// if (_useDirectTarget && hasInput)
-		// {
-		// 	var carPosition = _carController.GetCarBody()?.GlobalPosition ?? Vector2.Zero;
-		// 	var componentTarget = _carController.GetTargetPosition();
-		// 	var coordinateDiff = _directTargetOverride - componentTarget;
-		// 	GD.Print($"[VisualFeedback] Direct: {_directTargetOverride}, Component: {componentTarget}, Diff: {coordinateDiff}, Car: {carPosition}");
-		// }
-		
+
 		if (targetPosition == Vector2.Zero || (!hasInput && _carController.GetCarSpeed() < 1.0f)) return;
 
 		// Use cached clamped target position from car controller for performance
@@ -346,15 +335,8 @@ namespace BarBox.Games.Racing
 				// Apply animated rotation overlay for visual polish
 				startAngle += _arcRotation * 0.1f; // Reduced influence for subtlety
 				endAngle += _arcRotation * 0.1f;
-				
-				// Draw arc at raw target position (actual mouse/finger location) - restored original behavior
+
 				DrawArc(targetPosition, MouseIndicatorRadius, startAngle, endAngle, 32, arcColor, arcWidth, true);
-				
-				// Debug arc positioning (remove in production)
-				// if (_useDirectTarget)
-				// {
-				// 	GD.Print($"[VisualFeedback] Arc drawn at: {targetPosition}, Clamped was: {clampedTarget}, Radius: {MouseIndicatorRadius}");
-				// }
 			}
 		}
 	}

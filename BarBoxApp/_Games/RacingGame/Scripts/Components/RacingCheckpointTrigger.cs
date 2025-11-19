@@ -1,5 +1,7 @@
 using Godot;
 
+namespace BarBox.Games.Racing;
+
 /// <summary>
 /// Checkpoint trigger for racing games
 /// Provides checkpoint-specific signal, state management, and behavior coordination
@@ -47,9 +49,6 @@ public partial class RacingCheckpointTrigger : RacingLineTrigger
 		EmitSignal(SignalName.CheckpointCrossed, body, CheckpointIndex);
 	}
 
-	/// <summary>
-	/// Mark this checkpoint as crossed and change visual color
-	/// </summary>
 	public void MarkAsCrossed()
 	{
 		IsCrossed = true;
@@ -57,9 +56,6 @@ public partial class RacingCheckpointTrigger : RacingLineTrigger
 		SetLineColor(_crossedColor);
 	}
 
-	/// <summary>
-	/// Reset this checkpoint to uncrossed state
-	/// </summary>
 	public void ResetCrossed()
 	{
 		IsCrossed = false;
@@ -67,9 +63,6 @@ public partial class RacingCheckpointTrigger : RacingLineTrigger
 		SetLineColor(_uncrossedColor);
 	}
 
-	/// <summary>
-	/// Mark this checkpoint as the next required checkpoint with enhanced visual
-	/// </summary>
 	public void SetNextRequiredState()
 	{
 		if (!IsCrossed)
@@ -79,9 +72,6 @@ public partial class RacingCheckpointTrigger : RacingLineTrigger
 		}
 	}
 
-	/// <summary>
-	/// Set this checkpoint to future state (not yet required)
-	/// </summary>
 	public void SetFutureState()
 	{
 		if (!IsCrossed)
@@ -91,9 +81,6 @@ public partial class RacingCheckpointTrigger : RacingLineTrigger
 		}
 	}
 
-	/// <summary>
-	/// Get current checkpoint state
-	/// </summary>
 	public CheckpointState GetCurrentState()
 	{
 		return _currentState;
@@ -102,9 +89,7 @@ public partial class RacingCheckpointTrigger : RacingLineTrigger
 	/// <summary>
 	/// Set custom colors for checkpoint states
 	/// </summary>
-	/// <param name="uncrossed">Color when checkpoint is future/not yet required</param>
-	/// <param name="crossed">Color when checkpoint has been crossed</param>
-	/// <param name="nextRequired">Color when checkpoint is next required (optional)</param>
+	/// <param name="nextRequired">Optional color for next required state, defaults to cyan if null</param>
 	public void SetCheckpointColors(Color uncrossed, Color crossed, Color? nextRequired = null)
 	{
 		_uncrossedColor = uncrossed;
@@ -118,9 +103,6 @@ public partial class RacingCheckpointTrigger : RacingLineTrigger
 		UpdateVisualState();
 	}
 
-	/// <summary>
-	/// Update visual appearance based on current state
-	/// </summary>
 	private void UpdateVisualState()
 	{
 		switch (_currentState)

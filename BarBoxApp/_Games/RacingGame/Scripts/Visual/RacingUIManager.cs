@@ -85,7 +85,7 @@ namespace BarBox.Games.Racing
 	
 	// Tracks & Leaderboard overlay data
 	private TracksLeaderboardOverlay _tracksLeaderboardOverlay;
-	private Dictionary<string, TrackMetadata> _trackMetadataCache = new();
+	private Dictionary<string, TrackMetadata> _trackMetadataCache = [];
 
 	// Race complete overlay data
 	private RaceCompleteOverlay _raceCompleteOverlay;
@@ -168,8 +168,8 @@ namespace BarBox.Games.Racing
 		public bool IsVisible => OverlayRoot?.Visible ?? false;
 		
 		// Track button references
-		private List<Button> _trackButtons = new();
-		private Dictionary<string, Button> _trackButtonMap = new();
+		private List<Button> _trackButtons = [];
+		private Dictionary<string, Button> _trackButtonMap = [];
 
 		/// <summary>
 		/// Create the tracks & leaderboard overlay UI structure
@@ -2009,7 +2009,6 @@ namespace BarBox.Games.Racing
 		if (!_trackMetadataCache.TryGetValue(trackId, out var track))
 			return;
 
-		// Get current session username as additional fallback
 		string sessionUsername = GetCurrentSessionUsername();
 
 

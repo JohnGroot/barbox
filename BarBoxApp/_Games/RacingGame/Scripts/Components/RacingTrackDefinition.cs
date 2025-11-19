@@ -1,5 +1,7 @@
 using Godot;
 
+namespace BarBox.Games.Racing;
+
 /// <summary>
 /// Concrete track definition class that serves as the root node of track scenes
 /// Uses Line2D as the visual track representation and source of track bounds
@@ -135,17 +137,11 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		return result;
 	}
 
-	/// <summary>
-	/// Get the world position of the starting line from the StartLine trigger
-	/// </summary>
 	public Vector2 GetStartLinePosition()
 	{
 		return StartLine?.GlobalPosition ?? Vector2.Zero;
 	}
 
-	/// <summary>
-	/// Get the direction vector for the starting line from the StartLine trigger rotation
-	/// </summary>
 	public Vector2 GetStartLineDirection()
 	{
 		if (StartLine == null)
@@ -156,7 +152,6 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	}
 
 	/// <summary>
-	/// Get the world position of the finish line from the FinishLine trigger
 	/// Falls back to StartLine if FinishLine is not configured (looping track)
 	/// </summary>
 	public Vector2 GetFinishLinePosition()
@@ -165,7 +160,6 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	}
 
 	/// <summary>
-	/// Get the direction vector for the finish line from the FinishLine trigger rotation
 	/// Falls back to StartLine if FinishLine is not configured (looping track)
 	/// </summary>
 	public Vector2 GetFinishLineDirection()
@@ -189,18 +183,12 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		}
 	}
 
-	/// <summary>
-	/// Reset start line color to default state
-	/// </summary>
 	public void ResetStartLineColor()
 	{
 		// Reset start line color to default (usually white or track color)
 		StartLine?.SetLineColor(Colors.White);
 	}
 
-	/// <summary>
-	/// Calculate the centroid (center point) of the track based on all track points
-	/// </summary>
 	public Vector2 GetTrackCentroid()
 	{
 		if (TrackLine == null || TrackLine.GetPointCount() == 0)
@@ -220,9 +208,6 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		return ToGlobal(centroid);
 	}
 
-	/// <summary>
-	/// Get the bounding rectangle that contains the entire track including width
-	/// </summary>
 	public Rect2 GetTrackBounds()
 	{
 		if (TrackLine == null || TrackLine.GetPointCount() == 0)
@@ -256,9 +241,6 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		return new Rect2(globalTopLeft, globalSize);
 	}
 
-	/// <summary>
-	/// Clear cached node references to force fresh lookups
-	/// </summary>
 	public void ClearCache()
 	{
 		_startLineCache = null;

@@ -66,7 +66,7 @@ namespace BarBox.Games.Racing
 		private int _currentLap = 1;
 		private int _targetLaps = 3;
 		private string _timeText = "0.0s";
-	private bool _isPracticeMode = false;
+		private bool _isPracticeMode = false;
 
 		// ================================================================
 		// PUBLIC PROPERTIES
@@ -88,7 +88,7 @@ namespace BarBox.Games.Racing
 			_currentLap = currentLap;
 			_targetLaps = targetLaps;
 			_timeText = timeText;
-		_isPracticeMode = isPracticeMode;
+			_isPracticeMode = isPracticeMode;
 
 			// Update target values for smooth interpolation
 			_targetSpeedPercent = Mathf.Clamp(currentSpeed / maxSpeed, 0.0f, 1.0f);

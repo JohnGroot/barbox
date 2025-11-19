@@ -16,9 +16,6 @@ public class RacingEventService : GameEventServiceBase
 	{
 	}
 
-	/// <summary>
-	/// Emit lap complete event with validation
-	/// </summary>
 	public async Task<Result<bool>> EmitLapCompleteAsync(string trackId, int lapNum, float lapTime, CheckpointTime[] checkpoints)
 	{
 		// Input validation
@@ -62,8 +59,7 @@ public class RacingEventService : GameEventServiceBase
 	}
 
 	/// <summary>
-	/// Validate checkpoint data integrity
-	/// Ensures indices are sequential, times are monotonically increasing, and gaps are positive
+	/// Ensures indices are sequential, times monotonically increasing, gaps positive
 	/// </summary>
 	private bool ValidateCheckpointData(CheckpointTime[] checkpoints, out string error)
 	{
@@ -102,9 +98,6 @@ public class RacingEventService : GameEventServiceBase
 		return true;
 	}
 
-	/// <summary>
-	/// Emit race finish event with validation
-	/// </summary>
 	public async Task<Result<bool>> EmitRaceFinishAsync(RaceEntry raceEntry)
 	{
 		// Input validation
@@ -153,9 +146,7 @@ public class RacingEventService : GameEventServiceBase
 	}
 
 	/// <summary>
-	/// Validate race data integrity
-	/// Ensures data structure correctness without arbitrary time limits
-	/// Trusts the physics system - validates data, not plausibility
+	/// Validates data structure correctness without time limits - trusts physics system
 	/// </summary>
 	private bool ValidateRaceDataIntegrity(RaceEntry raceEntry, out string error)
 	{
@@ -201,7 +192,6 @@ public class RacingEventService : GameEventServiceBase
 	}
 
 	/// <summary>
-	/// Emit race abandoned event for incomplete races
 	/// Preserves partial race data when player quits mid-race
 	/// </summary>
 	public async Task<Result<bool>> EmitRaceAbandonedAsync(string trackId, string playerId, int completedLaps, float[] lapTimes, string reason)
@@ -357,13 +347,8 @@ public class RacingEventService : GameEventServiceBase
 	}
 
 	/// <summary>
-	/// Register player on first play (auto-creates player in backend if they don't exist)
-	/// This should be called when a user first logs in or starts their first game
+	/// Call when user first logs in or starts their first game
 	/// </summary>
-	/// <param name="playerId">Player UUID</param>
-	/// <param name="username">Player username/tag</param>
-	/// <param name="boxId">Origin box UUID</param>
-	/// <returns>Result indicating success or failure</returns>
 	public async Task<Result<bool>> RegisterFirstPlayAsync(Guid playerId, string username, Guid boxId)
 	{
 		// Input validation
@@ -405,9 +390,6 @@ public class RacingEventService : GameEventServiceBase
 	}
 }
 
-/// <summary>
-/// Racing leaderboard data structure
-/// </summary>
 public record class RacingLeaderboardData
 {
 	public string TrackId { get; init; }
@@ -415,9 +397,6 @@ public record class RacingLeaderboardData
 	public List<RacingLeaderboardEntry> Leaderboard { get; init; }
 }
 
-/// <summary>
-/// Racing leaderboard entry
-/// </summary>
 public record class RacingLeaderboardEntry
 {
 	public Guid PlayerId { get; init; }
