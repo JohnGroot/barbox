@@ -16,27 +16,18 @@ public struct HelpContentData
 		Sections = new List<HelpSection>();
 	}
 
-	/// <summary>
-	/// Adds a new section with header and content
-	/// </summary>
 	public HelpContentData AddSection(string header, string content)
 	{
 		Sections.Add(new HelpSection(header, content));
 		return this;
 	}
 
-	/// <summary>
-	/// Adds a section with multiple paragraphs
-	/// </summary>
 	public HelpContentData AddSection(string header, params string[] paragraphs)
 	{
 		Sections.Add(new HelpSection(header, paragraphs));
 		return this;
 	}
 
-	/// <summary>
-	/// Adds a section with a list of items
-	/// </summary>
 	public HelpContentData AddListSection(string header, params string[] listItems)
 	{
 		Sections.Add(new HelpSection(header, listItems, true));
@@ -73,9 +64,6 @@ public struct HelpSection
 /// </summary>
 public static class HelpContentFactory
 {
-	/// <summary>
-	/// Creates basic game controls help content
-	/// </summary>
 	public static HelpContentData CreateBasicGameHelp(string gameTitle)
 	{
 		return new HelpContentData($"{gameTitle} - How to Play")
@@ -84,9 +72,6 @@ public static class HelpContentFactory
 			.AddSection("🏠 Return to Menu", "Use the home button to return to the main menu.");
 	}
 
-	/// <summary>
-	/// Creates mining game specific help structure
-	/// </summary>
 	public static HelpContentData CreateMiningGameHelp()
 	{
 		return new HelpContentData("Mining Game - Complete Guide")

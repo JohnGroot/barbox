@@ -27,9 +27,6 @@ public partial class GameTimerComponent : Node
 		AddChild(_timer);
 	}
 
-	/// <summary>
-	/// Start the timer
-	/// </summary>
 	public void StartTimer()
 	{
 		if (_timer == null || TimeLimit <= 0)
@@ -39,9 +36,6 @@ public partial class GameTimerComponent : Node
 		_isActive = true;
 	}
 
-	/// <summary>
-	/// Stop the timer
-	/// </summary>
 	public void StopTimer()
 	{
 		if (_timer == null)
@@ -51,9 +45,6 @@ public partial class GameTimerComponent : Node
 		_isActive = false;
 	}
 
-	/// <summary>
-	/// Pause the timer
-	/// </summary>
 	public void PauseTimer()
 	{
 		if (_timer == null)
@@ -62,9 +53,6 @@ public partial class GameTimerComponent : Node
 		_timer.Paused = true;
 	}
 
-	/// <summary>
-	/// Resume the timer
-	/// </summary>
 	public void ResumeTimer()
 	{
 		if (_timer == null)
@@ -73,17 +61,11 @@ public partial class GameTimerComponent : Node
 		_timer.Paused = false;
 	}
 
-	/// <summary>
-	/// Get remaining time
-	/// </summary>
 	public float GetTimeRemaining()
 	{
 		return (float)(_timer?.TimeLeft ?? 0.0);
 	}
 
-	/// <summary>
-	/// Check if timer is active
-	/// </summary>
 	public bool IsActive()
 	{
 		return _isActive && _timer != null && !_timer.IsStopped();
@@ -103,13 +85,14 @@ public partial class GameTimerComponent : Node
 		}
 	}
 
-	public override void _ExitTree()
+	public override void _Notification(int what)
 	{
-		if (GodotObject.IsInstanceValid(_timer))
+		if (what == NotificationExitTree)
 		{
-			_timer.Timeout -= OnTimeUp;
+			if (GodotObject.IsInstanceValid(_timer))
+			{
+				_timer.Timeout -= OnTimeUp;
+			}
 		}
-
-		base._ExitTree();
 	}
 }

@@ -14,9 +14,6 @@ using LightResults;
 /// - Example: Python UUID("123e4567-e89b-12d3-a456-426614174000") -> JSON "123e4567-e89b-12d3-a456-426614174000" -> C# string
 /// </summary>
 
-/// <summary>
-/// Response for username availability check
-/// </summary>
 public record UsernameAvailabilityResponse
 {
 	[JsonPropertyName("username")]
@@ -26,9 +23,6 @@ public record UsernameAvailabilityResponse
 	public bool IsAvailable { get; init; }
 }
 
-/// <summary>
-/// Response for player credits query
-/// </summary>
 public record PlayerCreditsResponse
 {
 	[JsonPropertyName("player_id")]
@@ -41,9 +35,6 @@ public record PlayerCreditsResponse
 	public int Credits { get; init; } = 0;
 }
 
-/// <summary>
-/// Request for creating a new player account
-/// </summary>
 public record PlayerCreateRequest
 {
 	[JsonPropertyName("id")]
@@ -62,10 +53,6 @@ public record PlayerCreateRequest
 	public string PhoneNumber { get; init; } = "";
 }
 
-/// <summary>
-/// Response for player creation
-/// Contains complete player details including username, origin box, and phone number
-/// </summary>
 public record PlayerDetailResponse
 {
 	[JsonPropertyName("id")]
@@ -81,9 +68,6 @@ public record PlayerDetailResponse
 	public string PhoneNumber { get; init; } = "";
 }
 
-/// <summary>
-/// Request for registering a new box (physical terminal)
-/// </summary>
 public record BoxCreateRequest
 {
 	[JsonPropertyName("id")]
@@ -151,9 +135,6 @@ public record ValidationErrorDetail
 	public object? Value { get; init; }
 }
 
-/// <summary>
-/// Response for player creation validation (pre-flight check)
-/// </summary>
 public record PlayerValidationResponse
 {
 	[JsonPropertyName("valid")]
@@ -163,9 +144,6 @@ public record PlayerValidationResponse
 	public ValidationErrorDetail[] Errors { get; init; } = [];
 }
 
-/// <summary>
-/// Individual player contribution to machine credit pot
-/// </summary>
 public record MachinePlayerContribution
 {
 	[JsonPropertyName("player_id")]
@@ -175,9 +153,6 @@ public record MachinePlayerContribution
 	public int Amount { get; init; }
 }
 
-/// <summary>
-/// Response for machine credit pot query (per box+game)
-/// </summary>
 public record MachineCreditsResponse
 {
 	[JsonPropertyName("box_id")]
@@ -193,9 +168,6 @@ public record MachineCreditsResponse
 	public MachinePlayerContribution[] Contributions { get; init; } = [];
 }
 
-/// <summary>
-/// Request for player authentication (login)
-/// </summary>
 public record PlayerLoginRequest
 {
 	[JsonPropertyName("phone_number")]
@@ -208,9 +180,6 @@ public record PlayerLoginRequest
 	public string BoxId { get; init; } = "";
 }
 
-/// <summary>
-/// Response for successful player authentication (arcade-optimized single token)
-/// </summary>
 public record PlayerLoginResponse
 {
 	/// <summary>
@@ -236,16 +205,8 @@ public record PlayerLoginResponse
 	public string ExpiresAt { get; init; } = "";
 }
 
-/// <summary>
-/// Validation extensions for backend response DTOs.
-/// Use these to validate that required fields are present after deserialization.
-/// </summary>
 public static class ResponseValidationExtensions
 {
-	/// <summary>
-	/// Validate that PlayerLoginResponse contains all required fields.
-	/// Call this immediately after deserialization to catch malformed responses.
-	/// </summary>
 	public static Result<PlayerLoginResponse> ValidateRequired(this PlayerLoginResponse response)
 	{
 		if (response == null)
@@ -266,10 +227,6 @@ public static class ResponseValidationExtensions
 		return Result.Success(response);
 	}
 
-	/// <summary>
-	/// Validate that PlayerDetailResponse contains all required fields.
-	/// Call this immediately after deserialization to catch malformed responses.
-	/// </summary>
 	public static Result<PlayerDetailResponse> ValidateRequired(this PlayerDetailResponse response)
 	{
 		if (response == null)
@@ -291,7 +248,6 @@ public static class ResponseValidationExtensions
 	}
 
 	/// <summary>
-	/// Validate that BoxDetailResponse contains required fields.
 	/// Only validates the id field, as other fields are optional (depend on registration vs verification)
 	/// </summary>
 	public static Result<BoxDetailResponse> ValidateRequired(this BoxDetailResponse response)
@@ -307,7 +263,6 @@ public static class ResponseValidationExtensions
 
 	/// <summary>
 	/// Validate that BoxDetailResponse is a first-time registration response (has API key)
-	/// Call this when you expect a first-time registration with API key
 	/// </summary>
 	public static Result<BoxDetailResponse> ValidateFirstRegistration(this BoxDetailResponse response)
 	{
@@ -327,10 +282,6 @@ public static class ResponseValidationExtensions
 		return Result.Success(response);
 	}
 
-	/// <summary>
-	/// Validate that UsernameAvailabilityResponse contains all required fields.
-	/// Call this immediately after deserialization to catch malformed responses.
-	/// </summary>
 	public static Result<UsernameAvailabilityResponse> ValidateRequired(this UsernameAvailabilityResponse response)
 	{
 		if (response == null)
@@ -342,10 +293,6 @@ public static class ResponseValidationExtensions
 		return Result.Success(response);
 	}
 
-	/// <summary>
-	/// Validate that PlayerCreditsResponse contains all required fields.
-	/// Call this immediately after deserialization to catch malformed responses.
-	/// </summary>
 	public static Result<PlayerCreditsResponse> ValidateRequired(this PlayerCreditsResponse response)
 	{
 		if (response == null)

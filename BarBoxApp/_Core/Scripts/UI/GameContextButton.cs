@@ -22,9 +22,6 @@ public struct ContextButtonData
 		Tooltip = tooltip;
 	}
 
-	/// <summary>
-	/// Gets the full display text including icon if present
-	/// </summary>
 	public readonly string GetDisplayText()
 	{
 		return string.IsNullOrEmpty(Icon) ? Text : $"{Icon} {Text}";
@@ -37,33 +34,21 @@ public struct ContextButtonData
 /// </summary>
 public static class GameContextButton
 {
-	/// <summary>
-	/// Factory method for common "Return to Menu" button
-	/// </summary>
 	public static ContextButtonData CreateReturnToMenuButton(Action onReturnToMenu)
 	{
 		return new ContextButtonData("Return to Menu", onReturnToMenu, "🏠", true, "Return to the main menu");
 	}
 
-	/// <summary>
-	/// Factory method for common "Pause Game" button
-	/// </summary>
 	public static ContextButtonData CreatePauseButton(Action onPause)
 	{
 		return new ContextButtonData("Pause", onPause, "⏸️", true, "Pause the game");
 	}
 
-	/// <summary>
-	/// Factory method for common "Resume Game" button
-	/// </summary>
 	public static ContextButtonData CreateResumeButton(Action onResume)
 	{
 		return new ContextButtonData("Resume", onResume, "▶️", true, "Resume the game");
 	}
 
-	/// <summary>
-	/// Factory method for common "Restart Game" button
-	/// </summary>
 	public static ContextButtonData CreateRestartButton(Action onRestart)
 	{
 		return new ContextButtonData("Restart", onRestart, "🔄", true, "Restart the current game");

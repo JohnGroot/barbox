@@ -12,10 +12,6 @@ namespace BarBox.Core.UI
 	[GlobalClass]
 	public partial class DataTableView : Control
 	{
-		// ================================================================
-		// EXPORT PROPERTIES
-		// ================================================================
-
 		[ExportCategory("Table Settings")]
 		[Export] public bool ShowHeaders { get; set; } = true;
 		[Export] public bool AlternatingRowColors { get; set; } = true;
@@ -29,28 +25,16 @@ namespace BarBox.Core.UI
 		[Export] public int HeaderHeight { get; set; } = 40;
 		[Export] public int CellPadding { get; set; } = 8;
 
-		// ================================================================
-		// SIGNALS
-		// ================================================================
-
 		[Signal] public delegate void RowSelectedEventHandler(int selectedIndex);
 		[Signal] public delegate void ColumnSortedEventHandler(string columnHeader, bool ascending);
 
-		// ================================================================
-		// PRIVATE FIELDS
-		// ================================================================
-
-		private readonly List<TableColumnDefinition> _columns = new();
-		private List<object> _data = new();
+		private readonly List<TableColumnDefinition> _columns = [];
+		private List<object> _data = [];
 		private GridContainer _gridContainer;
 		private ScrollContainer _scrollContainer;
 		private string _currentSortColumn = "";
 		private bool _sortAscending = true;
 		private Func<object, bool> _highlightPredicate;
-
-		// ================================================================
-		// INITIALIZATION
-		// ================================================================
 
 		public override void _Ready()
 		{
@@ -59,7 +43,6 @@ namespace BarBox.Core.UI
 
 		private void EnsureTableStructure()
 		{
-			// Only set up if not already initialized
 			if (_scrollContainer != null && _gridContainer != null)
 				return;
 
@@ -96,13 +79,6 @@ namespace BarBox.Core.UI
 			_scrollContainer.AddChild(_gridContainer);
 		}
 
-		// ================================================================
-		// COLUMN MANAGEMENT
-		// ================================================================
-
-		/// <summary>
-		/// Add a column to the table
-		/// </summary>
 		public DataTableView AddColumn(string header, Func<object, string> valueSelector, int width = 0, HorizontalAlignment alignment = HorizontalAlignment.Left, bool useMonospace = false)
 		{
 			var column = new TableColumnDefinition(header, valueSelector, width, alignment, useMonospace);
@@ -110,18 +86,12 @@ namespace BarBox.Core.UI
 			return this;
 		}
 
-		/// <summary>
-		/// Add a column with custom styling
-		/// </summary>
 		public DataTableView AddColumn(TableColumnDefinition column)
 		{
 			_columns.Add(column);
 			return this;
 		}
 
-		/// <summary>
-		/// Add a sortable column with custom comparer
-		/// </summary>
 		public DataTableView AddSortableColumn(string header, Func<object, string> valueSelector, Func<object, object, int> sortComparer, int width = 0, HorizontalAlignment alignment = HorizontalAlignment.Left)
 		{
 			var column = new TableColumnDefinition(header, valueSelector, width, alignment)
@@ -133,51 +103,28 @@ namespace BarBox.Core.UI
 			return this;
 		}
 
-		/// <summary>
-		/// Clear all columns
-		/// </summary>
 		public void ClearColumns()
 		{
 			_columns.Clear();
 		}
 
-		// ================================================================
-		// DATA BINDING
-		// ================================================================
-
-		/// <summary>
-		/// Bind data to the table and refresh display
-		/// </summary>
 		public void BindData(IEnumerable<object> data)
 		{
-			_data = data?.ToList() ?? new List<object>();
+			_data = data?.ToList() ?? [];
 			EnsureTableStructure();
 			RefreshTable();
 		}
 
-		/// <summary>
-		/// Get the currently bound data
-		/// </summary>
 		public IReadOnlyList<object> GetData()
 		{
 			return _data.AsReadOnly();
 		}
 
-		/// <summary>
-		/// Set a predicate to highlight specific rows
-		/// </summary>
 		public void SetHighlightPredicate(Func<object, bool> predicate)
 		{
 			_highlightPredicate = predicate;
 		}
 
-		// ================================================================
-		// TABLE RENDERING
-		// ================================================================
-
-		/// <summary>
-		/// Refresh the entire table display
-		/// </summary>
 		public void RefreshTable()
 		{
 			EnsureTableStructure();
@@ -309,10 +256,6 @@ namespace BarBox.Core.UI
 			return label;
 		}
 
-		// ================================================================
-		// SORTING
-		// ================================================================
-
 		private void SortByColumn(string columnHeader)
 		{
 			var column = _columns.FirstOrDefault(c => c.Header == columnHeader);
@@ -352,48 +295,29 @@ namespace BarBox.Core.UI
 			EmitSignal(SignalName.ColumnSorted, columnHeader, _sortAscending);
 		}
 
-		// ================================================================
-		// UTILITY METHODS
-		// ================================================================
-
-		/// <summary>
-		/// Clear all data from the table
-		/// </summary>
 		public void ClearData()
 		{
 			_data.Clear();
 			RefreshTable();
 		}
 
-		/// <summary>
-		/// Add a single item to the table
-		/// </summary>
 		public void AddItem(object item)
 		{
 			_data.Add(item);
 			RefreshTable();
 		}
 
-		/// <summary>
-		/// Remove an item from the table
-		/// </summary>
 		public void RemoveItem(object item)
 		{
 			_data.Remove(item);
 			RefreshTable();
 		}
 
-		/// <summary>
-		/// Get the number of rows in the table
-		/// </summary>
 		public int GetRowCount()
 		{
 			return _data.Count;
 		}
 
-		/// <summary>
-		/// Get the number of columns in the table
-		/// </summary>
 		public int GetColumnCount()
 		{
 			return _columns.Count;

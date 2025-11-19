@@ -11,7 +11,20 @@ public partial class BuyCreditsModal : Control
 	[Signal] public delegate void CreditsAcquiredEventHandler(string userId, int amount);
 	[Signal] public delegate void ModalClosedEventHandler();
 
-	// UI Components
+	private const string TITLE_TEXT = "Buy Credits";
+	private const string CURRENT_CREDITS_FORMAT = "Current Credits: {0}";
+	private const string SELECT_PACK_TEXT = "Select Credit Pack:";
+	private const string CLOSE_TEXT = "Close";
+	private const string PAYMENT_NOT_AVAILABLE = "Payment service not available";
+	private const string USER_INVALID = "Invalid user specified";
+	private const string SESSION_NOT_FOUND = "User session not found";
+	private const string NO_USER_SPECIFIED = "No user specified";
+	private const string PROCESSING_PURCHASE = "Processing purchase...";
+	private const string PURCHASE_CONFIRMATION_FORMAT = "Purchase {0}?";
+	private const string PURCHASE_SUCCESS_FORMAT = "Purchase successful! {0} credits added.";
+	private const string PURCHASE_FAILED_FORMAT = "Purchase failed: {0}";
+	private const string ERROR_FORMAT = "Error: {0}";
+
 	private Panel _modalBackground;
 	private Panel _modalPanel;
 	private VBoxContainer _contentContainer;
@@ -33,38 +46,30 @@ public partial class BuyCreditsModal : Control
 		SetupModalLayout();
 		CreateModalUI();
 		ConnectSignals();
-
-		// Start hidden
 		Visible = false;
 	}
 
 	private void SetupModalLayout()
 	{
-		// Fill entire screen - BuyCreditsModal will be added to UIManager which has its own CanvasLayer handling
 		SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 	}
 
 	private void CreateModalUI()
 	{
-		// Semi-transparent background overlay
 		_modalBackground = new Panel();
 		_modalBackground.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 
 		var backgroundStyle = new StyleBoxFlat();
-		backgroundStyle.BgColor = new Color(0.0f, 0.0f, 0.0f, 0.7f); // Semi-transparent black
+		backgroundStyle.BgColor = new Color(0.0f, 0.0f, 0.0f, 0.7f);
 		_modalBackground.AddThemeStyleboxOverride("panel", backgroundStyle);
-
-		// Click background to close modal
 		_modalBackground.GuiInput += OnBackgroundInput;
 
 		AddChild(_modalBackground);
 
-		// Create centering container
 		var centerContainer = new CenterContainer();
 		centerContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 		AddChild(centerContainer);
 
-		// Modal panel (centered dialog)
 		_modalPanel = new Panel();
 		_modalPanel.CustomMinimumSize = new Vector2(500, 450);
 		_modalPanel.SetSize(new Vector2(500, 450));
@@ -84,12 +89,10 @@ public partial class BuyCreditsModal : Control
 
 		centerContainer.AddChild(_modalPanel);
 
-		// Content container
 		_contentContainer = new VBoxContainer();
 		_contentContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 		_contentContainer.AddThemeConstantOverride("separation", 15);
 
-		// Add padding
 		var margin = new MarginContainer();
 		margin.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 		margin.AddThemeConstantOverride("margin_left", 20);
@@ -100,51 +103,44 @@ public partial class BuyCreditsModal : Control
 		_modalPanel.AddChild(margin);
 		margin.AddChild(_contentContainer);
 
-		// Title
 		_titleLabel = new Label();
-		_titleLabel.Text = "Buy Credits";
+		_titleLabel.Text = TITLE_TEXT;
 		_titleLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		_titleLabel.AddThemeColorOverride("font_color", Colors.White);
 		_titleLabel.AddThemeFontSizeOverride("font_size", 24);
 		_contentContainer.AddChild(_titleLabel);
 
-		// Current credits display
 		_currentCreditsLabel = new Label();
-		_currentCreditsLabel.Text = "Current Credits: 0";
+		_currentCreditsLabel.Text = string.Format(CURRENT_CREDITS_FORMAT, 0);
 		_currentCreditsLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		_currentCreditsLabel.AddThemeColorOverride("font_color", Colors.LightGray);
 		_currentCreditsLabel.AddThemeFontSizeOverride("font_size", 16);
 		_contentContainer.AddChild(_currentCreditsLabel);
 
-		// Credit pack selection
 		var packLabel = new Label();
-		packLabel.Text = "Select Credit Pack:";
+		packLabel.Text = SELECT_PACK_TEXT;
 		packLabel.AddThemeColorOverride("font_color", Colors.White);
 		packLabel.AddThemeFontSizeOverride("font_size", 18);
 		_contentContainer.AddChild(packLabel);
 
-		// Credit pack grid (2 columns)
 		_creditPackContainer = new GridContainer();
 		_creditPackContainer.Columns = 2;
 		_creditPackContainer.AddThemeConstantOverride("h_separation", 10);
 		_creditPackContainer.AddThemeConstantOverride("v_separation", 10);
 		_contentContainer.AddChild(_creditPackContainer);
 
-		// Create credit pack buttons
 		CreateCreditPackButtons();
 
-		// Close button
 		var buttonContainer = new HBoxContainer();
 		buttonContainer.Alignment = BoxContainer.AlignmentMode.Center;
 		_contentContainer.AddChild(buttonContainer);
 
 		_closeButton = new Button();
-		_closeButton.Text = "Close";
+		_closeButton.Text = CLOSE_TEXT;
 		_closeButton.CustomMinimumSize = new Vector2(120, 40);
 		TopMenuBar.ApplyStandardButtonStyle(_closeButton);
 		buttonContainer.AddChild(_closeButton);
 
-		// Status label
 		_statusLabel = new Label();
 		_statusLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		_statusLabel.AddThemeColorOverride("font_color", Colors.White);
@@ -156,7 +152,7 @@ public partial class BuyCreditsModal : Control
 	{
 		if (_paymentService == null)
 		{
-			ShowStatusMessage("Payment service not available", false);
+			ShowStatusMessage(PAYMENT_NOT_AVAILABLE, false);
 			return;
 		}
 
@@ -168,8 +164,6 @@ public partial class BuyCreditsModal : Control
 			button.Text = pack.DisplayName;
 			button.CustomMinimumSize = new Vector2(200, 50);
 			TopMenuBar.ApplyStandardButtonStyle(button);
-
-			// Store the pack index in the button's metadata for reference
 			button.SetMeta("pack_index", Array.IndexOf(creditPacks, pack));
 			button.Pressed += () => OnCreditPackSelected(pack);
 
@@ -183,23 +177,18 @@ public partial class BuyCreditsModal : Control
 			_closeButton.Pressed += OnClosePressed;
 	}
 
-	/// <summary>
-	/// Show the buy credits modal for a specific user
-	/// </summary>
-	/// <param name="phoneNumber">Phone number of the user purchasing credits</param>
 	public void ShowModal(string phoneNumber)
 	{
 		if (string.IsNullOrEmpty(phoneNumber))
 		{
-			ShowStatusMessage("Invalid user specified", false);
+			ShowStatusMessage(USER_INVALID, false);
 			return;
 		}
 
-		// Get the specified user's session
 		var session = _sessionManager?.GetUserSession(phoneNumber);
 		if (session == null)
 		{
-			ShowStatusMessage("User session not found", false);
+			ShowStatusMessage(SESSION_NOT_FOUND, false);
 			return;
 		}
 
@@ -210,9 +199,6 @@ public partial class BuyCreditsModal : Control
 		ClearStatusMessage();
 	}
 
-	/// <summary>
-	/// Hide the buy credits modal
-	/// </summary>
 	public void HideModal()
 	{
 		Visible = false;
@@ -224,7 +210,7 @@ public partial class BuyCreditsModal : Control
 	{
 		if (_currentCreditsLabel != null)
 		{
-			_currentCreditsLabel.Text = $"Current Credits: {credits}";
+			_currentCreditsLabel.Text = string.Format(CURRENT_CREDITS_FORMAT, credits);
 		}
 	}
 
@@ -245,11 +231,8 @@ public partial class BuyCreditsModal : Control
 		}
 	}
 
-	// Event handlers
-
 	private void OnBackgroundInput(InputEvent @event)
 	{
-		// Close modal when clicking background
 		if (@event is InputEventMouseButton mouseEvent && mouseEvent.Pressed && mouseEvent.ButtonIndex == MouseButton.Left)
 		{
 			OnClosePressed();
@@ -260,62 +243,56 @@ public partial class BuyCreditsModal : Control
 	{
 		if (string.IsNullOrEmpty(_targetPhoneNumber))
 		{
-			ShowStatusMessage("No user specified", false);
+			ShowStatusMessage(NO_USER_SPECIFIED, false);
 			return;
 		}
 
 		if (_paymentService == null)
 		{
-			ShowStatusMessage("Payment service not available", false);
+			ShowStatusMessage(PAYMENT_NOT_AVAILABLE, false);
 			return;
 		}
 
-		// Show confirmation dialog
-		var confirmMessage = $"Purchase {creditPack.DisplayName}?";
+		var confirmMessage = string.Format(PURCHASE_CONFIRMATION_FORMAT, creditPack.DisplayName);
 		var confirmed = await ShowConfirmationDialog(confirmMessage);
 
 		if (!confirmed)
 			return;
 
-		ShowStatusMessage("Processing purchase...", true);
+		ShowStatusMessage(PROCESSING_PURCHASE, true);
 
 		try
 		{
-			// Convert phone number to playerId for backend consistency
 			var playerId = EventService.GetPlayerIdFromPhone(_targetPhoneNumber);
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 			if (result.IsSuccess)
 			{
-				ShowStatusMessage($"Purchase successful! {creditPack.Credits} credits added.", true);
+				ShowStatusMessage(string.Format(PURCHASE_SUCCESS_FORMAT, creditPack.Credits), true);
 
-				// Update credits display for the target user
 				var session = _sessionManager?.GetUserSession(_targetPhoneNumber);
 				if (session != null)
 				{
 					UpdateCurrentCreditsDisplay(session.Credits);
 				}
 
-				// Emit signal for UI updates
 				EmitSignal(SignalName.CreditsAcquired, _targetPhoneNumber, creditPack.Credits);
 
-				// Auto-close after delay
 				await DelayAndClose(2000);
 			}
 			else
 			{
-				ShowStatusMessage($"Purchase failed: {result.ErrorMessage}", false);
+				ShowStatusMessage(string.Format(PURCHASE_FAILED_FORMAT, result.ErrorMessage), false);
 			}
 		}
 		catch (Exception ex)
 		{
-			ShowStatusMessage($"Error: {ex.Message}", false);
+			ShowStatusMessage(string.Format(ERROR_FORMAT, ex.Message), false);
 		}
 	}
 
 	private async Task<bool> ShowConfirmationDialog(string message)
 	{
-		// Simple confirmation - in a more complex UI this could be a separate dialog
 		var confirmDialog = new AcceptDialog();
 		confirmDialog.DialogText = message;
 		confirmDialog.GetOkButton().Text = "Purchase";

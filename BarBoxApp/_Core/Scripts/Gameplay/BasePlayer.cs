@@ -19,22 +19,12 @@ public abstract partial class BasePlayer : Node2D
 		EmitSignal(SignalName.PlayerReady);
 	}
 
-	/// <summary>
-	/// Called during _Ready BEFORE PlayerReady signal emitted
-	/// </summary>
 	protected virtual void InitializePlayer() { }
 
-	/// <summary>
-	/// Called AFTER _Ready and InitializePlayer
-	/// </summary>
-	/// <param name="userSession"></param>
 	public virtual void SetUserSession(UserSession userSession)
 	{
 		_userSession = userSession;
-		if (_userSession != null)
-		{
-			PlayerName = _userSession.UserName;
-		}
+		PlayerName = _userSession?.UserName ?? PlayerName;
 	}
 
 	public virtual void DestroyPlayer()

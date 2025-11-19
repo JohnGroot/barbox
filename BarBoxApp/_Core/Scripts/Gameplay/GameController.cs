@@ -5,7 +5,7 @@ using System.Collections.Generic;
 public abstract partial class GameController : Node2D
 {
 	[ExportCategory("Game Settings")]
-	[Export] public string GameId { get; set; } = string.Empty;
+	[Export] public required string GameId { get; set; }
 
 	/// <summary>
 	/// Whether players can logout during active gameplay.
@@ -14,7 +14,6 @@ public abstract partial class GameController : Node2D
 	/// </summary>
 	public virtual bool CanLogout => true;
 
-	// Core metadata and services (guaranteed available after DiscoverServices)
 	protected GameMetadata _gameMetadata;
 	protected GameHost _gameHost;
 
@@ -102,10 +101,6 @@ public abstract partial class GameController : Node2D
 			.AddSection("🎮 Basic Controls", "Touch or click to interact with the game.");
 	}
 
-	// ============================================================================
-	// Pause/Resume Control
-	// ============================================================================
-
 	/// <summary>
 	/// Indicates whether the game is currently paused.
 	/// </summary>
@@ -148,10 +143,6 @@ public abstract partial class GameController : Node2D
 	/// Base implementation does nothing.
 	/// </summary>
 	protected virtual void OnResume() { }
-
-	// ============================================================================
-	// Game Context Setup
-	// ============================================================================
 
 	/// <summary>
 	/// PHASE 3: Game Context Setup
@@ -197,10 +188,6 @@ public abstract partial class GameController : Node2D
 		base._ExitTree();
 	}
 
-	// ============================================================================
-	// Game UI Integration Methods
-	// ============================================================================
-
 	/// <summary>
 	/// Gets the display title for the game in the top menu bar
 	/// Override this to provide a custom title, defaults to game metadata display name
@@ -216,17 +203,15 @@ public abstract partial class GameController : Node2D
 	/// </summary>
 	public virtual ContextButtonData[] GetContextButtons()
 	{
-		var buttons = new List<ContextButtonData>
-		{
-			// Standard "Return to Menu" button
+		ContextButtonData[] buttons = [
 			GameContextButton.CreateReturnToMenuButton(() => {
 				var sessionManager = SessionManager.GetInstance();
 				sessionManager?.ResetAllIdleTimers();
 				ReturnToMainMenu();
 			})
-		};
+		];
 
-		return buttons.ToArray();
+		return buttons;
 	}
 
 	/// <summary>
@@ -270,29 +255,32 @@ public abstract partial class GameController : Node2D
 	/// </summary>
 	protected async void ReturnToMainMenu()
 	{
-		// Get UIManager for confirmation dialog
-		var uiManager = UIManager.GetInstance();
-
-		// Show confirmation dialog
-		bool confirmed = await uiManager.ShowConfirmationAsync(
-			"Return to Menu",
-			"Are you sure you want to return to the main menu?\n\nAny unsaved progress will be lost.",
-			"Return to Menu",
-			"Cancel"
-		);
-
-		if (!confirmed)
+		try
 		{
-			return; // User cancelled
+			// Get UIManager for confirmation dialog
+			var uiManager = UIManager.GetInstance();
+
+			// Show confirmation dialog
+			bool confirmed = await uiManager.ShowConfirmationAsync(
+				"Return to Menu",
+				"Are you sure you want to return to the main menu?\n\nAny unsaved progress will be lost.",
+				"Return to Menu",
+				"Cancel"
+			);
+
+			if (!confirmed)
+			{
+				return; // User cancelled
+			}
+
+			// User confirmed or no UIManager available - proceed with return to menu
+			_gameHost.ReturnToMainMenu();
 		}
-
-		// User confirmed or no UIManager available - proceed with return to menu
-		_gameHost.ReturnToMainMenu();
+		catch (System.Exception ex)
+		{
+			GD.PrintErr($"[GameController] Failed to return to menu: {ex.Message}");
+		}
 	}
-
-	// ============================================================================
-	// Help System Integration
-	// ============================================================================
 
 	/// <summary>
 	/// Sets up help content through the GameHost/UIManager system
