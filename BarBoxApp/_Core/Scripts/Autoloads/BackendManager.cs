@@ -152,14 +152,21 @@ public partial class BackendManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Kill process running on specified port.
-	/// Handles multiple processes correctly by parsing PIDs individually.
-	/// Waits and verifies port is actually free before returning.
+	/// Kill backend process on specified port if we own it.
+	/// Only kills processes that match our tracked _backendProcessId.
+	/// This prevents BackendManager from killing manually-started dev.sh processes.
 	/// </summary>
-	private async void KillProcessOnPort(int port)
+	private async void KillOwnedProcessOnPort(int port)
 	{
 		try
 		{
+			// If we haven't started a backend, don't kill anything
+			if (_backendProcessId == -1)
+			{
+				LogInfo($"No tracked backend process - skipping port {port} cleanup");
+				return;
+			}
+
 			var output = new Godot.Collections.Array();
 			var exitCode = OS.Execute("lsof", ["-i", $":{port}", "-t"], output);
 
@@ -169,30 +176,46 @@ public partial class BackendManager : AutoloadBase
 				if (!string.IsNullOrEmpty(pidsString))
 				{
 					// Split by newlines to handle multiple PIDs
-					// lsof -t returns one PID per line when multiple processes use the port
 					var pids = pidsString.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
-					LogWarning($"Found {pids.Length} stale process(es) on port {port}");
+					bool killedOurProcess = false;
 
 					foreach (var pidStr in pids)
 					{
 						var trimmedPid = pidStr.Trim();
-						if (!string.IsNullOrEmpty(trimmedPid))
+						if (!string.IsNullOrEmpty(trimmedPid) && int.TryParse(trimmedPid, out var pid))
 						{
-							LogWarning($"Killing stale process on port {port} (PID: {trimmedPid})");
-							OS.Execute("kill", ["-9", trimmedPid]);
+							if (pid == _backendProcessId)
+							{
+								// This is our process - kill it
+								LogWarning($"Killing our backend process on port {port} (PID: {pid})");
+								OS.Execute("kill", ["-9", trimmedPid]);
+								killedOurProcess = true;
+								_backendProcessId = -1; // Clear tracked PID
+							}
+							else
+							{
+								// Not our process - leave it alone
+								LogInfo($"Port {port} in use by PID {pid} (not our process) - leaving it alone");
+							}
 						}
 					}
 
+					if (!killedOurProcess)
+					{
+						LogInfo($"Port {port} in use but not by our process - skipping cleanup");
+						return;
+					}
+
 					// Wait for port to be fully released (TCP TIME_WAIT state cleanup)
-					// Multiple processes may need more time to release port bindings
 					const int MAX_WAIT_ATTEMPTS = 10; // 2.5 seconds total (10 * 250ms)
 					for (int i = 0; i < MAX_WAIT_ATTEMPTS; i++)
 					{
-						await DelayAsync(0.25f); // Reduced from 0.5f - TCP cleanup typically completes in 100-300ms
+						await DelayAsync(0.25f);
 
 						if (!IsPortInUse(port))
 						{
+							LogInfo($"Port {port} released successfully");
 							return;
 						}
 					}
@@ -260,16 +283,41 @@ public partial class BackendManager : AutoloadBase
 			}
 			else
 			{
-				// Normal mode: kill stale processes
-				LogWarning($"Port {BACKEND_PORT} is in use but backend not healthy - killing stale process");
-				KillProcessOnPort(BACKEND_PORT);
+				// Normal mode: only kill processes we own
+				LogWarning($"Port {BACKEND_PORT} is in use but backend not healthy - attempting cleanup");
+				KillOwnedProcessOnPort(BACKEND_PORT);
 			}
 		}
 
 		// Verify port is actually free before starting new backend
 		if (IsPortInUse(BACKEND_PORT))
 		{
-			return Result.Failure<bool>($"Port {BACKEND_PORT} still in use after cleanup");
+			// Port still in use - must be owned by another process (e.g., manually-started dev.sh)
+			LogInfo($"Port {BACKEND_PORT} in use by external process - waiting for health check");
+
+			// Wait for the external backend to become healthy
+			const float EXTERNAL_WAIT_TIMEOUT = 30.0f;
+			var waitStartTime = Time.GetTicksMsec();
+
+			while (Time.GetTicksMsec() - waitStartTime < EXTERNAL_WAIT_TIMEOUT * 1000)
+			{
+				if (cancellationToken.IsCancellationRequested)
+				{
+					return Result.Failure<bool>("Backend health check cancelled");
+				}
+
+				healthResult = await IsBackendHealthyAsync();
+				if (healthResult.IsSuccess(out isHealthy) && isHealthy)
+				{
+					LogInfo("External backend is healthy - using existing instance");
+					return Result.Success(true);
+				}
+				await DelayAsync(0.5f);
+			}
+
+			return Result.Failure<bool>(
+				$"Port {BACKEND_PORT} in use by external process but backend not healthy. " +
+				"Please stop the conflicting process and restart.");
 		}
 
 		// Find the backend start script
@@ -464,6 +512,19 @@ public partial class BackendManager : AutoloadBase
 
 	protected override void OnServiceDestroyed()
 	{
-		// We don't manage backend lifecycle, so nothing to clean up
+		// Send graceful shutdown signal to backend process we started
+		if (_backendProcessId > 0)
+		{
+			try
+			{
+				LogInfo($"Sending SIGTERM to backend process {_backendProcessId}");
+				OS.Execute("kill", ["-TERM", _backendProcessId.ToString()]);
+				_backendProcessId = -1;
+			}
+			catch (Exception ex)
+			{
+				LogWarning($"Failed to terminate backend process: {ex.Message}");
+			}
+		}
 	}
 }
