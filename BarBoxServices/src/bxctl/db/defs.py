@@ -88,10 +88,3 @@ class BoxSessionEvent(Base):
     timestamp: Mapped[datetime]
     payload: Mapped[JsonObject]
     session: Mapped["BoxSession"] = relationship(back_populates="events")
-
-
-class FailedLoginAttempt(Base):
-    """Track failed login attempts for account lockout protection"""
-    phone_number: Mapped[str]  # Phone number that failed to authenticate
-    attempted_at: Mapped[datetime]  # When the failed attempt occurred
-    ip_address: Mapped[str | None]  # IP address of the attempt (optional)

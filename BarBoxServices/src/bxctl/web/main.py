@@ -17,7 +17,7 @@ from bxctl.db.connectivity import engine
 from bxctl.db.defs import Base
 from bxctl.structures import GAMES
 
-from . import admin, box, game, machine_credits, player, test
+from . import box, game, machine_credits, player, test
 
 logger = get_logger()
 
@@ -51,58 +51,26 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Auto-seed test data in development mode for consistent editor/test experience
     if settings.is_dev_mode():
         from datetime import UTC, datetime
-        from uuid import UUID
 
         from bxctl import db
-        from bxctl.web import auth
+        from bxctl.web.test import _seed_test_box_and_players
 
         async with db.connectivity.db_session() as session:
             db_service = db.service.CRUD(session)
+            now = datetime.now(tz=UTC)
 
             try:
-                # Check if test box already exists (idempotent)
-                test_box_id = UUID("00000000-0000-0000-0000-000000000001")
-
-                from sqlalchemy import select
-
-                result = await session.execute(
-                    select(db.defs.Box).where(db.defs.Box.id == test_box_id)
+                result = await _seed_test_box_and_players(db_service, now)
+                logger.info(
+                    "dev_mode_auto_seed_completed",
+                    status=result["status"],
+                    message="Test data auto-seeded on startup"
                 )
-                existing_box = result.scalar_one_or_none()
-
-                if existing_box:
-                    logger.info(
-                        "dev_mode_seed_skipped",
-                        reason="test_box_already_exists",
-                        box_id=str(test_box_id),
-                    )
-                else:
-                    # Create test box with fixed API key matching .env.local
-                    TEST_API_KEY = "ndE63953HvBEqNP5XKPFe3vN4Ei9bDF-g9p13KoOmKs"
-                    api_key_hash = auth.hash_api_key(TEST_API_KEY)
-                    api_key_hash_lookup = auth.hash_api_key_lookup(TEST_API_KEY)
-                    now = datetime.now(tz=UTC)
-
-                    test_box_data = {
-                        "id": test_box_id,
-                        "name": "Test Box",
-                        "tag": "testbox",
-                        "api_key_hash": api_key_hash,
-                        "api_key_hash_lookup": api_key_hash_lookup,
-                        "created_at": now,
-                        "last_seen": None,
-                    }
-                    await db_service.create(target=db.defs.Box, data=test_box_data)
-                    logger.info(
-                        "dev_mode_test_box_created",
-                        box_id=str(test_box_id),
-                        message="Test box auto-seeded for editor compatibility",
-                    )
             except Exception as e:
                 logger.warning(
-                    "dev_mode_seed_failed",
+                    "dev_mode_auto_seed_failed",
                     error=str(e),
-                    message="Failed to auto-seed test box - use POST /test/seed if needed",
+                    message="Failed to auto-seed test data - use POST /test/seed if needed",
                 )
 
     # Signal that application is fully initialized and ready to serve traffic
@@ -149,10 +117,6 @@ tags_metadata = [
     {
         "name": "Game: Mining",
         "description": "Mining inventory and progression tracking",
-    },
-    {
-        "name": "Admin",
-        "description": "Administrative endpoints for system maintenance and cleanup (requires Admin API key)",
     },
     {
         "name": "Testing",
@@ -267,7 +231,6 @@ routers = (
     box.router,
     game.router,
     machine_credits.router,  # Machine credit pot management
-    admin.router,  # Administrative maintenance endpoints
     test.router,  # Test endpoints (only available in dev/test modes)
 )
 for router in routers:

@@ -33,11 +33,6 @@ class _Settings(BaseSettings):
     # Bcrypt Configuration
     bcrypt_rounds: int = 12
 
-    # Account Lockout Configuration
-    max_failed_login_attempts: int = 5
-    lockout_duration_minutes: int = 15
-    failed_attempt_window_minutes: int = 30  # Time window to count failed attempts
-
     # CORS Configuration
     cors_origins: str = "*"  # Comma-separated list of allowed origins, or "*" for all
     cors_allow_credentials: bool = True
