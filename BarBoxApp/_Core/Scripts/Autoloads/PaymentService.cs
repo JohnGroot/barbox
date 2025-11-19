@@ -35,7 +35,7 @@ public partial class PaymentService : AutoloadBase
 
 	public CreditPack[] GetAvailableCreditPacks()
 	{
-		return _currentProvider?.GetAvailableCreditPacks() ?? new CreditPack[0];
+		return _currentProvider?.GetAvailableCreditPacks() ?? [];
 	}
 
 	/// <summary>
@@ -140,7 +140,6 @@ public partial class PaymentService : AutoloadBase
 		// For now, always use debug provider
 		// In production, this would select based on configuration
 		var debugProvider = new DebugPaymentService();
-		AddChild(debugProvider);
 		_currentProvider = debugProvider;
 
 		LogInfo("Initialized with DebugPaymentService");

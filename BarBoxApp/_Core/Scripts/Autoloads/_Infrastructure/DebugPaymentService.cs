@@ -8,7 +8,7 @@ namespace BarBox.Core.Autoloads;
 /// Debug implementation of IPaymentService for development and testing
 /// Simulates payment processing with instant approval and logging
 /// </summary>
-public partial class DebugPaymentService : Node, IPaymentService
+public class DebugPaymentService : IPaymentService
 {
 	private const string TXN_PREFIX = "DEBUG_TXN";
 
@@ -31,9 +31,8 @@ public partial class DebugPaymentService : Node, IPaymentService
 	{
 		GD.Print($"[DebugPaymentService] Processing purchase for user {userId}: {creditPack.DisplayName}");
 
-		// Simulate API call delay
-		await Task.Delay(1000);
-
+		await Task.Delay(1);
+		
 		// Generate mock transaction ID
 		var transactionId = $"{TXN_PREFIX}_{DateTime.UtcNow:yyyyMMddHHmmss}_{GD.Randi() % 10000:D4}";
 

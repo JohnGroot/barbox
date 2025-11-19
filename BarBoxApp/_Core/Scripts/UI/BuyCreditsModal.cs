@@ -129,8 +129,6 @@ public partial class BuyCreditsModal : Control
 		_creditPackContainer.AddThemeConstantOverride("v_separation", 10);
 		_contentContainer.AddChild(_creditPackContainer);
 
-		CreateCreditPackButtons();
-
 		var buttonContainer = new HBoxContainer();
 		buttonContainer.Alignment = BoxContainer.AlignmentMode.Center;
 		_contentContainer.AddChild(buttonContainer);
@@ -195,6 +193,16 @@ public partial class BuyCreditsModal : Control
 		_targetPhoneNumber = phoneNumber;
 		UpdateCurrentCreditsDisplay(session.Credits);
 
+		// Clear and recreate credit pack buttons to ensure fresh data
+		if (_creditPackContainer != null)
+		{
+			foreach (Node child in _creditPackContainer.GetChildren())
+			{
+				child.QueueFree();
+			}
+		}
+		CreateCreditPackButtons();
+
 		Visible = true;
 		ClearStatusMessage();
 	}
@@ -216,11 +224,11 @@ public partial class BuyCreditsModal : Control
 
 	private void ShowStatusMessage(string message, bool isSuccess)
 	{
-		if (_statusLabel != null)
-		{
-			_statusLabel.Text = message;
-			_statusLabel.Modulate = isSuccess ? Colors.Green : Colors.Red;
-		}
+		if (_statusLabel == null)
+			return;
+
+		_statusLabel.Text = message;
+		_statusLabel.Modulate = isSuccess ? Colors.Green : Colors.Red;
 	}
 
 	private void ClearStatusMessage()
@@ -233,7 +241,7 @@ public partial class BuyCreditsModal : Control
 
 	private void OnBackgroundInput(InputEvent @event)
 	{
-		if (@event is InputEventMouseButton mouseEvent && mouseEvent.Pressed && mouseEvent.ButtonIndex == MouseButton.Left)
+		if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
 		{
 			OnClosePressed();
 		}
@@ -324,7 +332,7 @@ public partial class BuyCreditsModal : Control
 	public override void _ExitTree()
 	{
 		// Disconnect signals
-		if (GodotObject.IsInstanceValid(_closeButton))
+		if (IsInstanceValid(_closeButton))
 			_closeButton.Pressed -= OnClosePressed;
 
 		base._ExitTree();
