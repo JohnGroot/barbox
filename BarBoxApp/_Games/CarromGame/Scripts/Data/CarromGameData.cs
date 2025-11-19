@@ -1,11 +1,11 @@
 using System;
 
-namespace BarBox.Games.Carrom
-{
-	// ============= GLOBAL DATA STORE =============
+namespace BarBox.Games.Carrom;
 
-	/// <summary>
-	/// Carrom game global data structure for DataStore integration.
+// ============= GLOBAL DATA STORE =============
+
+/// <summary>
+/// Carrom game global data structure for DataStore integration.
 	/// Stores cross-location carrom data like wins, losses, and win streaks.
 	/// </summary>
 	[Serializable]
@@ -31,4 +31,3 @@ namespace BarBox.Games.Carrom
 		public int SessionWins { get; set; }
 		public int SessionLosses { get; set; }
 	}
-}

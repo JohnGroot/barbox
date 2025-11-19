@@ -1,5 +1,8 @@
 using Godot;
+using System.Collections.Generic;
 using System.Linq;
+
+namespace BarBox.Games.Carrom;
 
 /// <summary>
 /// Simplified pocket physics system using zone-based detection:
@@ -85,9 +88,6 @@ public partial class CarromPocket : Area2D
 		_holeZoneRadiusSquared = GetHoleZoneRadius() * GetHoleZoneRadius();
 	}
 
-	/// <summary>
-	/// Setup particle effects for pocket entry visual feedback
-	/// </summary>
 	private void SetupParticles()
 	{
 		_pocketParticles = new GpuParticles2D();
@@ -128,9 +128,6 @@ public partial class CarromPocket : Area2D
 		_pocketParticles.ProcessMaterial = processMaterial;
 	}
 
-	/// <summary>
-	/// Connect area signals
-	/// </summary>
 	private void ConnectSignals()
 	{
 		BodyEntered += OnBodyEntered;
@@ -153,9 +150,6 @@ public partial class CarromPocket : Area2D
 		CleanupInvalidPieces();
 	}
 
-	/// <summary>
-	/// Handle piece entering pocket area
-	/// </summary>
 	private void OnBodyEntered(Node2D body)
 	{
 		if (body is not CarromPiece piece)
@@ -166,9 +160,6 @@ public partial class CarromPocket : Area2D
 		EmitSignal(SignalName.PieceEnteredPocketArea, piece);
 	}
 
-	/// <summary>
-	/// Handle piece leaving pocket area
-	/// </summary>
 	private void OnBodyExited(Node2D body)
 	{
 		if (body is CarromPiece piece)
@@ -178,20 +169,14 @@ public partial class CarromPocket : Area2D
 		}
 	}
 
-	/// <summary>
-	/// Check if pocket contains a specific piece
-	/// </summary>
 	public bool ContainsPiece(CarromPiece piece)
 	{
 		return _piecesInPocket.Contains(piece);
 	}
 
-	/// <summary>
-	/// Get all pieces currently in pocket area
-	/// </summary>
 	public CarromPiece[] GetPiecesInPocket()
 	{
-		var pieces = new System.Collections.Generic.List<CarromPiece>();
+		List<CarromPiece> pieces = [];
 		foreach (var piece in _piecesInPocket)
 		{
 			if (GodotObject.IsInstanceValid(piece))
@@ -202,9 +187,6 @@ public partial class CarromPocket : Area2D
 		return pieces.ToArray();
 	}
 
-	/// <summary>
-	/// Get count of pieces in pocket
-	/// </summary>
 	public int GetPieceCount()
 	{
 		int count = 0;
@@ -219,33 +201,21 @@ public partial class CarromPocket : Area2D
 	}
 
 
-	/// <summary>
-	/// Clear all pieces from pocket (for game reset)
-	/// </summary>
 	public void ClearPocket()
 	{
 		_piecesInPocket.Clear();
 	}
 
-	/// <summary>
-	/// Get pocket position for external use
-	/// </summary>
 	public Vector2 GetPocketPosition()
 	{
 		return GlobalPosition;
 	}
 
-	/// <summary>
-	/// Check if pocket is active
-	/// </summary>
 	public bool IsActive()
 	{
 		return Monitoring;
 	}
 
-	/// <summary>
-	/// Enable or disable pocket detection
-	/// </summary>
 	public void SetActive(bool active)
 	{
 		Monitoring = active;
@@ -262,17 +232,11 @@ public partial class CarromPocket : Area2D
 	// ENHANCED PHYSICS METHODS
 	// ================================================================
 
-	/// <summary>
-	/// Get influence zone radius
-	/// </summary>
 	private float GetInfluenceZoneRadius()
 	{
 		return PocketRadius * INFLUENCE_ZONE_MULTIPLIER;
 	}
 
-	/// <summary>
-	/// Get hole zone radius for capture detection
-	/// </summary>
 	private float GetHoleZoneRadius()
 	{
 		return PocketRadius * HOLE_ZONE_MULTIPLIER;
@@ -284,7 +248,7 @@ public partial class CarromPocket : Area2D
 	/// </summary>
 	private void UpdatePieceZones()
 	{
-		var piecesToRemove = new System.Collections.Generic.List<CarromPiece>();
+		List<CarromPiece> piecesToRemove = [];
 		
 		var piecesArray = _piecesInPocket.ToArray();
 		
@@ -360,12 +324,9 @@ public partial class CarromPocket : Area2D
 
 
 
-	/// <summary>
-	/// Clean up invalid piece references
-	/// </summary>
 	private void CleanupInvalidPieces()
 	{
-		var keysToRemove = new System.Collections.Generic.List<CarromPiece>();
+		List<CarromPiece> keysToRemove = [];
 		foreach (var piece in _piecesInPocket)
 		{
 			if (!IsInstanceValid(piece))
@@ -380,9 +341,6 @@ public partial class CarromPocket : Area2D
 		}
 	}
 
-	/// <summary>
-	/// Trigger particle effect with specified color
-	/// </summary>
 	private void TriggerPocketParticles(Color pieceColor)
 	{
 		if (_pocketParticles == null)
@@ -400,9 +358,6 @@ public partial class CarromPocket : Area2D
 		_particlesActive = true;
 	}
 
-	/// <summary>
-	/// Update particle timer and deactivate when duration expires
-	/// </summary>
 	private void UpdateParticleTimer(float delta)
 	{
 		if (!_particlesActive)

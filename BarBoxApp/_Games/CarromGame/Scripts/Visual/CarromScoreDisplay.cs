@@ -1,6 +1,8 @@
 using Godot;
 using System.Collections.Generic;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Helper class for queuing floating text requests
 /// </summary>
@@ -38,14 +40,14 @@ public partial class CarromScoreDisplay : CanvasLayer
 	private Label _gameStatusLabel;
 	private Label _inputStateLabel;
 	private Button _passTurnButton;
-	private Dictionary<string, PlayerScoreEntry> _playerEntries = new Dictionary<string, PlayerScoreEntry>();
+	private Dictionary<string, PlayerScoreEntry> _playerEntries = [];
 	
 	// Transition system
 	private bool _isShowingTransition = false;
 	
 	// Floating text queuing system
-	private Dictionary<string, Queue<FloatingTextRequest>> _pendingTextRequests = new Dictionary<string, Queue<FloatingTextRequest>>();
-	private Dictionary<string, bool> _playerTextActive = new Dictionary<string, bool>();
+	private Dictionary<string, Queue<FloatingTextRequest>> _pendingTextRequests = [];
+	private Dictionary<string, bool> _playerTextActive = [];
 	
 	// Styling constants
 	private const float PANEL_HEIGHT = 120.0f;
@@ -188,10 +190,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 		
 		SetupUI();
 	}
-	
-	/// <summary>
-	/// Setup the UI components
-	/// </summary>
+
 	private void SetupUI()
 	{
 		// Create main panel - horizontal bar at bottom of screen
@@ -299,34 +298,25 @@ public partial class CarromScoreDisplay : CanvasLayer
 		_mainContainer.AddChild(_rightSection);
 		
 	}
-	
-	/// <summary>
-	/// Update the round display
-	/// </summary>
+
 	public void UpdateRound(int currentRound, int maxRounds)
 	{
 		_roundLabel.Text = $"Round: {currentRound} / {maxRounds}";
 	}
-	
-	/// <summary>
-	/// Add a player to the score display
-	/// </summary>
+
 	public void AddPlayer(string playerId, PieceType pieceType)
 	{
 		if (_playerEntries.ContainsKey(playerId))
 		{
 			return; // Player already added
 		}
-		
+
 		var playerEntry = new PlayerScoreEntry(playerId, pieceType);
 		playerEntry.CustomMinimumSize = new Vector2(150, 0);
 		_playerEntries[playerId] = playerEntry;
 		_rightSection.AddChild(playerEntry);
 	}
-	
-	/// <summary>
-	/// Update a player's score
-	/// </summary>
+
 	public void UpdatePlayerScore(string playerId, int piecesPocketed)
 	{
 		if (_playerEntries.TryGetValue(playerId, out var entry))
@@ -334,10 +324,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 			entry.UpdateScore(piecesPocketed);
 		}
 	}
-	
-	/// <summary>
-	/// Update a player's queen status
-	/// </summary>
+
 	public void UpdateQueenStatus(string playerId, bool hasQueen, bool covered)
 	{
 		if (_playerEntries.TryGetValue(playerId, out var entry))
@@ -345,10 +332,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 			entry.UpdateQueenStatus(hasQueen, covered);
 		}
 	}
-	
-	/// <summary>
-	/// Highlight the current player
-	/// </summary>
+
 	public void SetCurrentPlayer(string playerId)
 	{
 		foreach (var kvp in _playerEntries)
@@ -357,10 +341,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 			kvp.Value.UpdateCurrentPlayerStatus(isCurrent);
 		}
 	}
-	
-	/// <summary>
-	/// Clear all players (for game reset)
-	/// </summary>
+
 	public void ClearPlayers()
 	{
 		foreach (var entry in _playerEntries.Values)
@@ -369,10 +350,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 		}
 		_playerEntries.Clear();
 	}
-	
-	/// <summary>
-	/// Show or hide the score display
-	/// </summary>
+
 	public new void SetVisible(bool visible)
 	{
 		Visible = visible;
@@ -432,14 +410,11 @@ public partial class CarromScoreDisplay : CanvasLayer
 			_inputStateLabel.Text = "";
 		}
 	}
-	
-	/// <summary>
-	/// Update game state display
-	/// </summary>
+
 	public void UpdateGameState(string state)
 	{
 		_gameStatusLabel.Text = $"State: {state}";
-		
+
 		// Color based on state
 		switch (state.ToLower())
 		{
@@ -455,11 +430,8 @@ public partial class CarromScoreDisplay : CanvasLayer
 				break;
 		}
 	}
-	
-	
-	/// <summary>
-	/// Update all player scores from a list of players
-	/// </summary>
+
+
 	public void UpdateAllPlayerScores(List<CarromPlayer> players)
 	{
 		foreach (var player in players)
@@ -468,18 +440,12 @@ public partial class CarromScoreDisplay : CanvasLayer
 			UpdateQueenStatus(player.PlayerId, player.HasQueen, player.QueenCovered);
 		}
 	}
-	
-	/// <summary>
-	/// Show simple message in transition area
-	/// </summary>
+
 	public void ShowMessage(string message, float duration = 2.0f)
 	{
 		ShowTurnTransition(message, duration);
 	}
-	
-	/// <summary>
-	/// Handle Pass Turn button press
-	/// </summary>
+
 	private void OnPassTurnPressed()
 	{
 		// Hide the button immediately when pressed to prevent double-clicks
@@ -489,7 +455,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 		// Emit signal to notify game that player wants to pass turn
 		EmitSignal(SignalName.PassTurnRequested);
 	}
-	
+
 	/// <summary>
 	/// Show floating text effect above the current player's name
 	/// Creates a temporary label that rises and fades out with scaling animation

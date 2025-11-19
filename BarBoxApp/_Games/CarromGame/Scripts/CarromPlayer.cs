@@ -1,6 +1,8 @@
 using Godot;
 using System.Collections.Generic;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Carrom player that extends BasePlayer with carrom-specific functionality
 /// </summary>
@@ -21,7 +23,7 @@ public partial class CarromPlayer : BasePlayer
 	private int _totalShots = 0;
 	private int _validPockets = 0;
 	private int _fouls = 0;
-	private List<PieceType> _pocketedPieces = new List<PieceType>();
+	private List<PieceType> _pocketedPieces = [];
 	
 	// Queen covering state (CRITICAL FIX for same-turn covering rule)
 	private bool _pocketedQueenThisTurn = false;

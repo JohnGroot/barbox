@@ -1,6 +1,8 @@
 using Godot;
 using System.Collections.Generic;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Manages practice mode functionality for Carrom game
 /// 
@@ -16,19 +18,16 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 	[Signal] public delegate void PracticeModeSetupCompleteEventHandler();
 
 	// Practice mode state
-	private Dictionary<CarromPiece, Vector2> _practiceInitialPositions = new Dictionary<CarromPiece, Vector2>();
-	private List<CarromPiece> _practicePieces = new List<CarromPiece>();
+	private Dictionary<CarromPiece, Vector2> _practiceInitialPositions = [];
+	private List<CarromPiece> _practicePieces = [];
 
 	// Piece templates
 	private PackedScene _blackPieceTemplate;
 	private PackedScene _strikerTemplate;
 
-	/// <summary>
-	/// Initialize with piece templates (practice-specific version)
-	/// </summary>
-	public void Initialize(CarromBoard board, CarromInputController inputController, 
-						   CarromPhysicsConfig physicsConfig, PackedScene blackTemplate, 
-						   PackedScene strikerTemplate)
+	public void Initialize(CarromBoard board, CarromInputController inputController,
+		CarromPhysicsConfig physicsConfig, PackedScene blackTemplate,
+		PackedScene strikerTemplate)
 	{
 		base.Initialize(board, inputController, physicsConfig);
 		_blackPieceTemplate = blackTemplate;
@@ -38,13 +37,9 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 	// ================================================================
 	// ABSTRACT METHOD IMPLEMENTATIONS
 	// ================================================================
-	
-	/// <summary>
-	/// Create and position pieces specific to practice mode
-	/// </summary>
+
 	protected override void CreateModeSpecificPieces()
 	{
-		// Clear existing pieces and position tracking
 		_practicePieces.Clear();
 		_practiceInitialPositions.Clear();
 		
@@ -69,18 +64,12 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 		// Position pieces at their initial positions
 		PositionPiecesAtInitialPositions();
 	}
-	
-	/// <summary>
-	/// Get all pieces managed by practice mode (excluding striker)
-	/// </summary>
+
 	protected override List<CarromPiece> GetManagedPieces()
 	{
 		return new List<CarromPiece>(_practicePieces);
 	}
-	
-	/// <summary>
-	/// Clear all practice-specific pieces
-	/// </summary>
+
 	protected override void ClearModeSpecificPieces()
 	{
 		foreach (var piece in _practicePieces)
@@ -163,10 +152,7 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 		// In practice mode, let the settlement system handle the reset
 		// The actual reset will happen in ExecuteModeSpecificSettlement()
 	}
-	
-	/// <summary>
-	/// Reset practice mode to initial state
-	/// </summary>
+
 	public void ResetPracticeMode()
 	{
 		// Reset is always allowed in the new architecture
@@ -187,9 +173,6 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 	}
 
 
-	/// <summary>
-	/// Position all pieces at their initial positions using global coordinates
-	/// </summary>
 	private void PositionPiecesAtInitialPositions()
 	{
 		foreach (var kvp in _practiceInitialPositions)
@@ -227,9 +210,6 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 		MarkRecentRestoration(piece);
 	}
 
-	/// <summary>
-	/// Cancel practice-specific pending operations
-	/// </summary>
 	protected override void CancelModeSpecificOperations()
 	{
 		// No additional operations to cancel in practice mode
@@ -257,18 +237,12 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 			base.PositionStrikerAtBaseline();
 		}
 	}
-	
-	/// <summary>
-	/// Check if striker is valid (helper method)
-	/// </summary>
+
 	private bool IsStrikerValid()
 	{
 		return _striker != null && GodotObject.IsInstanceValid(_striker);
 	}
 
-	/// <summary>
-	/// Clear practice-specific state during cleanup
-	/// </summary>
 	protected override void ClearModeSpecificState()
 	{
 		_practiceInitialPositions.Clear();

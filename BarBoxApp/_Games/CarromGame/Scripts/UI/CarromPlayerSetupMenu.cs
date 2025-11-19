@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using BarBox.Games.Carrom;
 
 /// <summary>
 /// Interstitial player setup menu for Carrom competitive mode
@@ -26,7 +27,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	// Player Slots Section
 	private GridContainer _playerSlotsContainer;
-	private List<PlayerSlotUI> _playerSlots = new List<PlayerSlotUI>();
+	private List<PlayerSlotUI> _playerSlots = [];
 
 	// Table Credits Section
 	private VBoxContainer _tableCreditsSection;
@@ -47,8 +48,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	private CreditTransferModal _creditTransferModal;
 
 	// Player slot tracking
-	private Dictionary<int, string> _slotToPhoneNumber = new Dictionary<int, string>();
-	private Dictionary<string, int> _creditsTransferredByPlayer = new Dictionary<string, int>();
+	private Dictionary<int, string> _slotToPhoneNumber = [];
+	private Dictionary<string, int> _creditsTransferredByPlayer = [];
 	private int _pendingLoginSlot = -1; // Track which slot is waiting for login
 
 	/// <summary>
@@ -179,8 +180,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			CreditsLabel.Visible = true;
 
 			// Update background to show occupied state
-			var bgStyle = BackgroundPanel.GetThemeStylebox("panel") as StyleBoxFlat;
-			if (bgStyle != null)
+			if (BackgroundPanel.GetThemeStylebox("panel") is StyleBoxFlat bgStyle)
 			{
 				bgStyle.BgColor = new Color(0.2f, 0.3f, 0.25f, 0.9f); // Slight green tint
 				bgStyle.BorderColor = new Color(0.4f, 0.6f, 0.4f, 1.0f);
@@ -198,8 +198,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			CreditsLabel.Visible = false;
 
 			// Reset background to empty state
-			var bgStyle = BackgroundPanel.GetThemeStylebox("panel") as StyleBoxFlat;
-			if (bgStyle != null)
+			if (BackgroundPanel.GetThemeStylebox("panel") is StyleBoxFlat bgStyle)
 			{
 				bgStyle.BgColor = new Color(0.15f, 0.15f, 0.15f, 0.9f);
 				bgStyle.BorderColor = new Color(0.3f, 0.3f, 0.3f, 1.0f);
@@ -585,9 +584,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		Visible = false;
 	}
 
-	/// <summary>
-	/// Show the player setup menu
-	/// </summary>
 	public void ShowMenu(int playerCount, int costPerGame)
 	{
 		_playerCount = playerCount;
@@ -619,9 +615,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		Visible = true;
 	}
 
-	/// <summary>
-	/// Hide the menu
-	/// </summary>
 	public void HideMenu()
 	{
 		Visible = false;
@@ -1422,17 +1415,11 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		}
 	}
 
-	/// <summary>
-	/// Thread-safe logging for cleanup errors
-	/// </summary>
 	private void LogCleanupError(string message)
 	{
 		GD.PrintErr($"[CarromPlayerSetupMenu] Session cleanup failed: {message}");
 	}
 
-	/// <summary>
-	/// Restore machine credits from backend when popup opens
-	/// </summary>
 	private async void RestoreMachineCreditsFromBackendAsync()
 	{
 		try

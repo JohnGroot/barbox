@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Traditional board game featuring physics-based striking and strategic pocket play
 /// </summary>

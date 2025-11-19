@@ -2,6 +2,8 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Factory for creating and managing Carrom pieces
 /// </summary>
@@ -22,7 +24,7 @@ public partial class CarromPieceFactory : Node2D
 	private PackedScene _strikerTemplate;
 
 	// Piece tracking
-	private List<CarromPiece> _allPieces = new List<CarromPiece>();
+	private List<CarromPiece> _allPieces = [];
 
 	// Physics limits - set by CarromGame.cs
 	private float _minVelocityThreshold = 1.0f;
@@ -31,12 +33,9 @@ public partial class CarromPieceFactory : Node2D
 	private float _maxAngularVelocity = 50.0f;
 	private float _velocityAlertThreshold = 1800.0f;
 
-	/// <summary>
-	/// Initialize the piece factory
-	/// </summary>
 	public void Initialize(CarromBoard board, CarromPhysicsConfig physicsConfig,
-						   PackedScene whiteTemplate, PackedScene blackTemplate,
-						   PackedScene redTemplate, PackedScene strikerTemplate)
+		PackedScene whiteTemplate, PackedScene blackTemplate,
+		PackedScene redTemplate, PackedScene strikerTemplate)
 	{
 		if (board == null || !GodotObject.IsInstanceValid(board))
 		{
@@ -85,10 +84,7 @@ public partial class CarromPieceFactory : Node2D
 		}
 	}
 
-	/// <summary>
-	/// Set physics limits from CarromGame
-	/// </summary>
-	public void SetPhysicsLimits(float minVelocityThreshold, float angularMinThreshold, 
+	public void SetPhysicsLimits(float minVelocityThreshold, float angularMinThreshold,
 		float maxVelocityLimit, float maxAngularVelocity, float velocityAlertThreshold)
 	{
 		_minVelocityThreshold = minVelocityThreshold;
@@ -98,9 +94,6 @@ public partial class CarromPieceFactory : Node2D
 		_velocityAlertThreshold = velocityAlertThreshold;
 	}
 
-	/// <summary>
-	/// Create a carrom piece of specified type
-	/// </summary>
 	public CarromPiece CreatePiece(PieceType type, Vector2 position)
 	{
 		if (_board == null || !GodotObject.IsInstanceValid(_board))
@@ -110,7 +103,7 @@ public partial class CarromPieceFactory : Node2D
 		}
 
 		PackedScene pieceTemplate = GetPieceTemplate(type);
-		
+
 		if (pieceTemplate == null)
 		{
 			GD.PrintErr($"[CarromPieceFactory] No template found for piece type: {type}");
@@ -122,8 +115,7 @@ public partial class CarromPieceFactory : Node2D
 			GD.PrintErr($"[CarromPieceFactory] Piece template for {type} is invalid");
 			return null;
 		}
-		
-		// Instantiate the scene with error handling
+
 		CarromPiece piece = null;
 		try
 		{
@@ -140,23 +132,20 @@ public partial class CarromPieceFactory : Node2D
 			GD.PrintErr($"[CarromPieceFactory] Failed to create valid piece instance for type: {type}");
 			return null;
 		}
-		
-		// Configure the piece
+
 		piece.Type = type;
-		
+
 		if (_physicsConfig != null && GodotObject.IsInstanceValid(_physicsConfig))
 		{
 			piece.PhysicsConfig = _physicsConfig;
 		}
-		
-		piece.Position = position; // Use local position relative to board
-		
-		// Apply centralized physics limits
-		piece.SetPhysicsLimits(_minVelocityThreshold, _angularMinThreshold, 
+
+		piece.Position = position;
+
+		piece.SetPhysicsLimits(_minVelocityThreshold, _angularMinThreshold,
 			_maxVelocityLimit, _maxAngularVelocity, _velocityAlertThreshold);
-		
-		
-		// Add to board with error handling
+
+
 		try
 		{
 			_board.AddChild(piece);
@@ -167,22 +156,18 @@ public partial class CarromPieceFactory : Node2D
 			piece?.QueueFree();
 			return null;
 		}
-		
-		// Track pieces (excluding striker for some operations)
+
 		if (type != PieceType.Striker)
 		{
 			_allPieces.Add(piece);
 		}
-		
-		
+
+
 		EmitSignal(SignalName.PieceCreated, piece);
-		
+
 		return piece;
 	}
 
-	/// <summary>
-	/// Get piece template for type
-	/// </summary>
 	private PackedScene GetPieceTemplate(PieceType type)
 	{
 		return type switch
@@ -195,9 +180,6 @@ public partial class CarromPieceFactory : Node2D
 		};
 	}
 
-	/// <summary>
-	/// Clear all pieces created by this factory
-	/// </summary>
 	public void ClearAllPieces()
 	{
 		foreach (var piece in _allPieces)
@@ -209,19 +191,15 @@ public partial class CarromPieceFactory : Node2D
 			}
 		}
 		_allPieces.Clear();
-		
 	}
 
-	/// <summary>
-	/// Remove specific piece
-	/// </summary>
 	public void RemovePiece(CarromPiece piece)
 	{
 		if (_allPieces.Contains(piece))
 		{
 			_allPieces.Remove(piece);
 		}
-		
+
 		if (IsInstanceValid(piece))
 		{
 			EmitSignal(SignalName.PieceDestroyed, piece);
@@ -229,26 +207,17 @@ public partial class CarromPieceFactory : Node2D
 		}
 	}
 
-	/// <summary>
-	/// Get all pieces created by this factory
-	/// </summary>
 	public List<CarromPiece> GetAllPieces()
 	{
 		return [.._allPieces];
 	}
 
-	/// <summary>
-	/// Get pieces of specific type
-	/// </summary>
 	public List<CarromPiece> GetPiecesOfType(PieceType type)
 	{
 		return _allPieces.Where(p => GodotObject.IsInstanceValid(p) && p.Type == type).ToList();
 	}
 
 
-	/// <summary>
-	/// Cleanup on exit
-	/// </summary>
 	public override void _Notification(int what)
 	{
 		if (what == NotificationExitTree)

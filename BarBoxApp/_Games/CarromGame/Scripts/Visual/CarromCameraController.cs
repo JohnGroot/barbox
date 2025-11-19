@@ -1,5 +1,7 @@
 using Godot;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Handles camera positioning and zoom for the Carrom game
 /// Centers the camera on the board at origin (0,0) instead of moving the board to screen center
@@ -54,9 +56,6 @@ public partial class CarromCameraController : Node
 	// INITIALIZATION
 	// ================================================================
 
-	/// <summary>
-	/// Initialize the camera system
-	/// </summary>
 	public void Initialize(CarromBoard board)
 	{
 		_board = board;
@@ -82,9 +81,6 @@ public partial class CarromCameraController : Node
 	// CAMERA POSITIONING
 	// ================================================================
 
-	/// <summary>
-	/// Position camera to center on the board at origin with appropriate zoom
-	/// </summary>
 	public void PositionCameraOverBoard()
 	{
 		if (_boardCamera == null || _board == null) return;
@@ -115,9 +111,6 @@ public partial class CarromCameraController : Node
 		_boardCamera.ForceUpdateScroll();
 	}
 
-	/// <summary>
-	/// Calculate appropriate zoom level to fit the board in the playable area
-	/// </summary>
 	private void CalculateAndSetZoom(Vector2 playableArea)
 	{
 		if (_board == null) 
@@ -178,9 +171,6 @@ public partial class CarromCameraController : Node
 	// VIEWPORT MANAGEMENT
 	// ================================================================
 
-	/// <summary>
-	/// Handle viewport size changes (e.g., window resize, orientation change)
-	/// </summary>
 	public void OnViewportSizeChanged()
 	{
 		if (_board != null && _boardCamera != null)
@@ -260,17 +250,11 @@ public partial class CarromCameraController : Node
 		RotateToPlayer(playerIndex, 0.0f);
 	}
 
-	/// <summary>
-	/// Get the current player index that the camera is oriented towards
-	/// </summary>
 	public int GetCurrentPlayerIndex()
 	{
 		return _currentPlayerIndex;
 	}
 
-	/// <summary>
-	/// Reset camera to default orientation (player 0 at bottom)
-	/// </summary>
 	public void ResetRotation(float duration = -1.0f)
 	{
 		RotateToPlayer(0, duration);
@@ -280,9 +264,6 @@ public partial class CarromCameraController : Node
 	// CAMERA ZOOM TRANSITIONS
 	// ================================================================
 
-	/// <summary>
-	/// Animate zoom out to show more of the board
-	/// </summary>
 	private void AnimateZoomOut(float zoomOutFactor, float duration)
 	{
 		if (!ValidateCameraState()) return;
@@ -310,9 +291,6 @@ public partial class CarromCameraController : Node
 		}
 	}
 
-	/// <summary>
-	/// Animate zoom back to original level
-	/// </summary>
 	private void AnimateZoomIn(float duration)
 	{
 		if (!ValidateCameraState()) return;
@@ -347,9 +325,6 @@ public partial class CarromCameraController : Node
 		}
 	}
 
-	/// <summary>
-	/// Calculate optimal zoom level for current viewport
-	/// </summary>
 	private Vector2 CalculateOptimalZoom(Vector2 playableArea)
 	{
 		if (_board == null)
@@ -447,9 +422,6 @@ public partial class CarromCameraController : Node
 	// CAMERA VALIDATION AND DEBUGGING
 	// ================================================================
 
-	/// <summary>
-	/// Validate that the camera is in a proper state for rotation operations
-	/// </summary>
 	private bool ValidateCameraState()
 	{
 		// Check camera exists and is valid
@@ -480,9 +452,6 @@ public partial class CarromCameraController : Node
 		return true;
 	}
 
-	/// <summary>
-	/// Get comprehensive camera debug information
-	/// </summary>
 	public string GetCameraDebugInfo()
 	{
 		if (_boardCamera == null)

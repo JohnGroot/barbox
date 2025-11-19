@@ -2,6 +2,8 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Centralized state machine for CarromGame with brute force settlement detection
 /// Replaces complex distributed state management with simple, deterministic flow
@@ -26,35 +28,25 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 	/// </summary>
 	public enum GameState
 	{
-		/// <summary>Game initializing, not ready for play</summary>
 		Initializing,
-		/// <summary>Ready for player input - pieces settled, game active</summary>
 		Ready,
-		/// <summary>Strike executed, pieces beginning to move</summary>
 		Strike,
-		/// <summary>Pieces in motion, monitoring for settlement</summary>
 		Physics,
-		/// <summary>All pieces stopped, processing settlement rules</summary>
 		Settlement
 	}
 
 	// ================================================================
 	// PROPERTIES
 	// ================================================================
-	
-	/// <summary>Current game state</summary>
+
 	public GameState CurrentState { get; private set; } = GameState.Initializing;
-	
-	/// <summary>Whether input can be accepted (only true in Ready state)</summary>
+
 	public bool CanAcceptInput => CurrentState == GameState.Ready;
-	
-	/// <summary>Physics threshold for considering a piece "stopped"</summary>
+
 	[Export] public float StoppedVelocityThreshold { get; set; } = 1.0f;
-	
-	/// <summary>Time piece must be below threshold to be considered settled</summary>
+
 	[Export] public float SettlementTimeThreshold { get; set; } = 0.1f;
-	
-	/// <summary>Minimum physics frames to wait before settlement checking begins</summary>
+
 	[Export] public int MinimumSettlementFrames { get; set; } = 3;
 
 	// ================================================================
@@ -73,7 +65,7 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 	
 	public override void _Ready()
 	{
-		SetPhysicsProcess(false); // Only enable during Physics state
+		SetPhysicsProcess(false);
 	}
 
 	/// <summary>
@@ -85,14 +77,11 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 	{
 		_allPieces = pieces ?? new List<CarromPiece>();
 		_modeManager = modeManager;
-		
+
 		TransitionTo(GameState.Ready);
 		GD.Print($"[CarromGameStateMachine] Initialized with {_allPieces.Count} pieces");
 	}
 
-	/// <summary>
-	/// Update the list of pieces being monitored
-	/// </summary>
 	public void UpdatePieceList(List<CarromPiece> pieces)
 	{
 		_allPieces = pieces ?? new List<CarromPiece>();
@@ -109,28 +98,21 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 	private void TransitionTo(GameState newState)
 	{
 		if (CurrentState == newState) return;
-		
+
 		var oldState = CurrentState;
-		
-		// Exit current state
+
 		ExitState(oldState);
-		
-		// Update state
+
 		CurrentState = newState;
-		
-		// Enter new state  
+
 		EnterState(newState);
-		
-		// Emit signals
+
 		EmitSignal(SignalName.StateChanged, (int)oldState, (int)newState);
 		EmitSignal(SignalName.InputAvailabilityChanged, CanAcceptInput);
-		
+
 		GD.Print($"[CarromGameStateMachine] {oldState} → {newState}");
 	}
 
-	/// <summary>
-	/// Exit current state - cleanup operations
-	/// </summary>
 	private void ExitState(GameState state)
 	{
 		switch (state)
@@ -143,9 +125,6 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 		}
 	}
 
-	/// <summary>
-	/// Enter new state - setup operations
-	/// </summary>
 	private void EnterState(GameState state)
 	{
 		switch (state)
@@ -161,7 +140,6 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 				break;
 
 			case GameState.Physics:
-				// Begin monitoring pieces for settlement
 				SetPhysicsProcess(true);
 				_isPhysicsMonitoringActive = true;
 				_lastSettlementCheckTime = Time.GetUnixTimeFromSystem();
@@ -191,10 +169,7 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 	// ================================================================
 	// PUBLIC API
 	// ================================================================
-	
-	/// <summary>
-	/// Called when a strike is executed - begins physics monitoring
-	/// </summary>
+
 	public void OnStrikeExecuted()
 	{
 		if (CurrentState == GameState.Ready)
@@ -211,17 +186,11 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 		TransitionTo(GameState.Ready);
 	}
 
-	/// <summary>
-	/// Get current state name (implements ICarromGameState interface)
-	/// </summary>
 	public string GetCurrentStateName()
 	{
 		return CurrentState.ToString();
 	}
 
-	/// <summary>
-	/// Get current state for debugging
-	/// </summary>
 	public string GetStateDebugInfo()
 	{
 		return $"State: {CurrentState}, Input: {CanAcceptInput}, Pieces: {_allPieces.Count}, Monitoring: {_isPhysicsMonitoringActive}, PhysicsFrames: {_physicsFramesSinceEnter}";
@@ -241,7 +210,6 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 			return;
 		}
 
-		// Increment frame counter
 		_physicsFramesSinceEnter++;
 
 		// Wait minimum frames before checking settlement to allow physics propagation
@@ -262,13 +230,11 @@ public partial class CarromGameStateMachine : Node, ICarromGameState
 	/// </summary>
 	private bool AreAllPiecesStopped()
 	{
-		// Simple brute force check - iterate all pieces and check velocity
 		foreach (var piece in _allPieces)
 		{
 			if (!GodotObject.IsInstanceValid(piece))
 				continue;
-				
-			// Simple velocity threshold check
+
 			if (piece.LinearVelocity.Length() > StoppedVelocityThreshold)
 			{
 				return false;

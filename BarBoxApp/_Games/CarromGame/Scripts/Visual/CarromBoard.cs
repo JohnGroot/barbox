@@ -2,6 +2,8 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Carrom board with custom drawing and physics boundaries
 /// </summary>
@@ -31,7 +33,7 @@ public partial class CarromBoard : Node2D
 
 	// Physics and collision setup
 	private StaticBody2D _boardPhysics;
-	private List<CarromPocket> _pockets = new List<CarromPocket>();
+	private List<CarromPocket> _pockets = [];
 	private Vector2[] _pocketPositions;
 	private Vector2[] _cornerArrowStarts = new Vector2[4];
 	private Vector2[] _cornerArrowEnds = new Vector2[4];
@@ -60,7 +62,7 @@ public partial class CarromBoard : Node2D
 		public Vector2 Size;
 		public float Rotation;
 	}
-	private List<CollisionDebugInfo> _debugCollisionShapes = new List<CollisionDebugInfo>();
+	private List<CollisionDebugInfo> _debugCollisionShapes = [];
 	
 	// Curved border geometry for visual drawing
 	private const int CORNER_ARC_SEGMENTS = 48;
@@ -137,9 +139,6 @@ public partial class CarromBoard : Node2D
 		QueueRedraw(); // Trigger initial draw
 	}
 
-	/// <summary>
-	/// Setup board physics boundaries
-	/// </summary>
 	private void SetupBoardPhysics()
 	{
 		// Clear debug shapes from previous setup
@@ -159,9 +158,6 @@ public partial class CarromBoard : Node2D
 		CreateBorderCollisions();
 	}
 
-	/// <summary>
-	/// Create collision shapes for board borders using solid rectangles
-	/// </summary>
 	private void CreateBorderCollisions()
 	{
 		// Always use solid rectangular collision for reliable physics at all velocities
@@ -170,9 +166,6 @@ public partial class CarromBoard : Node2D
 	}
 	
 
-	/// <summary>
-	/// Create a single border collision segment
-	/// </summary>
 	private void CreateBorderSegment(Vector2 position, Vector2 size)
 	{
 		var collisionShape = new CollisionShape2D();
@@ -244,9 +237,6 @@ public partial class CarromBoard : Node2D
 		return points;
 	}
 
-	/// <summary>
-	/// Setup pocket detection areas
-	/// </summary>
 	private void SetupPockets()
 	{
 		for (int i = 0; i < 4; i++)
@@ -306,9 +296,6 @@ public partial class CarromBoard : Node2D
 		}
 	}
 
-	/// <summary>
-	/// Draw the main board surface
-	/// </summary>
 	private void DrawBoard()
 	{
 		Vector2 halfSizeVector = Vector2.One * BoardHalfSize;
@@ -316,9 +303,6 @@ public partial class CarromBoard : Node2D
 		DrawRect(boardRect, BoardColor);
 	}
 
-	/// <summary>
-	/// Draw board borders with optional curved corners
-	/// </summary>
 	private void DrawBorders()
 	{
 		if (UseCurvedBorders)
@@ -331,9 +315,6 @@ public partial class CarromBoard : Node2D
 		}
 	}
 	
-	/// <summary>
-	/// Draw traditional rectangular board borders
-	/// </summary>
 	private void DrawRectangularBorders()
 	{
 		Vector2 fullSize = Vector2.One * BoardSize;
@@ -386,7 +367,7 @@ public partial class CarromBoard : Node2D
 		DrawRect(outerBorder, EdgeColor);
 		
 		// Generate and draw inner boundary with curved corners (to create border effect)
-		var innerBoundaryPoints = new List<Vector2>();
+		List<Vector2> innerBoundaryPoints = [];
 		
 		// Top edge (left to right)
 		innerBoundaryPoints.Add(new Vector2(-cornerOffset, -BoardHalfSize));
@@ -467,9 +448,6 @@ public partial class CarromBoard : Node2D
 		DrawCircle(Vector2.Zero, CenterDotRadius, LineColor);
 	}
 
-	/// <summary>
-	/// Draw an 8-sided star within the center circle
-	/// </summary>
 	private void DrawEightSidedStar()
 	{
 		// Calculate star dimensions based on center ring radius
@@ -506,9 +484,6 @@ public partial class CarromBoard : Node2D
 		}
 	}
 
-	/// <summary>
-	/// Draw pocket holes
-	/// </summary>
 	private void DrawPockets()
 	{
 		// Ensure pocket positions are calculated before drawing
@@ -581,9 +556,6 @@ public partial class CarromBoard : Node2D
 		}
 	}
 	
-	/// <summary>
-	/// Draw debug visualization of collision shapes
-	/// </summary>
 	private void DrawCollisionDebugShapes()
 	{
 		foreach (var shape in _debugCollisionShapes)
@@ -980,43 +952,28 @@ public partial class CarromBoard : Node2D
 		return projectedPosition;
 	}
 
-	/// <summary>
-	/// Check if position is on the board
-	/// </summary>
 	public bool IsOnBoard(Vector2 position)
 	{
 		return position.X >= -BoardHalfSize && position.X <= BoardHalfSize &&
 			   position.Y >= -BoardHalfSize && position.Y <= BoardHalfSize;
 	}
 
-	/// <summary>
-	/// Get center position of the board
-	/// </summary>
 	public Vector2 GetCenterPosition()
 	{
 		return Vector2.Zero;
 	}
 
-	/// <summary>
-	/// Refresh board drawing
-	/// </summary>
 	public void RefreshBoard()
 	{
 		_needsRedraw = true;
 		QueueRedraw();
 	}
 	
-	/// <summary>
-	/// Force redraw when debug settings change
-	/// </summary>
 	public void RefreshCollisionDebug()
 	{
 		QueueRedraw(); // Debug shapes don't require full redraw
 	}
 
-	/// <summary>
-	/// Get pocket positions for external use
-	/// </summary>
 	public Vector2[] GetPocketPositions()
 	{
 		// Ensure pocket positions are calculated
@@ -1035,9 +992,6 @@ public partial class CarromBoard : Node2D
 		return (Vector2[])_pocketPositions.Clone();
 	}
 
-	/// <summary>
-	/// Get pocket by index
-	/// </summary>
 	public CarromPocket GetPocket(int index)
 	{
 		if (index >= 0 && index < _pockets.Count)
@@ -1165,7 +1119,7 @@ public partial class CarromBoard : Node2D
 			}
 		}
 		
-		var piecesInRadius = new List<CarromPiece>();
+		List<CarromPiece> piecesInRadius = [];
 		
 		// Use physics space state for accurate detection
 		var spaceState = GetWorld2D()?.DirectSpaceState;
@@ -1335,13 +1289,7 @@ public partial class CarromBoard : Node2D
 		GD.PrintErr($"[CarromBoard] Could not find valid position near center for piece with radius {pieceRadius}, using center as fallback");
 		return centerPosition;
 	}
-	
-	/// <summary>
-	/// Cleanup on exit
-	/// </summary>
-	/// <summary>
-	/// Get pocket instances for direct connection to game manager
-	/// </summary>
+
 	public List<CarromPocket> GetPockets()
 	{
 		return _pockets;

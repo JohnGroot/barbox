@@ -2,6 +2,8 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Carrom piece with realistic physics using RigidBody2D
 /// </summary>
@@ -107,10 +109,7 @@ public partial class CarromPiece : RigidBody2D
 		_lastPositionForFriction = GlobalPosition;
 	}
 
-	/// <summary>
-	/// Set physics limits from CarromGame
-	/// </summary>
-	public void SetPhysicsLimits(float minVelocityThreshold, float angularMinThreshold, 
+	public void SetPhysicsLimits(float minVelocityThreshold, float angularMinThreshold,
 		float maxVelocityLimit, float maxAngularVelocity, float velocityAlertThreshold)
 	{
 		_minVelocityThreshold = minVelocityThreshold;
@@ -120,9 +119,6 @@ public partial class CarromPiece : RigidBody2D
 		_velocityAlertThreshold = velocityAlertThreshold;
 	}
 
-	/// <summary>
-	/// Validate physics configuration
-	/// </summary>
 	private void ValidatePhysicsConfig()
 	{
 		if (PhysicsConfig == null)
@@ -131,9 +127,6 @@ public partial class CarromPiece : RigidBody2D
 		}
 	}
 
-	/// <summary>
-	/// Setup physics properties
-	/// </summary>
 	private void SetupPhysics()
 	{
 		GravityScale = 0.0f; // No gravity for top-down view
@@ -208,25 +201,16 @@ public partial class CarromPiece : RigidBody2D
 		}
 	}
 
-	/// <summary>
-	/// Setup physics material
-	/// </summary>
 	private void SetupPhysicsMaterial()
 	{
 		PhysicsMaterialOverride = PhysicsConfig.CreatePieceMaterial();
 	}
 
-	/// <summary>
-	/// Connect physics signals
-	/// </summary>
 	private void ConnectSignals()
 	{
 		BodyEntered += OnBodyEntered;
 	}
 	
-	/// <summary>
-	/// Get color for piece type
-	/// </summary>
 	private Color GetPieceColor()
 	{
 		return PieceColor;
@@ -247,9 +231,6 @@ public partial class CarromPiece : RigidBody2D
 		};
 	}
 
-	/// <summary>
-	/// Get text label for piece type
-	/// </summary>
 	private string GetPieceText()
 	{
 		return Type switch
@@ -262,9 +243,6 @@ public partial class CarromPiece : RigidBody2D
 		};
 	}
 
-	/// <summary>
-	/// Handle collision with other bodies
-	/// </summary>
 	private void OnBodyEntered(Node body)
 	{
 		if (body is CarromPiece otherPiece)
@@ -278,9 +256,6 @@ public partial class CarromPiece : RigidBody2D
 		}
 	}
 
-	/// <summary>
-	/// Apply strike force to piece
-	/// </summary>
 	public void ApplyStrike(Vector2 force)
 	{
 		ApplyImpulse(force);
@@ -315,9 +290,6 @@ public partial class CarromPiece : RigidBody2D
 		return PhysicsConfig.IsPieceStopped(LinearVelocity, AngularVelocity, _wasMoving);
 	}
 	
-	/// <summary>
-	/// Check if striker is ready for input (stopped after setup)
-	/// </summary>
 	private bool IsStrikerReadyForInput()
 	{
 		return Type == PieceType.Striker && !_hasEverMoved && LinearVelocity.Length() < _minVelocityThreshold;
@@ -499,9 +471,6 @@ public partial class CarromPiece : RigidBody2D
 		}
 	}
 
-	/// <summary>
-	/// Force piece to stop immediately
-	/// </summary>
 	public void ForceStop()
 	{
 		LinearVelocity = Vector2.Zero;
@@ -673,9 +642,6 @@ public partial class CarromPiece : RigidBody2D
 		}
 	}
 
-	/// <summary>
-	/// Pocket this piece (hide and disable physics)
-	/// </summary>
 	public void PocketPiece()
 	{
 		ForceStop();
@@ -684,9 +650,6 @@ public partial class CarromPiece : RigidBody2D
 		ContactMonitor = false;
 	}
 
-	/// <summary>
-	/// Get piece value for scoring
-	/// </summary>
 	public float GetValue()
 	{
 		return Type switch
@@ -699,9 +662,6 @@ public partial class CarromPiece : RigidBody2D
 		};
 	}
 
-	/// <summary>
-	/// Check if this piece can be legally pocketed by a player
-	/// </summary>
 	public bool CanBePocketedBy(PieceType playerPieceType)
 	{
 		if (Type == PieceType.Striker)
@@ -717,9 +677,6 @@ public partial class CarromPiece : RigidBody2D
 		return Type == playerPieceType; // Can only pocket assigned pieces
 	}
 
-	/// <summary>
-	/// Get movement direction
-	/// </summary>
 	public Vector2 GetMovementDirection()
 	{
 		if (LinearVelocity.Length() > _minVelocityThreshold)
@@ -729,17 +686,11 @@ public partial class CarromPiece : RigidBody2D
 		return Vector2.Zero;
 	}
 
-	/// <summary>
-	/// Get current speed
-	/// </summary>
 	public float GetSpeed()
 	{
 		return LinearVelocity.Length();
 	}
 
-	/// <summary>
-	/// Update visual appearance
-	/// </summary>
 	public void UpdateVisual()
 	{
 		if (_pieceLabel != null)
@@ -748,9 +699,6 @@ public partial class CarromPiece : RigidBody2D
 		}
 	}
 
-	/// <summary>
-	/// Start highlight animation - fade in
-	/// </summary>
 	public void StartHighlight()
 	{
 		_highlightTargetAlpha = 1.0f;
@@ -766,17 +714,11 @@ public partial class CarromPiece : RigidBody2D
 		QueueRedraw(); // Request redraw to hide highlight
 	}
 
-	/// <summary>
-	/// Check if highlight is currently active
-	/// </summary>
 	public bool IsHighlightActive()
 	{
 		return _highlightAlpha > 0.0f || _highlightTargetAlpha > 0.0f;
 	}
 
-	/// <summary>
-	/// Enable or disable trails globally for all pieces
-	/// </summary>
 	public static void SetTrailsEnabled(bool enabled)
 	{
 		_globalTrailsEnabled = enabled;
@@ -788,26 +730,17 @@ public partial class CarromPiece : RigidBody2D
 		}
 	}
 	
-	/// <summary>
-	/// Check if trails are currently enabled
-	/// </summary>
 	public static bool AreTrailsEnabled()
 	{
 		return _globalTrailsEnabled;
 	}
 	
-	/// <summary>
-	/// Clear this piece's trail
-	/// </summary>
 	public void ClearTrail()
 	{
 		_trailPoints.Clear();
 		QueueRedraw(); // Request redraw to remove trail visuals
 	}
 	
-	/// <summary>
-	/// Update trail with current position if piece is moving
-	/// </summary>
 	private void UpdateTrail()
 	{
 		if (!_globalTrailsEnabled) return;
@@ -846,9 +779,6 @@ public partial class CarromPiece : RigidBody2D
 		}
 	}
 	
-	/// <summary>
-	/// Render trail lines with fading effect
-	/// </summary>
 	private void DrawTrail()
 	{
 		if (!_globalTrailsEnabled || _trailPoints.Count < 2) return;
@@ -875,9 +805,6 @@ public partial class CarromPiece : RigidBody2D
 		}
 	}
 
-	/// <summary>
-	/// Custom drawing for circular pieces
-	/// </summary>
 	public override void _Draw()
 	{
 		// Draw trail first (behind the piece)

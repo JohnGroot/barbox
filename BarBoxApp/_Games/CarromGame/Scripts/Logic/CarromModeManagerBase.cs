@@ -2,6 +2,8 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Abstract base class for Carrom mode managers providing common functionality
 /// and template method patterns for mode-specific behavior
@@ -36,7 +38,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	// Mode managers no longer control settlement timing or concurrency
 	
 	// Memory management tracking
-	private List<Timer> _activeTimers = new List<Timer>();
+	private List<Timer> _activeTimers = [];
 	private bool _isDisposed = false;
 	
 	// ================================================================

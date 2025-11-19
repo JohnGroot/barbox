@@ -2,6 +2,8 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Notification types for game events
 /// </summary>
@@ -121,9 +123,6 @@ public partial class CarromNotificationSystem : CanvasLayer
 			Modulate = new Color(1, 1, 1, 0);
 		}
 
-		/// <summary>
-		/// Fade in the entry with upward slide
-		/// </summary>
 		public void FadeIn()
 		{
 			if (_isRemoving) return;
@@ -155,9 +154,6 @@ public partial class CarromNotificationSystem : CanvasLayer
 			}
 		}
 
-		/// <summary>
-		/// Fade out the entry and signal for removal
-		/// </summary>
 		public void FadeOut()
 		{
 			if (_isRemoving) return;
@@ -184,9 +180,6 @@ public partial class CarromNotificationSystem : CanvasLayer
 			};
 		}
 
-		/// <summary>
-		/// Force immediate cleanup (for edge cases like clearing during fade)
-		/// </summary>
 		public void ForceCleanup()
 		{
 			_isRemoving = true;
@@ -235,7 +228,7 @@ public partial class CarromNotificationSystem : CanvasLayer
 
 	// UI Components
 	private VBoxContainer _notificationContainer;
-	private List<NotificationEntry> _activeEntries = new List<NotificationEntry>();
+	private List<NotificationEntry> _activeEntries = [];
 
 	// Position animation
 	private Tween _positionTween;
@@ -248,9 +241,6 @@ public partial class CarromNotificationSystem : CanvasLayer
 		SetupUI();
 	}
 
-	/// <summary>
-	/// Setup the UI components
-	/// </summary>
 	private void SetupUI()
 	{
 		// Create vertical container for notification stack
@@ -273,9 +263,6 @@ public partial class CarromNotificationSystem : CanvasLayer
 		AddChild(_notificationContainer);
 	}
 
-	/// <summary>
-	/// Show a notification in the stack
-	/// </summary>
 	public void ShowNotification(NotificationType type, string message, bool? isSticky = null, float? duration = null)
 	{
 		// Create notification data
@@ -364,9 +351,6 @@ public partial class CarromNotificationSystem : CanvasLayer
 		);
 	}
 
-	/// <summary>
-	/// Remove oldest entry from stack
-	/// </summary>
 	private void RemoveOldestEntry()
 	{
 		if (_activeEntries.Count == 0) return;
@@ -379,12 +363,9 @@ public partial class CarromNotificationSystem : CanvasLayer
 		}
 	}
 
-	/// <summary>
-	/// Handle entry ready for removal
-	/// </summary>
 	private void OnEntryReadyToRemove(NotificationEntry entry)
 	{
-		// EDGE CASE: Check if entry is still valid before operating
+		// Check if entry is still valid before operating
 		if (!IsInstanceValid(entry))
 		{
 			_activeEntries.Remove(entry);
@@ -403,7 +384,7 @@ public partial class CarromNotificationSystem : CanvasLayer
 		// Remove entry from tracking and container
 		_activeEntries.Remove(entry);
 
-		// EDGE CASE: Disconnect signal before freeing to prevent double-call
+		// Disconnect signal before freeing to prevent double-call
 		if (IsInstanceValid(entry))
 		{
 			entry.ReadyToRemove -= OnEntryReadyToRemove;
@@ -421,9 +402,6 @@ public partial class CarromNotificationSystem : CanvasLayer
 		}
 	}
 
-	/// <summary>
-	/// Animate remaining entries upward to their new positions
-	/// </summary>
 	private void AnimateStackMovement(List<NotificationEntry> entries, Dictionary<NotificationEntry, float> oldPositions)
 	{
 		if (entries.Count == 0) return;
@@ -459,7 +437,6 @@ public partial class CarromNotificationSystem : CanvasLayer
 
 	/// <summary>
 	/// Clear sticky notifications (called when striker is hit)
-	/// EDGE CASE: Handles notifications that are mid-fade
 	/// </summary>
 	public void ClearStickyNotification()
 	{
@@ -468,7 +445,6 @@ public partial class CarromNotificationSystem : CanvasLayer
 
 		foreach (var entry in stickyEntries)
 		{
-			// EDGE CASE: Check validity before operating
 			if (IsInstanceValid(entry))
 			{
 				entry.FadeOut();
@@ -476,10 +452,6 @@ public partial class CarromNotificationSystem : CanvasLayer
 		}
 	}
 
-	/// <summary>
-	/// Clear all notifications
-	/// EDGE CASE: Safely handles clearing while animations are active
-	/// </summary>
 	public void ClearAllNotifications()
 	{
 		// Stop position animations
@@ -490,7 +462,6 @@ public partial class CarromNotificationSystem : CanvasLayer
 
 		foreach (var entry in entriesToClear)
 		{
-			// EDGE CASE: Check validity before operating
 			if (IsInstanceValid(entry))
 			{
 				entry.ForceCleanup();
@@ -504,17 +475,11 @@ public partial class CarromNotificationSystem : CanvasLayer
 		Visible = false;
 	}
 
-	/// <summary>
-	/// Show the notification system
-	/// </summary>
 	public new void Show()
 	{
 		Visible = true;
 	}
 
-	/// <summary>
-	/// Hide the notification system
-	/// </summary>
 	public new void Hide()
 	{
 		// Clear all notifications when hiding

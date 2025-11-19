@@ -1,6 +1,8 @@
 using Godot;
 using System.Collections.Generic;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Centralized physics configuration for Carrom game components
 /// Referencing this paper for "Realistic" physics resolution: https://physlab.org/wp-content/uploads/2016/03/Conservation_momentum.pdf
@@ -20,15 +22,15 @@ public partial class CarromPhysicsConfig : Resource
 	[Export(PropertyHint.Range, "1.2,3.0,0.1")] public float StrikerMass { get; set; } = 2.7f;
 
 	[ExportCategory("Material Properties")]
-	[Export(PropertyHint.Range, "0.0,1.0,0.05")] public float PieceFriction { get; set; } = 0.02f; // Very low base friction for powder system
-	[Export(PropertyHint.Range, "0.0,2.0,0.1")] public float PieceBounce { get; set; } = 0.95f; // High bounce for realistic carrom physics
+	[Export(PropertyHint.Range, "0.0,1.0,0.05")] public float PieceFriction { get; set; } = 0.02f;
+	[Export(PropertyHint.Range, "0.0,2.0,0.1")] public float PieceBounce { get; set; } = 0.95f;
 	[Export(PropertyHint.Range, "0.8,1.0,0.05")] public float CollisionSafetyMargin { get; set; } = 0.85f;
-	
+
 
 
 	[ExportCategory("Piece Sizes")]
-	[Export(PropertyHint.Range, "8.0,20.0,0.5")] public float DefaultPieceRadius { get; set; } = 12.0f; // Fallback when no board scaling available
-	[Export(PropertyHint.Range, "14.0,20.0,0.5")] public float StrikerRadius { get; set; } = 15.0f; // Fallback when no board scaling available
+	[Export(PropertyHint.Range, "8.0,20.0,0.5")] public float DefaultPieceRadius { get; set; } = 12.0f;
+	[Export(PropertyHint.Range, "14.0,20.0,0.5")] public float StrikerRadius { get; set; } = 15.0f;
 	
 	// Board scaling properties for official proportions
 	private float _scaleFactor = 1.0f;
@@ -89,12 +91,8 @@ public partial class CarromPhysicsConfig : Resource
 	[Export(PropertyHint.Range, "8.0,15.0,1.0")] public float AbsoluteTimeout { get; set; } = 10.0f; // Absolute timeout - any piece after N seconds
 	[Export(PropertyHint.Range, "10.0,20.0,1.0")] public float UltimateTimeout { get; set; } = 15.0f; // Ultimate fallback - no piece should block settlement
 
-	/// <summary>
-	/// Initialize or update cached physics materials with property change detection
-	/// </summary>
 	private void UpdateMaterialCache()
 	{
-		// Check if piece material cache needs updating
 		if (_cachedPieceMaterial == null || _lastPieceFriction != PieceFriction || _lastPieceBounce != PieceBounce)
 		{
 			if (_cachedPieceMaterial == null)
@@ -109,19 +107,13 @@ public partial class CarromPhysicsConfig : Resource
 		
 		_materialsInitialized = true;
 	}
-	
-	/// <summary>
-	/// Get cached physics material for pieces with automatic cache updating
-	/// </summary>
+
 	public PhysicsMaterial CreatePieceMaterial()
 	{
 		UpdateMaterialCache();
 		return _cachedPieceMaterial;
 	}
-	
-	/// <summary>
-	/// Get cached physics material for board using centralized constants
-	/// </summary>
+
 	public PhysicsMaterial CreateBoardMaterial()
 	{
 		// Create fresh material with centralized constants instead of cached version
@@ -131,9 +123,6 @@ public partial class CarromPhysicsConfig : Resource
 		return boardMaterial;
 	}
 
-	/// <summary>
-	/// Get mass for piece type
-	/// </summary>
 	public float GetMassForPieceType(PieceType type)
 	{
 		return type == PieceType.Striker ? StrikerMass : DefaultMass;
@@ -173,11 +162,8 @@ public partial class CarromPhysicsConfig : Resource
 	{
 		return GetRadiusForPieceType(type) * CollisionSafetyMargin;
 	}
-	
 
-	/// <summary>
-	/// Check if piece is stopped based on threshold and hysteresis
-	/// </summary>
+
 	public bool IsPieceStopped(Vector2 velocity, float angularVelocity, bool wasMoving)
 	{
 		float effectiveThreshold = wasMoving ? PieceStopThreshold : PieceStopThreshold * StopHysteresisFactor;
@@ -202,9 +188,6 @@ public partial class CarromPhysicsConfig : Resource
 	/// </summary>
 	public float PocketBounceOutSpeed => MaxStrikePower * PocketBounceOutSpeedRatio;
 
-	/// <summary>
-	/// Calculate capture probability based on piece speed
-	/// </summary>
 	public float CalculatePocketCaptureChance(float pieceSpeed)
 	{
 		if (pieceSpeed <= PocketSlowCaptureSpeed)
@@ -229,9 +212,6 @@ public partial class CarromPhysicsConfig : Resource
 		return PocketSpeedCaptureChance * speedFactor;
 	}
 
-	/// <summary>
-	/// Calculate radial attraction force strength based on distance to pocket center
-	/// </summary>
 	public float CalculatePocketRadialForce(float distanceToCenter, float pocketRadius)
 	{
 		float influenceRadius = pocketRadius * PocketInfluenceZoneMultiplier;
@@ -248,9 +228,6 @@ public partial class CarromPhysicsConfig : Resource
 		return PocketRadialForceStrength * forceMultiplier;
 	}
 
-	/// <summary>
-	/// Calculate approach angle validity for pocket entry
-	/// </summary>
 	public bool IsValidPocketApproachAngle(Vector2 pieceVelocity, Vector2 pocketDirection)
 	{
 		if (pieceVelocity.Length() < 1.0f) return true; // Very slow pieces can enter from any angle
@@ -261,9 +238,6 @@ public partial class CarromPhysicsConfig : Resource
 		return approachAngle <= maxAngleRadians;
 	}
 
-	/// <summary>
-	/// Calculate current friction coefficient based on distance traveled (powder effect)
-	/// </summary>
 	public float CalculatePowderFrictionCoefficient(float distanceTraveled)
 	{
 		if (!EnablePowderEffectFriction || PowderTransitionDistance <= 0.0f)

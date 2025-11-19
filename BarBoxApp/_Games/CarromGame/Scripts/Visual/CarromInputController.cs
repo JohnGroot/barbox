@@ -1,4 +1,7 @@
 using Godot;
+using System.Collections.Generic;
+
+namespace BarBox.Games.Carrom;
 
 /// <summary>
 /// Input controller for carrom striker control with deadzone logic
@@ -1320,9 +1323,9 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private (Vector2[] trajectoryPoints, Vector2? collisionPoint, Vector2[] postCollisionPoints, CarromPiece hitPiece, Vector2[] hitPieceTrajectory) SimulateConstantTrajectoryPath(Vector2 startPos, Vector2 direction, float power)
 	{
-		var trajectoryPoints = new System.Collections.Generic.List<Vector2>();
-		var postCollisionPoints = new System.Collections.Generic.List<Vector2>();
-		var hitPieceTrajectory = new System.Collections.Generic.List<Vector2>();
+		List<Vector2> trajectoryPoints = [];
+		List<Vector2> postCollisionPoints = [];
+		List<Vector2> hitPieceTrajectory = [];
 		Vector2? collisionPoint = null;
 		CarromPiece hitPiece = null;
 		
@@ -1486,7 +1489,7 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private Vector2[] SimulateConstantPostCollisionPath(Vector2 startPos, Vector2 direction)
 	{
-		var points = new System.Collections.Generic.List<Vector2>();
+		List<Vector2> points = [];
 		
 		Vector2 position = startPos;
 		float distanceTraveled = 0.0f;
@@ -1528,7 +1531,7 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private Vector2[] SimulateHitPieceTrajectory(Vector2 startPos, Vector2 direction)
 	{
-		var points = new System.Collections.Generic.List<Vector2>();
+		List<Vector2> points = [];
 		
 		Vector2 position = startPos;
 		float distanceTraveled = 0.0f;

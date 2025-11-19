@@ -2,7 +2,8 @@ using Godot;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using BarBox.Games.Carrom;
+
+namespace BarBox.Games.Carrom;
 
 /// <summary>
 /// Manages competitive mode functionality for Carrom game
@@ -23,9 +24,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	[Signal] public delegate void NotificationRequestedEventHandler(int notificationType, string message);
 
 	// Competitive mode state
-	private List<CarromPiece> _competitivePieces = new List<CarromPiece>();
+	private List<CarromPiece> _competitivePieces = [];
 	private int _currentPlayerIndex = 0;
-	private List<CarromPlayer> _players = new List<CarromPlayer>();
+	private List<CarromPlayer> _players = [];
 	
 	// Turn state tracking
 	private bool _validPocketThisStroke = false;
@@ -44,7 +45,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	private PackedScene _strikerTemplate;
 	
 	// Penalty piece tween tracking
-	private List<CarromPiece> _piecesNeedingTweenReturn = new List<CarromPiece>();
+	private List<CarromPiece> _piecesNeedingTweenReturn = [];
 
 	// Settings
 	private int _competitiveCreditCost = 1;
@@ -86,33 +87,21 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	// ================================================================
 	// ABSTRACT METHOD IMPLEMENTATIONS
 	// ================================================================
-	
-	/// <summary>
-	/// Create and position pieces specific to competitive mode
-	/// </summary>
+
 	protected override void CreateModeSpecificPieces()
 	{
-		// Clear existing pieces
 		_competitivePieces.Clear();
-		
-		// Create full set of carrom pieces in center formation
+
 		CreateCompetitivePieces();
-		
-		// Setup players for competitive mode
+
 		SetupCompetitivePlayers();
 	}
-	
-	/// <summary>
-	/// Get all pieces managed by competitive mode (excluding striker)
-	/// </summary>
+
 	protected override List<CarromPiece> GetManagedPieces()
 	{
 		return new List<CarromPiece>(_competitivePieces);
 	}
-	
-	/// <summary>
-	/// Clear all competitive-specific pieces
-	/// </summary>
+
 	protected override void ClearModeSpecificPieces()
 	{
 		foreach (var piece in _competitivePieces)
@@ -131,13 +120,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	/// </summary>
 	protected override void ExecuteModeSpecificSettlement()
 	{
-		// Pure data processing - no state control, just game rule evaluation
-
-		// Get current player for settlement logic
 		var currentPlayer = GetCurrentPlayer();
 		string currentPlayerId = currentPlayer?.PlayerId ?? "unknown";
 
-		// Check if current player should continue their turn based on game rules
 		bool shouldContinue = ShouldContinueTurn(currentPlayerId);
 
 		if (shouldContinue)
@@ -216,7 +201,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	/// </summary>
 	public override bool ShouldContinueTurn(string playerId)
 	{
-		// Get the current player
 		var currentPlayer = GetCurrentPlayer();
 		if (currentPlayer == null || currentPlayer.PlayerId != playerId)
 		{
@@ -228,10 +212,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		{
 			return HandleBreakingTurnContinuation();
 		}
-		
-		// Apply official carrom rules for normal turn continuation:
-		// Turn continues if player pocketed valid pieces AND committed no fouls
-		// Turn ends if player committed fouls OR pocketed no valid pieces
+
 		bool shouldContinue = _validPocketThisStroke && !_foulThisStroke;
 		
 		// DO NOT reset flags here - they may still be needed by penalty processing
@@ -270,7 +251,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	/// </summary>
 	protected override void HandlePiecePocketed(CarromPiece piece)
 	{
-		// Get current player
 		var currentPlayer = GetCurrentPlayer();
 		if (currentPlayer == null)
 		{
@@ -290,7 +270,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		string playerId = currentPlayer.PlayerId;
 		bool validPocket = false;
 
-		// Handle different piece types according to carrom rules
 		switch (piece.Type)
 		{
 			case PieceType.Striker:
@@ -678,9 +657,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	}
 
 
-	/// <summary>
-	/// Get current player
-	/// </summary>
 	public CarromPlayer GetCurrentPlayer()
 	{
 		if (_currentPlayerIndex >= 0 && _currentPlayerIndex < _players.Count)
@@ -690,17 +666,11 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		return null;
 	}
 
-	/// <summary>
-	/// Get all competitive pieces
-	/// </summary>
 	public List<CarromPiece> GetCompetitivePieces()
 	{
 		return [.._competitivePieces];
 	}
 
-	/// <summary>
-	/// Clear competitive-specific state during cleanup
-	/// </summary>
 	protected override void ClearModeSpecificState()
 	{
 		_players.Clear();
@@ -1087,17 +1057,11 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		return new List<CarromPiece>(_piecesNeedingTweenReturn);
 	}
 
-	/// <summary>
-	/// Clear the tween return list (called after tweening is complete)
-	/// </summary>
 	public void ClearTweenReturnList()
 	{
 		_piecesNeedingTweenReturn.Clear();
 	}
-	
-	/// <summary>
-	/// Handle queen covered event from player
-	/// </summary>
+
 	private void OnQueenCoveredSuccessfully(string playerId)
 	{
 		// Show floating text for queen covered

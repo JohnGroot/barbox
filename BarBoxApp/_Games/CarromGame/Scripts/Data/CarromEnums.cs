@@ -1,5 +1,7 @@
 using Godot;
 
+namespace BarBox.Games.Carrom;
+
 /// <summary>
 /// Types of carrom pieces in the game
 /// </summary>
