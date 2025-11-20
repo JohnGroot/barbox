@@ -57,6 +57,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	/// </summary>
 	private partial class PlayerSlotUI : VBoxContainer
 	{
+		private static readonly Vector2 SlotSize = new(250, 200);
+
 		public Panel BackgroundPanel { get; private set; }
 		public Label SlotNumberLabel { get; private set; }
 		public Label PieceColorLabel { get; private set; }
@@ -79,7 +81,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			SlotIndex = slotIndex;
 			IsOccupied = false;
 
-			CustomMinimumSize = new Vector2(250, 200);
+			CustomMinimumSize = SlotSize;
 			AddThemeConstantOverride("separation", 10);
 
 			// Background panel
@@ -238,6 +240,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		// Constants
 		private const int MIN_TRANSFER_AMOUNT = 1;
 		private const int MAX_TRANSFER_PER_TRANSACTION = 20;
+		private static readonly Vector2 ModalSize = new(400, 350);
 
 		// Async completion
 		private TaskCompletionSource<int?> _completionSource;
@@ -294,8 +297,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 			// Modal panel
 			_modalPanel = new Panel();
-			_modalPanel.CustomMinimumSize = new Vector2(400, 350);
-			_modalPanel.SetSize(new Vector2(400, 350));
+			_modalPanel.CustomMinimumSize = ModalSize;
+			_modalPanel.SetSize(ModalSize);
 
 			var modalStyle = new StyleBoxFlat();
 			modalStyle.BgColor = new Color(0.1f, 0.1f, 0.12f, 1.0f);
@@ -578,6 +581,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		if (_sessionManager != null)
 		{
 			_sessionManager.UserLoggedIn += OnUserLoggedIn;
+			_sessionManager.CreditsEarned += OnCreditsEarned;
+			_sessionManager.CreditsSpent += OnCreditsSpent;
 		}
 
 		// Start hidden
@@ -901,7 +906,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		// Auto-populate first slot with primary user (UI convenience for local multiplayer)
 		var currentSession = _sessionManager.GetPrimaryUserSession();
-		if (currentSession != null && currentSession!= null)
+		if (currentSession != null)
 		{
 			// Add primary user to first slot
 			_slotToPhoneNumber[0] = currentSession.PhoneNumber;
@@ -939,7 +944,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 			// Get user session
 			var session = _sessionManager.GetUserSession(phoneNumber);
-			if (session != null && session != null)
+			if (session != null)
 			{
 				// User is logged in - restore occupied state
 				var slot = _playerSlots[slotIndex];
@@ -1116,6 +1121,38 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		UpdateStartGameButton();
 	}
 
+	private void OnCreditsEarned(string phoneNumber, int amount, string reason)
+	{
+		// Update UI for any credit changes
+		UpdatePlayerSlotCredits(phoneNumber);
+	}
+
+	private void OnCreditsSpent(string phoneNumber, int amount, string reason)
+	{
+		// Update UI for any credit changes
+		UpdatePlayerSlotCredits(phoneNumber);
+	}
+
+	private void UpdatePlayerSlotCredits(string phoneNumber)
+	{
+		// Find slot for this phone number and update credits display
+		foreach (var kvp in _slotToPhoneNumber)
+		{
+			if (kvp.Value == phoneNumber)
+			{
+				if (kvp.Key >= _playerSlots.Count)
+					break;
+
+				var session = _sessionManager?.GetUserSession(phoneNumber);
+				if (session != null)
+				{
+					_playerSlots[kvp.Key].UpdateCreditsDisplay(session.Credits);
+				}
+				break;
+			}
+		}
+	}
+
 	private async void OnLogoutButtonPressed(int slotIndex)
 	{
 		if (_sessionManager == null) return;
@@ -1172,7 +1209,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private async void RefreshSlotCreditsDisplay(int slotIndex)
 	{
-		if (_sessionManager == null) return;
+		if (_sessionManager == null) 
+			return;
 		if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
 			return;
 
@@ -1181,7 +1219,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		// Refresh credits display
 		var session = _sessionManager.GetUserSession(phoneNumber);
-		if (session != null && session != null)
+		if (session != null)
 		{
 			var slot = _playerSlots[slotIndex];
 			slot.UpdateCreditsDisplay(session.Credits);
@@ -1190,68 +1228,74 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private async void OnTransferCreditButtonPressed(int slotIndex)
 	{
-		if (_sessionManager == null) // Event-sourced - no DataStore needed
-			return;
-		if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
-			return;
-
-		var session = _sessionManager.GetUserSession(phoneNumber);
-		if (session == null || false)
-			return;
-
-		// Check if player has credits
-		int availableCredits = session.Credits;
-		if (availableCredits < 1)
+		try
 		{
-			GD.Print($"Player {phoneNumber} has insufficient credits");
-			return;
+			if (_sessionManager == null)
+				return;
+			if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
+				return;
+
+			var session = _sessionManager.GetUserSession(phoneNumber);
+			if (session == null)
+				return;
+
+			// Check if player has credits
+			int availableCredits = session.Credits;
+			if (availableCredits < 1)
+			{
+				GD.Print($"Player {phoneNumber} has insufficient credits");
+				return;
+			}
+
+			// Show modal and get selected amount
+			var selectedAmount = await _creditTransferModal.ShowAsync(
+				phoneNumber,
+				slotIndex,
+				session.UserName,
+				availableCredits
+			);
+
+			// If cancelled or invalid, return
+			if (!selectedAmount.HasValue || selectedAmount.Value < 1)
+				return;
+
+			// Transfer credits atomically: player credits → machine credits (via SessionManager)
+			var transferSuccess = await _sessionManager.TransferCreditsToMachineAsync(
+				phoneNumber,
+				"carrom",  // Use game tag (not game ID) to match backend queries
+				selectedAmount.Value,
+				"Transfer to Carrom table"
+			);
+
+			// Validate scene still exists after async operation
+			if (!IsInstanceValid(this))
+				return;
+
+			if (transferSuccess)
+			{
+				// Event-sourced - backend tracks machine credits
+				// Update local table credits cache
+				_tableCredits += selectedAmount.Value;
+
+				// Track how many credits this player has transferred
+				_creditsTransferredByPlayer.TryAdd(phoneNumber, 0);
+				_creditsTransferredByPlayer[phoneNumber] += selectedAmount.Value;
+
+				// Update displays (session cache already updated by SessionManager)
+				var updatedSession = _sessionManager.GetUserSession(phoneNumber);
+				if (updatedSession != null)
+				{
+					var slot = _playerSlots[slotIndex];
+					slot.UpdateCreditsDisplay(updatedSession.Credits);
+				}
+
+				UpdateTableCreditsDisplay();
+				UpdateStartGameButton();
+			}
 		}
-
-		// Show modal and get selected amount
-		var selectedAmount = await _creditTransferModal.ShowAsync(
-			phoneNumber,
-			slotIndex,
-			session.UserName,
-			availableCredits
-		);
-
-		// If cancelled or invalid, return
-		if (!selectedAmount.HasValue || selectedAmount.Value < 1)
-			return;
-
-		// Transfer credits atomically: player credits → machine credits (via SessionManager)
-		var transferSuccess = await _sessionManager.TransferCreditsToMachineAsync(
-			phoneNumber,
-			"carrom",  // Use game tag (not game ID) to match backend queries
-			selectedAmount.Value,
-			"Transfer to Carrom table"
-		);
-
-		if (transferSuccess)
+		catch (System.Exception ex)
 		{
-			// Event-sourced - backend tracks machine credits
-			// Update local table credits cache
-			_tableCredits += selectedAmount.Value;
-
-			// Track how many credits this player has transferred
-			if (!_creditsTransferredByPlayer.ContainsKey(phoneNumber))
-			{
-				_creditsTransferredByPlayer[phoneNumber] = 0;
-			}
-			_creditsTransferredByPlayer[phoneNumber] += selectedAmount.Value;
-
-			// Persist player contributions to machine data
-			await SavePlayerContributionsToMachineData();
-
-			// Update displays (session cache already updated by SessionManager)
-			if (session != null && session != null)
-			{
-				var slot = _playerSlots[slotIndex];
-				slot.UpdateCreditsDisplay(session.Credits);
-			}
-
-			UpdateTableCreditsDisplay();
-			UpdateStartGameButton();
+			GD.PrintErr($"Credit transfer failed: {ex.Message}");
 		}
 	}
 
@@ -1349,13 +1393,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			}
 		}
 
-		// Decrement machine credits to reflect all returns
-		// TODO: Event-sourced - backend handles machine credits via events
-		if (false && totalReturned > 0)
-		{
-			// Machine credit handling moved to backend
-		}
-
+		// Machine credit handling moved to backend (event-sourced)
 		_tableCredits = 0;
 		_creditsTransferredByPlayer.Clear();
 
@@ -1483,10 +1521,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		}
 	}
 
-	/// <summary>
-	/// Persist player contributions and slot assignments to MachineGameData.GameState
-	/// This is called after each credit transfer to update the backend
-	/// </summary>
 	private async Task SavePlayerContributionsToMachineData()
 	{
 		// Backend deposit is now handled directly in OnTransferCreditButtonPressed
@@ -1494,7 +1528,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		await Task.CompletedTask;
 		return;
 	}
-
 
 	public override void _ExitTree()
 	{
@@ -1506,6 +1539,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		if (GodotObject.IsInstanceValid(_sessionManager))
 		{
 			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
+			_sessionManager.CreditsEarned -= OnCreditsEarned;
+			_sessionManager.CreditsSpent -= OnCreditsSpent;
 		}
 
 		// Cleanup signals

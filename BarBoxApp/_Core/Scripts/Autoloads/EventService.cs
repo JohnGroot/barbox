@@ -1158,7 +1158,7 @@ public partial class EventService : AutoloadBase
 		};
 
 		return await QueryAsync<MachineCreditsResponse>(
-			$"/game/{gameTag}/machine-credits",
+			$"/machine-credits/{gameTag}",
 			queryParams
 		);
 	}
@@ -1181,7 +1181,7 @@ public partial class EventService : AutoloadBase
 			LobbySessionId = lobbySessionId
 		};
 		return await PostAsync<MachineCreditsDepositRequest, MachineCreditsResponse>(
-			$"/game/{gameTag}/machine-credits/deposit", request, 201, playerId: playerId);
+			$"/machine-credits/{gameTag}/deposit", request, 201, playerId: playerId);
 	}
 
 	/// <summary>
@@ -1200,7 +1200,7 @@ public partial class EventService : AutoloadBase
 			GameSessionId = gameSessionId
 		};
 		return await PostAsync<MachineCreditsConsumeRequest, MachineCreditsResponse>(
-			$"/game/{gameTag}/machine-credits/consume", request, 200);
+			$"/machine-credits/{gameTag}/consume", request, 200);
 	}
 
 	// Private helper methods
