@@ -1498,8 +1498,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	public override void _ExitTree()
 	{
-		// Cleanup all player sessions (return credits and logout secondary players)
-		CleanupAllPlayerSessionsAsync();
+		// Only clear local state to prevent stale references
+		_slotToPhoneNumber.Clear();
+		_creditsTransferredByPlayer.Clear();
 
 		// Cleanup SessionManager signals
 		if (GodotObject.IsInstanceValid(_sessionManager))

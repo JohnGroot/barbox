@@ -227,7 +227,7 @@ public partial class EventService : AutoloadBase
 			_currentBoxId = boxId;
 
 			LogInfo($"Activity session created: {sessionId} (game: {gameTag})");
-			CallDeferred(MethodName.EmitSignal, SignalName.SessionCreated, sessionId.ToString());
+			CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.SessionCreated, sessionId.ToString());
 
 			return Result.Success(sessionId);
 		}
@@ -399,7 +399,7 @@ public partial class EventService : AutoloadBase
 				_lobbySessionId = sessionId;
 
 				LogInfo($"Lobby session created: {sessionId}");
-				CallDeferred(MethodName.EmitSignal, SignalName.SessionCreated, sessionId.ToString());
+				CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.SessionCreated, sessionId.ToString());
 				return Result.Success(sessionId);
 			}
 
@@ -456,7 +456,7 @@ public partial class EventService : AutoloadBase
 			if (error != Godot.Error.Ok)
 			{
 				var errorMsg = $"Event submission request failed: {error}";
-				CallDeferred(MethodName.EmitSignal, SignalName.EventSubmissionFailed, _currentSessionId.ToString(), errorMsg);
+				CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.EventSubmissionFailed, _currentSessionId.ToString(), errorMsg);
 				return Result.Failure<bool>(errorMsg);
 			}
 
@@ -474,7 +474,7 @@ public partial class EventService : AutoloadBase
 				LogInfo($"[HTTP] Status after response read: {_httpClient.GetStatus()}");
 #endif
 
-				CallDeferred(MethodName.EmitSignal, SignalName.EventSubmitted, _currentSessionId.ToString(), eventType);
+				CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.EventSubmitted, _currentSessionId.ToString(), eventType);
 				return Result.Success(true);
 			}
 
@@ -489,7 +489,7 @@ public partial class EventService : AutoloadBase
 				failureMsg += $" - {errorBody}";
 			}
 
-			CallDeferred(MethodName.EmitSignal, SignalName.EventSubmissionFailed, _currentSessionId.ToString(), failureMsg);
+			CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.EventSubmissionFailed, _currentSessionId.ToString(), failureMsg);
 			return Result.Failure<bool>(failureMsg);
 		}
 		catch (Exception ex)

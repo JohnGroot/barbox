@@ -539,15 +539,19 @@ public partial class SessionManager : AutoloadBase
 	/// </summary>
 	public async Task<bool> LogoutUserAsync(string phoneNumber)
 	{
-		if (!_activeSessions.TryGetValue(phoneNumber, out var session))
-			return false;
-
 		// CRITICAL FIX: Use semaphore to limit concurrent logout operations
 		// Prevents overwhelming backend with many simultaneous HTTP calls during mass logout
 		await _logoutSemaphore.WaitAsync();
 
 		try
 		{
+			// IDEMPOTENCY CHECK: Double-check session exists after acquiring semaphore
+			// Prevents duplicate logout attempts if multiple callers try to logout the same user
+			if (!_activeSessions.TryGetValue(phoneNumber, out var session))
+			{
+				LogInfo($"User {phoneNumber} already logged out - skipping");
+				return false;
+			}
 			// Revoke JWT token on backend
 			if (_eventService != null && _eventService.IsReady && !string.IsNullOrEmpty(session.JwtToken))
 			{
