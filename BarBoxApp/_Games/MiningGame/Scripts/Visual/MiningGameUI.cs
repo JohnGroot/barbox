@@ -51,7 +51,7 @@ public partial class MiningGameUI : Control
 	{
 		_game = game;
 		_config = config;
-		_locationData = game.GetLocationData(); // Get location data for theming
+		_locationData = game.GetLocationData();
 
 		CreateUI();
 		ApplyTheme();
@@ -186,7 +186,7 @@ public partial class MiningGameUI : Control
 		_extractButton.Pressed += () => _game?.ExtractGems();
 		buttonsHBox.AddChild(_extractButton);
 
-		_purchaseCreditButton = UIBuilder.CreateActionButton($"Purchase Credit ({_config.CreditCost} gems)", this);
+		_purchaseCreditButton = UIBuilder.CreateActionButton($"Purchase Credit ({_config.CreditCost} {_locationData.GetGemEmoji(_locationData.PrimaryGemType)})", this);
 		_purchaseCreditButton.CustomMinimumSize = new Vector2(200, 40);
 		_purchaseCreditButton.Pressed += () => _game?.PurchaseCredit();
 		buttonsHBox.AddChild(_purchaseCreditButton);
@@ -263,10 +263,8 @@ public partial class MiningGameUI : Control
 		// Disable all action buttons when disabled, but don't override their normal disabled state when enabled
 		if (!enabled)
 		{
-			if (_extractButton != null)
-				_extractButton.Disabled = true;
-			if (_purchaseCreditButton != null)
-				_purchaseCreditButton.Disabled = true;
+			_extractButton.Disabled = true;
+			_purchaseCreditButton.Disabled = true;
 		}
 
 		// Disable all upgrade buttons
@@ -279,29 +277,22 @@ public partial class MiningGameUI : Control
 		if (!enabled)
 		{
 			// Clear all progress and gem displays to show no data
-			if (_progressLabel != null)
-				_progressLabel.Text = "Please log in to start mining";
-			if (_gemsReadyLabel != null)
-				_gemsReadyLabel.Text = "Gems ready: Login required";
-			if (_capacityLabel != null)
-				_capacityLabel.Text = "Capacity: Login required";
+			_progressLabel.Text = "Please log in to start mining";
+			_gemsReadyLabel.Text = "Gems ready: Login required";
+			_capacityLabel.Text = "Capacity: Login required";
 
 			// Clear gem labels
 			foreach (var label in _gemLabels.Values)
 			{
-				if (GodotObject.IsInstanceValid(label))
-					label.Text = "Please log in";
+				label.Text = "Please log in";
 			}
 
 			// Clear progress bar
-			if (_miningProgressBar != null)
-				_miningProgressBar.Value = 0;
+			_miningProgressBar.Value = 0;
 
 			// Clear button text to default state
-			if (_extractButton != null)
-				_extractButton.Text = "Extract Gems";
-			if (_purchaseCreditButton != null)
-				_purchaseCreditButton.Text = $"Purchase Credit ({_config.CreditCost} gems)";
+			_extractButton.Text = "Extract Gems";
+			_purchaseCreditButton.Text = $"Purchase Credit ({_config.CreditCost} {_locationData.GetGemEmoji(_locationData.PrimaryGemType)}'s)";
 		}
 	}
 

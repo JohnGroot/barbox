@@ -44,6 +44,9 @@ public partial class MiningState : Node
 	{
 		_game = game;
 		Name = "State";
+
+		string currentLocationId = _game.GetLocationManager()?.CurrentLocationId ?? DEFAULT_LOCATION_ID;
+		_locationTemplate = _game.GetLocationDataTemplate(currentLocationId);
 	}
 
 	public override void _Process(double delta)
@@ -209,38 +212,26 @@ public partial class MiningState : Node
 		if (_game.IsDebugMode())
 			GD.Print("[GameState] === LoadUserDataAsync START ===");
 
-		string currentLocationId = _game.GetLocationManager()?.CurrentLocationId ?? DEFAULT_LOCATION_ID;
-		_locationTemplate = _game.GetLocationDataTemplate(currentLocationId);
-
-		if (_locationTemplate == null)
-		{
-			GD.PrintErr($"[GameState] CRITICAL: Could not load location template for '{currentLocationId}'");
-			CreateDefaultState();
-			return;
-		}
-
 		var phoneNumber = _game.GetCurrentUserPhoneNumber();
-
 		if (!string.IsNullOrEmpty(phoneNumber))
 		{
 			var sessionManager = SessionManager.GetInstance();
 			var currentSession = sessionManager?.GetPrimaryUserSession();
-
 			if (currentSession?.PlayerId != null && currentSession.PlayerId != Guid.Empty)
 			{
 				var playerId = currentSession.PlayerId;
 
 				GD.Print("[GameState] Loading state from backend...");
-				bool stateLoaded = await TryLoadStateFromBackend(playerId, currentLocationId);
+				bool stateLoaded = await TryLoadStateFromBackend(playerId, _locationTemplate.LocationId);
 
-				if (!stateLoaded)
+				if (stateLoaded)
 				{
-					GD.Print("[GameState] Backend load failed - creating default state");
-					CreateDefaultState();
+					GD.Print("[GameState] Backend data loaded successfully!");
 				}
 				else
 				{
-					GD.Print("[GameState] Backend data loaded successfully!");
+					GD.Print("[GameState] Backend load failed - creating default state");
+					CreateDefaultState();
 				}
 			}
 			else
@@ -511,8 +502,6 @@ public partial class MiningState : Node
 		_pendingGems = 0;
 		_upgradeLevels.Clear();
 		_globalData = null;
-		_locationTemplate = null;
-		// Don't reset _firstTimeBonus - it will be set correctly by LoadUserDataAsync based on database state
 
 		// Reset calculated values cache
 		InvalidateCache();

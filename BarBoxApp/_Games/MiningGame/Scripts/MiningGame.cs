@@ -161,7 +161,7 @@ public partial class MiningGame : GameController
 	{
 		_locationDataRegistry.Clear();
 
-		if (LocationDataResources != null && LocationDataResources.Count > 0)
+		if (LocationDataResources is { Count: > 0 })
 		{
 			foreach (var locationData in LocationDataResources)
 			{
@@ -220,13 +220,8 @@ public partial class MiningGame : GameController
 		AddChild(_state);
 
 		var uiNode = GetNode<MiningGameUI>(UIPath);
-		if (uiNode == null)
-		{
-			throw new InvalidOperationException(
-				$"UI node is required but not found at path: {UIPath}");
-		}
-
-		_ui = uiNode;
+		_ui = uiNode ?? throw new InvalidOperationException(
+			$"UI node is required but not found at path: {UIPath}");
 		_ui.Initialize(this, Config);
 	}
 		
@@ -290,7 +285,6 @@ public partial class MiningGame : GameController
 				{
 					var boxId = locationManager.BoxId;
 					var phoneNumber = GetCurrentUserPhoneNumber();
-
 					if (!string.IsNullOrEmpty(phoneNumber))
 					{
 						var sessionManager = SessionManager.GetInstance();
