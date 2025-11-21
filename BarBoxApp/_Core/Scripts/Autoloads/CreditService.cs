@@ -169,7 +169,7 @@ public partial class CreditService : AutoloadBase
 			if (session != null && session.LobbySessionId == Guid.Empty)
 			{
 				LogInfo($"Lobby session missing for player {playerId} - creating on-demand for credit operation");
-				var boxId = eventService.GetCurrentBoxId();
+				var boxId = eventService.GetBoxId();
 				var lobbyResult = await eventService.CreateLobbySessionAsync(boxId, playerId);
 
 				if (lobbyResult.IsSuccess(out var lobbySessionId))

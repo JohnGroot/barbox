@@ -59,7 +59,7 @@ public partial class SessionManager : AutoloadBase
 		get
 		{
 			var locationManager = LocationManager.GetAutoload();
-			return locationManager?.LocationId ??
+			return locationManager?.VenueName ??
 				   System.Environment.MachineName.ToLowerInvariant().Replace("-", "_");
 		}
 	}
@@ -222,7 +222,7 @@ public partial class SessionManager : AutoloadBase
 				return Result.Failure<UserSession>("Backend service not available");
 			}
 
-			var boxId = _eventService.GetCurrentBoxId();
+			var boxId = _eventService.GetBoxId();
 			var loginRequest = new PlayerLoginRequest
 			{
 				PhoneNumber = cleanedPhone,
@@ -321,7 +321,7 @@ public partial class SessionManager : AutoloadBase
 			// Create lobby session for user-scoped events
 			if (_eventService != null && _eventService.IsReady)
 			{
-				var lobbyBoxId = _eventService.GetCurrentBoxId();
+				var lobbyBoxId = _eventService.GetBoxId();
 				var lobbySessionResult = await _eventService.CreateLobbySessionAsync(lobbyBoxId, playerId);
 				if (lobbySessionResult.IsSuccess(out var lobbySessionId))
 				{

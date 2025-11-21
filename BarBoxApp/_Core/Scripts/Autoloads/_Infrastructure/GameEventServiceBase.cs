@@ -16,14 +16,15 @@ public class GameEventServiceBase
 {
 	protected EventService _eventService;
 
-	public GameEventServiceBase(EventService eventService = null)
+	public GameEventServiceBase(EventService eventService)
 	{
-		_eventService = eventService ?? EventService.GetInstance();
-		if (_eventService == null)
-		{
-			GD.PrintErr($"{GetType().Name}: EventService not found");
-		}
+		_eventService = eventService;
 	}
+
+	public string GetVenueName() => _eventService.GetVenueName();
+	public string GetBoxName() => _eventService.GetBoxName();
+	public Guid GetBoxId() => _eventService.GetBoxId();
+	public Guid GetCurrentSessionId() => _eventService.GetCurrentSessionId();
 
 	/// <summary>
 	/// Emit event with validation and error mapping
@@ -158,8 +159,10 @@ public class GameEventServiceBase
 
 		// Mining-specific fields
 		public const string Gems = "gems";
+		public const string Inventory = "inventory";
 		public const string Upgrades = "upgrades";
 		public const string LastMiningTime = "last_mining_time";
+		public const string PendingGems = "pending_gems";
 		public const string HasReceivedBonus = "has_received_bonus";
 		public const string TotalEvents = "total_events";
 		public const string FirstEventTime = "first_event_time";
@@ -241,6 +244,28 @@ public class GameEventServiceBase
 		public static bool IsNullOrMissing(Godot.Collections.Dictionary dict, string key)
 		{
 			return !dict.ContainsKey(key) || dict[key].VariantType == Godot.Variant.Type.Nil;
+		}
+
+		/// <summary>
+		/// Parse string from dictionary with validation
+		/// </summary>
+		public static Result<string> ParseString(Godot.Collections.Dictionary dict, string key)
+		{
+			if (!dict.ContainsKey(key))
+				return Result.Failure<string>($"Missing required field: {key}");
+
+			try
+			{
+				var value = dict[key].AsString();
+				if (string.IsNullOrEmpty(value))
+					return Result.Failure<string>($"Field {key} is null or empty");
+
+				return Result.Success(value);
+			}
+			catch (System.Exception ex)
+			{
+				return Result.Failure<string>($"Failed to parse string for {key}: {ex.Message}");
+			}
 		}
 
 		/// <summary>

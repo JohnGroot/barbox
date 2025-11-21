@@ -13,15 +13,33 @@ public partial class LocationManager : AutoloadBase
 {
 	// Cached configuration values
 	private Guid _boxId;
-	private string _locationId;
+	private string _boxName;
+	private string _venueName;
 	private string _backendUrl;
 	private string _boxApiKey;
 	private bool _isConfigLoaded = false;
 
 	// Public typed accessors
+
+	/// <summary>
+	/// Box ID (UUID) - Required for backend authentication and database foreign keys
+	/// This is the secure, globally unique identifier for this physical machine
+	/// </summary>
 	public Guid BoxId => _boxId;
-	public string LocationId => _locationId;
-	public string CurrentLocationId => _locationId; // Compatibility
+
+	/// <summary>
+	/// Box Name (human-readable) - Used for display and logging
+	/// Example: "besties_box_1", "arcade_terminal_2"
+	/// </summary>
+	public string BoxName => _boxName;
+
+	/// <summary>
+	/// Venue Name (human-readable location identifier) - Used for venue-scoped data
+	/// Example: "best_intentions", "johnnys_arcade"
+	/// Mining progress and other venue-scoped data follows players across machines at the same venue
+	/// </summary>
+	public string VenueName => _venueName;
+
 	public string BackendUrl => _backendUrl;
 	public string BoxApiKey => _boxApiKey;
 	public bool IsConfigLoaded => _isConfigLoaded;
@@ -30,7 +48,7 @@ public partial class LocationManager : AutoloadBase
 	{
 		LoadEnvironmentConfiguration();
 		var apiKeyStatus = string.IsNullOrEmpty(_boxApiKey) ? "NOT SET" : "SET";
-		LogInfo($"LocationManager initialized - Location: {_locationId}, BoxId: {_boxId}, ApiKey: {apiKeyStatus}");
+		LogInfo($"LocationManager initialized - Venue: {_venueName}, BoxName: {_boxName}, BoxId: {_boxId}, ApiKey: {apiKeyStatus}");
 
 		// In production, schedule box verification after services are ready
 		if (!OS.HasFeature("editor"))
@@ -45,7 +63,8 @@ public partial class LocationManager : AutoloadBase
 		TryLoadDotEnvFile();
 
 		// Load and validate configuration
-		_locationId = LoadLocationId();
+		_venueName = LoadVenueName();
+		_boxName = LoadBoxName();
 		_boxId = LoadBoxId();
 		_backendUrl = LoadBackendUrl();
 		_boxApiKey = LoadBoxApiKey();
@@ -97,10 +116,46 @@ public partial class LocationManager : AutoloadBase
 		}
 	}
 
-	private string LoadLocationId()
+	private string LoadVenueName()
 	{
-		return System.Environment.GetEnvironmentVariable("BARBOX_LOCATION_ID") ??
-		       System.Environment.MachineName.ToLowerInvariant().Replace("-", "_");
+		var venueName = System.Environment.GetEnvironmentVariable("BARBOX_VENUE_NAME");
+
+		// Development fallback only - production must configure explicitly
+		if (string.IsNullOrEmpty(venueName))
+		{
+			if (OS.HasFeature("editor"))
+			{
+				const string DEV_DEFAULT = "default";
+				LogWarning($"BARBOX_VENUE_NAME not set - using development default: {DEV_DEFAULT}");
+				LogWarning("Set BARBOX_VENUE_NAME in .env.local for venue-specific configuration");
+				return DEV_DEFAULT;
+			}
+
+			throw new InvalidOperationException("BARBOX_VENUE_NAME environment variable is required in production builds");
+		}
+
+		return venueName;
+	}
+
+	private string LoadBoxName()
+	{
+		var boxName = System.Environment.GetEnvironmentVariable("BARBOX_BOX_NAME");
+
+		// Development fallback only - production must configure explicitly
+		if (string.IsNullOrEmpty(boxName))
+		{
+			if (OS.HasFeature("editor"))
+			{
+				const string DEV_DEFAULT = "default";
+				LogWarning($"BARBOX_BOX_NAME not set - using development default: {DEV_DEFAULT}");
+				LogWarning("Set BARBOX_BOX_NAME in .env.local for box-specific configuration");
+				return DEV_DEFAULT;
+			}
+
+			throw new InvalidOperationException("BARBOX_BOX_NAME environment variable is required in production builds");
+		}
+
+		return boxName;
 	}
 
 	private Guid LoadBoxId()
@@ -117,12 +172,12 @@ public partial class LocationManager : AutoloadBase
 				return devGuid;
 			}
 
-			throw new System.Exception("BARBOX_BOX_ID required in production builds");
+			throw new InvalidOperationException("BARBOX_BOX_ID required in production builds");
 		}
 
 		if (!Guid.TryParse(boxIdStr, out var boxId))
 		{
-			throw new System.Exception($"BARBOX_BOX_ID must be valid GUID, got: {boxIdStr}");
+			throw new InvalidOperationException($"BARBOX_BOX_ID must be valid GUID, got: {boxIdStr}");
 		}
 
 		return boxId;
@@ -157,13 +212,16 @@ public partial class LocationManager : AutoloadBase
 				return "";
 			}
 
-			throw new System.Exception("BARBOX_API_KEY required in production builds");
+			throw new InvalidOperationException("BARBOX_API_KEY required in production builds");
 		}
 
 		return apiKey;
 	}
 
-	public string GetCurrentLocationId() => _locationId;
+	/// <summary>
+	/// Get venue name for venue-scoped data
+	/// </summary>
+	public string GetVenueName() => _venueName;
 
 	/// <summary>
 	/// Deprecated - functionality moved to DataStore
@@ -196,7 +254,7 @@ public partial class LocationManager : AutoloadBase
 				return;
 			}
 
-			var result = await eventService.RegisterBoxWithDetailAsync(_boxId, _locationId);
+			var result = await eventService.RegisterBoxWithDetailAsync(_boxId, _venueName);
 
 			if (result.IsSuccess(out var response))
 			{
@@ -216,7 +274,7 @@ public partial class LocationManager : AutoloadBase
 				}
 				else
 				{
-					LogInfo($"Box verified: {_locationId}");
+					LogInfo($"Box verified: {_venueName} (BoxName: {_boxName})");
 				}
 			}
 			else if (result.IsFailure(out var error))

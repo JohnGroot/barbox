@@ -59,8 +59,9 @@ public partial class EventService : AutoloadBase
 		PropertyNamingPolicy = JsonNamingPolicy.CamelCase
 	};
 
-	private Godot.HttpClient _httpClient;
-	private string _locationId;
+	private HttpClient _httpClient;
+	private string _venueName;
+	private string _boxName;
 	private Guid _boxId;
 	private string _boxApiKey;
 	private Guid _currentSessionId;
@@ -72,12 +73,19 @@ public partial class EventService : AutoloadBase
 
 	protected override async Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
-		_httpClient = new Godot.HttpClient();
-		_locationId = GetLocationId();
+		_httpClient = new HttpClient();
+
+		// Load box identity from LocationManager
+		var locationManager = LocationManager.GetAutoload();
+		if (locationManager == null || !locationManager.IsConfigLoaded)
+			throw new InvalidOperationException("LocationManager is required but not available or not initialized");
+
+		_venueName = locationManager.VenueName;
+		_boxName = locationManager.BoxName;
 
 		try
 		{
-			_boxId = GetBoxId();
+			_boxId = locationManager.BoxId;
 			_boxApiKey = GetBoxApiKey();
 			LogInfo($"Box ID: {_boxId}, API Key: {(string.IsNullOrEmpty(_boxApiKey) ? "NOT SET" : "SET")}");
 
@@ -99,14 +107,14 @@ public partial class EventService : AutoloadBase
 		catch (Exception ex)
 		{
 			LogError($"Failed to get Box configuration: {ex.Message}");
-			throw new Exception($"EventService requires valid Box configuration: {ex.Message}\nStack Trace: {ex.StackTrace}");
+			throw new InvalidOperationException($"EventService requires valid Box configuration: {ex.Message}\nStack Trace: {ex.StackTrace}");
 		}
 
 		// Wait for BackendManager to be ready
 		var backendManager = BackendManager.GetInstance();
 		if (backendManager == null)
 		{
-			throw new Exception("BackendManager not found - EventService requires BackendManager");
+			throw new InvalidOperationException("BackendManager not found - EventService requires BackendManager");
 		}
 
 		LogInfo("Waiting for BackendManager to become ready...");
@@ -114,7 +122,7 @@ public partial class EventService : AutoloadBase
 
 		if (!backendReady)
 		{
-			throw new Exception("BackendManager failed to become ready within timeout");
+			throw new InvalidOperationException("BackendManager failed to become ready within timeout");
 		}
 
 		LogInfo($"EventService ready - backend available at {BASE_URL}");
@@ -168,7 +176,7 @@ public partial class EventService : AutoloadBase
 #endif
 
 			var error = _httpClient.Request(
-				Godot.HttpClient.Method.Put,
+				HttpClient.Method.Put,
 				url,
 				headers
 			);
@@ -269,7 +277,7 @@ public partial class EventService : AutoloadBase
 #endif
 
 			var error = _httpClient.Request(
-				Godot.HttpClient.Method.Post,
+				HttpClient.Method.Post,
 				url,
 				headers
 			);
@@ -343,7 +351,7 @@ public partial class EventService : AutoloadBase
 #endif
 
 			var error = _httpClient.Request(
-				Godot.HttpClient.Method.Post,
+				HttpClient.Method.Post,
 				url,
 				headers.ToArray()
 			);
@@ -447,7 +455,7 @@ public partial class EventService : AutoloadBase
 			var headers = BuildJsonHeaders().ToArray();
 
 			var error = _httpClient.Request(
-				Godot.HttpClient.Method.Post,
+				HttpClient.Method.Post,
 				$"/box/session/{_currentSessionId}",
 				headers,
 				json
@@ -545,7 +553,7 @@ public partial class EventService : AutoloadBase
 #endif
 
 			var error = _httpClient.Request(
-				Godot.HttpClient.Method.Post,
+				HttpClient.Method.Post,
 				url,
 				headersArray,
 				eventJson
@@ -596,14 +604,19 @@ public partial class EventService : AutoloadBase
 	public Guid GetCurrentSessionId() => _currentSessionId;
 
 	/// <summary>
-	/// Get current location ID
+	/// Get venue name (human-readable location identifier for location-scoped data)
 	/// </summary>
-	public string GetCurrentLocationId() => _locationId;
+	public string GetVenueName() => _venueName;
 
 	/// <summary>
-	/// Get current box ID
+	/// Get box name (human-readable machine name for display and logging)
 	/// </summary>
-	public Guid GetCurrentBoxId() => _boxId;
+	public string GetBoxName() => _boxName;
+
+	/// <summary>
+	/// Get box ID (UUID for backend security - rarely needed by games)
+	/// </summary>
+	public Guid GetBoxId() => _boxId;
 
 	/// <summary>
 	/// Execute GET query against backend API
@@ -634,7 +647,7 @@ public partial class EventService : AutoloadBase
 			headers.Add("Accept: application/json");
 			var headersArray = headers.ToArray();
 
-			var error = _httpClient.Request(Godot.HttpClient.Method.Get, url, headersArray);
+			var error = _httpClient.Request(HttpClient.Method.Get, url, headersArray);
 			if (error != Godot.Error.Ok)
 				return Result.Failure<TResponse>($"Query request failed: {error}");
 
@@ -699,7 +712,7 @@ public partial class EventService : AutoloadBase
 			headers.Add("Accept: application/json");
 			var headersArray = headers.ToArray();
 
-			var error = _httpClient.Request(Godot.HttpClient.Method.Get, url, headersArray);
+			var error = _httpClient.Request(HttpClient.Method.Get, url, headersArray);
 			if (error != Godot.Error.Ok)
 				return Result.Failure<string>($"Query request failed: {error}");
 
@@ -803,7 +816,7 @@ public partial class EventService : AutoloadBase
 
 			var headers = BuildJsonHeaders(playerId).ToArray();
 
-			var error = _httpClient.Request(Godot.HttpClient.Method.Post, endpoint, headers, json);
+			var error = _httpClient.Request(HttpClient.Method.Post, endpoint, headers, json);
 			if (error != Godot.Error.Ok)
 				return Result.Failure<TResponse>($"POST request failed: {error}");
 
@@ -870,7 +883,7 @@ public partial class EventService : AutoloadBase
 
 			var headers = BuildJsonHeaders(playerId).ToArray();
 
-			var error = _httpClient.Request(Godot.HttpClient.Method.Put, endpoint, headers, json);
+			var error = _httpClient.Request(HttpClient.Method.Put, endpoint, headers, json);
 			if (error != Godot.Error.Ok)
 				return Result.Failure<TResponse>($"PUT request failed: {error}");
 
@@ -943,7 +956,7 @@ public partial class EventService : AutoloadBase
 			if (!response.Valid)
 			{
 				// Validation failed - construct error message from validation errors
-				var errorMessages = new System.Text.StringBuilder();
+				var errorMessages = new StringBuilder();
 				errorMessages.AppendLine("Validation failed:");
 				foreach (var validationError in response.Errors)
 				{
@@ -1098,7 +1111,7 @@ public partial class EventService : AutoloadBase
 	/// </summary>
 	public async Task<Result<int>> GetPlayerCreditsAsync(Guid playerId)
 	{
-		var locationId = GetCurrentLocationId();
+		var locationId = GetVenueName();
 		var result = await QueryAsync<PlayerCreditsResponse>(
 			$"/player/{playerId}/credits",
 			new Dictionary<string, string> { { "location_id", locationId } }
@@ -1122,7 +1135,7 @@ public partial class EventService : AutoloadBase
 	{
 		var payload = new
 		{
-			location_id = GetCurrentLocationId(),
+			location_id = GetVenueName(),
 			amount = amount,
 			reason = reason
 		};
@@ -1139,7 +1152,7 @@ public partial class EventService : AutoloadBase
 	{
 		var payload = new
 		{
-			location_id = GetCurrentLocationId(),
+			location_id = GetVenueName(),
 			amount = amount,
 			reason = reason
 		};
@@ -1276,7 +1289,7 @@ public partial class EventService : AutoloadBase
 #endif
 
 		// Connection is ready for new requests
-		if (currentStatus == Godot.HttpClient.Status.Connected)
+		if (currentStatus == HttpClient.Status.Connected)
 		{
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo("[HTTP] Connection ready for reuse (keep-alive)");
@@ -1285,7 +1298,7 @@ public partial class EventService : AutoloadBase
 		}
 
 		// Handle intermediate states from previous requests
-		if (currentStatus == Godot.HttpClient.Status.Body)
+		if (currentStatus == HttpClient.Status.Body)
 		{
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo("[HTTP] Cleaning up unconsumed response body from previous request");
@@ -1294,7 +1307,7 @@ public partial class EventService : AutoloadBase
 			// Fully consume response body - may be chunked, requiring multiple reads
 			const int MAX_DISCARD_BYTES = 10 * 1024 * 1024; // 10MB limit to prevent DOS
 			int totalBytesDiscarded = 0;
-			while (_httpClient.GetStatus() == Godot.HttpClient.Status.Body)
+			while (_httpClient.GetStatus() == HttpClient.Status.Body)
 			{
 				// Direct call intentional - chunked reading in loop
 				var chunk = _httpClient.ReadResponseBodyChunk();
@@ -1308,7 +1321,7 @@ public partial class EventService : AutoloadBase
 				{
 					LogError($"Response body exceeded {MAX_DISCARD_BYTES} bytes - aborting connection");
 					_httpClient.Close();
-					throw new Exception($"Response body too large (>{MAX_DISCARD_BYTES} bytes)");
+					throw new InvalidOperationException($"Response body too large (>{MAX_DISCARD_BYTES} bytes)");
 				}
 			}
 
@@ -1321,7 +1334,7 @@ public partial class EventService : AutoloadBase
 			_httpClient.Poll();
 			currentStatus = _httpClient.GetStatus();
 
-			if (currentStatus == Godot.HttpClient.Status.Connected)
+			if (currentStatus == HttpClient.Status.Connected)
 			{
 #if DEBUG_HTTP_LIFECYCLE
 				LogInfo("[HTTP] Connection recovered to Connected state after cleanup");
@@ -1331,7 +1344,7 @@ public partial class EventService : AutoloadBase
 		}
 
 		// If still not in a good state, close and reconnect
-		if (currentStatus != Godot.HttpClient.Status.Disconnected)
+		if (currentStatus != HttpClient.Status.Disconnected)
 		{
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] Closing stale connection (status: {currentStatus})");
@@ -1357,12 +1370,12 @@ public partial class EventService : AutoloadBase
 
 		var error = _httpClient.ConnectToHost(BACKEND_HOST, BACKEND_PORT, tlsOptions);
 		if (error != Godot.Error.Ok)
-			throw new Exception($"Failed to connect to backend: {error}");
+			throw new InvalidOperationException($"Failed to connect to backend: {error}");
 
 		// Use aggressive polling utility - exits immediately when connected
 		bool connected = await _httpClient.PollUntilConnectedAsync(timeoutSeconds: 5.0f);
 		if (!connected)
-			throw new Exception("Connection timeout");
+			throw new InvalidOperationException("Connection timeout");
 
 #if DEBUG_HTTP_LIFECYCLE
 		LogInfo("[HTTP] New connection established successfully");
@@ -1386,7 +1399,7 @@ public partial class EventService : AutoloadBase
 		{
 			_httpClient.Poll();
 			var finalStatus = _httpClient.GetStatus();
-			throw new Exception($"Request timeout (final status: {finalStatus})");
+			throw new InvalidOperationException($"Request timeout (final status: {finalStatus})");
 		}
 
 #if DEBUG_HTTP_LIFECYCLE
@@ -1396,37 +1409,6 @@ public partial class EventService : AutoloadBase
 #endif
 	}
 
-	private string GetLocationId()
-	{
-		var locationManager = LocationManager.GetAutoload();
-		if (locationManager != null && locationManager.IsConfigLoaded)
-		{
-			return locationManager.LocationId;
-		}
-
-		// Fallback for rare edge cases
-		return System.Environment.GetEnvironmentVariable("BARBOX_LOCATION_ID") ??
-		       System.Environment.MachineName.ToLowerInvariant().Replace("-", "_");
-	}
-
-	private Guid GetBoxId()
-	{
-		var locationManager = LocationManager.GetAutoload();
-		if (locationManager != null && locationManager.IsConfigLoaded)
-		{
-			return locationManager.BoxId;
-		}
-
-		// Fallback validation
-		var boxIdStr = System.Environment.GetEnvironmentVariable("BARBOX_BOX_ID");
-		if (string.IsNullOrEmpty(boxIdStr))
-			throw new Exception("BARBOX_BOX_ID environment variable is required");
-
-		if (!Guid.TryParse(boxIdStr, out var boxId))
-			throw new Exception($"BARBOX_BOX_ID must be a valid GUID, got: {boxIdStr}");
-
-		return boxId;
-	}
 
 	private string GetBoxApiKey()
 	{
