@@ -70,14 +70,6 @@ class PlayerLoginResponse(BaseModel):
     ]
 
 
-class GameCreate(Named, Tagged):
-    pass
-
-
-class GameDetail(Identifiable):
-    pass
-
-
 # Core event types (non-game-specific)
 CoreEventType = Literal[
     # Generic session events

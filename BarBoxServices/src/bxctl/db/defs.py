@@ -59,11 +59,6 @@ class Box(Base):
 type BoxFk = Annotated[UUID, fk_to(Box)]
 
 
-class Game(Base):
-    name: Mapped[str]
-    tag: Mapped[str]
-
-
 class Player(Base):
     tag: Mapped[str]
     origin_id: Mapped[BoxFk]

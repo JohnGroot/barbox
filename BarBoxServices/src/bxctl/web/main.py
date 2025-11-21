@@ -17,7 +17,7 @@ from bxctl.db.connectivity import engine
 from bxctl.db.defs import Base
 from bxctl.structures import GAMES
 
-from . import box, game, machine_credits, player, test
+from . import box, machine_credits, player, test
 
 logger = get_logger()
 
@@ -97,10 +97,6 @@ tags_metadata = [
     {
         "name": "Core: Machine Credits",
         "description": "Shared credit pools per box+game (machine pot system)",
-    },
-    {
-        "name": "Core: Games",
-        "description": "Game type registration",
     },
     {
         "name": "Auth",
@@ -229,7 +225,6 @@ async def health_check() -> dict:
 routers = (
     player.router,
     box.router,
-    game.router,
     machine_credits.router,  # Machine credit pot management
     test.router,  # Test endpoints (only available in dev/test modes)
 )
