@@ -16,7 +16,6 @@ public partial class MiningGame : GameController
 
 	private const int CREDITS_PER_PURCHASE = 1;
 	private const string MAIN_SCENE_PATH = "res://_Core/Scenes/Main.tscn";
-	private const string DEFAULT_LOCATION_ID = "default";
 
 	private static class ErrorMessages
 	{
@@ -200,21 +199,32 @@ public partial class MiningGame : GameController
 
 		if (Config == null)
 		{
-			Config = new MiningGameConfig();
+			if (_locationManager == null)
+				throw new InvalidOperationException("LocationManager is required but not available");
 
-			if (_locationManager != null)
+			var locationId = _locationManager.VenueName;
+			if (string.IsNullOrEmpty(locationId))
+				throw new InvalidOperationException("BARBOX_VENUE_NAME environment variable is required but not set");
+
+			// GetLocationData is deprecated - use location data registry instead
+			var locationTemplate = GetLocationDataTemplate(locationId);
+			if (locationTemplate == null)
 			{
-				var locationId = _locationManager.CurrentLocationId ?? DEFAULT_LOCATION_ID;
-				var locationConfig = _locationManager.GetLocationData<MiningGameConfig>(locationId);
-				if (locationConfig != null)
-				{
-					Config = locationConfig;
-				}
+				var availableLocations = string.Join(", ", _locationDataRegistry.Keys);
+				throw new InvalidOperationException(
+					$"Location data for '{locationId}' not found in LocationDataRegistry. " +
+					$"Available locations: {availableLocations}. " +
+					$"Either set BARBOX_VENUE_NAME to an available location or add '{locationId}' to the editor's LocationDataResources.");
 			}
+
+			// Create config based on location template
+			Config = new MiningGameConfig();
+			GD.Print($"[MiningGame] Loaded location template: {locationId}");
 		}
 
 		_engine = new MiningEngine(this);
 		_state = new MiningState(this);
+		_state.Initialize();
 
 		AddChild(_engine);
 		AddChild(_state);
@@ -467,42 +477,25 @@ public partial class MiningGame : GameController
 	public int GetPendingGems() => _state.PendingGems;
 	public int GetMaxCapacity() => _state.GetMaxCapacity();
 
-	public double GetStateTime() => _state.GameTime;
 	public int GetGemsPerTick() => _state.GetGemsPerTick();
 	public float GetMiningTickTime() => _state.GetMiningTickTime();
 	public int GetUpgradeLevel(UpgradeType upgradeType) => _state.GetUpgradeLevel(upgradeType);
 		
 	public MiningLocationData GetLocationDataTemplate(string locationId)
 	{
-		if (_locationDataRegistry.TryGetValue(locationId ?? DEFAULT_LOCATION_ID, out var exactMatch))
+		if (string.IsNullOrEmpty(locationId))
+			throw new ArgumentException("Location ID cannot be null or empty", nameof(locationId));
+
+		if (!_locationDataRegistry.TryGetValue(locationId, out var template))
 		{
-			return exactMatch;
+			var available = string.Join(", ", _locationDataRegistry.Keys);
+			throw new InvalidOperationException(
+				$"Location template '{locationId}' not found in registry. " +
+				$"Available locations: {available}. " +
+				$"Either set BARBOX_VENUE_NAME to an available location or add '{locationId}' to the editor's LocationDataResources.");
 		}
 
-		if (EnableDebugMode)
-		{
-			GD.Print($"[MiningGame] No location data found for '{locationId}'. Available locations: {string.Join(", ", _locationDataRegistry.Keys)}");
-		}
-
-		if (_locationDataRegistry.Count > 0)
-		{
-			MiningLocationData fallback = null;
-			foreach (var location in _locationDataRegistry.Values)
-			{
-				fallback = location;
-				break;
-			}
-
-			if (EnableDebugMode)
-			{
-				GD.Print($"[MiningGame] Using fallback location '{fallback.LocationId}' instead of '{locationId}'");
-			}
-
-			return fallback;
-		}
-
-		GD.PrintErr("[MiningGame] CRITICAL ERROR: No location data configured in registry!");
-		return null;
+		return template;
 	}
 		
 	public void ExtractGems()

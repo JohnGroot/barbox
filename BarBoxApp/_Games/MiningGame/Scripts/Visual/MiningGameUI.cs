@@ -186,7 +186,7 @@ public partial class MiningGameUI : Control
 		_extractButton.Pressed += () => _game?.ExtractGems();
 		buttonsHBox.AddChild(_extractButton);
 
-		_purchaseCreditButton = UIBuilder.CreateActionButton($"Purchase Credit ({_config.CreditCost} {_locationData.GetGemEmoji(_locationData.PrimaryGemType)})", this);
+		_purchaseCreditButton = UIBuilder.CreateActionButton($"Purchase Credit ({_locationData.GetGemEmoji(_locationData.PrimaryGemType)} {_config.CreditCost})", this);
 		_purchaseCreditButton.CustomMinimumSize = new Vector2(200, 40);
 		_purchaseCreditButton.Pressed += () => _game?.PurchaseCredit();
 		buttonsHBox.AddChild(_purchaseCreditButton);
@@ -292,7 +292,7 @@ public partial class MiningGameUI : Control
 
 			// Clear button text to default state
 			_extractButton.Text = "Extract Gems";
-			_purchaseCreditButton.Text = $"Purchase Credit ({_config.CreditCost} {_locationData.GetGemEmoji(_locationData.PrimaryGemType)}'s)";
+			_purchaseCreditButton.Text = $"Purchase Credit ({_locationData.GetGemEmoji(_locationData.PrimaryGemType)} {_config.CreditCost})";
 		}
 	}
 

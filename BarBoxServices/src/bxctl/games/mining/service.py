@@ -1,5 +1,6 @@
 """Business logic and database queries for Mining game."""
 
+import asyncio
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -8,7 +9,7 @@ from bxctl.db import service as db_service
 from . import schemas
 
 
-async def get_player_mining_inventory(
+async def _get_player_mining_inventory(
     db: db_service.CRUD,
     player_id: UUID,
 ) -> schemas.MiningInventoryResponse:
@@ -97,22 +98,25 @@ async def get_player_mining_inventory(
     )
 
 
-async def get_player_mining_upgrades(
+async def _get_player_mining_upgrades(
     db: db_service.CRUD,
     player_id: UUID,
+    location_id: str,
 ) -> schemas.MiningUpgradesResponse:
     """
-    Get player's upgrade levels aggregated from mining/upgrade_purchase events.
+    Get player's upgrade levels for a specific location.
+    Upgrades are location-scoped - each venue has independent upgrade progression.
 
     Args:
         db: Database CRUD service
         player_id: Player UUID
+        location_id: Location identifier (venue name)
 
     Returns:
-        Player's upgrade levels by upgrade type
+        Player's upgrade levels for this location
     """
 
-    # Aggregate upgrades from mining/upgrade_purchase events
+    # Aggregate upgrades from mining/upgrade_purchase events filtered by location
     sql = """
     SELECT
         json_extract(bse.payload, '$.upgrade_type') as upgrade_type,
@@ -122,10 +126,11 @@ async def get_player_mining_upgrades(
     JOIN box_session bs ON bse.session_id = bs.id
     WHERE bs.host_player_id = :player_id
     AND bse.type = 'mining/upgrade_purchase'
+    AND json_extract(bse.payload, '$.location_id') = :location_id
     GROUP BY upgrade_type
     """
 
-    result = await db.get_many_raw(sql, {"player_id": player_id.hex})
+    result = await db.get_many_raw(sql, {"player_id": player_id.hex, "location_id": location_id})
 
     # Build upgrades dictionary
     upgrades = {}
@@ -146,12 +151,13 @@ async def get_player_mining_upgrades(
 
     return schemas.MiningUpgradesResponse(
         player_id=player_id,
+        location_id=location_id,
         upgrades=upgrades,
         last_updated=last_updated,
     )
 
 
-async def get_player_mining_timestamp(
+async def _get_player_mining_timestamp(
     db: db_service.CRUD,
     player_id: UUID,
     location_id: str,
@@ -168,14 +174,21 @@ async def get_player_mining_timestamp(
         Last mining time for offline progress calculation
     """
 
-    # Get last mining event timestamp for this player at this location
+    # Get last extraction time from mining/extract_complete events
+    # COALESCE fallback: payload timestamp (new events) → event timestamp (legacy support)
+    # Kept for backwards compatibility with events that lack last_extraction_time field
     sql = """
-    SELECT MAX(bse.timestamp) as last_mining_time
+    SELECT COALESCE(
+        json_extract(bse.payload, '$.last_extraction_time'),
+        bse.timestamp
+    ) as last_mining_time
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
     WHERE bs.host_player_id = :player_id
     AND json_extract(bse.payload, '$.location_id') = :location_id
-    AND bse.type IN ('mining/extract_complete', 'mining/upgrade_purchase')
+    AND bse.type = 'mining/extract_complete'
+    ORDER BY bse.timestamp DESC
+    LIMIT 1
     """
 
     result = await db.get_many_raw(sql, {
@@ -187,7 +200,8 @@ async def get_player_mining_timestamp(
     if row and row[0]:
         last_mining_time = datetime.fromisoformat(row[0])
     else:
-        last_mining_time = datetime.now(UTC)
+        # No extraction history - return None to let client decide default
+        last_mining_time = None
 
     return schemas.MiningTimestampResponse(
         player_id=player_id,
@@ -196,22 +210,25 @@ async def get_player_mining_timestamp(
     )
 
 
-async def get_player_mining_metadata(
+async def _get_player_mining_metadata(
     db: db_service.CRUD,
     player_id: UUID,
+    location_id: str,
 ) -> schemas.MiningMetadataResponse:
     """
-    Get player mining metadata (first-time bonus status, statistics).
+    Get player mining metadata for a specific location (first-time bonus status, statistics).
+    First-time bonus and event statistics are tracked per-location.
 
     Args:
         db: Database CRUD service
         player_id: Player UUID
+        location_id: Location identifier (venue name)
 
     Returns:
-        Player mining metadata including bonus status and event counts
+        Player mining metadata for this location including bonus status and event counts
     """
 
-    # Get metadata about player's mining activity
+    # Get metadata about player's mining activity at this location
     sql = """
     SELECT
         COUNT(*) as total_events,
@@ -222,9 +239,10 @@ async def get_player_mining_metadata(
     JOIN box_session bs ON bse.session_id = bs.id
     WHERE bs.host_player_id = :player_id
     AND bse.type LIKE 'mining/%'
+    AND json_extract(bse.payload, '$.location_id') = :location_id
     """
 
-    result = await db.get_many_raw(sql, {"player_id": player_id.hex})
+    result = await db.get_many_raw(sql, {"player_id": player_id.hex, "location_id": location_id})
     row = result.first()
 
     if row:
@@ -240,8 +258,45 @@ async def get_player_mining_metadata(
 
     return schemas.MiningMetadataResponse(
         player_id=player_id,
-        has_received_bonus=bonus_count > 0,
+        location_id=location_id,
+        has_received_bonus_at_location=bonus_count > 0,
         total_events=total_events,
         first_event_time=first_event_time,
         last_event_time=last_event_time,
+    )
+
+
+async def get_player_state(
+    db: db_service.CRUD,
+    player_id: UUID,
+    location_id: str,
+) -> schemas.MiningStateResponse:
+    """
+    Get complete player mining state in single query.
+    Combines inventory, upgrades, timestamp, and metadata.
+
+    Args:
+        db: Database CRUD service
+        player_id: Player UUID
+        location_id: Location identifier for timestamp
+
+    Returns:
+        Unified state response with all player mining data
+    """
+
+    # Call all internal query methods in parallel using asyncio.gather
+    inventory_response, upgrades_response, timestamp_response, metadata_response = await asyncio.gather(
+        _get_player_mining_inventory(db, player_id),
+        _get_player_mining_upgrades(db, player_id, location_id),
+        _get_player_mining_timestamp(db, player_id, location_id),
+        _get_player_mining_metadata(db, player_id, location_id),
+    )
+
+    return schemas.MiningStateResponse(
+        player_id=player_id,
+        location_id=location_id,
+        inventory=inventory_response.gems,
+        upgrades=upgrades_response.upgrades,
+        last_extraction_time=timestamp_response.last_mining_time,
+        metadata=metadata_response,
     )
