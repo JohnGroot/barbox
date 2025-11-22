@@ -346,48 +346,6 @@ public class RacingEventService : GameEventServiceBase
 		return Result.Success(leaderboardData);
 	}
 
-	/// <summary>
-	/// Call when user first logs in or starts their first game
-	/// </summary>
-	public async Task<Result<bool>> RegisterFirstPlayAsync(Guid playerId, string username, Guid boxId)
-	{
-		// Input validation
-		if (playerId == Guid.Empty)
-			return Result.Failure<bool>(ValidationMessages.Required("Player ID"));
-
-		if (string.IsNullOrEmpty(username))
-			return Result.Failure<bool>(ValidationMessages.Required("Username"));
-
-		if (boxId == Guid.Empty)
-			return Result.Failure<bool>(ValidationMessages.Required("Box ID"));
-
-		// Build request payload using DTO class to avoid Godot.Variant serialization issues
-		var request = new PlayerCreateRequest
-		{
-			Id = playerId.ToString(),
-			Tag = username,
-			OriginId = boxId.ToString()
-		};
-
-		// Call backend /player/first_play endpoint
-		// Use EventService.PostAsync directly since GameEventServiceBase doesn't have PostBackendAsync
-		if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
-			return Result.Failure<bool>("Event service not available");
-
-		var result = await _eventService.PostAsync<PlayerCreateRequest, PlayerDetailResponse>(
-			"/player/first_play",
-			request,
-			expectedStatusCode: 201
-		);
-
-		if (result.IsSuccess(out var _))
-			return Result.Success(true);
-
-		if (result.IsFailure(out var error))
-			return Result.Failure<bool>(error.Message);
-
-		return Result.Failure<bool>("Unknown error");
-	}
 }
 
 public record class RacingLeaderboardData

@@ -63,42 +63,7 @@ async def get_machine_credits(
 
 	balance = result.scalar() or 0
 
-	# Query player contributions (only deposits that haven't been consumed yet)
-	# Group by player_id and sum their deposit amounts
-	contributions_sql = """
-	WITH deposits AS (
-		SELECT
-			json_extract(bse.payload, '$.player_id') as player_id,
-			SUM(CAST(json_extract(bse.payload, '$.amount') AS INTEGER)) as deposited
-		FROM box_session_event bse
-		WHERE bse.type = 'machine_credit/deposit'
-		AND json_extract(bse.payload, '$.box_id') = :box_id
-		AND json_extract(bse.payload, '$.game_tag') = :game_tag
-		GROUP BY player_id
-	),
-	consumes AS (
-		SELECT
-			SUM(CAST(json_extract(bse.payload, '$.amount') AS INTEGER)) as consumed
-		FROM box_session_event bse
-		WHERE bse.type = 'machine_credit/consume'
-		AND json_extract(bse.payload, '$.box_id') = :box_id
-		AND json_extract(bse.payload, '$.game_tag') = :game_tag
-	)
-	SELECT
-		d.player_id,
-		CAST(
-			d.deposited * 1.0 /
-			(SELECT SUM(deposited) FROM deposits) *
-			(SELECT deposited FROM deposits) -
-			COALESCE((SELECT consumed FROM consumes), 0)
-		AS INTEGER) as remaining
-	FROM deposits d
-	WHERE d.deposited > 0
-	ORDER BY d.player_id
-	"""
-
-	# For now, use simpler logic: just return all deposit contributions
-	# The proportional calculation above is complex and may need refinement
+	# Query player contributions
 	simple_contributions_sql = """
 	SELECT
 		json_extract(bse.payload, '$.player_id') as player_id,

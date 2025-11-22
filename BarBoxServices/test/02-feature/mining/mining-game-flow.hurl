@@ -89,16 +89,21 @@ X-Box-API-Key: {{box-api-key}}
     "cost": {
       "ruby": 3,
       "sapphire": 1
-    }
+    },
+    "location_id": "mining_box"
   }
 }
 HTTP 201
 
-# Query player inventory - should aggregate all extracts minus upgrade costs
+# Query player state - should aggregate all extracts minus upgrade costs
 # Math: Ruby (5 + 2 - 3 upgrade cost = 4), Sapphire (3 - 1 upgrade cost = 2)
-GET http://127.0.0.1:8000/game/mining/player/{{player-id}}/inventory
+GET http://127.0.0.1:8000/game/mining/player/{{player-id}}/state?location_id=mining_box
 HTTP 200
 [Asserts]
 jsonpath "$.player_id" == "{{player-id}}"
-jsonpath "$.gems.ruby" == 4
-jsonpath "$.gems.sapphire" == 2
+jsonpath "$.location_id" == "mining_box"
+jsonpath "$.inventory.ruby" == 4
+jsonpath "$.inventory.sapphire" == 2
+jsonpath "$.upgrades.capacity" == 2
+jsonpath "$.metadata.has_received_bonus_at_location" exists
+jsonpath "$.last_extraction_time" exists

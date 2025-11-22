@@ -64,18 +64,6 @@ X-Box-API-Key: {{box-api-key}}
 }
 HTTP 201
 
-POST http://127.0.0.1:8000/box/session/{{mining-session-id}}
-X-Box-API-Key: {{box-api-key}}
-{
-  "type": "mining/tick_update",
-  "timestamp": "{{newDate}}",
-  "payload": {
-    "next_tick_time": "2025-01-15T10:30:00Z",
-    "location_id": "test_cave"
-  }
-}
-HTTP 201
-
 # Test 4: Emit game finish event
 POST http://127.0.0.1:8000/box/session/{{mining-session-id}}
 X-Box-API-Key: {{box-api-key}}
@@ -101,7 +89,7 @@ GET http://127.0.0.1:8000/box/session/{{mining-session-id}}
 HTTP 200
 [Asserts]
 jsonpath "$.game_tag" == "mining"
-jsonpath "$.events" count >= 4
+jsonpath "$.events" count >= 3
 
 # Test 7: Enter different game (carrom) for same player
 PUT http://127.0.0.1:8000/box/{{box-id}}/session/{{newUuid}}?game_tag=carrom

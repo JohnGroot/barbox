@@ -14,10 +14,11 @@ HTTP 200
 jsonpath "$.status" == "success"
 
 # Test 3: Seed test data (creates test box for player creation)
+# Note: After reset, auto-seeding occurs, so seed returns "skipped" status
 POST http://127.0.0.1:8000/test/seed
 HTTP 200
 [Asserts]
-jsonpath "$.status" == "success"
+jsonpath "$.status" matches "success|skipped"
 [Captures]
 test-box-id: jsonpath "$.data.box_id"
 test-box-api-key: jsonpath "$.data.box_api_key"

@@ -1008,39 +1008,6 @@ public partial class EventService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Register player on first play (idempotent)
-	/// This endpoint is safe to call multiple times - it will return existing player if already registered
-	/// Auto-creates temporary player record even if origin box doesn't exist
-	/// </summary>
-	public async Task<Result<Guid>> RegisterPlayerFirstPlayAsync(Guid playerId, string username, string phoneNumber, string pin, Guid originBoxId)
-	{
-		var request = new PlayerCreateRequest
-		{
-			Id = playerId.ToString(),
-			Tag = username,
-			PhoneNumber = phoneNumber,
-			Pin = pin,
-			OriginId = originBoxId.ToString()
-		};
-
-		var result = await PostAsync<PlayerCreateRequest, PlayerDetailResponse>("/player/first_play", request, 201);
-
-		if (result.IsSuccess(out var _))
-		{
-			LogInfo($"Player first_play registered: {username} ({playerId})");
-			return Result.Success(playerId);
-		}
-
-		if (result.IsFailure(out var error))
-		{
-			LogError($"Failed to register player first_play: {error.Message}");
-			return Result.Failure<Guid>(error.Message);
-		}
-
-		return Result.Failure<Guid>("Unknown error registering player first_play");
-	}
-
-	/// <summary>
 	/// Register or verify box with backend, returning full response including API key on first registration
 	/// Idempotent - safe to call multiple times
 	/// Returns BoxDetailResponse with ApiKey field populated ONLY on first-time registration

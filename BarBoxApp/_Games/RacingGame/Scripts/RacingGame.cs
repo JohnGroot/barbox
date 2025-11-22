@@ -736,63 +736,12 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Handle user login - refresh UI to enable time trial button and register first play
+	/// Handle user login - refresh UI to enable time trial button
 	/// </summary>
-	private async void OnUserLoggedIn(string phoneNumber)
+	private void OnUserLoggedIn(string phoneNumber)
 	{
-		// Fetch username from session
-		var session = _sessionManager?.GetUserSession(phoneNumber);
-		var userName = session?.UserName ?? string.Empty;
-
-		// Register player on first play (idempotent - safe to call multiple times)
-		await RegisterFirstPlayAsync(phoneNumber, userName);
-
 		// Just update UI - no cache manipulation needed
 		UpdateUI();
-	}
-
-	/// <summary>
-	/// Register player in backend on first play
-	/// </summary>
-	private async Task RegisterFirstPlayAsync(string phoneNumber, string userName)
-	{
-		try
-		{
-			// Get box ID from LocationManager (matching SessionManager pattern)
-			var locationManager = LocationManager.GetAutoload();
-			if (locationManager is not { IsConfigLoaded: true })
-			{
-				GD.PrintErr("[RacingGame] LocationManager not available or config not loaded");
-				return;
-			}
-
-			var boxId = locationManager.BoxId;
-
-			// Convert phone number to player ID (using EventService static method)
-			var playerId = EventService.GetPlayerIdFromPhone(phoneNumber);
-
-			// Call backend to register first play
-			var registerResult = await _racingEventService.RegisterFirstPlayAsync(
-				playerId,
-				userName,
-				boxId
-			);
-
-			if (registerResult.IsSuccess(out var _))
-			{
-				GD.Print($"[RacingGame] Player {userName} ({playerId}) registered successfully");
-			}
-			else if (registerResult.IsFailure(out var error))
-			{
-				// Log error but don't fail - game should continue to work
-				GD.PrintErr($"[RacingGame] Failed to register first play for {userName}: {error.Message}");
-			}
-		}
-		catch (Exception ex)
-		{
-			// Log error but don't fail - game should continue to work
-			GD.PrintErr($"[RacingGame] Exception during first play registration: {ex.Message}");
-		}
 	}
 
 	/// <summary>
