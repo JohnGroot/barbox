@@ -83,14 +83,13 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 	}
 	
 	/// <summary>
-	/// Handle practice mode settlement - reset pieces to initial positions
+	/// Handle practice mode settlement - only restore striker, pieces stay where they land
+	/// Full board reset only happens via explicit RequestExplicitReset() call
 	/// </summary>
 	protected override void ExecuteModeSpecificSettlement()
 	{
-		// Reset all non-striker pieces to their initial positions
-		ResetPracticeMode();
-		
-		// Use centralized striker restoration through parent CarromGame
+		// Only restore striker to baseline after settlement
+		// Do NOT reset all pieces - that should only happen on explicit reset request
 		var carromGame = GetParent<CarromGame>();
 		if (carromGame != null)
 		{
@@ -153,16 +152,36 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 		// The actual reset will happen in ExecuteModeSpecificSettlement()
 	}
 
-	public void ResetPracticeMode()
+	/// <summary>
+	/// Explicit reset method for manual reset button - resets all pieces to initial positions
+	/// This is the ONLY method that should reset the entire board in practice mode
+	/// </summary>
+	public void RequestExplicitReset()
 	{
-		// Reset is always allowed in the new architecture
+		if (!IsInstanceValid(this))
+		{
+			GD.PrintErr("[CarromPracticeModeManager] Cannot reset - manager is invalid");
+			return;
+		}
 
+		// Reset all pieces to their stored initial positions
+		ResetPracticeMode();
+
+		GD.Print("[CarromPracticeModeManager] Explicit reset requested and executed");
+	}
+
+	/// <summary>
+	/// Internal method to reset all pieces to initial positions
+	/// Should only be called from RequestExplicitReset() or initial setup
+	/// </summary>
+	private void ResetPracticeMode()
+	{
 		// Reset all pieces to their stored initial positions using immediate method
 		foreach (var kvp in _practiceInitialPositions)
 		{
 			var piece = kvp.Key;
 			var initialGlobalPosition = kvp.Value;
-			
+
 			if (GodotObject.IsInstanceValid(piece))
 			{
 				ResetPieceToStartImmediate(piece, initialGlobalPosition);

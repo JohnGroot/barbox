@@ -34,7 +34,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	protected CarromPiece _striker;
 	protected bool _isActive = false;
 	
-	// Settlement state management is now handled entirely by CarromGameStateMachine
+	// Settlement state management is now handled entirely by GameStateManager
 	// Mode managers no longer control settlement timing or concurrency
 	
 	// Memory management tracking
@@ -295,13 +295,10 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		CreateModeSpecificPieces();
 		PositionStrikerAtBaseline();
 		FinalizeSetup();
-		
+
 		EmitSignal(SignalName.ModeSetupComplete);
 	}
-	
-	// OnPiecesSettled method removed - settlement is now controlled by CarromGameStateMachine
-	// State machine calls ProcessSettlement() directly when pieces are stopped
-	
+
 	/// <summary>
 	/// Process settlement immediately and synchronously (implements ICarromModeManager)
 	/// Pure data processing - no state control, just execute mode-specific logic
@@ -435,9 +432,6 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		// No longer need timer-based settlement processing
 		// Settlement is now immediate and synchronous
 	}
-	
-	// ExecuteSettlement method removed - settlement execution is now controlled by CarromGameStateMachine
-	// Mode managers only implement ExecuteModeSpecificSettlement() for their specific logic
 
 	// ================================================================
 	// PRIVATE HELPER METHODS
@@ -504,7 +498,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	}
 	
 	/// <summary>
-	/// Input state is now automatically managed by CarromGameStateMachine
+	/// Input state is now automatically managed by GameStateManager
 	/// No manual input control needed - state machine handles input availability
 	/// </summary>
 	private void DisableInputDuringSettlement()
@@ -513,7 +507,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	}
 	
 	/// <summary>
-	/// Input state is now automatically managed by CarromGameStateMachine
+	/// Input state is now automatically managed by GameStateManager
 	/// No manual input control needed - state machine handles input availability
 	/// </summary>
 	private void EnableInputAfterSettlement()

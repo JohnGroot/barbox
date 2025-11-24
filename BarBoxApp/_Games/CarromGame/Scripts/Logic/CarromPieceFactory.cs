@@ -157,11 +157,8 @@ public partial class CarromPieceFactory : Node2D
 			return null;
 		}
 
-		if (type != PieceType.Striker)
-		{
-			_allPieces.Add(piece);
-		}
-
+		// Include ALL pieces (including striker) for proper settlement detection
+		_allPieces.Add(piece);
 
 		EmitSignal(SignalName.PieceCreated, piece);
 

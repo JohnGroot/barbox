@@ -11,4 +11,6 @@ public interface ICarromGameState
 	void OnStrikeExecuted();
 
 	string GetCurrentStateName();
+
+	GameStateManager.GamePhase GetCurrentPhase();
 }

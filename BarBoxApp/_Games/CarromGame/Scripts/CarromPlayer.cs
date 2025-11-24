@@ -132,13 +132,9 @@ public partial class CarromPlayer : BasePlayer
 	public virtual void RecordFoul()
 	{
 		_fouls++;
-		
-		// In carrom, fouls might result in piece penalties
-		if (PiecesPocketed > 0)
-		{
-			PiecesPocketed--;
-			EmitSignal(SignalName.ScoreUpdated, PiecesPocketed);
-		}
+
+		// Note: Piece penalties are handled explicitly via ReturnPocketedPiece()
+		// which is called by the mode manager's ApplyFoulPenalty() when appropriate
 	}
 
 	/// <summary>
