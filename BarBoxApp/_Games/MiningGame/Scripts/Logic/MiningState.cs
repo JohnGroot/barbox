@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Godot;
+using BarBox.Core.Autoloads;
 
 namespace BarBox.Games.MiningGame.Logic;
 
@@ -450,7 +451,12 @@ public partial class MiningState : Node
 			var sessionManager = _game.GetSessionManager();
 			if (sessionManager != null)
 			{
-				_ = sessionManager.AddGlobalCreditsAsync(phoneNumber, CREDITS_PER_PURCHASE, "Mining game credit purchase");
+				var session = sessionManager.GetUserSession(phoneNumber);
+				var creditService = CreditService.GetInstance();
+				if (session != null && creditService != null)
+				{
+					_ = creditService.AddAsync(session.PlayerId, CREDITS_PER_PURCHASE, "Mining game credit purchase");
+				}
 			}
 		}
 

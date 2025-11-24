@@ -13,6 +13,7 @@ namespace BarBox.Tests.Unit.Services;
 public class SessionManagerTests : BackendTestBase
 {
 	private SessionManager _sessionManager;
+	private CreditService _creditService;
 
 	public SessionManagerTests(Node testScene) : base(testScene)
 	{
@@ -23,6 +24,7 @@ public class SessionManagerTests : BackendTestBase
 	{
 		base.SetupTestIdentifiers();
 		_sessionManager = GetSessionManager();
+		_creditService = GetCreditService();
 	}
 
 	[Test]
@@ -186,6 +188,7 @@ public class SessionManagerTests : BackendTestBase
 	{
 		// Arrange - login user first
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
+		_creditService.ShouldNotBeNull("CreditService must be available");
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
 
 		if (loginResult.IsFailure(out var error))
@@ -203,18 +206,23 @@ public class SessionManagerTests : BackendTestBase
 
 			TestHelpers.LogTestInfo($"EventService ready: {eventServiceReady}");
 
-			// Act - try to add credits
-			var result = await _sessionManager.AddGlobalCreditsAsync(TestPlayerPhone, 100, "test");
+			// Get playerId from session
+			var session = _sessionManager.GetUserSession(TestPlayerPhone);
+			session.ShouldNotBeNull("User session should exist after login");
+			var playerId = session.PlayerId;
+
+			// Act - try to add credits via CreditService
+			var result = await _creditService.AddAsync(playerId, 100, "test");
 
 			// Assert
 			if (!eventServiceReady)
 			{
-				result.ShouldBeFalse("Add credits should fail when EventService not ready");
-				TestHelpers.LogTestInfo("Add credits correctly failed when EventService not ready");
+				result.IsFailure(out var resultError).ShouldBeTrue("Add credits should fail when EventService not ready");
+				TestHelpers.LogTestInfo($"Add credits correctly failed when EventService not ready: {resultError.Message}");
 			}
 			else
 			{
-				TestHelpers.LogTestInfo($"EventService ready, add credits result: {result}");
+				TestHelpers.LogTestInfo($"EventService ready, add credits result: {result.IsSuccess()}");
 			}
 		}
 		finally
@@ -229,6 +237,7 @@ public class SessionManagerTests : BackendTestBase
 	{
 		// Arrange
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
+		_creditService.ShouldNotBeNull("CreditService must be available");
 		var eventService = GetEventService();
 		eventService.ShouldNotBeNull("EventService must be available");
 
@@ -244,17 +253,22 @@ public class SessionManagerTests : BackendTestBase
 		{
 			var eventServiceReady = eventService.IsReady;
 
-			// Act
-			var canAddCredits = await _sessionManager.AddGlobalCreditsAsync(TestPlayerPhone, 50, "test");
+			// Get playerId from session
+			var session = _sessionManager.GetUserSession(TestPlayerPhone);
+			session.ShouldNotBeNull("User session should exist");
+			var playerId = session.PlayerId;
+
+			// Act - try to add credits via CreditService
+			var result = await _creditService.AddAsync(playerId, 50, "test");
 
 			// Assert - Should correlate with EventService readiness
-			TestHelpers.LogTestInfo($"EventService ready: {eventServiceReady}, Add credits: {canAddCredits}");
+			TestHelpers.LogTestInfo($"EventService ready: {eventServiceReady}, Add credits: {result.IsSuccess()}");
 
-			if (canAddCredits && !eventServiceReady)
+			if (result.IsSuccess() && !eventServiceReady)
 			{
 				false.ShouldBeTrue("Credits added despite EventService not ready!");
 			}
-			else if (!canAddCredits && eventServiceReady)
+			else if (result.IsFailure() && eventServiceReady)
 			{
 				TestHelpers.LogTestInfo("EventService ready but add credits failed - check logs");
 			}
@@ -276,6 +290,7 @@ public class SessionManagerTests : BackendTestBase
 	{
 		// Arrange
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
+		_creditService.ShouldNotBeNull("CreditService must be available");
 		var eventService = GetEventService();
 
 		if (eventService == null || !eventService.IsReady)
@@ -295,22 +310,25 @@ public class SessionManagerTests : BackendTestBase
 		{
 			var initialSession = _sessionManager.GetUserSession(TestPlayerPhone);
 			initialSession.ShouldNotBeNull("User session should exist");
+			var playerId = initialSession.PlayerId;
 			var initialCredits = initialSession.Credits;
 
-			// Act
-			var result = await _sessionManager.AddGlobalCreditsAsync(TestPlayerPhone, 100, "test");
+			// Act - add credits via CreditService
+			var result = await _creditService.AddAsync(playerId, 100, "test");
 
 			// Assert
-			result.ShouldBeTrue("Add credits should succeed when EventService ready");
+			result.IsSuccess(out var newBalance).ShouldBeTrue("Add credits should succeed when EventService ready");
 
+			// CRITICAL: Verify SessionManager.Credits cache was updated via signal relay
 			var updatedSession = _sessionManager.GetUserSession(TestPlayerPhone);
 			updatedSession.ShouldNotBeNull("User session should still exist");
 
 			var expectedCredits = initialCredits + 100;
 			TestHelpers.LogTestInfo($"Credits: {initialCredits} → {updatedSession.Credits} (expected {expectedCredits})");
 
-			updatedSession.Credits.ShouldBeGreaterThanOrEqualTo(expectedCredits, "Credits should be updated");
-			TestHelpers.LogTestInfo("✓ Credits correctly updated");
+			updatedSession.Credits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
+				"SessionManager cache should reflect credit addition via signal relay");
+			TestHelpers.LogTestInfo("✓ Credits correctly updated via CreditService → SessionManager signal relay");
 		}
 		finally
 		{

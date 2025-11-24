@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using BarBox.Core.Autoloads;
 using BarBox.Games.Carrom;
 
 /// <summary>
@@ -43,6 +44,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	// Services
 	private SessionManager _sessionManager;
 	private UIManager _uiManager;
+	private CreditService _creditService;
+	private EventService _eventService;
 
 	// Modals
 	private CreditTransferModal _creditTransferModal;
@@ -572,6 +575,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		_sessionManager = SessionManager.GetInstance();
 		_uiManager = UIManager.GetInstance();
+		_creditService = CreditService.GetInstance();
+		_eventService = EventService.GetInstance();
 
 		// Create credit transfer modal
 		_creditTransferModal = new CreditTransferModal();
@@ -1164,14 +1169,18 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		{
 			if (transferredAmount > 0)
 			{
-				// Return credits to player's account
-				var addResult = await _sessionManager.AddGlobalCreditsAsync(phoneNumber, transferredAmount, "Returned from table");
-				if (addResult)
+				// Return credits to player's account via CreditService
+				var session = _sessionManager.GetUserSession(phoneNumber);
+				if (session != null && _creditService != null)
 				{
-					_tableCredits -= transferredAmount;
+					var addResult = await _creditService.AddAsync(session.PlayerId, transferredAmount, "Returned from table");
+					if (addResult.IsSuccess(out var newBalance))
+					{
+						_tableCredits -= transferredAmount;
 
-					// Decrement machine credits to reflect return
-					// TODO: Event-sourced - backend handles machine credits via events
+						// Decrement machine credits to reflect return
+						// TODO: Event-sourced - backend handles machine credits via events
+					}
 				}
 			}
 		}
@@ -1259,10 +1268,16 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			if (!selectedAmount.HasValue || selectedAmount.Value < 1)
 				return;
 
-			// Transfer credits atomically: player credits → machine credits (via SessionManager)
-			var transferSuccess = await _sessionManager.TransferCreditsToMachineAsync(
-				phoneNumber,
-				"carrom",  // Use game tag (not game ID) to match backend queries
+			// Transfer credits: player credits → machine credits (via CreditService + EventService)
+			if (_creditService == null || _eventService == null)
+			{
+				GD.PrintErr("Required services not available for credit transfer");
+				return;
+			}
+
+			// Step 1: Spend from player account via CreditService (handles polling and cache refresh)
+			var spendResult = await _creditService.SpendAsync(
+				session.PlayerId,
 				selectedAmount.Value,
 				"Transfer to Carrom table"
 			);
@@ -1271,27 +1286,53 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			if (!IsInstanceValid(this))
 				return;
 
-			if (transferSuccess)
+			if (spendResult.IsFailure(out var spendError))
 			{
-				// Event-sourced - backend tracks machine credits
-				// Update local table credits cache
-				_tableCredits += selectedAmount.Value;
-
-				// Track how many credits this player has transferred
-				_creditsTransferredByPlayer.TryAdd(phoneNumber, 0);
-				_creditsTransferredByPlayer[phoneNumber] += selectedAmount.Value;
-
-				// Update displays (session cache already updated by SessionManager)
-				var updatedSession = _sessionManager.GetUserSession(phoneNumber);
-				if (updatedSession != null)
-				{
-					var slot = _playerSlots[slotIndex];
-					slot.UpdateCreditsDisplay(updatedSession.Credits);
-				}
-
-				UpdateTableCreditsDisplay();
-				UpdateStartGameButton();
+				GD.PrintErr($"Failed to spend credits: {spendError.Message}");
+				return;
 			}
+
+			// Step 2: Deposit to machine credits pot (machine-specific logic)
+			if (session.LobbySessionId != Guid.Empty)
+			{
+				var locationManager = LocationManager.GetAutoload();
+				if (locationManager != null)
+				{
+					var boxId = locationManager.BoxId;
+					var depositResult = await _eventService.DepositMachineCreditsAsync(
+						"carrom",  // Use game tag (not game ID) to match backend queries
+						boxId,
+						session.PlayerId,
+						selectedAmount.Value,
+						session.LobbySessionId
+					);
+
+					if (depositResult.IsFailure(out var depositError))
+					{
+						GD.PrintErr($"Failed to deposit to machine pot: {depositError.Message}");
+						// Continue anyway - player credits already deducted
+					}
+				}
+			}
+
+			// Event-sourced - backend tracks machine credits
+			// Update local table credits cache
+			_tableCredits += selectedAmount.Value;
+
+			// Track how many credits this player has transferred
+			_creditsTransferredByPlayer.TryAdd(phoneNumber, 0);
+			_creditsTransferredByPlayer[phoneNumber] += selectedAmount.Value;
+
+			// Update displays (session cache updated by CreditService via signal relay)
+			var updatedSession = _sessionManager.GetUserSession(phoneNumber);
+			if (updatedSession != null)
+			{
+				var slot = _playerSlots[slotIndex];
+				slot.UpdateCreditsDisplay(updatedSession.Credits);
+			}
+
+			UpdateTableCreditsDisplay();
+			UpdateStartGameButton();
 		}
 		catch (System.Exception ex)
 		{
@@ -1385,10 +1426,15 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 			if (amount > 0)
 			{
-				var addResult = await _sessionManager.AddGlobalCreditsAsync(phoneNumber, amount, "Returned from table");
-				if (addResult)
+				// Return credits via CreditService
+				var session = _sessionManager?.GetUserSession(phoneNumber);
+				if (session != null && _creditService != null)
 				{
-					totalReturned += amount;
+					var addResult = await _creditService.AddAsync(session.PlayerId, amount, "Returned from table");
+					if (addResult.IsSuccess(out var newBalance))
+					{
+						totalReturned += amount;
+					}
 				}
 			}
 		}

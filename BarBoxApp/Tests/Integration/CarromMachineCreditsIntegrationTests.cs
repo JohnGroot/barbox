@@ -25,6 +25,7 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 	private EventService _eventService;
 	private SessionManager _sessionManager;
 	private BackendManager _backendManager;
+	private CreditService _creditService;
 
 	public CarromMachineCreditsIntegrationTests(Node testScene) : base(testScene)
 	{
@@ -37,6 +38,7 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 		_eventService = GetEventService();
 		_sessionManager = GetSessionManager();
 		_backendManager = GetBackendManager();
+		_creditService = GetCreditService();
 	}
 
 	[Test]
@@ -105,12 +107,24 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 		var initialBalance = initialCredits.Balance;
 		TestHelpers.LogTestInfo($"Initial machine balance: {initialBalance}");
 
-		// Act - Transfer credits from player to machine
-		var transferSuccess = await _sessionManager.TransferCreditsToMachineAsync(
-			TestPlayerPhone, "carrom", 5, "Test deposit");
+		// Get required parameters for deposit
+		var boxId = TestBoxId;
+		var session = _sessionManager.GetUserSession(TestPlayerPhone);
+		session.ShouldNotBeNull("User session should exist after login");
+		var lobbySessionId = session.LobbySessionId;
 
-		// Assert - Transfer should succeed
-		transferSuccess.ShouldBeTrue(
+		// Act - TWO-STEP PROCESS: Transfer credits from player to machine
+		// Step 1: Spend credits from player account (with polling)
+		var spendResult = await _creditService.SpendAsync(playerId, 5, "Test deposit");
+		spendResult.IsSuccess(out var remainingBalance).ShouldBeTrue(
+			"Player should have sufficient credits for deposit");
+
+		// Step 2: Deposit to machine pot
+		var depositResult = await _eventService.DepositMachineCreditsAsync(
+			"carrom", boxId, playerId, 5, lobbySessionId);
+
+		// Assert - Both steps should succeed
+		depositResult.IsSuccess(out var machineState).ShouldBeTrue(
 			"Deposit should succeed with 200/201. " +
 			"404 error indicates URL path mismatch. " +
 			"Expected: POST /machine-credits/carrom/deposit");
@@ -158,13 +172,28 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 			return;
 		}
 
-		// Deposit credits to machine
-		var depositSuccess = await _sessionManager.TransferCreditsToMachineAsync(
-			TestPlayerPhone, "carrom", 10, "Setup credits");
+		// Deposit credits to machine - TWO-STEP SETUP:
+		var boxId = TestBoxId;
+		var session = _sessionManager.GetUserSession(TestPlayerPhone);
+		session.ShouldNotBeNull("User session should exist after login");
+		var lobbySessionId = session.LobbySessionId;
 
-		if (!depositSuccess)
+		// Step 1: Spend from player account
+		var spendResult = await _creditService.SpendAsync(playerId, 10, "Setup credits");
+		if (!spendResult.IsSuccess(out var _))
 		{
-			TestHelpers.LogTestInfo("Skipping test - deposit failed");
+			TestHelpers.LogTestInfo("Skipping test - player credit spend failed");
+			await _sessionManager.LogoutUserAsync(TestPlayerPhone);
+			return;
+		}
+
+		// Step 2: Deposit to machine pot
+		var depositResult = await _eventService.DepositMachineCreditsAsync(
+			"carrom", boxId, playerId, 10, lobbySessionId);
+
+		if (!depositResult.IsSuccess(out var _))
+		{
+			TestHelpers.LogTestInfo("Skipping test - machine deposit failed");
 			await _sessionManager.LogoutUserAsync(TestPlayerPhone);
 			return;
 		}

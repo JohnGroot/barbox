@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using BarBox.Core.Autoloads;
+using BarBox.Core.Utils;
 
 namespace BarBox.Games.Racing;
 
@@ -179,6 +181,7 @@ public partial class RacingGame : GameController
 	
 	// Cached service references
 	private SessionManager _sessionManager;
+	private CreditService _creditService;
 
 	// ================================================================
 	// PRIVATE FIELDS - VISUAL FEEDBACK SYSTEM
@@ -216,6 +219,7 @@ public partial class RacingGame : GameController
 		// Service discovery only - no component creation
 		_eventService = EventService.GetInstance();
 		_sessionManager = SessionManager.GetInstance();
+		_creditService = CreditService.GetInstance();
 	}
 
 	/// <summary>
@@ -799,7 +803,9 @@ public partial class RacingGame : GameController
 				return;
 			}
 			
-			bool creditsSpent = await _sessionManager.CheckAndSpendGlobalCreditsAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Time Trial Race");
+			// Show confirmation and spend credits via CreditService
+		bool confirmed = await CreditConfirmationHelper.ShowCreditConfirmationAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Time Trial Race", currentSession.Credits);
+		bool creditsSpent = confirmed && _creditService != null && (await _creditService.SpendAsync(currentSession.PlayerId, TimeTrialCreditCost, "Time Trial Race")).IsSuccess(out var _);
 			if (!creditsSpent)
 			{
 				// Credits not spent - don't start the race
@@ -1577,7 +1583,9 @@ public partial class RacingGame : GameController
 				return;
 			}
 
-			bool creditsSpent = await _sessionManager.CheckAndSpendGlobalCreditsAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Race Again");
+			// Show confirmation and spend credits via CreditService
+			bool confirmed = await CreditConfirmationHelper.ShowCreditConfirmationAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Race Again", currentSession.Credits);
+			bool creditsSpent = confirmed && _creditService != null && (await _creditService.SpendAsync(currentSession.PlayerId, TimeTrialCreditCost, "Race Again")).IsSuccess(out var _);
 			if (!creditsSpent)
 			{
 				// Credits not spent - don't start the race
