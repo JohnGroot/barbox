@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://bxrmj1t8vqp6k"]
+[gd_scene load_steps=11 format=3 uid="uid://bxrmj1t8vqp6k"]
 
 [ext_resource type="Script" uid="uid://ch0ujsxw08t74" path="res://_Games/CarromGame/Scripts/CarromGame.cs" id="1_0jy4h"]
 [ext_resource type="PackedScene" uid="uid://dadysaqeaqd5s" path="res://_Games/CarromGame/Scenes/Pieces/WhitePiece.tscn" id="2_1b4uc"]
@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" uid="uid://cho5hrg36wicx" path="res://_Games/CarromGame/Scenes/Pieces/BlackPiece.tscn" id="3_pw2n5"]
 [ext_resource type="PackedScene" uid="uid://bo1b586t33mi3" path="res://_Games/CarromGame/Scenes/Pieces/RedPiece.tscn" id="4_oio5e"]
 [ext_resource type="PackedScene" uid="uid://wdhuqwk1aqo8" path="res://_Games/CarromGame/Scenes/Pieces/StrikerPiece.tscn" id="5_yqxup"]
+[ext_resource type="Script" path="res://_Games/CarromGame/Scripts/Debug/CarromDebugOverlay.cs" id="6_debug"]
 
 [node name="CarromGame" type="Node2D"]
 script = ExtResource("1_0jy4h")
@@ -35,3 +36,6 @@ script = ExtResource("3_1r7uy")
 
 [node name="GameCamera" type="Camera2D" parent="."]
 ignore_rotation = false
+
+[node name="CarromDebugOverlay" type="CanvasLayer" parent="."]
+script = ExtResource("6_debug")

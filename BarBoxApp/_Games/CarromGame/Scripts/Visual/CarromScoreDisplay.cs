@@ -44,10 +44,13 @@ public partial class CarromScoreDisplay : CanvasLayer
 	
 	// Transition system
 	private bool _isShowingTransition = false;
-	
+	private Tween _transitionFadeInTween;
+	private Tween _transitionFadeOutTween;
+
 	// Floating text queuing system
 	private Dictionary<string, Queue<FloatingTextRequest>> _pendingTextRequests = [];
 	private Dictionary<string, bool> _playerTextActive = [];
+	private Dictionary<string, Tween> _floatingTextTweens = [];
 	
 	// Styling constants
 	private const float PANEL_HEIGHT = 120.0f;
@@ -69,7 +72,22 @@ public partial class CarromScoreDisplay : CanvasLayer
 		public Label QueenLabel { get; private set; }
 		public Panel BackgroundPanel { get; private set; }
 		public ProgressBar PiecesProgressBar { get; private set; }
-		
+
+		private Tween _pulsingTween;
+
+		public override void _Notification(int what)
+		{
+			if (what == NotificationExitTree)
+			{
+				// Clean up pulsing tween before node is destroyed
+				if (_pulsingTween != null && _pulsingTween.IsValid())
+				{
+					_pulsingTween.Kill();
+					_pulsingTween = null;
+				}
+			}
+		}
+
 		public PlayerScoreEntry(string playerId, PieceType pieceType)
 		{
 			// Create background panel
@@ -118,6 +136,13 @@ public partial class CarromScoreDisplay : CanvasLayer
 		
 		public void UpdateCurrentPlayerStatus(bool isCurrent)
 		{
+			// Stop and clean up existing pulsing tween
+			if (_pulsingTween != null && _pulsingTween.IsValid())
+			{
+				_pulsingTween.Kill();
+				_pulsingTween = null;
+			}
+
 			if (isCurrent)
 			{
 				// Add arrow indicator and bright green background
@@ -126,25 +151,36 @@ public partial class CarromScoreDisplay : CanvasLayer
 					PlayerNameLabel.Text = "▶ " + PlayerNameLabel.Text;
 				}
 				BackgroundPanel.Modulate = new Color(0.2f, 0.9f, 0.3f, 0.4f); // Bright green
-				
-				// Add pulsing animation effect
-				var tween = GetTree().CreateTween();
-				tween.SetLoops();
-				tween.TweenProperty(BackgroundPanel, TweenConstants.ModulateAlpha, 0.6f, 0.5f);
-				tween.TweenProperty(BackgroundPanel, TweenConstants.ModulateAlpha, 0.4f, 0.5f);
+
+				// Add pulsing animation effect - validate panel before creating tween
+				if (GodotObject.IsInstanceValid(BackgroundPanel))
+				{
+					_pulsingTween = GetTree().CreateTween();
+					if (_pulsingTween != null)
+					{
+						// Add tweeners first, then set loops to avoid empty looping tween
+						var tweener1 = _pulsingTween.TweenProperty(BackgroundPanel, TweenConstants.ModulateAlpha, 0.6f, 0.5f);
+						var tweener2 = _pulsingTween.TweenProperty(BackgroundPanel, TweenConstants.ModulateAlpha, 0.4f, 0.5f);
+
+						// Only set loops if tweeners were successfully added
+						if (tweener1 != null && tweener2 != null)
+						{
+							_pulsingTween.SetLoops();
+						}
+						else
+						{
+							GD.PrintErr("[CarromScoreDisplay] Failed to add pulsing tweeners - killing tween");
+							_pulsingTween.Kill();
+							_pulsingTween = null;
+						}
+					}
+				}
 			}
 			else
 			{
 				// Remove arrow and set dark background
 				PlayerNameLabel.Text = PlayerNameLabel.Text.Replace("▶ ", "");
 				BackgroundPanel.Modulate = new Color(0.15f, 0.15f, 0.15f, 0.3f); // Dark
-				
-				// Stop any active tweens
-				foreach (var tween in GetTree().GetProcessedTweens())
-				{
-					if (tween.IsValid())
-						tween.Kill();
-				}
 			}
 		}
 		
@@ -296,7 +332,15 @@ public partial class CarromScoreDisplay : CanvasLayer
 		_rightSection.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
 		_rightSection.AddThemeConstantOverride("separation", 15);
 		_mainContainer.AddChild(_rightSection);
-		
+
+		// Debug logging for button creation
+		GD.Print($"[CarromScoreDisplay] Pass Turn button created");
+		GD.Print($"[CarromScoreDisplay]   Visible: {_passTurnButton.Visible}");
+		GD.Print($"[CarromScoreDisplay]   Position: {_passTurnButton.Position}");
+		GD.Print($"[CarromScoreDisplay]   Size: {_passTurnButton.Size}");
+		GD.Print($"[CarromScoreDisplay]   CustomMinimumSize: {_passTurnButton.CustomMinimumSize}");
+		GD.Print($"[CarromScoreDisplay]   Parent: {_passTurnButton.GetParent()?.Name ?? "null"}");
+
 	}
 
 	public void UpdateRound(int currentRound, int maxRounds)
@@ -362,15 +406,30 @@ public partial class CarromScoreDisplay : CanvasLayer
 	/// </summary>
 	public void ShowTurnTransition(string message, float duration = 3.0f)
 	{
+		GD.Print($"[CarromScoreDisplay] ShowTurnTransition called: '{message}' (duration: {duration}s)");
 		_isShowingTransition = true;
-		
+
+		// Kill any existing fade-in tween
+		if (_transitionFadeInTween != null && _transitionFadeInTween.IsValid())
+		{
+			_transitionFadeInTween.Kill();
+			_transitionFadeInTween = null;
+		}
+
 		// Show the Pass Turn button with fade-in animation
 		_passTurnButton.Visible = true;
 		_passTurnButton.Modulate = new Color(1, 1, 1, 0);
-		
-		var tween = GetTree().CreateTween();
-		tween.TweenProperty(_passTurnButton, TweenConstants.ModulateAlpha, 1.0f, 0.3f);
-		
+
+		// Validate button before creating tween
+		if (GodotObject.IsInstanceValid(_passTurnButton))
+		{
+			_transitionFadeInTween = GetTree().CreateTween();
+			if (_transitionFadeInTween != null)
+			{
+				_transitionFadeInTween.TweenProperty(_passTurnButton, TweenConstants.ModulateAlpha, 1.0f, 0.3f);
+			}
+		}
+
 		// Ensure input is visually blocked while waiting for pass turn
 		SetInputBlockedVisual(true);
 	}
@@ -378,16 +437,55 @@ public partial class CarromScoreDisplay : CanvasLayer
 	/// <summary>
 	/// Hide turn transition
 	/// </summary>
-	private void HideTransition()
+	public void HideTransition()
 	{
 		_isShowingTransition = false;
-		
-		// Fade out and hide the Pass Turn button
-		var tween = GetTree().CreateTween();
-		tween.TweenProperty(_passTurnButton, TweenConstants.ModulateAlpha, 0.0f, 0.3f);
-		tween.Finished += () => _passTurnButton.Visible = false;
-		
+
+		// Kill any existing fade-out tween
+		if (_transitionFadeOutTween != null && _transitionFadeOutTween.IsValid())
+		{
+			_transitionFadeOutTween.Kill();
+			_transitionFadeOutTween = null;
+		}
+
+		// Validate button before creating tween
+		if (GodotObject.IsInstanceValid(_passTurnButton))
+		{
+			// Fade out and hide the Pass Turn button
+			_transitionFadeOutTween = GetTree().CreateTween();
+			if (_transitionFadeOutTween != null)
+			{
+				_transitionFadeOutTween.TweenProperty(_passTurnButton, TweenConstants.ModulateAlpha, 0.0f, 0.3f);
+				// Use TweenCallback instead of Finished signal for better reliability
+				_transitionFadeOutTween.TweenCallback(Callable.From(() => {
+					if (GodotObject.IsInstanceValid(_passTurnButton))
+					{
+						_passTurnButton.Visible = false;
+					}
+				}));
+			}
+		}
+
 		// Input state is controlled by game state machine, not by UI transitions
+	}
+
+	/// <summary>
+	/// Handle game phase changes to sync UI state
+	/// Phase-driven UI ensures button state matches game phase
+	/// </summary>
+	public void OnPhaseChanged(string oldPhase, string newPhase)
+	{
+		GD.Print($"[CarromScoreDisplay] OnPhaseChanged: {oldPhase} → {newPhase}");
+
+		// Settlement → Ready transition without button click = force hide
+		if (oldPhase == "Settlement" && newPhase == "Ready")
+		{
+			if (_passTurnButton.Visible || _isShowingTransition)
+			{
+				GD.Print("[CarromScoreDisplay] Phase transition detected - auto-hiding pass button");
+				HideTransition();
+			}
+		}
 	}
 	
 	
@@ -526,41 +624,58 @@ public partial class CarromScoreDisplay : CanvasLayer
 			localPos.X + (playerEntry.Size.X - textSize.X) / 2, // True horizontal center
 			localPos.Y - textSize.Y - 10 // Position above with proper clearance
 		);
-		
-		// Create the animation tween
+
+		// Kill any existing floating text tween for this player
+		if (_floatingTextTweens.TryGetValue(playerId, out var existingTween) &&
+			existingTween != null && existingTween.IsValid())
+		{
+			existingTween.Kill();
+		}
+
+		// Create the animation tween and store it
 		var tween = GetTree().CreateTween();
-		
+		if (tween == null)
+		{
+			GD.PrintErr($"[CarromScoreDisplay] Failed to create floating text tween for {playerId}");
+			floatingLabel.QueueFree();
+			_playerTextActive[playerId] = false;
+			return;
+		}
+
+		_floatingTextTweens[playerId] = tween;
+
 		// Scaling animation - 25% scale-up then back to normal
 		tween.Parallel().TweenProperty(floatingLabel, TweenConstants.Scale, Vector2.One * 1.25f, 0.2f)
 			.SetTrans(Tween.TransitionType.Back)
 			.SetEase(Tween.EaseType.Out);
-		// tween.Parallel().TweenProperty(floatingLabel, TweenConstants.Scale, Vector2.One, 0.3f)
-		// 	.SetDelay(0.2f)
-		// 	.SetTrans(Tween.TransitionType.Quart)
-		// 	.SetEase(Tween.EaseType.Out);
-		
+
 		// Rise animation - move up by 60 pixels over 1.5 seconds
-		tween.Parallel().TweenProperty(floatingLabel, TweenConstants.Position, 
+		tween.Parallel().TweenProperty(floatingLabel, TweenConstants.Position,
 			floatingLabel.Position + Vector2.Up * 60.0f, 1.5f)
 			.SetTrans(Tween.TransitionType.Quart)
 			.SetEase(Tween.EaseType.Out);
-		
+
 		// Fade animation - start fading after 0.3 seconds, complete in 1.2 seconds
-		tween.Parallel().TweenProperty(floatingLabel, TweenConstants.ModulateAlpha, 
+		tween.Parallel().TweenProperty(floatingLabel, TweenConstants.ModulateAlpha,
 			0.0f, 1.2f)
 			.SetDelay(0.3f);
-		
+
 		// Queue next text at 30% completion (0.45 seconds)
 		tween.TweenCallback(Callable.From(() => ProcessNextQueuedText(playerId)))
 			.SetDelay(0.45f);
-		
-		// Clean up the label when animation completes
-		tween.Finished += () => 
+
+		// Clean up the label when animation completes - use TweenCallback for reliability
+		tween.TweenCallback(Callable.From(() =>
 		{
-			floatingLabel.QueueFree();
+			if (GodotObject.IsInstanceValid(floatingLabel))
+			{
+				floatingLabel.QueueFree();
+			}
 			// Mark player as no longer having active animation
 			_playerTextActive[playerId] = false;
-		};
+			// Remove from tween tracking
+			_floatingTextTweens.Remove(playerId);
+		}));
 	}
 	
 	/// <summary>

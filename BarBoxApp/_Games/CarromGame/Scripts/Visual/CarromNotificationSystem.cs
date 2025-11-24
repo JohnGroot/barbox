@@ -130,12 +130,23 @@ public partial class CarromNotificationSystem : CanvasLayer
 			// Stop any existing fade tween
 			_fadeTween?.Kill();
 
+			// Validate this notification entry before creating tween
+			if (!GodotObject.IsInstanceValid(this))
+			{
+				GD.PrintErr("[CarromNotificationSystem] NotificationEntry invalid - cannot create fade tween");
+				return;
+			}
+
 			// Create fade in tween
 			_fadeTween = GetTree().CreateTween();
-			_fadeTween.SetParallel(true);
+			if (_fadeTween == null)
+			{
+				GD.PrintErr("[CarromNotificationSystem] Failed to create fade tween");
+				return;
+			}
 
-			// Fade to full opacity
-			_fadeTween.TweenProperty(this, TweenConstants.ModulateAlpha, 1.0f, 0.3f)
+			// Add tweeners first, then configure parallel mode
+			var tweener1 = _fadeTween.TweenProperty(this, TweenConstants.ModulateAlpha, 1.0f, 0.3f)
 				.SetTrans(Tween.TransitionType.Cubic)
 				.SetEase(Tween.EaseType.Out);
 
@@ -143,14 +154,26 @@ public partial class CarromNotificationSystem : CanvasLayer
 			var startY = Position.Y + 10.0f;
 			var targetY = Position.Y;
 			Position = new Vector2(Position.X, startY);
-			_fadeTween.TweenProperty(this, TweenConstants.Position + ":y", targetY, 0.3f)
+			var tweener2 = _fadeTween.TweenProperty(this, TweenConstants.Position + ":y", targetY, 0.3f)
 				.SetTrans(Tween.TransitionType.Back)
 				.SetEase(Tween.EaseType.Out);
 
-			// Start timer after fade in completes (for timed notifications)
-			if (!Data.IsSticky && _dismissTimer != null)
+			// Only set parallel mode if both tweeners were successfully created
+			if (tweener1 != null && tweener2 != null)
 			{
-				_fadeTween.Chain().TweenCallback(Callable.From(() => _dismissTimer?.Start()));
+				_fadeTween.SetParallel(true);
+
+				// Start timer after fade in completes (for timed notifications)
+				if (!Data.IsSticky && _dismissTimer != null)
+				{
+					_fadeTween.Chain().TweenCallback(Callable.From(() => _dismissTimer?.Start()));
+				}
+			}
+			else
+			{
+				GD.PrintErr("[CarromNotificationSystem] Failed to create fade tweeners - killing tween");
+				_fadeTween.Kill();
+				_fadeTween = null;
 			}
 		}
 
@@ -411,7 +434,13 @@ public partial class CarromNotificationSystem : CanvasLayer
 
 		// Create new position tween
 		_positionTween = GetTree().CreateTween();
-		_positionTween.SetParallel(true);
+		if (_positionTween == null)
+		{
+			GD.PrintErr("[CarromNotificationSystem] Failed to create position tween");
+			return;
+		}
+
+		bool anyTweenersAdded = false;
 
 		foreach (var entry in entries)
 		{
@@ -428,10 +457,27 @@ public partial class CarromNotificationSystem : CanvasLayer
 				entry.Position = new Vector2(entry.Position.X, oldY);
 
 				// Tween to new position
-				_positionTween.TweenProperty(entry, TweenConstants.Position + ":y", newY, 0.25f)
+				var tweener = _positionTween.TweenProperty(entry, TweenConstants.Position + ":y", newY, 0.25f)
 					.SetTrans(Tween.TransitionType.Cubic)
 					.SetEase(Tween.EaseType.Out);
+
+				if (tweener != null)
+				{
+					anyTweenersAdded = true;
+				}
 			}
+		}
+
+		// Only set parallel mode if at least one tweener was added
+		if (anyTweenersAdded)
+		{
+			_positionTween.SetParallel(true);
+		}
+		else
+		{
+			// No valid entries to animate - kill the empty tween
+			_positionTween.Kill();
+			_positionTween = null;
 		}
 	}
 

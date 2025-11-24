@@ -352,6 +352,7 @@ public partial class CarromCameraController : Node
 
 	/// <summary>
 	/// Execute cinematic camera transition: zoom out → rotate → zoom in
+	/// Uses chained tween callbacks instead of nested timers for better control
 	/// </summary>
 	public void TransitionToPlayerWithZoom(int playerIndex, float totalDuration = 1.2f)
 	{
@@ -376,46 +377,55 @@ public partial class CarromCameraController : Node
 			zoomInTime = 0.3f;
 		}
 
-		// Phase 1: Zoom out
+		// Calculate target rotation
+		float targetRotation = playerIndex switch
+		{
+			0 => 0.0f,            // Bottom player - no rotation
+			1 => Mathf.Pi,        // Top player - 180° rotation
+			2 => Mathf.Pi / 2,    // Left player - 90° rotation
+			3 => -Mathf.Pi / 2,   // Right player - 270° (-90°) rotation
+			_ => 0.0f
+		};
+
+		// Phase 1: Start zoom out animation
 		AnimateZoomOut(ZoomOutFactor, zoomOutTime);
 
-		// Phase 2: Rotate (delayed by zoom out duration)
-		GetTree().CreateTimer(zoomOutTime).Timeout += () => {
-			if (!ValidateCameraState()) return;
-			
-			// Calculate target rotation
-			float targetRotation = playerIndex switch
-			{
-				0 => 0.0f,            // Bottom player - no rotation
-				1 => Mathf.Pi,        // Top player - 180° rotation
-				2 => Mathf.Pi / 2,    // Left player - 90° rotation
-				3 => -Mathf.Pi / 2,   // Right player - 270° (-90°) rotation
-				_ => 0.0f
-			};
+		// Phase 2: After zoom completes, start rotation
+		// Use TweenCallback with interval instead of CreateTimer for better control
+		if (_zoomTween != null && _zoomTween.IsValid())
+		{
+			_zoomTween.TweenCallback(Callable.From(() => {
+				if (!ValidateCameraState()) return;
 
-			// Stop any existing rotation
-			_rotationTween?.Kill();
+				// Stop any existing rotation
+				_rotationTween?.Kill();
 
-			// Animate rotation
-			_rotationTween = CreateTween();
-			if (_rotationTween != null)
-			{
-				_rotationTween.TweenProperty(_boardCamera, TweenConstants.Rotation, targetRotation, rotationTime);
-				_rotationTween.TweenCallback(Callable.From(() => {
-					_boardCamera.ForceUpdateScroll();
-					
-					// Phase 3: Zoom in (delayed by rotation duration)
-					GetTree().CreateTimer(0.05f).Timeout += () => {
+				// Animate rotation
+				_rotationTween = CreateTween();
+				if (_rotationTween != null)
+				{
+					_rotationTween.TweenProperty(_boardCamera, TweenConstants.Rotation, targetRotation, rotationTime);
+					_rotationTween.TweenCallback(Callable.From(() => {
+						if (!ValidateCameraState()) return;
+						_boardCamera.ForceUpdateScroll();
+
+						// Phase 3: After rotation, zoom back in
 						AnimateZoomIn(zoomInTime);
-						
+
 						// Final callback after zoom in completes
-						GetTree().CreateTimer(zoomInTime).Timeout += () => {
-							EmitSignal(SignalName.CameraTransitionCompleted);
-						};
-					};
-				}));
-			}
-		};
+						if (_zoomTween != null && _zoomTween.IsValid())
+						{
+							_zoomTween.TweenCallback(Callable.From(() => {
+								if (ValidateCameraState())
+								{
+									EmitSignal(SignalName.CameraTransitionCompleted);
+								}
+							}));
+						}
+					}));
+				}
+			}));
+		}
 	}
 
 	// ================================================================

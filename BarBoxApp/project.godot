@@ -34,6 +34,7 @@ PaymentService="*res://_Core/Scripts/Autoloads/PaymentService.cs"
 
 window/size/viewport_width=1440
 window/size/viewport_height=2560
+window/size/mode=3
 window/stretch/mode="canvas_items"
 
 [dotnet]

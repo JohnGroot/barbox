@@ -276,39 +276,12 @@ public partial class CarromInputController : Node2D
 	}
 
 	/// <summary>
-	/// Set the game state interface and connect to state change signals
-	/// Makes input controller purely reactive to state machine
+	/// Set the game state interface
+	/// Input controller now polls CanAcceptInput directly instead of using signals
 	/// </summary>
 	public void SetGameState(ICarromGameState gameState)
 	{
-		// Disconnect from previous state machine if any
-		if (_gameState != null && _gameState is CarromGameStateMachine oldStateMachine)
-		{
-			if (GodotObject.IsInstanceValid(oldStateMachine))
-			{
-				oldStateMachine.InputAvailabilityChanged -= OnInputAvailabilityChanged;
-			}
-		}
-
 		_gameState = gameState;
-
-		// Connect to new state machine signals for reactive updates
-		if (_gameState is CarromGameStateMachine stateMachine && GodotObject.IsInstanceValid(stateMachine))
-		{
-			stateMachine.InputAvailabilityChanged += OnInputAvailabilityChanged;
-		}
-
-		// Update initial input blocked state
-		_isInputBlocked = !(_gameState?.CanAcceptInput ?? false);
-		RequestVisualUpdate();
-	}
-
-	/// <summary>
-	/// React to input availability changes from state machine
-	/// </summary>
-	private void OnInputAvailabilityChanged(bool canAcceptInput)
-	{
-		_isInputBlocked = !canAcceptInput;
 		RequestVisualUpdate();
 	}
 
@@ -777,13 +750,21 @@ public partial class CarromInputController : Node2D
 	}
 	
 	/// <summary>
-	/// Check if input can be accepted - now purely reactive via _isInputBlocked
+	/// Check if input can be accepted - polls game state directly
 	/// </summary>
 	private bool CanAcceptInput()
 	{
-		// Input availability is now managed reactively via OnInputAvailabilityChanged
-		// No polling needed - just check the reactive state
-		return !_isInputBlocked;
+		// Poll game state directly instead of relying on signals
+		// This works with GameStateManager
+		bool phaseReady = _gameState?.CanAcceptInput ?? false;
+
+		// Validate striker is ready to accept input
+		bool strikerValid = _striker != null &&
+							GodotObject.IsInstanceValid(_striker) &&
+							_striker.Visible &&
+							!_striker.Freeze;
+
+		return phaseReady && strikerValid;
 	}
 
 	/// <summary>
@@ -1261,8 +1242,9 @@ public partial class CarromInputController : Node2D
 			return;
 
 		_currentPlayerIndex = playerIndex;
-		UpdateBaselinePositions(); // This will also update the cached geometry
+		UpdateBaselinePositions(); // Update immediately
 		InvalidateTrajectoryCache(); // Player change affects trajectory calculation
+		GD.Print($"[CarromInputController] Switched to player {playerIndex}, baseline updated immediately");
 	}
 	
 	/// <summary>
@@ -1557,15 +1539,8 @@ public partial class CarromInputController : Node2D
 	public override void _ExitTree()
 	{
 		if (_isDisposed) return;
-		
-		// Disconnect from game state signals if connected
-		if (_gameState != null && _gameState is CarromGameStateMachine stateMachine)
-		{
-			if (GodotObject.IsInstanceValid(stateMachine))
-			{
-				stateMachine.InputAvailabilityChanged -= OnInputAvailabilityChanged;
-			}
-		}
+
+		// Clear game state reference
 		_gameState = null;
 		
 		// Clear all cached data to prevent memory leaks
