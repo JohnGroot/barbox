@@ -831,7 +831,9 @@ public partial class EventService : AutoloadBase
 				// Close connection to allow recovery on next request
 				_httpClient.Close();
 
-				return Result.Failure<TResponse>($"POST failed with code {responseCode}: {errorText}");
+				// Extract user-friendly error message from backend response
+				var userFriendlyError = BarBox.Core.Utils.ErrorMessageHelper.GetUserFriendlyError(errorText);
+				return Result.Failure<TResponse>(userFriendlyError);
 			}
 
 			// Ensure response body is fully received (Godot HttpClient timing issue)

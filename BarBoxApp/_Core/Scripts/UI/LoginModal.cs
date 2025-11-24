@@ -178,6 +178,8 @@ public partial class LoginModal : Control
 		_loginStatusLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		_loginStatusLabel.AddThemeColorOverride("font_color", Colors.White);
 		_loginStatusLabel.CustomMinimumSize = new Vector2(0, 30);
+		_loginStatusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
+		_loginStatusLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		_loginContainer.AddChild(_loginStatusLabel);
 
 		if (GameHost.IsDevelopmentContext())
@@ -236,6 +238,8 @@ public partial class LoginModal : Control
 		_createStatusLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		_createStatusLabel.AddThemeColorOverride("font_color", Colors.White);
 		_createStatusLabel.CustomMinimumSize = new Vector2(0, 30);
+		_createStatusLabel.AutowrapMode = TextServer.AutowrapMode.Word;
+		_createStatusLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		_createContainer.AddChild(_createStatusLabel);
 
 		_usernameCheckTimer = new Timer();
@@ -850,7 +854,8 @@ public partial class LoginModal : Control
 			var validationResult = await _sessionManager.ValidatePlayerCreationAsync(cleanedPhone, cleanedPin, cleanedUsername);
 			if (validationResult.IsFailure(out var valError))
 			{
-				ShowCreateStatusMessage($"Validation failed: {valError.Message}", false);
+				var userFriendlyError = BarBox.Core.Utils.ErrorMessageHelper.GetUserFriendlyError(valError.Message);
+				ShowCreateStatusMessage(userFriendlyError, false);
 				return;
 			}
 
@@ -885,12 +890,13 @@ public partial class LoginModal : Control
 			}
 			else if (result.IsFailure(out var createError))
 			{
-				ShowCreateStatusMessage(MapCreationError(createError.Message), false);
+				ShowCreateStatusMessage(createError.Message, false);
 			}
 		}
 		catch (System.Exception ex)
 		{
-			ShowCreateStatusMessage($"Account creation error: {ex.Message}", false);
+			var userFriendlyError = BarBox.Core.Utils.ErrorMessageHelper.GetUserFriendlyError(ex.Message);
+		ShowCreateStatusMessage(userFriendlyError, false);
 		}
 		finally
 		{
@@ -902,34 +908,12 @@ public partial class LoginModal : Control
 
 	private string MapValidationError(ValidationErrorDetail error)
 	{
-		switch (error.Field)
-		{
-			case "origin_id":
-				return "System not properly registered. Please contact support.";
-			case "id":
-				return "This phone number is already registered. Please login instead.";
-			case "tag":
-				return $"Username '{error.Value}' is already taken. Please choose another.";
-			default:
-				return error.Message;
-		}
+		return BarBox.Core.Utils.ErrorMessageHelper.FormatValidationError(
+			error.Field,
+			error.Message,
+			error.Value?.ToString());
 	}
 
-	private string MapCreationError(string error)
-	{
-		if (error.Contains("409") || error.Contains("already exists") || error.Contains("Conflict"))
-			return "An account with this phone number or username already exists. Please login instead.";
-		else if (error.Contains("timeout") || error.Contains("Timeout"))
-			return "Connection timeout - please check your network and try again.";
-		else if (error.Contains("400") || error.Contains("Bad Request"))
-			return "System not properly configured. Please contact support.";
-		else if (error.Contains("500") || error.Contains("Internal"))
-			return "Server error occurred. Please try again later.";
-		else if (error.Contains("unavailable") || error.Contains("not available"))
-			return "Service temporarily unavailable. Please try again later.";
-		else
-			return $"Account creation failed: {error}";
-	}
 
 	private void OnCancelPressed()
 	{
