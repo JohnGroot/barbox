@@ -125,6 +125,43 @@ public partial class BackendManager : AutoloadBase
 			"Ensure test backend is started: cd BarBoxServices && sh scripts/test-backend.sh start");
 	}
 
+	/// <summary>
+	/// Find backend start script, trying both source and export deployment paths.
+	/// Source deployment: BarBoxApp/../BarBoxServices/scripts/dev.sh
+	/// Export deployment: BarBoxApp/releases/vX.Y.Z/../../BarBoxServices/scripts/dev.sh
+	/// </summary>
+	private string FindBackendStartScript()
+	{
+		var projectPath = ProjectSettings.GlobalizePath("res://");
+		var projectDir = System.IO.Path.GetDirectoryName(projectPath.TrimEnd('/'));
+
+		// Try source deployment path first (BarBoxApp/../BarBoxServices)
+		var sourceBackendPath = System.IO.Path.Combine(projectDir, "BarBoxServices", "scripts", "dev.sh");
+		if (System.IO.File.Exists(sourceBackendPath))
+		{
+			LogInfo($"Found backend script (source deployment): {sourceBackendPath}");
+			return sourceBackendPath;
+		}
+
+		// Try export deployment path (from releases/vX.Y.Z/ -> ../../BarBoxServices)
+		var exportBackendPath = System.IO.Path.Combine(
+			System.IO.Path.GetDirectoryName(projectDir),
+			"BarBoxServices",
+			"scripts",
+			"dev.sh"
+		);
+		if (System.IO.File.Exists(exportBackendPath))
+		{
+			LogInfo($"Found backend script (export deployment): {exportBackendPath}");
+			return exportBackendPath;
+		}
+
+		LogError("Backend start script not found. Checked:");
+		LogError($"  Source: {sourceBackendPath}");
+		LogError($"  Export: {exportBackendPath}");
+		return null;
+	}
+
 	private bool IsPortInUse(int port)
 	{
 		try
@@ -305,17 +342,11 @@ public partial class BackendManager : AutoloadBase
 				"Please stop the conflicting process and restart.");
 		}
 
-		// Find the backend start script
-		var projectPath = ProjectSettings.GlobalizePath("res://");
-		var backendServicesPath = System.IO.Path.Combine(
-			System.IO.Path.GetDirectoryName(projectPath.TrimEnd('/')),
-			"BarBoxServices"
-		);
-		var startScript = System.IO.Path.Combine(backendServicesPath, "scripts", "dev.sh");
-
-		if (!System.IO.File.Exists(startScript))
+		// Find the backend start script (handles both source and export deployment)
+		var startScript = FindBackendStartScript();
+		if (startScript == null)
 		{
-			return Result.Failure<bool>($"Backend start script not found: {startScript}");
+			return Result.Failure<bool>("Backend start script not found. Searched source and export deployment paths.");
 		}
 
 		LogInfo($"Starting backend via: {startScript}");
