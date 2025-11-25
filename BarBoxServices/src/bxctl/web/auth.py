@@ -1,13 +1,13 @@
 """Box and Player authentication utilities.
 
 This module provides authentication functions for:
-- Box API key generation and verification (bcrypt + SHA256 lookup optimization)
+- Box API key derivation and verification (deterministic HMAC-based)
 - Player JWT token creation and validation (jose)
 - Phone number validation and normalization (libphonenumber)
 """
 
 import hashlib
-import secrets
+import hmac
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -28,78 +28,44 @@ JWT_ACCESS_TOKEN_HOURS = _settings.jwt_access_token_hours
 BCRYPT_ROUNDS = _settings.bcrypt_rounds
 
 
-# Box API Key Functions
+# Box API Key Functions (Deterministic)
 
-def generate_box_api_key() -> str:
-	"""Generate cryptographically secure API key for box.
+def derive_box_api_key(box_id: UUID) -> str:
+	"""Derive deterministic API key from box_id using HMAC-SHA256.
 
-	Returns:
-		URL-safe base64 encoded string with 256 bits of entropy
-	"""
-	return secrets.token_urlsafe(32)
-
-
-def hash_api_key(api_key: str) -> str:
-	"""Hash API key for storage using bcrypt.
+	The API key is derived from the box_id using the server's JWT secret.
+	This means:
+	- The same box_id always produces the same API key
+	- Keys can be regenerated on demand (no "lost key" scenario)
+	- Only the server can derive keys (requires JWT_SECRET_KEY)
 
 	Args:
-		api_key: Plaintext API key
+		box_id: The box's unique identifier
 
 	Returns:
-		Bcrypt hash suitable for database storage
+		64-character hex string (256 bits of derived key material)
 	"""
-	return bcrypt.hashpw(api_key.encode(), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode()
+	return hmac.new(
+		JWT_SECRET_KEY.encode(),
+		str(box_id).encode(),
+		hashlib.sha256
+	).hexdigest()
 
 
-def hash_api_key_lookup(api_key: str) -> str:
-	"""Create fast SHA256 lookup hash for API key.
+def verify_box_api_key(provided_key: str, box_id: UUID) -> bool:
+	"""Verify API key by deriving expected key from box_id.
 
-	This is NOT for security - it's for performance optimization.
-	The bcrypt hash is still used for actual verification.
-	This allows us to query for a specific box by API key without
-	checking bcrypt hashes for all boxes.
+	Uses constant-time comparison to prevent timing attacks.
 
 	Args:
-		api_key: Plaintext API key
+		provided_key: API key from request header
+		box_id: Box ID from request path
 
 	Returns:
-		SHA256 hash as hex string for database indexing
+		True if provided key matches derived key, False otherwise
 	"""
-	return hashlib.sha256(api_key.encode()).hexdigest()
-
-
-def _verify_bcrypt_hash(value: str, stored_hash: str, context: str) -> bool:
-	"""Internal function to verify a value against a bcrypt hash.
-
-	Shared implementation for API key and PIN verification to ensure
-	consistent error handling and logging.
-
-	Args:
-		value: Plaintext value to verify
-		stored_hash: Bcrypt hash from database
-		context: Context for logging (e.g., "api_key", "pin")
-
-	Returns:
-		True if value matches hash, False otherwise
-	"""
-	try:
-		return bcrypt.checkpw(value.encode(), stored_hash.encode())
-	except Exception as e:
-		logger.warning(f"{context}_verification_failed", error=str(e))
-		return False
-
-
-def verify_api_key(api_key: str, stored_hash: str) -> bool:
-	"""Verify API key against stored hash.
-
-	Args:
-		api_key: Plaintext API key from request
-		stored_hash: Bcrypt hash from database
-
-	Returns:
-		True if key matches hash, False otherwise
-	"""
-	return _verify_bcrypt_hash(api_key, stored_hash, "api_key")
+	expected_key = derive_box_api_key(box_id)
+	return hmac.compare_digest(provided_key, expected_key)
 
 
 # Player PIN Functions
@@ -126,7 +92,11 @@ def verify_player_pin(pin: str, stored_hash: str) -> bool:
 	Returns:
 		True if PIN matches hash, False otherwise
 	"""
-	return _verify_bcrypt_hash(pin, stored_hash, "pin")
+	try:
+		return bcrypt.checkpw(pin.encode(), stored_hash.encode())
+	except Exception as e:
+		logger.warning("pin_verification_failed", error=str(e))
+		return False
 
 
 # Player JWT Functions

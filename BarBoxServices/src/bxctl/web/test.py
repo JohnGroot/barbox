@@ -35,8 +35,8 @@ async def _seed_test_box_and_players(
     test_player1_id = UUID("11111111-1111-1111-1111-111111111111")
     test_player2_id = UUID("22222222-2222-2222-2222-222222222222")
 
-    # Use fixed test API key for development consistency (matches .env.local)
-    TEST_API_KEY = "ndE63953HvBEqNP5XKPFe3vN4Ei9bDF-g9p13KoOmKs"
+    # API key is now derived deterministically from box_id
+    derived_api_key = auth.derive_box_api_key(test_box_id)
 
     # Check if test box already exists (idempotent)
     result = await db_service.session.execute(
@@ -55,21 +55,16 @@ async def _seed_test_box_and_players(
             "message": "Test data already exists",
             "data": {
                 "box_id": str(test_box_id),
-                "box_api_key": TEST_API_KEY,
+                "box_api_key": derived_api_key,
                 "player_ids": [str(test_player1_id), str(test_player2_id)],
             },
         }
 
-    # Create test box with API key
-    api_key_hash = auth.hash_api_key(TEST_API_KEY)
-    api_key_hash_lookup = auth.hash_api_key_lookup(TEST_API_KEY)
-
+    # Create test box (no API key hash storage - key is derived on demand)
     test_box_data = {
         "id": test_box_id,
         "name": "Test Box",
         "tag": "testbox",
-        "api_key_hash": api_key_hash,
-        "api_key_hash_lookup": api_key_hash_lookup,
         "created_at": now,
         "last_seen": None,
     }
@@ -114,7 +109,7 @@ async def _seed_test_box_and_players(
         "message": "Test data seeded successfully",
         "data": {
             "box_id": str(test_box_id),
-            "box_api_key": TEST_API_KEY,
+            "box_api_key": derived_api_key,
             "player_ids": [str(test_player1_id), str(test_player2_id)],
         },
     }

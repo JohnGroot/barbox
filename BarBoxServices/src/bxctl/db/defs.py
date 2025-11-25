@@ -50,8 +50,8 @@ def fk_to(model: type[Base]) -> MappedColumn[Any]:
 class Box(Base):
     name: Mapped[str]
     tag: Mapped[str]
-    api_key_hash: Mapped[str]  # bcrypt hash of API key (secure storage)
-    api_key_hash_lookup: Mapped[str] = mapped_column(index=True, unique=True)  # SHA256 hash for fast O(1) DB lookups (indexed)
+    # API key is now deterministically derived from box_id using HMAC(server_secret, box_id)
+    # No storage needed - key can be regenerated on demand
     created_at: Mapped[datetime]
     last_seen: Mapped[datetime | None]
 

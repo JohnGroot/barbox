@@ -25,8 +25,8 @@ async def create_box(
 ) -> structures.BoxDetailWithAPIKey:
     """Create a new box and return API key.
 
-    **IMPORTANT**: The API key is returned only once and cannot be retrieved later.
-    Save it securely before the response is lost.
+    The API key is deterministically derived from the box ID, so it can
+    always be retrieved by calling PUT /box/{box_id}.
 
     Validates that:
     - Box ID is unique
@@ -71,16 +71,12 @@ async def create_box(
             },
         )
 
-    # Generate API key for the box
-    api_key = auth.generate_box_api_key()
-    api_key_hash = auth.hash_api_key(api_key)
-    api_key_hash_lookup = auth.hash_api_key_lookup(api_key)
+    # Derive deterministic API key from box ID
+    api_key = auth.derive_box_api_key(new_box.id)
 
-    # Attempt to create box with both hashes
+    # Create box (no hash storage needed - key is derived on demand)
     try:
         box_data = new_box.model_dump() | {
-            "api_key_hash": api_key_hash,
-            "api_key_hash_lookup": api_key_hash_lookup,
             "created_at": now,
             "last_seen": None,
         }
@@ -90,15 +86,13 @@ async def create_box(
             data=box_data,
         )
 
-        logger.warning(
-            "box_created_with_api_key",
+        logger.info(
+            "box_created",
             box_id=str(new_box.id),
             name=new_box.name,
             tag=new_box.tag,
-            message="API key generated - save securely, it will not be shown again"
         )
 
-        # Return box details with plaintext API key (only time it's visible)
         return structures.BoxDetailWithAPIKey(
             id=new_box.id,
             name=new_box.name,
@@ -148,23 +142,19 @@ async def register_box(
     box_data: structures.BoxCreate,
     db_service: dependencies.Database,
     now: dependencies.Now,
-) -> structures.BoxDetail | structures.BoxDetailWithAPIKey:
+) -> structures.BoxDetailWithAPIKey:
     """
-    Idempotent box registration - creates if not exists, returns existing if found.
+    Idempotent box registration - creates if not exists, always returns API key.
 
     This endpoint is safe to call multiple times with the same box_id.
-    Used by clients to ensure box exists before creating sessions.
+    Used by clients to ensure box exists and retrieve the API key.
 
     **Authentication**: Not required (needed for initial box setup).
 
-    On first call (box doesn't exist):
-    - Creates the box with generated API key
-    - Returns BoxDetailWithAPIKey with the API key (ONLY TIME IT'S VISIBLE!)
-    - Client must save this API key securely for future requests
-
-    On subsequent calls (box already exists):
-    - Returns BoxDetail without API key (confirmation only)
-    - Idempotent operation
+    The API key is deterministically derived from the box ID, so:
+    - First call: Creates the box and returns API key
+    - Subsequent calls: Returns the same API key (idempotent)
+    - Reinstalls: Just call this endpoint again to get the key
 
     Args:
         box_id: Box ID from path parameter
@@ -173,7 +163,7 @@ async def register_box(
         now: Current timestamp
 
     Returns:
-        200: BoxDetailWithAPIKey (first call) or BoxDetail (subsequent calls)
+        200: BoxDetailWithAPIKey with deterministic API key
         400: Box ID in path does not match request body
         500: Internal server error
     """
@@ -196,6 +186,9 @@ async def register_box(
             },
         )
 
+    # Derive deterministic API key from box ID (always the same for a given box_id)
+    api_key = auth.derive_box_api_key(box_id)
+
     # Check if box already exists
     existing_box_result = await db_service.session.execute(
         select(db.defs.Box).where(db.defs.Box.id == box_id)
@@ -203,24 +196,22 @@ async def register_box(
     existing_box = existing_box_result.scalar_one_or_none()
 
     if existing_box is not None:
-        # Box already exists - return it (idempotent)
+        # Box already exists - return it with API key (idempotent)
         logger.info(
             "box_already_registered",
             box_id=str(box_id),
             name=existing_box.name,
         )
-        return structures.BoxDetail.model_validate(existing_box, from_attributes=True)
+        return structures.BoxDetailWithAPIKey(
+            id=existing_box.id,
+            name=existing_box.name,
+            tag=existing_box.tag,
+            api_key=api_key,
+        )
 
     # Box doesn't exist - create it
-    # Generate API key for the box (only returned this one time!)
-    api_key = auth.generate_box_api_key()
-    api_key_hash = auth.hash_api_key(api_key)
-    api_key_hash_lookup = auth.hash_api_key_lookup(api_key)
-
     try:
         box_data_dict = box_data.model_dump() | {
-            "api_key_hash": api_key_hash,
-            "api_key_hash_lookup": api_key_hash_lookup,
             "created_at": now,
             "last_seen": None,
         }
@@ -230,15 +221,13 @@ async def register_box(
             data=box_data_dict,
         )
 
-        logger.warning(
-            "box_registered_via_put",
+        logger.info(
+            "box_registered",
             box_id=str(box_id),
             name=box_data.name,
             tag=box_data.tag,
-            message="API key generated - save securely, it will not be shown again",
         )
 
-        # Return box details with plaintext API key (only time it's visible)
         return structures.BoxDetailWithAPIKey(
             id=box_data.id,
             name=box_data.name,
@@ -452,7 +441,7 @@ async def create_box_session(
 async def add_session_event(
     event: structures.SessionEventBase,
     session_id: UUID,
-    authenticated_box: dependencies.BoxAuthenticated,
+    authenticated_box: dependencies.BoxAuthenticatedBySession,
     db_service: dependencies.Database,
     now: dependencies.Now,
 ) -> structures.Identifiable:
@@ -547,7 +536,7 @@ async def add_session_event(
 @router.post("/session/{session_id}/close", status_code=status.HTTP_200_OK)
 async def close_box_session(
     session_id: UUID,
-    authenticated_box: dependencies.BoxAuthenticated,
+    authenticated_box: dependencies.BoxAuthenticatedBySession,
     db_service: dependencies.Database,
     now: dependencies.Now,
 ) -> structures.Identifiable:

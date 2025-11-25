@@ -1,14 +1,18 @@
 from functools import cache
 from typing import Literal
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Environment types
 Environment = Literal["local", "test", "prod"]
 
 
 class _Settings(BaseSettings):
-    """Application settings loaded from environment variables.
+    """Application settings loaded from environment variables and .env file.
+
+    Settings are loaded in order of precedence (highest first):
+    1. Environment variables
+    2. .env file in current working directory
 
     Environment variables:
     - ENV: Environment mode (local/test/prod), defaults to "local"
@@ -20,6 +24,13 @@ class _Settings(BaseSettings):
     - JWT_EXPIRATION_HOURS: JWT token expiration in hours, defaults to 24
     - BCRYPT_ROUNDS: Bcrypt hashing cost factor, defaults to 12
     """
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     env: Environment = "local"
     sqlite_path: str = "app.db"
     redis_url: str = ""

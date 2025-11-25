@@ -78,8 +78,8 @@ echo
 echo -e "${GREEN}━━━ Development environment ready! ━━━${NC}"
 echo
 echo -e "${BLUE}Test credentials:${NC}"
-echo "  • API Key: ndE63953HvBEqNP5XKPFe3vN4Ei9bDF-g9p13KoOmKs"
 echo "  • Box ID:  00000000-0000-0000-0000-000000000001"
+echo "  • API Key: Get from 'curl -X POST ${BACKEND_URL}/test/seed' (box_api_key field)"
 echo
 echo -e "${BLUE}You can now:${NC}"
 echo "  • Open Godot editor and test player registration"
