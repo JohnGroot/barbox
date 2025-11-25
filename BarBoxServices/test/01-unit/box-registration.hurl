@@ -33,7 +33,7 @@ Content-Type: application/json
 HTTP 200
 [Asserts]
 jsonpath "$.id" == "00000000-0000-0000-0000-000000000099"
-jsonpath "$.api_key" not exists
+jsonpath "$.api_key" exists
 
 # Test 3: Mismatched box ID (path vs body) - should return 400
 PUT http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000088

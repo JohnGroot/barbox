@@ -6,6 +6,10 @@
 # - Player logout (client-side only - token remains valid until expiry)
 # - Endpoint protection verification
 
+# Setup: Reset database for clean test
+POST http://127.0.0.1:8000/test/reset
+HTTP 200
+
 # Test 1: Create a box and receive API key
 POST http://127.0.0.1:8000/box/
 Content-Type: application/json
@@ -40,6 +44,7 @@ HTTP 409
 POST http://127.0.0.1:8000/player/
 Content-Type: application/json
 X-Box-API-Key: {{box_api_key}}
+X-Box-ID: {{box_id}}
 {
   "id": "3c95277d-a5fd-0da6-a1a4-4ee3fdf56d20",
   "tag": "testplayer",
@@ -70,6 +75,7 @@ HTTP 401
 POST http://127.0.0.1:8000/player/
 Content-Type: application/json
 X-Box-API-Key: wrong-api-key
+X-Box-ID: {{box_id}}
 {
   "id": "00000000-0000-0000-0000-000000000006",
   "tag": "wrong-key-player",
@@ -83,6 +89,7 @@ HTTP 401
 POST http://127.0.0.1:8000/player/auth/login
 Content-Type: application/json
 X-Box-API-Key: {{box_api_key}}
+X-Box-ID: {{box_id}}
 {
   "phone_number": "+12125551234",
   "pin": "1234",
@@ -100,6 +107,7 @@ jwt_token: jsonpath "$.access_token"
 POST http://127.0.0.1:8000/player/auth/login
 Content-Type: application/json
 X-Box-API-Key: {{box_api_key}}
+X-Box-ID: {{box_id}}
 {
   "phone_number": "+12125551234",
   "pin": "0000",
@@ -165,6 +173,7 @@ jsonpath "$.game_tag" == "lobby"
 POST http://127.0.0.1:8000/player/auth/login
 Content-Type: application/json
 X-Box-API-Key: {{box_api_key}}
+X-Box-ID: {{box_id}}
 {
   "phone_number": "+12125551234",
   "pin": "1234",

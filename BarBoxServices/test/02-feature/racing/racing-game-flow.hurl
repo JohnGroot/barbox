@@ -16,6 +16,7 @@ box-api-key: jsonpath "$['api_key']"
 # Setup: Create player 1
 POST http://127.0.0.1:8000/player/
 X-Box-API-Key: {{box-api-key}}
+X-Box-ID: {{box-id}}
 {
   "id": "{{newUuid}}",
   "tag": "racer1",
@@ -30,6 +31,7 @@ player1-id: jsonpath "$['id']"
 # Setup: Create player 2
 POST http://127.0.0.1:8000/player/
 X-Box-API-Key: {{box-api-key}}
+X-Box-ID: {{box-id}}
 {
   "id": "{{newUuid}}",
   "tag": "racer2",

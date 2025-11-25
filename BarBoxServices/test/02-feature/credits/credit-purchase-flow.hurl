@@ -18,6 +18,7 @@ box-api-key: jsonpath "$['api_key']"
 # Step 2: Register player (tests PlayerDetail fix)
 POST http://127.0.0.1:8000/player/
 X-Box-API-Key: {{box-api-key}}
+X-Box-ID: {{box-id}}
 Content-Type: application/json
 {
   "id": "{{newUuid}}",
@@ -36,6 +37,7 @@ jsonpath "$.origin_id" == "{{box-id}}"
 # Step 3: Login player to get JWT token
 POST http://127.0.0.1:8000/player/auth/login
 X-Box-API-Key: {{box-api-key}}
+X-Box-ID: {{box-id}}
 Content-Type: application/json
 {
   "phone_number": "+16465551234",

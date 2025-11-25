@@ -16,6 +16,7 @@ box-api-key: jsonpath "$['api_key']"
 
 POST http://127.0.0.1:8000/player/
 X-Box-API-Key: {{box-api-key}}
+X-Box-ID: {{box-id}}
 Content-Type: application/json
 {
   "id": "{{newUuid}}",

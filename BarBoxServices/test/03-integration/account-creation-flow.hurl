@@ -26,6 +26,7 @@ test-box-api-key: jsonpath "$.data.box_api_key"
 # Test 4: Validate player creation with valid data
 POST http://127.0.0.1:8000/player/validate
 X-Box-API-Key: {{test-box-api-key}}
+X-Box-ID: {{test-box-id}}
 Content-Type: application/json
 {
   "id": "33333333-3333-3333-3333-333333333333",
@@ -42,6 +43,7 @@ jsonpath "$.errors" count == 0
 # Test 5: Validate player creation with non-existent box (should fail)
 POST http://127.0.0.1:8000/player/validate
 X-Box-API-Key: {{test-box-api-key}}
+X-Box-ID: {{test-box-id}}
 Content-Type: application/json
 {
   "id": "44444444-4444-4444-4444-444444444444",
@@ -59,6 +61,7 @@ jsonpath "$.errors[0].field" == "origin_id"
 # Test 6: Create player successfully
 POST http://127.0.0.1:8000/player/
 X-Box-API-Key: {{test-box-api-key}}
+X-Box-ID: {{test-box-id}}
 Content-Type: application/json
 {
   "id": "33333333-3333-3333-3333-333333333333",
@@ -74,6 +77,7 @@ jsonpath "$.id" == "33333333-3333-3333-3333-333333333333"
 # Test 7: Validate duplicate username (should fail)
 POST http://127.0.0.1:8000/player/validate
 X-Box-API-Key: {{test-box-api-key}}
+X-Box-ID: {{test-box-id}}
 Content-Type: application/json
 {
   "id": "55555555-5555-5555-5555-555555555555",
@@ -91,6 +95,7 @@ jsonpath "$.errors[0].field" == "tag"
 # Test 8: Validate duplicate player ID (should fail)
 POST http://127.0.0.1:8000/player/validate
 X-Box-API-Key: {{test-box-api-key}}
+X-Box-ID: {{test-box-id}}
 Content-Type: application/json
 {
   "id": "33333333-3333-3333-3333-333333333333",
@@ -108,6 +113,7 @@ jsonpath "$.errors[0].field" == "id"
 # Test 9: Attempt to create duplicate player (should return 409)
 POST http://127.0.0.1:8000/player/
 X-Box-API-Key: {{test-box-api-key}}
+X-Box-ID: {{test-box-id}}
 Content-Type: application/json
 {
   "id": "33333333-3333-3333-3333-333333333333",
@@ -123,6 +129,7 @@ jsonpath "$.detail.code" == "DUPLICATE_RESOURCE"
 # Test 10: Attempt to create player with mismatched origin box (should return 403)
 POST http://127.0.0.1:8000/player/
 X-Box-API-Key: {{test-box-api-key}}
+X-Box-ID: {{test-box-id}}
 Content-Type: application/json
 {
   "id": "66666666-6666-6666-6666-666666666666",
@@ -152,6 +159,7 @@ jsonpath "$.is_available" == true
 # Test 13: Create another valid player
 POST http://127.0.0.1:8000/player/
 X-Box-API-Key: {{test-box-api-key}}
+X-Box-ID: {{test-box-id}}
 Content-Type: application/json
 {
   "id": "77777777-7777-7777-7777-777777777777",

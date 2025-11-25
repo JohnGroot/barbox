@@ -1,6 +1,10 @@
 # Carrom Game Integration Test
 # Tests carrom event submission and leaderboard aggregation
 
+# Setup: Reset database for clean test
+POST http://127.0.0.1:8000/test/reset
+HTTP 200
+
 # Setup: Create box
 POST http://127.0.0.1:8000/box/
 {
@@ -16,6 +20,7 @@ box-api-key: jsonpath "$['api_key']"
 # Setup: Create player 1
 POST http://127.0.0.1:8000/player/
 X-Box-API-Key: {{box-api-key}}
+X-Box-ID: {{box-id}}
 {
   "id": "{{newUuid}}",
   "tag": "carrom_player1",
@@ -30,6 +35,7 @@ player1-id: jsonpath "$['id']"
 # Setup: Create player 2
 POST http://127.0.0.1:8000/player/
 X-Box-API-Key: {{box-api-key}}
+X-Box-ID: {{box-id}}
 {
   "id": "{{newUuid}}",
   "tag": "carrom_player2",
