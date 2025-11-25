@@ -39,6 +39,7 @@ public partial class UIManager : AutoloadBase
 	private BuyCreditsModal _buyCreditsModal;
 	private ConfirmationDialog _confirmationDialog;
 	private SessionManager _sessionManager;
+	private CreditService _creditService;
 
 	// Help system components
 	private Control _helpOverlay;
@@ -64,6 +65,7 @@ public partial class UIManager : AutoloadBase
 
 		// Get service references - all autoloads guaranteed to exist
 		_sessionManager = SessionManager.GetInstance();
+		_creditService = CreditService.GetInstance();
 
 		_topMenuLayer = new() { Layer = LAYER_GAME_UI };
 		AddChild(_topMenuLayer);
@@ -105,7 +107,11 @@ public partial class UIManager : AutoloadBase
 		{
 			_sessionManager.UserLoggedIn += OnUserLoggedIn;
 			_sessionManager.UserLoggedOut += OnUserLoggedOut;
-			_sessionManager.CreditsEarned += OnCreditsEarned;
+		}
+
+		if (_creditService != null)
+		{
+			_creditService.CreditsChanged += OnCreditsChanged;
 		}
 
 		var gameHost = GameHost.GetInstance();
@@ -162,7 +168,11 @@ public partial class UIManager : AutoloadBase
 		{
 			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
 			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
-			_sessionManager.CreditsEarned -= OnCreditsEarned;
+		}
+
+		if (IsInstanceValid(_creditService))
+		{
+			_creditService.CreditsChanged -= OnCreditsChanged;
 		}
 
 		var gameHost = GameHost.GetInstance();
@@ -252,11 +262,22 @@ public partial class UIManager : AutoloadBase
 	public void UpdateUserDisplay()
 	{
 		// Get primary user session for UI display (TopMenuBar shows primary user)
-		var session = _sessionManager?.GetPrimaryUserSession();
+		var session = _sessionManager?.GetPrimarySession();
 
 		if (_topMenuBar != null)
 		{
-			_topMenuBar.UpdateUserInfo(session);
+			// Fetch credits from CreditService (single source of truth)
+			int credits = 0;
+			if (session != null && _creditService != null)
+			{
+				// Use cached balance - GetBalanceAsync will emit CreditsChanged if cache is stale
+				var balanceResult = _creditService.GetBalanceAsync(session.PlayerId, forceRefresh: false);
+				if (balanceResult.IsCompleted && balanceResult.Result.IsSuccess(out var balance))
+				{
+					credits = balance;
+				}
+			}
+			_topMenuBar.UpdateUserInfo(session, credits);
 		}
 	}
 
@@ -346,7 +367,7 @@ public partial class UIManager : AutoloadBase
 	private void OnBuyCreditsRequested()
 	{
 		// Show buy credits modal for primary user (UI convenience - TopMenuBar button)
-		var session = _sessionManager?.GetPrimaryUserSession();
+		var session = _sessionManager?.GetPrimarySession();
 		if (session != null)
 		{
 			ShowBuyCreditsModal(session.PhoneNumber);
@@ -383,9 +404,9 @@ public partial class UIManager : AutoloadBase
 		UpdateUserDisplay();
 	}
 
-	private void OnCreditsEarned(string userId, int amount, string reason)
+	private void OnCreditsChanged(string playerId, int newBalance)
 	{
-		// Credits were earned (from any source), update user display
+		// Credits changed (from any source), update user display
 		UpdateUserDisplay();
 	}
 

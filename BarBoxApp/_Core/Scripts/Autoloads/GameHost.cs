@@ -227,7 +227,7 @@ public partial class GameHost : AutoloadBase
 	public UserSession GetUserSession(string playerId)
 	{
 		var sessionManager = SessionManager.GetInstance();
-		return sessionManager.GetUserSession(playerId) ?? sessionManager.GetPrimaryUserSession();
+		return sessionManager.GetSessionByPhone(playerId) ?? sessionManager.GetPrimarySession();
 	}
 
 	public void SetTopMenuContext(string gameTitle, ContextButtonData[] contextButtons = null)
@@ -272,7 +272,7 @@ public partial class GameHost : AutoloadBase
 	{
 		// Get primary user for single-user game contexts
 		var sessionManager = SessionManager.GetInstance();
-		var session = sessionManager?.GetPrimaryUserSession();
+		var session = sessionManager?.GetPrimarySession();
 		return session?.PhoneNumber ?? "unknown";
 	}
 

@@ -43,9 +43,6 @@ public partial class BackendManager : AutoloadBase
 			? port
 			: 8000;
 
-	private static readonly string BACKEND_READY_FILE =
-		System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_READY_FILE")
-		?? "/Users/johngroot/Dev/barbox/BarBoxServices/app.db.ready";
 
 	// Test mode detection - when set, skip auto-start and wait for external backend
 	private static readonly bool IS_TEST_MODE =
@@ -93,13 +90,6 @@ public partial class BackendManager : AutoloadBase
 		CallDeferred(MethodName.EmitSignal, SignalName.BackendReady);
 	}
 
-	/// <summary>
-	/// Legacy file-based health check - prefer IsBackendHealthyAsync()
-	/// </summary>
-	private bool IsBackendReady()
-	{
-		return FileAccess.FileExists(BACKEND_READY_FILE);
-	}
 
 	/// <summary>
 	/// Wait for external backend to become healthy (test mode only).
@@ -370,93 +360,89 @@ public partial class BackendManager : AutoloadBase
 	private async Task<Result<bool>> IsBackendHealthyAsync()
 	{
 		var httpClient = new HttpClient();
-		var error = httpClient.ConnectToHost(BACKEND_HOST, BACKEND_PORT);
+		try
+		{
+			var error = httpClient.ConnectToHost(BACKEND_HOST, BACKEND_PORT);
 
-		if (error != Godot.Error.Ok)
+			if (error != Godot.Error.Ok)
+				return Result.Failure<bool>($"Failed to initiate connection: {error}");
+
+			// Poll for connection
+			var startTime = Time.GetTicksMsec();
+			while (Time.GetTicksMsec() - startTime < CONNECTION_TIMEOUT_SECONDS * 1000)
+			{
+				httpClient.Poll();
+				var status = httpClient.GetStatus();
+
+				if (status == HttpClient.Status.Resolving ||
+				    status == HttpClient.Status.Connecting)
+				{
+					await DelayAsync(0.05f);
+					continue;
+				}
+
+				if (status == HttpClient.Status.Connected)
+				{
+					var requestError = httpClient.Request(HttpClient.Method.Get, "/alive", HEALTH_CHECK_HEADERS);
+
+					if (requestError != Godot.Error.Ok)
+						return Result.Failure<bool>($"Failed to send request: {requestError}");
+
+					// Wait for response
+					var responseStartTime = Time.GetTicksMsec();
+					while (Time.GetTicksMsec() - responseStartTime < HEALTH_CHECK_TIMEOUT_SECONDS * 1000)
+					{
+						httpClient.Poll();
+						var currentStatus = httpClient.GetStatus();
+
+						// Success: got response body
+						if (currentStatus == HttpClient.Status.Body)
+						{
+							var responseCode = httpClient.GetResponseCode();
+
+							if (responseCode == 200)
+								return Result.Success(true);
+
+							return Result.Failure<bool>($"Unexpected response code: {responseCode}");
+						}
+
+						// Still processing - continue waiting
+						if (currentStatus == HttpClient.Status.Requesting ||
+						    currentStatus == HttpClient.Status.Connected)
+						{
+							await DelayAsync(0.05f);
+							continue;
+						}
+
+						// Error states - bail out early
+						if (currentStatus == HttpClient.Status.CantConnect ||
+						    currentStatus == HttpClient.Status.ConnectionError)
+						{
+							return Result.Failure<bool>("Connection error while waiting for response");
+						}
+
+						await DelayAsync(0.05f);
+					}
+
+					return Result.Failure<bool>($"Health check timeout after {HEALTH_CHECK_TIMEOUT_SECONDS}s");
+				}
+
+				if (status == HttpClient.Status.CantConnect ||
+				    status == HttpClient.Status.CantResolve ||
+				    status == HttpClient.Status.ConnectionError)
+				{
+					return Result.Failure<bool>($"Connection failed: {status}");
+				}
+
+				await DelayAsync(0.05f);
+			}
+
+			return Result.Failure<bool>($"Connection timeout after {CONNECTION_TIMEOUT_SECONDS}s");
+		}
+		finally
 		{
 			httpClient.Close();
-			return Result.Failure<bool>($"Failed to initiate connection: {error}");
 		}
-
-		// Poll for connection
-		var startTime = Time.GetTicksMsec();
-		while (Time.GetTicksMsec() - startTime < CONNECTION_TIMEOUT_SECONDS * 1000)
-		{
-			httpClient.Poll();
-			var status = httpClient.GetStatus();
-
-			if (status == HttpClient.Status.Resolving ||
-			    status == HttpClient.Status.Connecting)
-			{
-				await DelayAsync(0.05f);
-				continue;
-			}
-
-			if (status == HttpClient.Status.Connected)
-			{
-				var requestError = httpClient.Request(HttpClient.Method.Get, "/alive", HEALTH_CHECK_HEADERS);
-
-				if (requestError != Godot.Error.Ok)
-				{
-					httpClient.Close();
-					return Result.Failure<bool>($"Failed to send request: {requestError}");
-				}
-
-				// Wait for response
-				var responseStartTime = Time.GetTicksMsec();
-				while (Time.GetTicksMsec() - responseStartTime < HEALTH_CHECK_TIMEOUT_SECONDS * 1000)
-				{
-					httpClient.Poll();
-					var currentStatus = httpClient.GetStatus();
-
-					// Success: got response body
-					if (currentStatus == HttpClient.Status.Body)
-					{
-						var responseCode = httpClient.GetResponseCode();
-						httpClient.Close();
-
-						if (responseCode == 200)
-							return Result.Success(true);
-
-						return Result.Failure<bool>($"Unexpected response code: {responseCode}");
-					}
-
-					// Still processing - continue waiting
-					if (currentStatus == HttpClient.Status.Requesting ||
-					    currentStatus == HttpClient.Status.Connected)
-					{
-						await DelayAsync(0.05f);
-						continue;
-					}
-
-					// Error states - bail out early
-					if (currentStatus == HttpClient.Status.CantConnect ||
-					    currentStatus == HttpClient.Status.ConnectionError)
-					{
-						httpClient.Close();
-						return Result.Failure<bool>("Connection error while waiting for response");
-					}
-
-					await DelayAsync(0.05f);
-				}
-
-				httpClient.Close();
-				return Result.Failure<bool>($"Health check timeout after {HEALTH_CHECK_TIMEOUT_SECONDS}s");
-			}
-
-			if (status == HttpClient.Status.CantConnect ||
-			    status == HttpClient.Status.CantResolve ||
-			    status == HttpClient.Status.ConnectionError)
-			{
-				httpClient.Close();
-				return Result.Failure<bool>($"Connection failed: {status}");
-			}
-
-			await DelayAsync(0.05f);
-		}
-
-		httpClient.Close();
-		return Result.Failure<bool>($"Connection timeout after {CONNECTION_TIMEOUT_SECONDS}s");
 	}
 
 	/// <summary>

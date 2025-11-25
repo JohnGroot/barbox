@@ -223,15 +223,6 @@ public partial class LocationManager : AutoloadBase
 	/// </summary>
 	public string GetVenueName() => _venueName;
 
-	/// <summary>
-	/// Deprecated - functionality moved to DataStore
-	/// </summary>
-	public T GetLocationData<T>(string locationId) where T : Resource
-	{
-		LogInfo($"GetLocationData<{typeof(T).Name}> called for location '{locationId}' (functionality moved to DataStore)");
-		return null;
-	}
-
 	public static LocationManager GetAutoload()
 	{
 		return AutoloadBase.GetAutoload<LocationManager>();

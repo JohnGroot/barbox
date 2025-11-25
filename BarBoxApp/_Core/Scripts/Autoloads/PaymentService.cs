@@ -55,6 +55,21 @@ public partial class PaymentService : AutoloadBase
 			return PaymentResult.Failure("Credit service not available");
 		}
 
+		// Validate player has an active session
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager == null)
+		{
+			LogError("SessionManager not available");
+			return PaymentResult.Failure("Session service not available");
+		}
+
+		var session = sessionManager.GetSession(playerId);
+		if (session == null)
+		{
+			LogError($"No active session for player {playerId}");
+			return PaymentResult.Failure("No active session - please log in first");
+		}
+
 		// CRITICAL: Check EventService readiness BEFORE processing payment
 		// This prevents charging users when credits cannot be added
 		var validation = ValidateEventServiceReady();
@@ -120,16 +135,23 @@ public partial class PaymentService : AutoloadBase
 	private PaymentResult? ValidateEventServiceReady()
 	{
 		var eventService = EventService.GetInstance();
-		if (eventService == null)
+		var eventServiceExists = eventService != null;
+		var eventServiceReady = eventService?.IsReady ?? false;
+
+		if (!eventServiceExists)
 		{
 			LogError("Cannot process payment - EventService not found");
-			return PaymentResult.Failure("Credit system unavailable (service not found)");
+			return PaymentResult.Failure(
+				$"EventService not initialized - credits cannot be added. " +
+				$"Diagnostics: EventService exists: {eventServiceExists}, EventService ready: {eventServiceReady}");
 		}
 
-		if (!eventService.IsReady)
+		if (!eventServiceReady)
 		{
 			LogError("Cannot process payment - EventService not ready");
-			return PaymentResult.Failure("Credit system temporarily unavailable (backend not ready)");
+			return PaymentResult.Failure(
+				$"EventService not ready - backend connection required. " +
+				$"Diagnostics: EventService exists: {eventServiceExists}, EventService ready: {eventServiceReady}");
 		}
 
 		return null; // Validation passed

@@ -172,8 +172,8 @@ public abstract partial class AutoloadBase : Node
 		}
 		catch (OperationCanceledException)
 		{
-			// Lock acquisition was cancelled
-			_initializationLock.Release();
+			// WaitForReadyAsync was cancelled - lock already released at line 136
+			// Do NOT release again - that would corrupt the semaphore count
 			return false;
 		}
 	}
