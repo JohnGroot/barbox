@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://bqkgdvfutgdsd"]
+[gd_scene load_steps=4 format=3 uid="uid://bqkgdvfutgdsd"]
 
 [ext_resource type="Script" uid="uid://cfepb214u0x42" path="res://_Core/Scripts/MainController.cs" id="1_1x2qy"]
 [ext_resource type="Script" uid="uid://chadnu3h7vnwl" path="res://addons/onscreenkeyboard/onscreen_keyboard.gd" id="2_keyboard"]
+[ext_resource type="FontFile" uid="uid://m71fjr7re1hy" path="res://_Core/Fonts/Inter/InterDisplay-Black.ttf" id="3_i5lgk"]
 
 [node name="Main" type="Control" node_paths=PackedStringArray("GameSelectionPanel", "GameList", "UserInfoLabel")]
 layout_mode = 3
@@ -55,17 +56,23 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="OnscreenKeyboard" type="PanelContainer" parent="."]
+[node name="KeyboardLayer" type="CanvasLayer" parent="."]
+layer = 111
+
+[node name="OnscreenKeyboard" type="PanelContainer" parent="KeyboardLayer"]
 visible = false
-layout_mode = 1
+custom_minimum_size = Vector2(1209.6, 36.72)
 anchors_preset = 7
 anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -320.0
-offset_top = -200.0
-offset_right = 320.0
+offset_left = -568.80005
+offset_top = -2248.0
+offset_right = 640.7999
+offset_bottom = -2116.0
 grow_horizontal = 2
 grow_vertical = 0
 script = ExtResource("2_keyboard")
+custom_layout_file = "res://addons/onscreenkeyboard/customize/keyboardLayouts/keyboard_layout_complete.json"
+font = ExtResource("3_i5lgk")

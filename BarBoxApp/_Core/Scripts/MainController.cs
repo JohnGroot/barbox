@@ -71,9 +71,9 @@ public partial class MainController : Control
 		_creditService = CreditService.GetInstance();
 		
 		// Services loaded and initialized
-		
+
 		// Get reference to onscreen keyboard
-		_onscreenKeyboard = GetNode<Node>("OnscreenKeyboard");
+		_onscreenKeyboard = GetNode<Node>("KeyboardLayer/OnscreenKeyboard");
 		
 		// Enable keyboard for main menu (disabled by default in scene)
 		EnableKeyboardAutoShow();

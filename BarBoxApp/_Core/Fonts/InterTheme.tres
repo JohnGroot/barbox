@@ -1,6 +1,6 @@
 [gd_resource type="Theme" load_steps=3 format=3 uid="uid://dnh0aewyhafqs"]
 
-[ext_resource type="FontFile" uid="uid://dme1qj6xofc7m" path="res://_Core/Fonts/InterVariable/InterDisplay-SemiBold.ttf" id="1_mm1cj"]
+[ext_resource type="FontFile" uid="uid://dme1qj6xofc7m" path="res://_Core/Fonts/Inter/InterDisplay-SemiBold.ttf" id="1_mm1cj"]
 
 [sub_resource type="FontVariation" id="FontVariation_gxwjv"]
 base_font = ExtResource("1_mm1cj")
