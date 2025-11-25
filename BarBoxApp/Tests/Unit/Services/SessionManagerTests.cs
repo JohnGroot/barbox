@@ -60,7 +60,7 @@ public class SessionManagerTests : BackendTestBase
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 
 		// Act
-		var session = _sessionManager.GetPrimaryUserSession();
+		var session = _sessionManager.GetPrimarySession();
 
 		// Assert
 		if (session != null)
@@ -87,7 +87,7 @@ public class SessionManagerTests : BackendTestBase
 
 		if (loginResult.IsSuccess(out var _))
 		{
-			var session = _sessionManager.GetPrimaryUserSession();
+			var session = _sessionManager.GetPrimarySession();
 
 			// Assert
 			session.ShouldNotBeNull("Primary session should exist after login");
@@ -123,7 +123,7 @@ public class SessionManagerTests : BackendTestBase
 		// Assert
 		logoutResult.ShouldBeTrue("Logout should succeed");
 
-		var session = _sessionManager.GetUserSession(TestPlayerPhone);
+		var session = _sessionManager.GetSessionByPhone(TestPlayerPhone);
 		session.ShouldBeNull("Session should not exist after logout");
 		TestHelpers.LogTestInfo("User successfully logged out");
 	}
@@ -176,7 +176,7 @@ public class SessionManagerTests : BackendTestBase
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 
 		// Act
-		var session = _sessionManager.GetUserSession("9999999999");
+		var session = _sessionManager.GetSessionByPhone("9999999999");
 
 		// Assert
 		session.ShouldBeNull("Non-existent session should return null");
@@ -207,7 +207,7 @@ public class SessionManagerTests : BackendTestBase
 			TestHelpers.LogTestInfo($"EventService ready: {eventServiceReady}");
 
 			// Get playerId from session
-			var session = _sessionManager.GetUserSession(TestPlayerPhone);
+			var session = _sessionManager.GetSessionByPhone(TestPlayerPhone);
 			session.ShouldNotBeNull("User session should exist after login");
 			var playerId = session.PlayerId;
 
@@ -254,7 +254,7 @@ public class SessionManagerTests : BackendTestBase
 			var eventServiceReady = eventService.IsReady;
 
 			// Get playerId from session
-			var session = _sessionManager.GetUserSession(TestPlayerPhone);
+			var session = _sessionManager.GetSessionByPhone(TestPlayerPhone);
 			session.ShouldNotBeNull("User session should exist");
 			var playerId = session.PlayerId;
 
@@ -308,10 +308,13 @@ public class SessionManagerTests : BackendTestBase
 
 		try
 		{
-			var initialSession = _sessionManager.GetUserSession(TestPlayerPhone);
+			var initialSession = _sessionManager.GetSessionByPhone(TestPlayerPhone);
 			initialSession.ShouldNotBeNull("User session should exist");
 			var playerId = initialSession.PlayerId;
-			var initialCredits = initialSession.Credits;
+
+			// Get initial credits from CreditService (single source of truth)
+			var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
+			initialCreditsResult.IsSuccess(out var initialCredits).ShouldBeTrue("Should get initial credits");
 
 			// Act - add credits via CreditService
 			var result = await _creditService.AddAsync(playerId, 100, "test");
@@ -319,16 +322,16 @@ public class SessionManagerTests : BackendTestBase
 			// Assert
 			result.IsSuccess(out var newBalance).ShouldBeTrue("Add credits should succeed when EventService ready");
 
-			// CRITICAL: Verify SessionManager.Credits cache was updated via signal relay
-			var updatedSession = _sessionManager.GetUserSession(TestPlayerPhone);
-			updatedSession.ShouldNotBeNull("User session should still exist");
+			// Verify CreditService returns updated balance
+			var updatedCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+			updatedCreditsResult.IsSuccess(out var updatedCredits).ShouldBeTrue("Should get updated credits");
 
 			var expectedCredits = initialCredits + 100;
-			TestHelpers.LogTestInfo($"Credits: {initialCredits} → {updatedSession.Credits} (expected {expectedCredits})");
+			TestHelpers.LogTestInfo($"Credits: {initialCredits} → {updatedCredits} (expected {expectedCredits})");
 
-			updatedSession.Credits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
-				"SessionManager cache should reflect credit addition via signal relay");
-			TestHelpers.LogTestInfo("✓ Credits correctly updated via CreditService → SessionManager signal relay");
+			updatedCredits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
+				"CreditService should reflect credit addition");
+			TestHelpers.LogTestInfo("✓ Credits correctly updated via CreditService");
 		}
 		finally
 		{

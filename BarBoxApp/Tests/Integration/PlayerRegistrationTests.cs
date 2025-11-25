@@ -68,7 +68,7 @@ public class PlayerRegistrationTests : BackendTestBase
 			loginResult.IsSuccess(out var _).ShouldBeTrue($"Login should succeed, but failed: {loginError.Message}");
 		}
 
-		var session = _sessionManager.GetUserSession(TestPlayerPhone);
+		var session = _sessionManager.GetSessionByPhone(TestPlayerPhone);
 		session.ShouldNotBeNull("User session should exist after login");
 		session.LobbySessionId.ShouldNotBe(Guid.Empty,
 			"Lobby session MUST be created during login (session creation 404 bug check!)");

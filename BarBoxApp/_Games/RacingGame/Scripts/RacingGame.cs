@@ -772,7 +772,7 @@ public partial class RacingGame : GameController
 			return;
 		}
 
-		bool isLoggedIn = _sessionManager.GetPrimaryUserSession() != null;
+		bool isLoggedIn = _sessionManager.GetPrimarySession() != null;
 		if (!isLoggedIn)
 		{
 			return;
@@ -780,22 +780,22 @@ public partial class RacingGame : GameController
 
 		// Reset idle timer when starting a premium feature
 		_sessionManager.ResetAllIdleTimers();
-		
+
 		// Check credits only in production mode or when explicitly required
 		bool isDevelopmentMode = Engine.IsEditorHint() || OS.IsDebugBuild();
 		if (TimeTrialCreditCost > 0 && !isDevelopmentMode)
 		{
 			// Set state to waiting for credits during async check
 			_timingSystem?.SetWaitingForCredits();
-			
+
 			if (_sessionManager == null || !IsInstanceValid(_sessionManager))
 			{
 				GD.PrintErr("Time trial cancelled - session system not available");
 				_timingSystem?.StopRacing(); // Reset to idle state
 				return;
 			}
-			
-			var currentSession = _sessionManager.GetPrimaryUserSession();
+
+			var currentSession = _sessionManager.GetPrimarySession();
 			if (currentSession == null)
 			{
 				GD.PrintErr("Time trial cancelled - no active user session");
@@ -803,9 +803,20 @@ public partial class RacingGame : GameController
 				return;
 			}
 			
+			// Fetch credits from CreditService (single source of truth)
+			int currentCredits = 0;
+			if (_creditService != null)
+			{
+				var balanceResult = await _creditService.GetBalanceAsync(currentSession.PlayerId);
+				if (balanceResult.IsSuccess(out var balance))
+				{
+					currentCredits = balance;
+				}
+			}
+
 			// Show confirmation and spend credits via CreditService
-		bool confirmed = await CreditConfirmationHelper.ShowCreditConfirmationAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Time Trial Race", currentSession.Credits);
-		bool creditsSpent = confirmed && _creditService != null && (await _creditService.SpendAsync(currentSession.PlayerId, TimeTrialCreditCost, "Time Trial Race")).IsSuccess(out var _);
+			bool confirmed = await CreditConfirmationHelper.ShowCreditConfirmationAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Time Trial Race", currentCredits);
+			bool creditsSpent = confirmed && _creditService != null && (await _creditService.SpendAsync(currentSession.PlayerId, TimeTrialCreditCost, "Time Trial Race")).IsSuccess(out var _);
 			if (!creditsSpent)
 			{
 				// Credits not spent - don't start the race
@@ -818,7 +829,7 @@ public partial class RacingGame : GameController
 		// Create ActivitySession for the time trial race
 		if (_eventService != null && _sessionManager != null)
 		{
-			var currentSession = _sessionManager.GetPrimaryUserSession();
+			var currentSession = _sessionManager.GetPrimarySession();
 			if (currentSession?.PlayerId != null && currentSession.PlayerId != Guid.Empty)
 			{
 				var locationManager = LocationManager.GetAutoload();
@@ -1551,7 +1562,7 @@ public partial class RacingGame : GameController
 			return;
 		}
 
-		bool isLoggedIn = _sessionManager.GetPrimaryUserSession() != null;
+		bool isLoggedIn = _sessionManager.GetPrimarySession() != null;
 		if (!isLoggedIn)
 		{
 			GD.PrintErr("Race again cancelled - user must be logged in");
@@ -1575,7 +1586,7 @@ public partial class RacingGame : GameController
 				return;
 			}
 
-			var currentSession = _sessionManager.GetPrimaryUserSession();
+			var currentSession = _sessionManager.GetPrimarySession();
 			if (currentSession == null)
 			{
 				GD.PrintErr("Race again cancelled - no active user session");
@@ -1583,8 +1594,19 @@ public partial class RacingGame : GameController
 				return;
 			}
 
+			// Fetch credits from CreditService (single source of truth)
+			int currentCredits = 0;
+			if (_creditService != null)
+			{
+				var balanceResult = await _creditService.GetBalanceAsync(currentSession.PlayerId);
+				if (balanceResult.IsSuccess(out var balance))
+				{
+					currentCredits = balance;
+				}
+			}
+
 			// Show confirmation and spend credits via CreditService
-			bool confirmed = await CreditConfirmationHelper.ShowCreditConfirmationAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Race Again", currentSession.Credits);
+			bool confirmed = await CreditConfirmationHelper.ShowCreditConfirmationAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Race Again", currentCredits);
 			bool creditsSpent = confirmed && _creditService != null && (await _creditService.SpendAsync(currentSession.PlayerId, TimeTrialCreditCost, "Race Again")).IsSuccess(out var _);
 			if (!creditsSpent)
 			{
@@ -1629,7 +1651,7 @@ public partial class RacingGame : GameController
 		}
 
 		// Get primary user for single-user racing context
-		var currentSession = _sessionManager?.GetPrimaryUserSession();
+		var currentSession = _sessionManager?.GetPrimarySession();
 		if (currentSession == null)
 		{
 			GD.PrintErr("[RacingGame] No active user session for credit purchase");
@@ -2021,7 +2043,7 @@ public partial class RacingGame : GameController
 		// Use consistent player ID throughout - phone number when logged in
 		var playerId = GetCurrentGamePlayerId();
 		var gameMode = GetRacingMode();
-		var loggedIn = _sessionManager?.GetPrimaryUserSession() != null;
+		var loggedIn = _sessionManager?.GetPrimarySession() != null;
 		var currentRacingState = _timingSystem?.CurrentRacingState ?? RacingTimingSystem.RacingState.Idle;
 		
 		// Determine if a formal time trial is in progress (vs practice mode)
@@ -2101,7 +2123,7 @@ public partial class RacingGame : GameController
 			var sessionManager = SessionManager.GetInstance();
 			if (sessionManager != null && IsInstanceValid(sessionManager))
 			{
-				var currentSession = sessionManager.GetPrimaryUserSession();
+				var currentSession = sessionManager.GetPrimarySession();
 				if (currentSession != null)
 				{
 					return currentSession.PhoneNumber;

@@ -239,7 +239,7 @@ public partial class MiningState : Node
 
 		// Early return: no valid player session
 		var sessionManager = SessionManager.GetInstance();
-		var currentSession = sessionManager?.GetPrimaryUserSession();
+		var currentSession = sessionManager?.GetPrimarySession();
 		if (currentSession?.PlayerId == null || currentSession.PlayerId == Guid.Empty)
 		{
 			GD.Print("[GameState] No valid player ID - creating default state");
@@ -415,7 +415,7 @@ public partial class MiningState : Node
 			// If this is first-time bonus extraction, emit bonus event
 		if (_firstTimeBonus)
 		{
-			var playerId = _game.GetSessionManager()?.GetPrimaryUserSession()?.PlayerId ?? Guid.Empty;
+			var playerId = _game.GetSessionManager()?.GetPrimarySession()?.PlayerId ?? Guid.Empty;
 			var venueName = eventService.GetVenueName() ?? "default";
 
 			_ = eventService.EmitFirstTimeBonusAsync(playerId, venueName, extractedAmount);
@@ -451,7 +451,7 @@ public partial class MiningState : Node
 			var sessionManager = _game.GetSessionManager();
 			if (sessionManager != null)
 			{
-				var session = sessionManager.GetUserSession(phoneNumber);
+				var session = sessionManager.GetSessionByPhone(phoneNumber);
 				var creditService = CreditService.GetInstance();
 				if (session != null && creditService != null)
 				{

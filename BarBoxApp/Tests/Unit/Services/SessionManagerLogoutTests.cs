@@ -48,7 +48,7 @@ public class SessionManagerLogoutTests : BackendTestBase
 		firstLogout.ShouldBeTrue("First logout should succeed");
 		secondLogout.ShouldBeFalse("Second logout should return false (no session to logout)");
 
-		var session = _sessionManager.GetUserSession(TestPlayerPhone);
+		var session = _sessionManager.GetSessionByPhone(TestPlayerPhone);
 		session.ShouldBeNull("User session should not exist after logout");
 
 		TestHelpers.LogTestInfo("Duplicate logout handled gracefully without backend timeout");
@@ -76,8 +76,8 @@ public class SessionManagerLogoutTests : BackendTestBase
 		await _sessionManager.LogoutNonPrimaryUsersAsync();
 
 		// Assert
-		var primarySession = _sessionManager.GetUserSession(primaryPhone);
-		var secondarySession = _sessionManager.GetUserSession(secondaryPhone);
+		var primarySession = _sessionManager.GetSessionByPhone(primaryPhone);
+		var secondarySession = _sessionManager.GetSessionByPhone(secondaryPhone);
 
 		primarySession.ShouldNotBeNull("Primary user (first logged in) should remain logged in");
 		secondarySession.ShouldBeNull("Secondary user should be logged out");
@@ -132,7 +132,7 @@ public class SessionManagerLogoutTests : BackendTestBase
 		logoutSignalCount.ShouldBe(1, "UserLoggedOut signal should be emitted exactly ONCE for secondary user");
 		logoutResult.ShouldBeFalse("Second logout attempt should return false (user already logged out)");
 
-		var secondarySession = _sessionManager.GetUserSession(secondaryPhone);
+		var secondarySession = _sessionManager.GetSessionByPhone(secondaryPhone);
 		secondarySession.ShouldBeNull("Secondary user should be logged out after first path");
 
 		TestHelpers.LogTestInfo("Duplicate logout prevented - no backend timeout occurred");

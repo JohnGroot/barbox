@@ -298,7 +298,7 @@ public partial class MiningGame : GameController
 					if (!string.IsNullOrEmpty(phoneNumber))
 					{
 						var sessionManager = SessionManager.GetInstance();
-						var currentSession = sessionManager?.GetPrimaryUserSession();
+						var currentSession = sessionManager?.GetPrimarySession();
 
 						if (currentSession?.PlayerId != null && currentSession.PlayerId != Guid.Empty)
 						{
@@ -577,7 +577,7 @@ public partial class MiningGame : GameController
 			var sessionManager = SessionManager.GetInstance();
 			if (sessionManager != null && IsInstanceValid(sessionManager))
 			{
-				var currentSession = sessionManager.GetPrimaryUserSession();
+				var currentSession = sessionManager.GetPrimarySession();
 				if (currentSession != null)
 				{
 					return currentSession.PhoneNumber;
@@ -619,7 +619,7 @@ public partial class MiningGame : GameController
 			StartMiningSession();
 
 			// Fetch username from session for logging
-			var session = _sessionManager?.GetUserSession(phoneNumber);
+			var session = _sessionManager?.GetSessionByPhone(phoneNumber);
 			var userName = session?.UserName ?? string.Empty;
 
 			GD.Print($"[MiningGame] User logged in: {userName} ({phoneNumber})");

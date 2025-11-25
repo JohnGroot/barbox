@@ -2140,7 +2140,7 @@ namespace BarBox.Games.Racing
 			var sessionManager = SessionManager.GetInstance();
 			if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
 			{
-				var currentSession = sessionManager.GetPrimaryUserSession();
+				var currentSession = sessionManager.GetPrimarySession();
 				if (currentSession != null)
 				{
 					// First, try to get username from cached GlobalData if available
@@ -2213,7 +2213,7 @@ namespace BarBox.Games.Racing
 			var sessionManager = SessionManager.GetInstance();
 			if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
 			{
-				var currentSession = sessionManager.GetPrimaryUserSession();
+				var currentSession = sessionManager.GetPrimarySession();
 				if (currentSession != null)
 				{
 					return currentSession.PhoneNumber;

@@ -535,7 +535,7 @@ public async void PurchaseCredits_BackendDown_FailsWithDiagnostics()
     if (!CanSimulateFailures()) return;
 
     var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-    var initialCredits = _sessionManager.GetUserSession(TestPlayerPhone).Credits;
+    var initialCredits = _sessionManager.GetSessionByPhone(TestPlayerPhone).Credits;
 
     try
     {
@@ -553,7 +553,7 @@ public async void PurchaseCredits_BackendDown_FailsWithDiagnostics()
         }
 
         // Verify credits unchanged
-        var finalCredits = _sessionManager.GetUserSession(TestPlayerPhone).Credits;
+        var finalCredits = _sessionManager.GetSessionByPhone(TestPlayerPhone).Credits;
         if (finalCredits != initialCredits)
         {
             TestHelpers.LogTestError($"Credits changed: {initialCredits} → {finalCredits}");

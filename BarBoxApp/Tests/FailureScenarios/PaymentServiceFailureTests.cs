@@ -16,6 +16,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 {
 	private PaymentService _paymentService;
 	private SessionManager _sessionManager;
+	private CreditService _creditService;
 
 	public PaymentServiceFailureTests(Node testScene) : base(testScene)
 	{
@@ -27,6 +28,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 		base.SetupFailureScenario();
 		_paymentService = GetPaymentService();
 		_sessionManager = GetSessionManager();
+		_creditService = GetCreditService();
 	}
 
 	[Test]
@@ -93,9 +95,12 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			return;
 		}
 
-		var initialSession = _sessionManager.GetUserSession(TestPlayerPhone);
-		var initialCredits = initialSession.Credits;
+		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 		var creditPack = new CreditPack(25, 25.00m);
+
+		// Get initial credits from CreditService (single source of truth)
+		var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
+		initialCreditsResult.IsSuccess(out var initialCredits).ShouldBeTrue("Should get initial credits");
 
 		try
 		{
@@ -103,13 +108,12 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			SimulateEventServiceNotReady();
 
 			// Act
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 			// Assert - Credits must NOT change despite payment approval
-			var finalSession = _sessionManager.GetUserSession(TestPlayerPhone);
-			finalSession.ShouldNotBeNull("User session should exist");
-			var finalCredits = finalSession.Credits;
+			RestoreEventServiceReady(); // Need to restore to check credits
+			var finalCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+			finalCreditsResult.IsSuccess(out var finalCredits).ShouldBeTrue("Should get final credits");
 
 			finalCredits.ShouldBe(initialCredits,
 				$"REGRESSION: Credits should not change when purchase fails (was {initialCredits}, now {finalCredits})");
@@ -238,37 +242,39 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			return;
 		}
 
-		var initialSession = _sessionManager.GetUserSession(TestPlayerPhone);
-		var initialCredits = initialSession.Credits;
+		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 		var creditPack = new CreditPack(10, 10.00m);
+
+		// Get initial credits from CreditService (single source of truth)
+		var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
+		initialCreditsResult.IsSuccess(out var initialCredits).ShouldBeTrue("Should get initial credits");
 
 		try
 		{
 			// Purchase 1: Fails (backend down)
 			SimulateEventServiceNotReady();
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 			var result1 = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
-			var afterFailure = _sessionManager.GetUserSession(TestPlayerPhone);
-			afterFailure.ShouldNotBeNull("Session should exist after failed purchase");
-			TestHelpers.LogTestInfo($"After failed purchase: {afterFailure.Credits} credits");
+			// Note: Can't check credits while EventService is down
+			TestHelpers.LogTestInfo($"After failed purchase attempt (EventService down)");
 
 			// Purchase 2: Succeeds (backend up)
 			RestoreEventServiceReady();
 			await TestHelpers.WaitForConditionAsync(() => true, 0.1f); // Brief delay for state propagation
 			var result2 = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
-			var afterSuccess = _sessionManager.GetUserSession(TestPlayerPhone);
-			afterSuccess.ShouldNotBeNull("Session should exist after successful purchase");
-			TestHelpers.LogTestInfo($"After successful purchase: {afterSuccess.Credits} credits");
+			// Verify credits via CreditService
+			var afterSuccessResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+			afterSuccessResult.IsSuccess(out var afterSuccessCredits).ShouldBeTrue("Should get credits after success");
+			TestHelpers.LogTestInfo($"After successful purchase: {afterSuccessCredits} credits");
 
 			// Assert
 			result1.IsSuccess.ShouldBeFalse("First purchase should fail");
 			result2.IsSuccess.ShouldBeTrue("Second purchase should succeed");
 
 			var expectedCredits = initialCredits + creditPack.Credits;
-			afterSuccess.Credits.ShouldBe(expectedCredits,
-				$"State inconsistent: expected {expectedCredits}, got {afterSuccess.Credits}");
+			afterSuccessCredits.ShouldBe(expectedCredits,
+				$"State inconsistent: expected {expectedCredits}, got {afterSuccessCredits}");
 			TestHelpers.LogTestInfo("✓ State consistent: only successful purchase added credits");
 		}
 		finally

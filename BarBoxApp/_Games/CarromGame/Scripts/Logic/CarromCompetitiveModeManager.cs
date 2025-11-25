@@ -1247,7 +1247,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	{
 		if (_sessionManager == null) return;
 
-		var userSession = _sessionManager.GetPrimaryUserSession();
+		var userSession = _sessionManager.GetPrimarySession();
 		if (userSession != null)
 		{
 			// TODO: Event-sourced - carrom games tracked via backend events

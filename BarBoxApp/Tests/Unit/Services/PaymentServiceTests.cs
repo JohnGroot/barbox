@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using Chickensoft.GoDotTest;
 using Godot;
@@ -15,6 +16,7 @@ public class PaymentServiceTests : BackendTestBase
 	private PaymentService _paymentService;
 	private SessionManager _sessionManager;
 	private EventService _eventService;
+	private CreditService _creditService;
 
 	public PaymentServiceTests(Node testScene) : base(testScene)
 	{
@@ -27,6 +29,7 @@ public class PaymentServiceTests : BackendTestBase
 		_paymentService = GetPaymentService();
 		_sessionManager = GetSessionManager();
 		_eventService = GetEventService();
+		_creditService = GetCreditService();
 	}
 
 	[Test]
@@ -56,13 +59,28 @@ public class PaymentServiceTests : BackendTestBase
 				return;
 			}
 
-			// Get initial credits
-			var initialSession = _sessionManager.GetUserSession(TestPlayerPhone);
+			// Get initial credits from CreditService (single source of truth)
+			var initialSession = _sessionManager.GetSessionByPhone(TestPlayerPhone);
 			initialSession.ShouldNotBeNull("User session should exist after login");
-			var initialCredits = initialSession.Credits;
+			var playerId = initialSession.PlayerId; // Use session's PlayerId directly
+			playerId.ShouldNotBe(Guid.Empty, "Session should have valid PlayerId after login");
+			TestHelpers.LogTestInfo($"Getting balance for playerId: {playerId}");
+
+			var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
+			if (initialCreditsResult.IsFailure(out var creditsError))
+			{
+				// Skip test if backend connection fails - this is an infrastructure issue, not a code bug
+				if (creditsError.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+				    creditsError.Message.Contains("Connection", StringComparison.OrdinalIgnoreCase))
+				{
+					TestHelpers.LogTestWarning($"Test skipped - backend connection issue: {creditsError.Message}");
+					return;
+				}
+				TestHelpers.LogTestError($"GetBalanceAsync failed: {creditsError.Message}");
+			}
+			initialCreditsResult.IsSuccess(out var initialCredits).ShouldBeTrue($"Should get initial credits - error: {(initialCreditsResult.IsFailure(out var err) ? err.Message : "N/A")}");
 
 			// Act
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 			// Assert
@@ -70,14 +88,14 @@ public class PaymentServiceTests : BackendTestBase
 			result.TransactionId.ShouldNotBeNullOrEmpty("Transaction ID should be set");
 			TestHelpers.LogTestInfo($"Credits purchased: Transaction {result.TransactionId}");
 
-			// Verify credits were added
-			var updatedSession = _sessionManager.GetUserSession(TestPlayerPhone);
-			updatedSession.ShouldNotBeNull("User session should still exist");
+			// Verify credits were added via CreditService
+			var updatedCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+			updatedCreditsResult.IsSuccess(out var updatedCredits).ShouldBeTrue("Should get updated credits");
 			var expectedCredits = initialCredits + creditPack.Credits;
 
-			updatedSession.Credits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
+			updatedCredits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
 				$"Credits should be at least {expectedCredits} after purchase");
-			TestHelpers.LogTestInfo($"Credits correctly added: {updatedSession.Credits} (expected >= {expectedCredits})");
+			TestHelpers.LogTestInfo($"Credits correctly added: {updatedCredits} (expected >= {expectedCredits})");
 		}
 		finally
 		{
@@ -215,12 +233,26 @@ public class PaymentServiceTests : BackendTestBase
 				return;
 			}
 
-			var initialSession = _sessionManager.GetUserSession(TestPlayerPhone);
+			var initialSession = _sessionManager.GetSessionByPhone(TestPlayerPhone);
 			initialSession.ShouldNotBeNull("User session should exist");
-			var initialCredits = initialSession.Credits;
+			var playerId = initialSession.PlayerId; // Use session's PlayerId directly
+			playerId.ShouldNotBe(Guid.Empty, "Session should have valid PlayerId after login");
+
+			// Get initial credits from CreditService (single source of truth)
+			var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
+			if (initialCreditsResult.IsFailure(out var creditsError))
+			{
+				// Skip test if backend connection fails - this is an infrastructure issue, not a code bug
+				if (creditsError.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+				    creditsError.Message.Contains("Connection", StringComparison.OrdinalIgnoreCase))
+				{
+					TestHelpers.LogTestWarning($"Test skipped - backend connection issue: {creditsError.Message}");
+					return;
+				}
+			}
+			initialCreditsResult.IsSuccess(out var initialCredits).ShouldBeTrue($"Should get initial credits - error: {(initialCreditsResult.IsFailure(out var err) ? err.Message : "N/A")}");
 
 			// Act - Purchase three times
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 			var result1 = await _paymentService.PurchaseCreditsAsync(playerId, smallPack);
 			var result2 = await _paymentService.PurchaseCreditsAsync(playerId, smallPack);
 			var result3 = await _paymentService.PurchaseCreditsAsync(playerId, smallPack);
@@ -230,13 +262,14 @@ public class PaymentServiceTests : BackendTestBase
 			result2.IsSuccess.ShouldBeTrue($"Second purchase should succeed: {result2.ErrorMessage}");
 			result3.IsSuccess.ShouldBeTrue($"Third purchase should succeed: {result3.ErrorMessage}");
 
-			var finalSession = _sessionManager.GetUserSession(TestPlayerPhone);
-			finalSession.ShouldNotBeNull("User session should still exist");
+			// Verify credits via CreditService
+			var finalCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+			finalCreditsResult.IsSuccess(out var finalCredits).ShouldBeTrue("Should get final credits");
 			var expectedCredits = initialCredits + (smallPack.Credits * 3);
 
-			finalSession.Credits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
+			finalCredits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
 				"Credits should accumulate correctly across multiple purchases");
-			TestHelpers.LogTestInfo($"All purchases succeeded. Credits: {finalSession.Credits} (expected >= {expectedCredits})");
+			TestHelpers.LogTestInfo($"All purchases succeeded. Credits: {finalCredits} (expected >= {expectedCredits})");
 		}
 		finally
 		{

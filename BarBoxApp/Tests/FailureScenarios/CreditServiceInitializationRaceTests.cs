@@ -152,14 +152,16 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 			return;
 		}
 
-		var initialSession = _sessionManager.GetUserSession(TestPlayerPhone);
-		var initialCredits = initialSession.Credits;
+		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 		var creditPack = new CreditPack(25, 25.00m);
+
+		// Get initial credits from CreditService (single source of truth)
+		var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
+		initialCreditsResult.IsSuccess(out var initialCredits).ShouldBeTrue("Should get initial credits");
 
 		try
 		{
 			// Act - attempt purchase (this is the exact production scenario)
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 			var paymentService = GetPaymentService();
 			var purchaseResult = await paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
@@ -178,8 +180,9 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 				TestHelpers.LogTestError($"   This matches production logs exactly!");
 
 				// Verify credits were NOT added (correct behavior for failed purchase)
-				var finalSession = _sessionManager.GetUserSession(TestPlayerPhone);
-				finalSession.Credits.ShouldBe(initialCredits,
+				var finalCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+				finalCreditsResult.IsSuccess(out var finalCredits).ShouldBeTrue("Should get final credits");
+				finalCredits.ShouldBe(initialCredits,
 					"Credits should not change when purchase fails");
 
 				// This assertion will FAIL with current buggy code
@@ -192,10 +195,11 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 			{
 				TestHelpers.LogTestInfo("✓ Purchase succeeded (bug is fixed!)");
 
-				// Verify credits were added
-				var finalSession = _sessionManager.GetUserSession(TestPlayerPhone);
+				// Verify credits were added via CreditService
+				var finalCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+				finalCreditsResult.IsSuccess(out var finalCredits).ShouldBeTrue("Should get final credits");
 				var expectedCredits = initialCredits + creditPack.Credits;
-				finalSession.Credits.ShouldBe(expectedCredits,
+				finalCredits.ShouldBe(expectedCredits,
 					"Credits should be added after successful purchase");
 			}
 		}

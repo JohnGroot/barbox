@@ -1602,7 +1602,7 @@ public partial class CarromGame : GameController
 			var sessionManager = SessionManager.GetInstance();
 			if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
 			{
-				var currentSession = sessionManager.GetPrimaryUserSession();
+				var currentSession = sessionManager.GetPrimarySession();
 				if (currentSession != null)
 				{
 					return currentSession.PhoneNumber;

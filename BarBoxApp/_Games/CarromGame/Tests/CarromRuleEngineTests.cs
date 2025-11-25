@@ -55,7 +55,7 @@ public class CarromRuleEngineTests : TestClass
 	}
 
 	[Test]
-	public void EvaluatePocketedPiece_OpponentPiece_ReturnsFoul()
+	public void EvaluatePocketedPiece_OpponentPiece_IsValidForOpponent()
 	{
 		// Arrange
 		var playerState = CreateTestPlayer(PieceType.White, piecesPocketed: 2);
@@ -67,11 +67,9 @@ public class CarromRuleEngineTests : TestClass
 			playerState,
 			turnContext);
 
-		// Assert
-		result.IsFoul.ShouldBeTrue();
-		result.IsValid.ShouldBeFalse();
-		result.FoulType.ShouldBe(FoulType.OpponentPiecePocketed);
-		result.ShouldReturnPiece.ShouldBeTrue();
+		// Assert - Per ICF Rules 74-76: Opponent pieces remain pocketed and count for opponent
+		result.IsValid.ShouldBeTrue();
+		result.IsFoul.ShouldBeFalse();
 	}
 
 	// ================================================================
@@ -184,7 +182,7 @@ public class CarromRuleEngineTests : TestClass
 	}
 
 	[Test]
-	public void CalculateFoulPenalty_OpponentPieceFoul_ReturnsPenalty()
+	public void CalculateFoulPenalty_OpponentPieceFoul_ReturnsNoPenalty()
 	{
 		// Arrange
 		var playerState = CreateTestPlayer(PieceType.White, piecesPocketed: 2);
@@ -194,9 +192,9 @@ public class CarromRuleEngineTests : TestClass
 			FoulType.OpponentPiecePocketed,
 			playerState);
 
-		// Assert
-		penalty.PiecesToReturn.ShouldBe(1);
-		penalty.PreferredPieceType.ShouldBe(PieceType.White);
+		// Assert - Per ICF Rules: Opponent piece pocketing is valid, no penalty
+		// This foul type should never occur in practice since opponent pieces stay pocketed
+		penalty.PiecesToReturn.ShouldBe(0);
 	}
 
 	[Test]

@@ -17,6 +17,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 	private SessionManager _sessionManager;
 	private EventService _eventService;
 	private BackendManager _backendManager;
+	private CreditService _creditService;
 
 	public CreditPurchaseFlowTests(Node testScene) : base(testScene)
 	{
@@ -30,6 +31,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		_sessionManager = GetSessionManager();
 		_eventService = GetEventService();
 		_backendManager = GetBackendManager();
+		_creditService = GetCreditService();
 	}
 
 	[Test]
@@ -51,14 +53,14 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		}
 
 		var creditPack = new CreditPack(25, 25.00m);
+		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 
-		// Get initial credits
-		var initialSession = _sessionManager.GetUserSession(TestPlayerPhone);
-		var initialCredits = initialSession.Credits;
+		// Get initial credits from CreditService (single source of truth)
+		var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
+		initialCreditsResult.IsSuccess(out var initialCredits).ShouldBeTrue("Should get initial credits");
 		TestHelpers.LogTestInfo($"Initial credits: {initialCredits}");
 
 		// Act - Execute complete purchase flow
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 		var purchaseResult = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 		// Assert
@@ -66,15 +68,15 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		purchaseResult.TransactionId.ShouldNotBeNullOrEmpty("Transaction ID should be set");
 		TestHelpers.LogTestInfo($"Purchase succeeded: {purchaseResult.TransactionId}");
 
-		// Verify session credits updated
-		var updatedSession = _sessionManager.GetUserSession(TestPlayerPhone);
-		updatedSession.ShouldNotBeNull("User session should exist after purchase");
-		TestHelpers.LogTestInfo($"User credits after purchase: {updatedSession.Credits}");
+		// Verify credits updated via CreditService
+		var updatedCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+		updatedCreditsResult.IsSuccess(out var updatedCredits).ShouldBeTrue("Should get updated credits");
+		TestHelpers.LogTestInfo($"User credits after purchase: {updatedCredits}");
 
 		var expectedCredits = initialCredits + creditPack.Credits;
-		updatedSession.Credits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
+		updatedCredits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
 			$"Credits should be at least {expectedCredits} after purchase");
-		TestHelpers.LogTestInfo($"✓ Credits correctly added to session");
+		TestHelpers.LogTestInfo($"✓ Credits correctly added");
 
 		// Verify backend has record
 		var backendCredits = await _eventService.GetPlayerCreditsAsync(playerId);
@@ -184,12 +186,14 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		}
 
 		var smallPack = new CreditPack(5, 5.00m);
-		var initialSession = _sessionManager.GetUserSession(TestPlayerPhone);
-		var initialCredits = initialSession.Credits;
+		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+
+		// Get initial credits from CreditService (single source of truth)
+		var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
+		initialCreditsResult.IsSuccess(out var initialCredits).ShouldBeTrue("Should get initial credits");
 
 		// Act - Launch concurrent purchases
 		TestHelpers.LogTestInfo("Starting concurrent purchases...");
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 		var task1 = _paymentService.PurchaseCreditsAsync(playerId, smallPack);
 		var task2 = _paymentService.PurchaseCreditsAsync(playerId, smallPack);
 		var task3 = _paymentService.PurchaseCreditsAsync(playerId, smallPack);
@@ -209,12 +213,13 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		TestHelpers.LogTestInfo($"Concurrent purchases: {successCount}/3 succeeded");
 		successCount.ShouldBeGreaterThan(0, "At least one concurrent purchase should succeed");
 
-		var finalSession = _sessionManager.GetUserSession(TestPlayerPhone);
-		finalSession.ShouldNotBeNull("User session should exist");
+		// Verify credits via CreditService
+		var finalCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+		finalCreditsResult.IsSuccess(out var finalCredits).ShouldBeTrue("Should get final credits");
 		var expectedMinCredits = initialCredits + (smallPack.Credits * successCount);
 
-		TestHelpers.LogTestInfo($"Final credits: {finalSession.Credits} (expected >= {expectedMinCredits})");
-		finalSession.Credits.ShouldBeGreaterThanOrEqualTo(expectedMinCredits,
+		TestHelpers.LogTestInfo($"Final credits: {finalCredits} (expected >= {expectedMinCredits})");
+		finalCredits.ShouldBeGreaterThanOrEqualTo(expectedMinCredits,
 			$"Credits should be at least {expectedMinCredits} from {successCount} successful purchases");
 		TestHelpers.LogTestInfo("✓ Credits correctly accumulated from concurrent purchases");
 

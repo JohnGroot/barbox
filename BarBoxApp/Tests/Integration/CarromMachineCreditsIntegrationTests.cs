@@ -91,8 +91,12 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 			return;
 		}
 
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
-		var addCreditsResult = await _eventService.AddCreditsAsync(playerId, 100, "Test setup");
+		var session = _sessionManager.GetSessionByPhone(TestPlayerPhone);
+		session.ShouldNotBeNull("User session should exist after login");
+		var playerId = session.PlayerId;
+		var lobbySessionId = session.LobbySessionId;
+
+		var addCreditsResult = await _eventService.AddCreditsAsync(playerId, 100, "Test setup", lobbySessionId);
 
 		if (addCreditsResult.IsFailure(out var addError))
 		{
@@ -109,9 +113,6 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 
 		// Get required parameters for deposit
 		var boxId = TestBoxId;
-		var session = _sessionManager.GetUserSession(TestPlayerPhone);
-		session.ShouldNotBeNull("User session should exist after login");
-		var lobbySessionId = session.LobbySessionId;
 
 		// Act - TWO-STEP PROCESS: Transfer credits from player to machine
 		// Step 1: Spend credits from player account (with polling)
@@ -162,8 +163,12 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 			return;
 		}
 
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
-		var addCreditsResult = await _eventService.AddCreditsAsync(playerId, 100, "Test setup");
+		var session = _sessionManager.GetSessionByPhone(TestPlayerPhone);
+		session.ShouldNotBeNull("User session should exist after login");
+		var playerId = session.PlayerId;
+		var lobbySessionId = session.LobbySessionId;
+
+		var addCreditsResult = await _eventService.AddCreditsAsync(playerId, 100, "Test setup", lobbySessionId);
 
 		if (addCreditsResult.IsFailure(out var addError))
 		{
@@ -174,9 +179,6 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 
 		// Deposit credits to machine - TWO-STEP SETUP:
 		var boxId = TestBoxId;
-		var session = _sessionManager.GetUserSession(TestPlayerPhone);
-		session.ShouldNotBeNull("User session should exist after login");
-		var lobbySessionId = session.LobbySessionId;
 
 		// Step 1: Spend from player account
 		var spendResult = await _creditService.SpendAsync(playerId, 10, "Setup credits");
@@ -212,6 +214,12 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 		sessionResult.IsSuccess(out var gameSessionId).ShouldBeTrue();
 		TestHelpers.LogTestInfo($"Created game session: {gameSessionId}");
 
+		// Capture balance BEFORE consuming (machine pot may have accumulated from prior tests)
+		var beforeConsumeResult = await _eventService.GetMachineCreditsAsync("carrom", TestBoxId);
+		beforeConsumeResult.IsSuccess(out var beforeState).ShouldBeTrue("Should get balance before consume");
+		var balanceBeforeConsume = beforeState.Balance;
+		TestHelpers.LogTestInfo($"Machine balance before consume: {balanceBeforeConsume}");
+
 		// Act - Consume credits from machine pot
 		var consumeResult = await _eventService.ConsumeMachineCreditsAsync(
 			"carrom", TestBoxId, 8, gameSessionId);
@@ -222,8 +230,8 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 			"404 error indicates URL path mismatch. " +
 			"Expected: POST /machine-credits/carrom/consume");
 
-		machineState.Balance.ShouldBe(2,
-			"Balance should decrease by consume amount (10 - 8 = 2)");
+		machineState.Balance.ShouldBe(balanceBeforeConsume - 8,
+			$"Balance should decrease by 8 (from {balanceBeforeConsume} to {balanceBeforeConsume - 8})");
 
 		TestHelpers.LogTestInfo($"✓ Machine balance correctly decreased to {machineState.Balance}");
 

@@ -183,8 +183,8 @@ public class EventServiceTests : BackendTestBase
 			return;
 		}
 
-		// Act - try to add credits when not initialized
-		var result = await _eventService.AddCreditsAsync(TestPlayerId, 100, "test");
+		// Act - try to add credits when not initialized (lobbySessionId doesn't matter for this test)
+		var result = await _eventService.AddCreditsAsync(TestPlayerId, 100, "test", Guid.NewGuid());
 
 		// Assert
 		result.IsFailure(out var error).ShouldBeTrue("Should fail when EventService not ready");
@@ -249,7 +249,7 @@ public class EventServiceTests : BackendTestBase
 		{
 			// Test various operations fail gracefully
 			var sessionResult = await _eventService.CreateActivitySessionAsync(TestBoxId, TestPlayerId, "test");
-			var creditResult = await _eventService.AddCreditsAsync(TestPlayerId, 10, "test");
+			var creditResult = await _eventService.AddCreditsAsync(TestPlayerId, 10, "test", Guid.NewGuid());
 
 			// Assert
 			var sessionSuccess = sessionResult.IsSuccess(out var _);
