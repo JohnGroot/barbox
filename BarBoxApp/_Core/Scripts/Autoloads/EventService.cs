@@ -37,17 +37,6 @@ public partial class EventService : AutoloadBase
 	// Detect HTTPS from URL scheme (not from port or environment flags)
 	private static readonly bool USE_HTTPS = BASE_URL.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
 
-	// Deprecation warning for old BARBOX_USE_HTTPS environment variable
-	static EventService()
-	{
-		var oldEnvVar = System.Environment.GetEnvironmentVariable("BARBOX_USE_HTTPS");
-		if (oldEnvVar != null)
-		{
-			GD.PrintErr("[EventService] WARNING: BARBOX_USE_HTTPS environment variable is deprecated.");
-			GD.PrintErr("[EventService] Use BARBOX_BACKEND_URL instead (e.g., BARBOX_BACKEND_URL=\"https://api.barbox.com\")");
-		}
-	}
-
 	private const int REQUEST_TIMEOUT_MS = 5000;
 	private const int POLL_INTERVAL_MS = 10;
 
@@ -320,8 +309,6 @@ public partial class EventService : AutoloadBase
 		}
 	}
 
-	private Guid _lobbySessionId = Guid.Empty;
-
 	/// <summary>
 	/// Create a lobby session for a logged-in player
 	/// Lobby sessions are long-lived and receive user-scoped events (credit, login, logout)
@@ -404,8 +391,6 @@ public partial class EventService : AutoloadBase
 			if (response != null && response.ContainsKey("id"))
 			{
 				var sessionId = Guid.Parse(response["id"].ToString());
-				_lobbySessionId = sessionId;
-
 				LogInfo($"Lobby session created: {sessionId}");
 				CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.SessionCreated, sessionId.ToString());
 				return Result.Success(sessionId);
@@ -421,11 +406,6 @@ public partial class EventService : AutoloadBase
 			return Result.Failure<Guid>($"Lobby session creation exception: {ex.Message}");
 		}
 	}
-
-	/// <summary>
-	/// Get current lobby session ID
-	/// </summary>
-	public Guid GetLobbySessionId() => _lobbySessionId;
 
 	/// <summary>
 	/// Submit gameplay event to backend
@@ -510,22 +490,20 @@ public partial class EventService : AutoloadBase
 
 	/// <summary>
 	/// Submit user-level event to backend (login, logout, credit purchases)
-	/// Posts events to the specified or active lobby session
+	/// Posts events to the specified lobby session
 	/// </summary>
-	/// <param name="lobbySessionId">Optional explicit lobby session ID. If null, uses global _lobbySessionId</param>
-	public async Task<Result<bool>> EmitUserEventAsync(Guid playerId, string eventType, object payload, Guid? lobbySessionId = null)
+	/// <param name="lobbySessionId">Lobby session ID (from UserSession.LobbySessionId)</param>
+	public async Task<Result<bool>> EmitUserEventAsync(Guid playerId, string eventType, object payload, Guid lobbySessionId)
 	{
 		if (!IsReady)
 			return Result.Failure<bool>("EventService not initialized - backend not ready");
 
-		// Use provided lobby session ID or fall back to global
-		var sessionId = lobbySessionId ?? _lobbySessionId;
-
-		// Check if we have an active lobby session
-		if (sessionId == Guid.Empty)
+		if (lobbySessionId == Guid.Empty)
 		{
-			return Result.Failure<bool>("No active lobby session - call CreateLobbySessionAsync first or provide explicit lobby session ID");
+			return Result.Failure<bool>("Invalid lobby session ID - ensure player has an active lobby session");
 		}
+
+		var sessionId = lobbySessionId;
 
 		try
 		{
@@ -583,7 +561,7 @@ public partial class EventService : AutoloadBase
 				LogInfo($"[HTTP] Status after response read: {_httpClient.GetStatus()}");
 #endif
 
-				LogInfo($"User event submitted: {eventType} to lobby session {_lobbySessionId}");
+				LogInfo($"User event submitted: {eventType} to lobby session {sessionId}");
 				return Result.Success(true);
 			}
 
@@ -1099,8 +1077,8 @@ public partial class EventService : AutoloadBase
 	/// Emit credit earn event to backend
 	/// Uses user-scoped events - does not require ActivitySession
 	/// </summary>
-	/// <param name="lobbySessionId">Optional explicit lobby session ID. If null, uses global _lobbySessionId</param>
-	public async Task<Result<bool>> AddCreditsAsync(Guid playerId, int amount, string reason = "", Guid? lobbySessionId = null)
+	/// <param name="lobbySessionId">Lobby session ID (from UserSession.LobbySessionId)</param>
+	public async Task<Result<bool>> AddCreditsAsync(Guid playerId, int amount, string reason, Guid lobbySessionId)
 	{
 		var payload = new
 		{
@@ -1116,8 +1094,8 @@ public partial class EventService : AutoloadBase
 	/// Emit credit spend event to backend
 	/// Uses user-scoped events - does not require ActivitySession
 	/// </summary>
-	/// <param name="lobbySessionId">Optional explicit lobby session ID. If null, uses global _lobbySessionId</param>
-	public async Task<Result<bool>> SpendCreditsAsync(Guid playerId, int amount, string reason = "", Guid? lobbySessionId = null)
+	/// <param name="lobbySessionId">Lobby session ID (from UserSession.LobbySessionId)</param>
+	public async Task<Result<bool>> SpendCreditsAsync(Guid playerId, int amount, string reason, Guid lobbySessionId)
 	{
 		var payload = new
 		{
@@ -1202,6 +1180,7 @@ public partial class EventService : AutoloadBase
 		var headers = new List<string>
 		{
 			$"X-Box-API-Key: {_boxApiKey}",
+			$"X-Box-ID: {_boxId}",
 			"User-Agent: BarBox-Client/1.0"
 		};
 
@@ -1411,7 +1390,7 @@ public partial class EventService : AutoloadBase
 			return Guid.Empty;
 		}
 
-		var session = sessionManager.GetUserSession(phoneNumber);
+		var session = sessionManager.GetSessionByPhone(phoneNumber);
 		if (session == null)
 		{
 			GD.PrintErr($"[EventService] No active session found for phone: {phoneNumber}");
@@ -1467,32 +1446,4 @@ public partial class EventService : AutoloadBase
 		_httpClient?.Close();
 		_httpClient = null;
 	}
-}
-
-// Machine Credits DTOs for request body payloads
-public partial class MachineCreditsDepositRequest
-{
-	[JsonPropertyName("box_id")]
-	public Guid BoxId { get; set; }
-
-	[JsonPropertyName("player_id")]
-	public Guid PlayerId { get; set; }
-
-	[JsonPropertyName("amount")]
-	public int Amount { get; set; }
-
-	[JsonPropertyName("lobby_session_id")]
-	public Guid LobbySessionId { get; set; }
-}
-
-public partial class MachineCreditsConsumeRequest
-{
-	[JsonPropertyName("box_id")]
-	public Guid BoxId { get; set; }
-
-	[JsonPropertyName("amount")]
-	public int Amount { get; set; }
-
-	[JsonPropertyName("game_session_id")]
-	public Guid GameSessionId { get; set; }
 }

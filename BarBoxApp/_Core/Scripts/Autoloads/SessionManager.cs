@@ -19,20 +19,21 @@ namespace BarBox.Core.Autoloads;
 ///
 /// PRIMARY USER CONCEPT:
 /// - Primary user = first logged-in user (for UI display and single-user convenience)
-/// - Use GetPrimaryUserSession() for:
+/// - Use GetPrimarySession() for:
 ///   * TopMenuBar/UI display (showing "a" user)
 ///   * Single-user game contexts (Racing, Mining)
 ///   * Auto-populate convenience (first slot in multiplayer setup)
 ///   * Fallback scenarios (GameHost.GetUserSession)
 ///
 /// MULTI-USER PATTERNS:
-/// - Multi-user games MUST use GetUserSession(phoneNumber) for explicit targeting
+/// - Multi-user games MUST use GetSessionByPhone(phoneNumber) for explicit targeting
 /// - Example: CarromPlayerSetupMenu tracks users per slot explicitly
 /// - User-specific operations (BuyCredits, logout) require explicit phone number
 ///
 /// API USAGE:
-/// - GetPrimaryUserSession() → Primary user (UI/single-user contexts)
-/// - GetUserSession(phoneNumber) → Specific user (multi-user contexts)
+/// - GetSession(playerId) → Primary API for backend operations (O(1) lookup by player ID)
+/// - GetPrimarySession() → Primary user (UI/single-user contexts)
+/// - GetSessionByPhone(phoneNumber) → Specific user (multi-user contexts)
 /// - LoginUserByPhoneAsync(phone, pin) → Authenticate user
 /// - LogoutUserAsync(phoneNumber) → Logout specific user
 /// </summary>
@@ -40,11 +41,8 @@ public partial class SessionManager : AutoloadBase
 {
 	[Signal] public delegate void UserLoggedInEventHandler(string phoneNumber);
 	[Signal] public delegate void UserLoggedOutEventHandler(string phoneNumber);
-	[Signal] public delegate void CreditsSpentEventHandler(string phoneNumber, int amount, string reason);
-	[Signal] public delegate void CreditsEarnedEventHandler(string phoneNumber, int amount, string reason);
 
 	private EventService _eventService;
-	private CreditService _creditService;
 	private Dictionary<string, UserSession> _activeSessions = new();
 	private Dictionary<Guid, UserSession> _sessionsByPlayerId = new(); // Secondary index for O(1) lookup by PlayerId
 	private Godot.Timer _idleTimer;
@@ -72,58 +70,9 @@ public partial class SessionManager : AutoloadBase
 			LogWarning("EventService not found - user events will not be persisted to backend");
 		}
 
-		_creditService = CreditService.GetInstance();
-		if (_creditService != null)
-		{
-			_creditService.CreditsChanged += OnCreditsChanged;
-			LogInfo("SessionManager connected to CreditService for credit change notifications");
-		}
-		else
-		{
-			LogWarning("CreditService not found - credit change signals will not be emitted");
-		}
-
 		SetupIdleTimer();
 
 		LogInfo("SessionManager initialized with event-sourced persistence");
-	}
-
-	/// <summary>
-	/// Relay CreditService.CreditsChanged as SessionManager.CreditsEarned
-	/// </summary>
-	private void OnCreditsChanged(string playerIdStr, int newBalance)
-	{
-		if (!Guid.TryParse(playerIdStr, out var playerId))
-		{
-			LogWarning($"Invalid player ID format in credit change: {playerIdStr}");
-			return;
-		}
-
-		// Find the session with matching player ID (O(1) lookup via secondary index)
-		if (_sessionsByPlayerId.TryGetValue(playerId, out var matchedSession))
-		{
-			// Calculate amount changed
-			int previousBalance = matchedSession.Credits;
-			int amountChanged = newBalance - previousBalance;
-
-			// Update session credits
-			matchedSession.Credits = newBalance;
-
-			// Emit signal with phone number (not player ID UUID)
-			EmitSignal(SignalName.CreditsEarned, matchedSession.PhoneNumber, amountChanged, "Credit balance updated");
-
-			// Only log if there was an actual change (reduce noise from initial balance load)
-			if (amountChanged != 0)
-			{
-				LogInfo($"Credit change relayed for {matchedSession.UserName}: {previousBalance} -> {newBalance} ({amountChanged:+#;-#;0})");
-			}
-		}
-		else
-		{
-			// No active session found - this is expected for background updates (e.g., admin adjustments)
-			// after Phase 1 fix, should be rare during login since session is indexed before credit fetch
-			LogInfo($"Credit event received for player {playerId} without active session (balance: {newBalance}, likely background update)");
-		}
 	}
 
 	public override void _Notification(int what)
@@ -284,39 +233,15 @@ public partial class SessionManager : AutoloadBase
 				PlayerId = playerId,
 				LoginTime = DateTime.UtcNow,
 				LastActivity = DateTime.UtcNow,
-				Credits = 0, // Will be populated from backend below
 				JwtToken = loginData.AccessToken,
 				TokenExpiration = tokenExpiration
 			};
 
 			LogInfo($"User authenticated successfully - Token expires at: {tokenExpiration:u}");
 
-			// Add session to dictionaries BEFORE fetching credits
-			// This ensures credit change events can find the session
+			// Add session to dictionaries
 			_activeSessions[cleanedPhone] = session;
 			_sessionsByPlayerId[playerId] = session; // Maintain secondary index
-
-			// Fetch initial credit balance from backend after session is indexed
-			// This allows OnCreditsChanged event handler to find and update the session
-			if (_creditService != null)
-			{
-				var balanceResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
-				if (balanceResult.IsSuccess(out var balance))
-				{
-					session.Credits = balance;
-					LogInfo($"Initial credit balance loaded: {session.Credits} credits for {session.UserName}");
-				}
-				else if (balanceResult.IsFailure(out var balanceError))
-				{
-					LogWarning($"Failed to fetch initial credit balance: {balanceError.Message}");
-					// Keep Credits = 0 as fallback
-				}
-			}
-			else
-			{
-				LogWarning("CreditService not available - credit balance will remain 0 until updated");
-			}
-
 
 			// Create lobby session for user-scoped events
 			if (_eventService != null && _eventService.IsReady)
@@ -334,7 +259,7 @@ public partial class SessionManager : AutoloadBase
 						username = session.UserName,
 						location_id = CurrentLocationId
 					};
-					var loginEventResult = await _eventService.EmitUserEventAsync(playerId, "user/login", payload);
+					var loginEventResult = await _eventService.EmitUserEventAsync(playerId, "user/login", payload, session.LobbySessionId);
 					if (loginEventResult.IsFailure(out var eventError))
 					{
 						LogWarning($"Failed to emit login event: {eventError.Message}");
@@ -585,7 +510,7 @@ public partial class SessionManager : AutoloadBase
 					location_id = CurrentLocationId,
 					session_duration = session.SessionDuration.TotalSeconds
 				};
-				var logoutResult = await _eventService.EmitUserEventAsync(session.PlayerId, "user/logout", payload);
+				var logoutResult = await _eventService.EmitUserEventAsync(session.PlayerId, "user/logout", payload, session.LobbySessionId);
 				if (logoutResult.IsFailure(out var logoutError))
 				{
 					LogWarning($"Failed to emit logout event: {logoutError.Message}");
@@ -628,7 +553,7 @@ public partial class SessionManager : AutoloadBase
 	/// </summary>
 	public async Task LogoutNonPrimaryUsersAsync()
 	{
-		var primarySession = GetPrimaryUserSession();
+		var primarySession = GetPrimarySession();
 		if (primarySession == null)
 		{
 			LogInfo("No primary user found - nothing to logout");
@@ -659,30 +584,76 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Get active user session
+	/// Get user session by player ID (primary API for backend operations)
+	/// Uses secondary index for O(1) lookup performance
 	/// </summary>
-	public UserSession GetUserSession(string phoneNumber)
+	public UserSession GetSession(Guid playerId)
 	{
-		return _activeSessions.GetValueOrDefault(phoneNumber);
+		return _sessionsByPlayerId.GetValueOrDefault(playerId);
+	}
+
+	/// <summary>
+	/// Ensures the player has a lobby session, creating one on-demand if missing.
+	/// Used for lazy lobby session creation when operations require it.
+	/// </summary>
+	/// <returns>Result with lobby session ID on success, or error message on failure</returns>
+	public async Task<Result<Guid>> EnsureLobbySessionAsync(Guid playerId)
+	{
+		var session = GetSession(playerId);
+		if (session == null)
+		{
+			return Result.Failure<Guid>($"No session found for player {playerId}");
+		}
+
+		// Already has a lobby session
+		if (session.LobbySessionId != Guid.Empty)
+		{
+			return Result.Success(session.LobbySessionId);
+		}
+
+		// Create lobby session on-demand
+		if (_eventService == null || !_eventService.IsReady)
+		{
+			return Result.Failure<Guid>("EventService not available for lobby session creation");
+		}
+
+		LogInfo($"Creating lobby session on-demand for player {playerId}");
+		var boxId = _eventService.GetBoxId();
+		var lobbyResult = await _eventService.CreateLobbySessionAsync(boxId, playerId);
+
+		if (lobbyResult.IsSuccess(out var lobbySessionId))
+		{
+			session.LobbySessionId = lobbySessionId;
+			LogInfo($"Lazy lobby session created: {lobbySessionId}");
+			return Result.Success(lobbySessionId);
+		}
+
+		if (lobbyResult.IsFailure(out var error))
+		{
+			LogWarning($"Failed to create lobby session: {error.Message}");
+			return Result.Failure<Guid>(error.Message);
+		}
+
+		return Result.Failure<Guid>("Unknown error creating lobby session");
 	}
 
 	/// <summary>
 	/// Get primary user session (earliest logged-in user)
 	/// Use for: UI display (TopMenuBar), single-user game contexts, auto-populate convenience
-	/// Multi-user games: use GetUserSession(phoneNumber) for explicit targeting
+	/// Multi-user games: use GetSessionByPhone(phoneNumber) for explicit targeting
 	/// </summary>
-	public UserSession GetPrimaryUserSession()
+	public UserSession GetPrimarySession()
 	{
 		return _activeSessions.Values.MinBy(s => s.LoginTime);
 	}
 
 	/// <summary>
-	/// Get user session by player ID (for credit operations and lobby session management)
-	/// Uses secondary index for O(1) lookup performance
+	/// Get user session by phone number (multi-user explicit targeting)
+	/// Use when you need a specific user in a multi-user context (e.g., Carrom player slots)
 	/// </summary>
-	public UserSession GetUserSessionByPlayerId(Guid playerId)
+	public UserSession GetSessionByPhone(string phoneNumber)
 	{
-		return _sessionsByPlayerId.GetValueOrDefault(playerId);
+		return _activeSessions.GetValueOrDefault(phoneNumber);
 	}
 
 	/// <summary>
@@ -765,7 +736,7 @@ public partial class SessionManager : AutoloadBase
 	/// </summary>
 	public string GetPrimaryUserJwtToken()
 	{
-		var primarySession = GetPrimaryUserSession();
+		var primarySession = GetPrimarySession();
 		if (primarySession == null)
 			return null;
 
@@ -826,13 +797,6 @@ public partial class SessionManager : AutoloadBase
 		_idleTimer?.Stop();
 		_idleTimer?.QueueFree();
 
-		// Disconnect from CreditService
-		if (_creditService != null && GodotObject.IsInstanceValid(_creditService))
-		{
-			_creditService.CreditsChanged -= OnCreditsChanged;
-		}
-		_creditService = null;
-
 		// Dispose of logout semaphore
 		_logoutSemaphore?.Dispose();
 	}
@@ -851,7 +815,6 @@ public class UserSession
 	public Guid LobbySessionId { get; set; } = Guid.Empty;  // Lobby session for user-scoped events
 	public DateTime LoginTime { get; set; }
 	public DateTime LastActivity { get; set; }
-	public int Credits { get; set; }
 
 	// JWT authentication fields
 	public string JwtToken { get; set; } = string.Empty;

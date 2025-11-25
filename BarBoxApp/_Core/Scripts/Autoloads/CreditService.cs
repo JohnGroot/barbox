@@ -1,6 +1,7 @@
 using Godot;
 using LightResults;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -30,7 +31,7 @@ public partial class CreditService : AutoloadBase
 	private const float BALANCE_POLL_TIMEOUT_SECONDS = 1.5f;
 	private const float BALANCE_POLL_INTERVAL_SECONDS = 0.05f;  // Reduced from 0.1f for 2x faster UX responsiveness
 
-	private Dictionary<Guid, CachedBalance> _balanceCache = new();
+	private readonly ConcurrentDictionary<Guid, CachedBalance> _balanceCache = new();
 
 	private class CachedBalance(int amount, DateTime lastUpdated)
 	{
@@ -92,10 +93,29 @@ public partial class CreditService : AutoloadBase
 			return Result.Failure<int>("Amount must be positive");
 
 		var eventService = EventService.GetInstance();
+
+		// Ensure lobby session exists (lazy creation via SessionManager)
+		var sessionManager = SessionManager.GetInstance();
+		if (sessionManager == null)
+		{
+			return Result.Failure<int>("SessionManager not available");
+		}
+
+		var lobbyResult = await sessionManager.EnsureLobbySessionAsync(playerId);
+		if (lobbyResult.IsFailure(out var lobbyError))
+		{
+			return Result.Failure<int>($"Cannot spend credits: {lobbyError.Message}");
+		}
+
+		if (!lobbyResult.IsSuccess(out var lobbySessionId))
+		{
+			return Result.Failure<int>("Failed to obtain lobby session");
+		}
+
 		var initialBalance = await GetInitialBalanceAsync(eventService, playerId);
 
 		// Backend validates balance and performs spend atomically
-		var spendResult = await eventService.SpendCreditsAsync(playerId, amount, reason);
+		var spendResult = await eventService.SpendCreditsAsync(playerId, amount, reason, lobbySessionId);
 		if (spendResult.IsFailure(out var spendError))
 		{
 			LogWarning($"Credit spend failed: {spendError.Message}");
@@ -161,43 +181,27 @@ public partial class CreditService : AutoloadBase
 
 		var eventService = EventService.GetInstance();
 
-		// LAZY LOBBY SESSION CREATION: Ensure session has lobby session ID
+		// Ensure lobby session exists (lazy creation via SessionManager)
 		var sessionManager = SessionManager.GetInstance();
-		if (sessionManager != null)
+		if (sessionManager == null)
 		{
-			var session = sessionManager.GetUserSessionByPlayerId(playerId);
-			if (session != null && session.LobbySessionId == Guid.Empty)
-			{
-				LogInfo($"Lobby session missing for player {playerId} - creating on-demand for credit operation");
-				var boxId = eventService.GetBoxId();
-				var lobbyResult = await eventService.CreateLobbySessionAsync(boxId, playerId);
+			return Result.Failure<int>("SessionManager not available");
+		}
 
-				if (lobbyResult.IsSuccess(out var lobbySessionId))
-				{
-					session.LobbySessionId = lobbySessionId;
-					LogInfo($"Lazy lobby session created: {lobbySessionId}");
-				}
-				else if (lobbyResult.IsFailure(out var lobbyError))
-				{
-					return Result.Failure<int>($"Cannot add credits: Failed to create lobby session - {lobbyError.Message}");
-				}
-			}
+		var lobbyResult = await sessionManager.EnsureLobbySessionAsync(playerId);
+		if (lobbyResult.IsFailure(out var lobbyError))
+		{
+			return Result.Failure<int>($"Cannot add credits: {lobbyError.Message}");
+		}
+
+		if (!lobbyResult.IsSuccess(out var lobbySessionId))
+		{
+			return Result.Failure<int>("Failed to obtain lobby session");
 		}
 
 		var initialBalance = await GetInitialBalanceAsync(eventService, playerId);
 
-		// Get lobby session ID to pass explicitly (multi-user safe)
-		Guid? sessionLobbyId = null;
-		if (sessionManager != null)
-		{
-			var session = sessionManager.GetUserSessionByPlayerId(playerId);
-			if (session != null && session.LobbySessionId != Guid.Empty)
-			{
-				sessionLobbyId = session.LobbySessionId;
-			}
-		}
-
-		var addResult = await eventService.AddCreditsAsync(playerId, amount, reason, sessionLobbyId);
+		var addResult = await eventService.AddCreditsAsync(playerId, amount, reason, lobbySessionId);
 		if (addResult.IsFailure(out var addError))
 		{
 			LogWarning($"Credit add failed: {addError.Message}");
@@ -289,15 +293,8 @@ public partial class CreditService : AutoloadBase
 
 	private void UpdateCache(Guid playerId, int amount)
 	{
-		if (_balanceCache.ContainsKey(playerId))
-		{
-			_balanceCache[playerId].Amount = amount;
-			_balanceCache[playerId].LastUpdated = DateTime.UtcNow;
-		}
-		else
-		{
-			_balanceCache[playerId] = new CachedBalance(amount, DateTime.UtcNow);
-		}
+		// Thread-safe: ConcurrentDictionary indexer atomically adds or updates
+		_balanceCache[playerId] = new CachedBalance(amount, DateTime.UtcNow);
 	}
 
 	private Result<T>? ValidateEventService<T>()

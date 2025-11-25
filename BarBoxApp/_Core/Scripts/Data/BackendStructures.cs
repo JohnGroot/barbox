@@ -168,6 +168,33 @@ public record MachineCreditsResponse
 	public MachinePlayerContribution[] Contributions { get; init; } = [];
 }
 
+public record MachineCreditsDepositRequest
+{
+	[JsonPropertyName("box_id")]
+	public Guid BoxId { get; init; }
+
+	[JsonPropertyName("player_id")]
+	public Guid PlayerId { get; init; }
+
+	[JsonPropertyName("amount")]
+	public int Amount { get; init; }
+
+	[JsonPropertyName("lobby_session_id")]
+	public Guid LobbySessionId { get; init; }
+}
+
+public record MachineCreditsConsumeRequest
+{
+	[JsonPropertyName("box_id")]
+	public Guid BoxId { get; init; }
+
+	[JsonPropertyName("amount")]
+	public int Amount { get; init; }
+
+	[JsonPropertyName("game_session_id")]
+	public Guid GameSessionId { get; init; }
+}
+
 public record PlayerLoginRequest
 {
 	[JsonPropertyName("phone_number")]
