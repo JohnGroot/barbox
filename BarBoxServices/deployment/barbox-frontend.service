@@ -1,0 +1,28 @@
+[Unit]
+Description=BarBox Frontend Game
+Documentation=https://github.com/johngroot/barbox
+After=barbox-backend.service graphical.target
+Wants=barbox-backend.service
+
+[Service]
+Type=forking
+PIDFile=/tmp/barbox-frontend.pid
+WorkingDirectory=/home/barbox/Desktop/barbox
+Environment="DISPLAY=:0"
+Environment="PATH=/home/barbox/.config/godotenv/godot/bin:/home/barbox/.dotnet/tools:/home/barbox/.local/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStartPre=/bin/sleep 3
+ExecStart=/home/barbox/Desktop/barbox/start_frontend.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+MemoryLimit=2G
+CPUQuota=150%%
+
+# Need access to display and audio
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,27 @@
+[Unit]
+Description=BarBox Backend Service
+Documentation=https://github.com/johngroot/barbox
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/barbox/Desktop/barbox/BarBoxServices
+EnvironmentFile=%h/Desktop/barbox/BarBoxServices/.env
+Environment="PATH=/home/barbox/.local/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/barbox/Desktop/barbox/BarBoxServices/.venv/bin/fastapi run src/bxctl/web/main.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+MemoryLimit=512M
+CPUQuota=50%%
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
