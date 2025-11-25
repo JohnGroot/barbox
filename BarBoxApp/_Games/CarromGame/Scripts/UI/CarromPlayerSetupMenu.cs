@@ -586,8 +586,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		if (_sessionManager != null)
 		{
 			_sessionManager.UserLoggedIn += OnUserLoggedIn;
-			_sessionManager.CreditsEarned += OnCreditsEarned;
-			_sessionManager.CreditsSpent += OnCreditsSpent;
+		}
+
+		// Connect to CreditService for credit change notifications
+		if (_creditService != null)
+		{
+			_creditService.CreditsChanged += OnCreditsChanged;
 		}
 
 		// Start hidden
@@ -647,7 +651,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			if (_slotToPhoneNumber.TryGetValue(i, out var phoneNumber))
 			{
 				// Get session to retrieve player ID
-				var session = _sessionManager.GetUserSession(phoneNumber);
+				var session = _sessionManager.GetSessionByPhone(phoneNumber);
 				if (session != null)
 				{
 					// Generate player ID from phone number (deterministic UUID)
@@ -901,7 +905,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		}
 	}
 
-	private void AutoPopulateFirstSlot()
+	private async void AutoPopulateFirstSlot()
 	{
 		if (_sessionManager == null) return;
 
@@ -910,7 +914,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			return;
 
 		// Auto-populate first slot with primary user (UI convenience for local multiplayer)
-		var currentSession = _sessionManager.GetPrimaryUserSession();
+		var currentSession = _sessionManager.GetPrimarySession();
 		if (currentSession != null)
 		{
 			// Add primary user to first slot
@@ -922,8 +926,19 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				_creditsTransferredByPlayer[currentSession.PhoneNumber] = 0;
 			}
 
+			// Fetch credits from CreditService (single source of truth)
+			int credits = 0;
+			if (_creditService != null)
+			{
+				var balanceResult = await _creditService.GetBalanceAsync(currentSession.PlayerId);
+				if (balanceResult.IsSuccess(out var balance))
+				{
+					credits = balance;
+				}
+			}
+
 			var slot = _playerSlots[0];
-			slot.SetOccupied(currentSession.UserName, currentSession.Credits);
+			slot.SetOccupied(currentSession.UserName, credits);
 		}
 	}
 
@@ -931,7 +946,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	/// Restore occupied slot UI from persisted slot assignments
 	/// Clears slots for users who are no longer logged in
 	/// </summary>
-	private void RestoreOccupiedSlots()
+	private async void RestoreOccupiedSlots()
 	{
 		if (_sessionManager == null) return;
 
@@ -948,12 +963,22 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				continue;
 
 			// Get user session
-			var session = _sessionManager.GetUserSession(phoneNumber);
+			var session = _sessionManager.GetSessionByPhone(phoneNumber);
 			if (session != null)
 			{
 				// User is logged in - restore occupied state
+				// Fetch credits from CreditService (single source of truth)
+				int credits = 0;
+				if (_creditService != null)
+				{
+					var balanceResult = await _creditService.GetBalanceAsync(session.PlayerId);
+					if (balanceResult.IsSuccess(out var balance))
+					{
+						credits = balance;
+					}
+				}
 				var slot = _playerSlots[slotIndex];
-				slot.SetOccupied(session.UserName, session.Credits);
+				slot.SetOccupied(session.UserName, credits);
 			}
 			else
 			{
@@ -997,7 +1022,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		// Validate each player has valid session
 		foreach (var kvp in _slotToPhoneNumber)
 		{
-			var session = _sessionManager?.GetUserSession(kvp.Value);
+			var session = _sessionManager?.GetSessionByPhone(kvp.Value);
 			if (session == null)
 				return false;
 		}
@@ -1060,13 +1085,13 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	/// Handle SessionManager's UserLoggedIn signal
 	/// Comprehensive fix: If _pendingLoginSlot is invalid, find first empty slot automatically
 	/// </summary>
-	private void OnUserLoggedIn(string phoneNumber)
+	private async void OnUserLoggedIn(string phoneNumber)
 	{
 		if (_sessionManager == null)
 			return;
 
 		// Get the user session
-		var session = _sessionManager.GetUserSession(phoneNumber);
+		var session = _sessionManager.GetSessionByPhone(phoneNumber);
 		if (session == null)
 			return;
 
@@ -1114,8 +1139,18 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		// Update slot UI
 		if (slotIndex >= 0 && slotIndex < _playerSlots.Count)
 		{
+			// Fetch credits from CreditService (single source of truth)
+			int credits = 0;
+			if (_creditService != null)
+			{
+				var balanceResult = await _creditService.GetBalanceAsync(session.PlayerId);
+				if (balanceResult.IsSuccess(out var balance))
+				{
+					credits = balance;
+				}
+			}
 			var slot = _playerSlots[slotIndex];
-			slot.SetOccupied(session.UserName, session.Credits);
+			slot.SetOccupied(session.UserName, credits);
 			GD.Print($"Player {session.UserName} assigned to slot {slotIndex}");
 		}
 
@@ -1126,19 +1161,35 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		UpdateStartGameButton();
 	}
 
-	private void OnCreditsEarned(string phoneNumber, int amount, string reason)
+	private void OnCreditsChanged(string playerId, int newBalance)
 	{
-		// Update UI for any credit changes
-		UpdatePlayerSlotCredits(phoneNumber);
+		// Update UI for all slots - playerId is a GUID string, not phone number
+		// Find the slot with this player and update it
+		if (!Guid.TryParse(playerId, out var playerGuid))
+			return;
+
+		// Find phone number for this player ID
+		foreach (var kvp in _slotToPhoneNumber)
+		{
+			var slotPhoneNumber = kvp.Value;
+			var slotPlayerId = EventService.GetPlayerIdFromPhone(slotPhoneNumber);
+			if (slotPlayerId == playerGuid)
+			{
+				UpdatePlayerSlotCreditsAsync(kvp.Key, newBalance);
+				break;
+			}
+		}
 	}
 
-	private void OnCreditsSpent(string phoneNumber, int amount, string reason)
+	private void UpdatePlayerSlotCreditsAsync(int slotIndex, int newBalance)
 	{
-		// Update UI for any credit changes
-		UpdatePlayerSlotCredits(phoneNumber);
+		if (slotIndex >= 0 && slotIndex < _playerSlots.Count)
+		{
+			_playerSlots[slotIndex].UpdateCreditsDisplay(newBalance);
+		}
 	}
 
-	private void UpdatePlayerSlotCredits(string phoneNumber)
+	private async void UpdatePlayerSlotCredits(string phoneNumber)
 	{
 		// Find slot for this phone number and update credits display
 		foreach (var kvp in _slotToPhoneNumber)
@@ -1148,10 +1199,15 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				if (kvp.Key >= _playerSlots.Count)
 					break;
 
-				var session = _sessionManager?.GetUserSession(phoneNumber);
-				if (session != null)
+				// Fetch credits from CreditService (single source of truth)
+				var playerId = EventService.GetPlayerIdFromPhone(phoneNumber);
+				if (_creditService != null)
 				{
-					_playerSlots[kvp.Key].UpdateCreditsDisplay(session.Credits);
+					var balanceResult = await _creditService.GetBalanceAsync(playerId);
+					if (balanceResult.IsSuccess(out var balance))
+					{
+						_playerSlots[kvp.Key].UpdateCreditsDisplay(balance);
+					}
 				}
 				break;
 			}
@@ -1170,7 +1226,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			if (transferredAmount > 0)
 			{
 				// Return credits to player's account via CreditService
-				var session = _sessionManager.GetUserSession(phoneNumber);
+				var session = _sessionManager.GetSessionByPhone(phoneNumber);
 				if (session != null && _creditService != null)
 				{
 					var addResult = await _creditService.AddAsync(session.PlayerId, transferredAmount, "Returned from table");
@@ -1193,7 +1249,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		slot.SetEmpty();
 
 		// Logout user if they're the primary session
-		var currentSession = _sessionManager.GetPrimaryUserSession();
+		var currentSession = _sessionManager.GetPrimarySession();
 		if (currentSession != null && currentSession.PhoneNumber == phoneNumber)
 		{
 			await _sessionManager.LogoutUserAsync(phoneNumber);
@@ -1218,7 +1274,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private async void RefreshSlotCreditsDisplay(int slotIndex)
 	{
-		if (_sessionManager == null) 
+		if (_sessionManager == null)
 			return;
 		if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
 			return;
@@ -1226,12 +1282,16 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		// Wait a moment for purchase to process
 		await ToSignal(GetTree().CreateTimer(1.0f), Timer.SignalName.Timeout);
 
-		// Refresh credits display
-		var session = _sessionManager.GetUserSession(phoneNumber);
-		if (session != null)
+		// Refresh credits display from CreditService (single source of truth)
+		var session = _sessionManager.GetSessionByPhone(phoneNumber);
+		if (session != null && _creditService != null)
 		{
-			var slot = _playerSlots[slotIndex];
-			slot.UpdateCreditsDisplay(session.Credits);
+			var balanceResult = await _creditService.GetBalanceAsync(session.PlayerId, forceRefresh: true);
+			if (balanceResult.IsSuccess(out var balance))
+			{
+				var slot = _playerSlots[slotIndex];
+				slot.UpdateCreditsDisplay(balance);
+			}
 		}
 	}
 
@@ -1244,12 +1304,21 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
 				return;
 
-			var session = _sessionManager.GetUserSession(phoneNumber);
+			var session = _sessionManager.GetSessionByPhone(phoneNumber);
 			if (session == null)
 				return;
 
-			// Check if player has credits
-			int availableCredits = session.Credits;
+			// Fetch credits from CreditService (single source of truth)
+			int availableCredits = 0;
+			if (_creditService != null)
+			{
+				var balanceResult = await _creditService.GetBalanceAsync(session.PlayerId);
+				if (balanceResult.IsSuccess(out var balance))
+				{
+					availableCredits = balance;
+				}
+			}
+
 			if (availableCredits < 1)
 			{
 				GD.Print($"Player {phoneNumber} has insufficient credits");
@@ -1323,12 +1392,16 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_creditsTransferredByPlayer.TryAdd(phoneNumber, 0);
 			_creditsTransferredByPlayer[phoneNumber] += selectedAmount.Value;
 
-			// Update displays (session cache updated by CreditService via signal relay)
-			var updatedSession = _sessionManager.GetUserSession(phoneNumber);
-			if (updatedSession != null)
+			// Update displays - fetch from CreditService (single source of truth)
+			// CreditsChanged signal will also fire, but explicit update ensures immediate UI feedback
+			if (_creditService != null)
 			{
-				var slot = _playerSlots[slotIndex];
-				slot.UpdateCreditsDisplay(updatedSession.Credits);
+				var balanceResult = await _creditService.GetBalanceAsync(session.PlayerId);
+				if (balanceResult.IsSuccess(out var balance))
+				{
+					var slot = _playerSlots[slotIndex];
+					slot.UpdateCreditsDisplay(balance);
+				}
 			}
 
 			UpdateTableCreditsDisplay();
@@ -1427,7 +1500,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			if (amount > 0)
 			{
 				// Return credits via CreditService
-				var session = _sessionManager?.GetUserSession(phoneNumber);
+				var session = _sessionManager?.GetSessionByPhone(phoneNumber);
 				if (session != null && _creditService != null)
 				{
 					var addResult = await _creditService.AddAsync(session.PlayerId, amount, "Returned from table");
@@ -1457,7 +1530,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		if (_sessionManager == null) return;
 
 		// Get primary session to avoid logging it out (primary user manages their own session lifecycle)
-		var primarySession = _sessionManager.GetPrimaryUserSession();
+		var primarySession = _sessionManager.GetPrimarySession();
 		string primaryPhoneNumber = primarySession?.PhoneNumber;
 
 		// Process each slot - use ToList to avoid modification during iteration
@@ -1544,7 +1617,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 							var activePhones = sessionManager.GetActivePhoneNumbers();
 							foreach (var phone in activePhones)
 							{
-								var session = sessionManager.GetUserSession(phone);
+								var session = sessionManager.GetSessionByPhone(phone);
 								if (session != null && session.PlayerId == playerId)
 								{
 									_creditsTransferredByPlayer[session.PhoneNumber] = contribution.Amount;
@@ -1585,8 +1658,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		if (GodotObject.IsInstanceValid(_sessionManager))
 		{
 			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
-			_sessionManager.CreditsEarned -= OnCreditsEarned;
-			_sessionManager.CreditsSpent -= OnCreditsSpent;
+		}
+
+		// Cleanup CreditService signals
+		if (GodotObject.IsInstanceValid(_creditService))
+		{
+			_creditService.CreditsChanged -= OnCreditsChanged;
 		}
 
 		// Cleanup signals

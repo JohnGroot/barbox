@@ -236,7 +236,7 @@ public partial class TopMenuBar : Control
 		return button;
 	}
 
-	public void UpdateUserInfo(UserSession session)
+	public void UpdateUserInfo(UserSession session, int? credits = null)
 	{
 		bool isLoggedIn = session != null;
 
@@ -248,7 +248,8 @@ public partial class TopMenuBar : Control
 					? session.UserName
 					: "Player";
 
-				_userInfoLabel.Text = $"{displayName}\n{session.Credits} Credits";
+				int displayCredits = credits ?? 0;
+				_userInfoLabel.Text = $"{displayName}\n{displayCredits} Credits";
 			}
 			else
 			{

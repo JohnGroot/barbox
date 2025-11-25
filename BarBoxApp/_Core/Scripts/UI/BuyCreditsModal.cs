@@ -36,12 +36,14 @@ public partial class BuyCreditsModal : Control
 
 	private PaymentService _paymentService;
 	private SessionManager _sessionManager;
+	private CreditService _creditService;
 	private string _targetPhoneNumber;
 
 	public override void _Ready()
 	{
 		_paymentService = PaymentService.GetInstance();
 		_sessionManager = SessionManager.GetInstance();
+		_creditService = CreditService.GetInstance();
 
 		SetupModalLayout();
 		CreateModalUI();
@@ -175,7 +177,7 @@ public partial class BuyCreditsModal : Control
 			_closeButton.Pressed += OnClosePressed;
 	}
 
-	public void ShowModal(string phoneNumber)
+	public async void ShowModal(string phoneNumber)
 	{
 		if (string.IsNullOrEmpty(phoneNumber))
 		{
@@ -183,7 +185,7 @@ public partial class BuyCreditsModal : Control
 			return;
 		}
 
-		var session = _sessionManager?.GetUserSession(phoneNumber);
+		var session = _sessionManager?.GetSessionByPhone(phoneNumber);
 		if (session == null)
 		{
 			ShowStatusMessage(SESSION_NOT_FOUND, false);
@@ -191,7 +193,18 @@ public partial class BuyCreditsModal : Control
 		}
 
 		_targetPhoneNumber = phoneNumber;
-		UpdateCurrentCreditsDisplay(session.Credits);
+
+		// Fetch credits from CreditService (single source of truth)
+		int credits = 0;
+		if (_creditService != null)
+		{
+			var balanceResult = await _creditService.GetBalanceAsync(session.PlayerId);
+			if (balanceResult.IsSuccess(out var balance))
+			{
+				credits = balance;
+			}
+		}
+		UpdateCurrentCreditsDisplay(credits);
 
 		// Clear and recreate credit pack buttons to ensure fresh data
 		if (_creditPackContainer != null)
@@ -278,10 +291,14 @@ public partial class BuyCreditsModal : Control
 			{
 				ShowStatusMessage(string.Format(PURCHASE_SUCCESS_FORMAT, creditPack.Credits), true);
 
-				var session = _sessionManager?.GetUserSession(_targetPhoneNumber);
-				if (session != null)
+				// Fetch updated credits from CreditService (single source of truth)
+				if (_creditService != null)
 				{
-					UpdateCurrentCreditsDisplay(session.Credits);
+					var balanceResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
+					if (balanceResult.IsSuccess(out var balance))
+					{
+						UpdateCurrentCreditsDisplay(balance);
+					}
 				}
 
 				EmitSignal(SignalName.CreditsAcquired, _targetPhoneNumber, creditPack.Credits);

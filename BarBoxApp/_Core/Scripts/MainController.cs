@@ -18,6 +18,7 @@ public partial class MainController : Control
 	private ApplicationBootstrap _appBootstrap;
 	private GameHost _gameHost;
 	private UIManager _uiManager;
+	private CreditService _creditService;
 	private Node _onscreenKeyboard;
 	private readonly List<Button> _activeGameButtons = new();
 	
@@ -62,11 +63,12 @@ public partial class MainController : Control
 	private void InitializeUI()
 	{
 		// Services ready, initializing UI
-		
+
 		// Now safe to get service references
 		_sessionManager = SessionManager.GetInstance();
 		_gameRegistry = GameRegistry.GetAutoload();
 		_gameHost = GameHost.GetInstance();
+		_creditService = CreditService.GetInstance();
 		
 		// Services loaded and initialized
 		
@@ -197,7 +199,7 @@ public partial class MainController : Control
 		if (gameData == null) return;
 
 		// Get primary user session if logged in (single-user main menu context)
-		var currentUserSession = _sessionManager?.GetPrimaryUserSession();
+		var currentUserSession = _sessionManager?.GetPrimarySession();
 
 		// Load game - it will run in practice mode if no user is logged in
 		var gameHost = GameHost.GetInstance();
@@ -211,16 +213,26 @@ public partial class MainController : Control
 		}
 	}
 
-	private void UpdateUI()
+	private async void UpdateUI()
 	{
 		// Show primary user info in main menu UI
-		var currentUserSession = _sessionManager?.GetPrimaryUserSession();
+		var currentUserSession = _sessionManager?.GetPrimarySession();
 
 		if (UserInfoLabel != null)
 		{
 			if (currentUserSession != null)
 			{
-				UserInfoLabel.Text = string.Format(USER_INFO_FORMAT, currentUserSession.UserName, currentUserSession.Credits);
+				// Fetch credits from CreditService (single source of truth)
+				int credits = 0;
+				if (_creditService != null)
+				{
+					var balanceResult = await _creditService.GetBalanceAsync(currentUserSession.PlayerId);
+					if (balanceResult.IsSuccess(out var balance))
+					{
+						credits = balance;
+					}
+				}
+				UserInfoLabel.Text = string.Format(USER_INFO_FORMAT, currentUserSession.UserName, credits);
 			}
 			else
 			{
@@ -251,7 +263,7 @@ public partial class MainController : Control
 			if (_sessionManager != null)
 			{
 				// Get primary user session to get phone number
-				var session = _sessionManager.GetPrimaryUserSession();
+				var session = _sessionManager.GetPrimarySession();
 				if (session != null)
 				{
 					await _sessionManager.LogoutUserAsync(session.PhoneNumber);

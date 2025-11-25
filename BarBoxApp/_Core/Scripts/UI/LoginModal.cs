@@ -922,7 +922,7 @@ public partial class LoginModal : Control
 
 	private void OnUserLoggedIn(string phoneNumber)
 	{
-		var session = _sessionManager?.GetUserSession(phoneNumber);
+		var session = _sessionManager?.GetSessionByPhone(phoneNumber);
 		var userName = session?.UserName ?? string.Empty;
 
 		GD.Print($"[LoginModal] User logged in: {userName} ({phoneNumber})");
