@@ -56,6 +56,7 @@ public partial class LoginModal : Control
 	private Button _createCancelButton;
 	private Label _createStatusLabel;
 
+	private Node _onscreenKeyboard;
 	private SessionManager _sessionManager;
 
 	private bool _isLoginInProgress = false;
@@ -130,6 +131,8 @@ public partial class LoginModal : Control
 		_tabContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 		margin.AddChild(_tabContainer);
 
+		_tabContainer.TabChanged += OnTabChanged;
+
 		CreateLoginTab();
 		CreateAccountTab();
 	}
@@ -151,12 +154,16 @@ public partial class LoginModal : Control
 		_loginPhoneInput = new LineEdit();
 		_loginPhoneInput.PlaceholderText = PHONE_PLACEHOLDER;
 		_loginPhoneInput.CustomMinimumSize = new Vector2(0, 40);
+		_loginPhoneInput.SetMeta("keyboard_layout_type", "phone");
+		_loginPhoneInput.AddToGroup("keyboard_field");
 		_loginContainer.AddChild(_loginPhoneInput);
 
 		_loginPinInput = new LineEdit();
 		_loginPinInput.PlaceholderText = PIN_PLACEHOLDER;
 		_loginPinInput.Secret = true;
 		_loginPinInput.CustomMinimumSize = new Vector2(0, 40);
+		_loginPinInput.SetMeta("keyboard_layout_type", "pin");
+		_loginPinInput.AddToGroup("keyboard_field");
 		_loginContainer.AddChild(_loginPinInput);
 
 		var loginButtonContainer = new HBoxContainer();
@@ -206,17 +213,22 @@ public partial class LoginModal : Control
 		_createPhoneInput = new LineEdit();
 		_createPhoneInput.PlaceholderText = PHONE_PLACEHOLDER;
 		_createPhoneInput.CustomMinimumSize = new Vector2(0, 40);
+		_createPhoneInput.SetMeta("keyboard_layout_type", "phone");
+		_createPhoneInput.AddToGroup("keyboard_field");
 		_createContainer.AddChild(_createPhoneInput);
 
 		_createPinInput = new LineEdit();
 		_createPinInput.PlaceholderText = PIN_PLACEHOLDER;
 		_createPinInput.Secret = true;
 		_createPinInput.CustomMinimumSize = new Vector2(0, 40);
+		_createPinInput.SetMeta("keyboard_layout_type", "pin");
+		_createPinInput.AddToGroup("keyboard_field");
 		_createContainer.AddChild(_createPinInput);
 
 		_createUsernameInput = new LineEdit();
 		_createUsernameInput.PlaceholderText = USERNAME_PLACEHOLDER;
 		_createUsernameInput.CustomMinimumSize = new Vector2(0, 40);
+		_createUsernameInput.AddToGroup("keyboard_field");
 		_createContainer.AddChild(_createUsernameInput);
 
 		var createButtonContainer = new HBoxContainer();
@@ -915,6 +927,26 @@ public partial class LoginModal : Control
 	}
 
 
+	private void OnTabChanged(long tabIndex)
+	{
+		// Get keyboard reference if not cached
+		if (_onscreenKeyboard == null)
+		{
+			_onscreenKeyboard = GetTree().Root.GetNode<Node>("Main/KeyboardLayer/OnscreenKeyboard");
+		}
+
+		// Notify keyboard to update position if it's showing
+		if (IsInstanceValid(_onscreenKeyboard) && _onscreenKeyboard.Get("visible").AsBool())
+		{
+			// Call keyboard's update position method
+			// This ensures keyboard repositions based on new focused field
+			if (_onscreenKeyboard.HasMethod("_update_keyboard_position_for_focus"))
+			{
+				_onscreenKeyboard.Call("_update_keyboard_position_for_focus");
+			}
+		}
+	}
+
 	private void OnCancelPressed()
 	{
 		HideModal();
@@ -935,6 +967,11 @@ public partial class LoginModal : Control
 
 	public override void _ExitTree()
 	{
+		if (GodotObject.IsInstanceValid(_tabContainer))
+		{
+			_tabContainer.TabChanged -= OnTabChanged;
+		}
+
 		if (GodotObject.IsInstanceValid(_loginButton))
 			_loginButton.Pressed -= OnLoginPressed;
 

@@ -74,12 +74,21 @@ func _exit_tree():
 	# Disconnect signal to prevent memory leaks
 	if get_tree() != null and get_tree().get_root().size_changed.is_connected(size_changed):
 		get_tree().get_root().size_changed.disconnect(size_changed)
-	
+
+	# Disconnect field signals
+	for field in _monitored_fields:
+		if is_instance_valid(field):
+			if field.focus_entered.is_connected(_on_field_focus_entered):
+				field.focus_entered.disconnect(_on_field_focus_entered)
+			if field.focus_exited.is_connected(_on_field_focus_exited):
+				field.focus_exited.disconnect(_on_field_focus_exited)
+	_monitored_fields.clear()
+
 	# Free the KeyListHandler node if it exists
 	if KeyListHandler != null:
 		KeyListHandler.queue_free()
 		KeyListHandler = null
-	
+
 	# Clear references
 	KeyboardButton = null
 	layouts.clear()
@@ -94,7 +103,72 @@ func _input(event):
 
 
 func size_changed():
+	# Recalculate size and reposition
+	_update_keyboard_size()
+
+	# Only hide if keyboard was showing
 	if auto_show and visible:
+		_hide_keyboard()
+
+func _update_keyboard_size():
+	var viewport_size = get_viewport().get_visible_rect().size
+	var keyboard_width = viewport_size.x * 0.8  # 80% of viewport width
+	var keyboard_height = viewport_size.y * 0.12  # 12% of viewport height
+
+	# Update size
+	custom_minimum_size = Vector2(keyboard_width, keyboard_height)
+	size = Vector2(keyboard_width, keyboard_height)
+
+	# Update position to remain bottom-centered
+	var new_x = (viewport_size.x - keyboard_width) / 2.0
+	var new_y = viewport_size.y - keyboard_height
+	position = Vector2(new_x, new_y)
+
+	# Update hide position for animation
+	hide_position = Vector2(new_x, viewport_size.y + 10)
+
+func _discover_and_monitor_fields():
+	# Use groups for better performance - fields must be added to "keyboard_field" group
+	var keyboard_fields = get_tree().get_nodes_in_group("keyboard_field")
+	for field in keyboard_fields:
+		_connect_field_signals(field)
+
+func _connect_field_signals(field):
+	# Skip if already monitored
+	if field in _monitored_fields:
+		return
+
+	# Connect focus signals
+	if not field.focus_entered.is_connected(_on_field_focus_entered):
+		field.focus_entered.connect(_on_field_focus_entered.bind(field))
+
+	if not field.focus_exited.is_connected(_on_field_focus_exited):
+		field.focus_exited.connect(_on_field_focus_exited.bind(field))
+
+	# Track this field
+	_monitored_fields.append(field)
+
+func _on_field_focus_entered(field):
+	if auto_show and is_keyboard_focus_object(field):
+		# Check for field-specific layout metadata
+		if field.has_meta("keyboard_layout_type"):
+			var layout_type = field.get_meta("keyboard_layout_type")
+			if layout_type != null and layout_type != "":
+				# Switch to the requested layout
+				set_active_layout_by_name(layout_type)
+		else:
+			# No metadata - switch back to default layout
+			set_active_layout_by_name("standard-characters")
+
+		_show_keyboard()
+
+func _on_field_focus_exited(field):
+	# Hide keyboard when field loses focus
+	# Unless focus moved to another keyboard field
+	await get_tree().process_frame  # Wait for new focus owner to be set
+
+	var new_focus = get_viewport().gui_get_focus_owner()
+	if not is_keyboard_focus_object(new_focus):
 		_hide_keyboard()
 
 
@@ -113,6 +187,14 @@ var tween_position
 var tween_speed = .2
 
 var hide_position = Vector2()
+var _monitored_fields = []
+
+func _ready():
+	# Calculate initial viewport-relative size
+	_update_keyboard_size()
+
+	# Discover and monitor text input fields
+	_discover_and_monitor_fields()
 
 func _init_keyboard():
 	if custom_layout_file == null:
@@ -188,6 +270,18 @@ func _show_keyboard(key_data=null):
 	if animate:
 		var new_y_pos = get_viewport().get_visible_rect().size.y - size.y
 		animate_position(Vector2(position.x, new_y_pos))
+
+func _update_keyboard_position_for_focus():
+	# Called when tab changes to reposition keyboard for current focused field
+	var focus_object = get_viewport().gui_get_focus_owner()
+
+	# Only update if focused on a keyboard field
+	if is_keyboard_focus_object(focus_object):
+		# Keyboard stays visible, just ensure position is correct
+		# Animation already handled by _show_keyboard
+		if visible and animate:
+			var new_y_pos = get_viewport().get_visible_rect().size.y - size.y
+			animate_position(Vector2(position.x, new_y_pos))
 
 
 func animate_position(new_position, trigger_visibility:bool=false, final_visibility:bool=false):
