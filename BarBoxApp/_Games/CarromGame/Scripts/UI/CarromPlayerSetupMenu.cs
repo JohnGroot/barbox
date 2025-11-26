@@ -586,6 +586,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		if (_sessionManager != null)
 		{
 			_sessionManager.UserLoggedIn += OnUserLoggedIn;
+			_sessionManager.UserLoggedOut += OnUserLoggedOut;
 		}
 
 		// Connect to CreditService for credit change notifications
@@ -917,8 +918,35 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		var currentSession = _sessionManager.GetPrimarySession();
 		if (currentSession != null)
 		{
+			var phoneNumber = currentSession.PhoneNumber;
+
+			// CHECK: If this user is already in another slot, remove them first
+			int existingSlot = -1;
+			foreach (var kvp in _slotToPhoneNumber)
+			{
+				if (kvp.Value == phoneNumber)
+				{
+					existingSlot = kvp.Key;
+					break;
+				}
+			}
+
+			// Remove from existing slot if found
+			if (existingSlot >= 0 && existingSlot != 0)
+			{
+				_slotToPhoneNumber.Remove(existingSlot);
+
+				// Clear the old slot's UI
+				if (existingSlot < _playerSlots.Count)
+				{
+					_playerSlots[existingSlot].SetEmpty();
+				}
+
+				GD.Print($"[CarromPlayerSetupMenu] Moved primary user from slot {existingSlot} to slot 0");
+			}
+
 			// Add primary user to first slot
-			_slotToPhoneNumber[0] = currentSession.PhoneNumber;
+			_slotToPhoneNumber[0] = phoneNumber;
 
 			// Only initialize contribution to 0 if not already set (respect loaded data)
 			if (!_creditsTransferredByPlayer.ContainsKey(currentSession.PhoneNumber))
@@ -1159,6 +1187,40 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		// Update game start button state
 		UpdateStartGameButton();
+	}
+
+	/// <summary>
+	/// Handle user logout - clear their slot immediately
+	/// </summary>
+	private void OnUserLoggedOut(string phoneNumber)
+	{
+		// Find which slot this user was in
+		int slotIndex = -1;
+		foreach (var kvp in _slotToPhoneNumber)
+		{
+			if (kvp.Value == phoneNumber)
+			{
+				slotIndex = kvp.Key;
+				break;
+			}
+		}
+
+		// If user was in a slot, clear it
+		if (slotIndex >= 0 && slotIndex < _playerSlots.Count)
+		{
+			// Remove from tracking dictionaries
+			_slotToPhoneNumber.Remove(slotIndex);
+			_creditsTransferredByPlayer.Remove(phoneNumber);
+
+			// Update UI to show empty slot
+			var slot = _playerSlots[slotIndex];
+			slot.SetEmpty();
+
+			GD.Print($"[CarromPlayerSetupMenu] User {phoneNumber} logged out - cleared slot {slotIndex}");
+
+			// Update start game button state
+			UpdateStartGameButton();
+		}
 	}
 
 	private void OnCreditsChanged(string playerId, int newBalance)
@@ -1460,10 +1522,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				HideMenu();
 				EmitSignal(SignalName.GameStartRequested);
 
-				// IMPORTANT: Clear local state AFTER signal emission
-				// Signal handlers need to read _slotToPhoneNumber first!
-				_slotToPhoneNumber.Clear();
-				_creditsTransferredByPlayer.Clear();
+				// Preserve slot assignments for quick rematches
+				// Signal handlers can read _slotToPhoneNumber for session setup
 			}
 			else if (consumeResult.IsFailure(out var error))
 			{
@@ -1478,10 +1538,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			HideMenu();
 			EmitSignal(SignalName.GameStartRequested);
 
-			// IMPORTANT: Clear local state AFTER signal emission
-			// Signal handlers need to read _slotToPhoneNumber first!
-			_slotToPhoneNumber.Clear();
-			_creditsTransferredByPlayer.Clear();
+			// Preserve slot assignments for quick rematches
+			// Signal handlers can read _slotToPhoneNumber for session setup
 		}
 	}
 
@@ -1658,6 +1716,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		if (GodotObject.IsInstanceValid(_sessionManager))
 		{
 			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
+			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
 		}
 
 		// Cleanup CreditService signals
