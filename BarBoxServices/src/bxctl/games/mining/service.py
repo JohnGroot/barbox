@@ -2,8 +2,12 @@
 
 import asyncio
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+
+from bxctl.db import defs
 from bxctl.db import service as db_service
 
 from . import schemas
@@ -299,4 +303,164 @@ async def get_player_state(
         upgrades=upgrades_response.upgrades,
         last_extraction_time=timestamp_response.last_mining_time,
         metadata=metadata_response,
+    )
+
+
+# ============= LOCATION REGISTRATION =============
+
+
+async def get_location_by_venue_name(
+    db: db_service.CRUD,
+    venue_name: str,
+) -> defs.MiningLocation | None:
+    """
+    Get a mining location by venue name.
+
+    Args:
+        db: Database CRUD service
+        venue_name: Venue identifier (e.g., "best_intentions")
+
+    Returns:
+        MiningLocation if found, None otherwise
+    """
+    stmt = select(defs.MiningLocation).where(defs.MiningLocation.venue_name == venue_name)
+    result = await db.session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def get_gem_type_distribution(
+    db: db_service.CRUD,
+) -> dict[str, int]:
+    """
+    Get count of locations per gem type for balanced assignment.
+
+    Args:
+        db: Database CRUD service
+
+    Returns:
+        Dictionary mapping gem type to location count
+    """
+    sql = """
+    SELECT gem_type, COUNT(*) as count
+    FROM mining_location
+    GROUP BY gem_type
+    """
+    result = await db.get_many_raw(sql, {})
+
+    # Initialize all gem types to 0
+    distribution = {gem: 0 for gem in schemas.GEM_TYPES}
+
+    # Update with actual counts
+    for row in result.tuples():
+        gem_type, count = row[0], row[1]
+        if gem_type in distribution:
+            distribution[gem_type] = count
+
+    return distribution
+
+
+async def register_or_get_location(
+    db: db_service.CRUD,
+    venue_name: str,
+) -> schemas.MiningLocationResponse:
+    """
+    Idempotent location registration with balanced gem type assignment.
+
+    If location already exists, returns it. Otherwise registers new location
+    with the least-used gem type for balance across all locations.
+
+    Handles race conditions via IntegrityError catch and re-query.
+
+    Args:
+        db: Database CRUD service
+        venue_name: Venue identifier (e.g., "best_intentions")
+
+    Returns:
+        MiningLocationResponse with venue details and assigned gem type
+    """
+    # Check existing first (common case - fast path)
+    existing = await get_location_by_venue_name(db, venue_name)
+    if existing:
+        return schemas.MiningLocationResponse(
+            venue_name=existing.venue_name,
+            gem_type=existing.gem_type,
+            display_name=existing.display_name,
+        )
+
+    # Get distribution and assign least-used gem type
+    distribution = await get_gem_type_distribution(db)
+    gem_type = min(schemas.GEM_TYPES, key=lambda g: distribution.get(g, 0))
+
+    # Generate display name from venue_name
+    display_name = venue_name.replace("_", " ").title()
+
+    # Create new location using db.create() pattern with explicit id
+    try:
+        await db.create(
+            target=defs.MiningLocation,
+            data={
+                "id": uuid4(),
+                "venue_name": venue_name,
+                "gem_type": gem_type,
+                "display_name": display_name,
+                "created_at": datetime.now(UTC),
+            }
+        )
+
+        return schemas.MiningLocationResponse(
+            venue_name=venue_name,
+            gem_type=gem_type,
+            display_name=display_name,
+        )
+
+    except IntegrityError:
+        # Race condition: another request registered this venue simultaneously
+        # Rollback and return the existing record
+        await db.session.rollback()
+        existing = await get_location_by_venue_name(db, venue_name)
+        if existing:
+            return schemas.MiningLocationResponse(
+                venue_name=existing.venue_name,
+                gem_type=existing.gem_type,
+                display_name=existing.display_name,
+            )
+        # Should not happen, but handle gracefully
+        raise ValueError(f"Failed to register or retrieve location: {venue_name}")
+
+
+async def get_all_locations(
+    db: db_service.CRUD,
+) -> schemas.MiningLocationListResponse:
+    """
+    Get all registered mining locations with gem distribution stats.
+
+    Args:
+        db: Database CRUD service
+
+    Returns:
+        List of all locations with gem type distribution counts
+    """
+    stmt = select(defs.MiningLocation).order_by(defs.MiningLocation.venue_name)
+    result = await db.session.execute(stmt)
+    locations = result.scalars().all()
+
+    # Build response list
+    location_responses = [
+        schemas.MiningLocationResponse(
+            venue_name=loc.venue_name,
+            gem_type=loc.gem_type,
+            display_name=loc.display_name,
+        )
+        for loc in locations
+    ]
+
+    # Calculate distribution
+    distribution = {gem: 0 for gem in schemas.GEM_TYPES}
+    for loc in locations:
+        if loc.gem_type in distribution:
+            distribution[loc.gem_type] += 1
+
+    return schemas.MiningLocationListResponse(
+        locations=location_responses,
+        gem_distribution=distribution,
     )

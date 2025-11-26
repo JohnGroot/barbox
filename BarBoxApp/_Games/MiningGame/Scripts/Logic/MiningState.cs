@@ -12,7 +12,6 @@ public partial class MiningState : Node
 #region Fields
 
 	private MiningGame _game;
-	private MiningLocationData _locationTemplate;
 	private MiningGlobalDataStore _globalData;
 
 	// Runtime state data (what gets saved/loaded)
@@ -38,27 +37,6 @@ public partial class MiningState : Node
 	{
 		_game = game;
 		Name = "State";
-	}
-
-	/// <summary>
-	/// Initialize state with location data and configuration
-	/// Must be called after construction before using the state
-	/// </summary>
-	public void Initialize()
-	{
-		// FAIL FAST: Require LocationManager
-		var locationManager = _game.GetLocationManager();
-		if (locationManager == null)
-			throw new InvalidOperationException("LocationManager is required but not available");
-
-		string currentLocationId = locationManager.VenueName;
-		if (string.IsNullOrEmpty(currentLocationId))
-			throw new InvalidOperationException("Venue name not configured - BARBOX_VENUE_NAME required");
-
-		_locationTemplate = _game.GetLocationDataTemplate(currentLocationId);
-		if (_locationTemplate == null)
-			throw new InvalidOperationException(
-				$"Location template for '{currentLocationId}' not found. Check MiningGame.tscn LocationDataResources configuration.");
 	}
 
 #endregion
@@ -106,13 +84,14 @@ public partial class MiningState : Node
 		if (_cacheValid)
 			return;
 
+		var config = _game.GetConfig();
 		var capacityLevel = GetUpgradeLevel(UpgradeType.Capacity);
 		var speedLevel = GetUpgradeLevel(UpgradeType.MiningSpeed);
 		var amountLevel = GetUpgradeLevel(UpgradeType.MiningAmount);
 
-		_cachedMaxCapacity = _locationTemplate.GetMaxCapacity(capacityLevel, _game.GetConfig());
-		_cachedMiningTickTime = _locationTemplate.GetMiningTickTime(speedLevel, _game.GetConfig());
-		_cachedGemsPerTick = _locationTemplate.GetGemsPerTick(amountLevel, _game.GetConfig());
+		_cachedMaxCapacity = config.GetMaxCapacity(capacityLevel);
+		_cachedMiningTickTime = config.GetMiningTickTime(speedLevel);
+		_cachedGemsPerTick = config.GetGemsPerTick(amountLevel);
 		_cacheValid = true;
 
 		if (_game.IsDebugMode())
@@ -365,12 +344,12 @@ public partial class MiningState : Node
 		
 	public bool CanPurchaseCredit()
 	{
-		if (_globalData == null || _locationTemplate == null) 
+		if (_globalData == null)
 			return false;
 
 		var cost = new Dictionary<GemType, int>
 		{
-			{ _locationTemplate.PrimaryGemType, _game.GetConfig().CreditCost }
+			{ _game.GetPrimaryGemType(), _game.GetConfig().CreditCost }
 		};
 
 		return _globalData.HasSufficientGems(cost);
@@ -378,27 +357,25 @@ public partial class MiningState : Node
 		
 	public bool CanPurchaseUpgrade(UpgradeType upgradeType)
 	{
-		if (_locationTemplate == null || _globalData == null) 
+		if (_globalData == null)
 			return false;
-			
+
 		int currentLevel = GetUpgradeLevel(upgradeType);
 		if (currentLevel >= _game.GetConfig().MaxUpgradeLevel)
 			return false;
 
-		var cost = _game.GetConfig().GetUpgradeCost(upgradeType, currentLevel, _locationTemplate.PrimaryGemType);
+		var cost = _game.GetConfig().GetUpgradeCost(upgradeType, currentLevel, _game.GetPrimaryGemType());
 		return _globalData.HasSufficientGems(cost);
 	}
 		
 	public bool ExtractGems()
 	{
-		if (!CanExtractGems() || _locationTemplate == null)
+		if (!CanExtractGems())
 			return false;
 
 		var maxCapacity = GetMaxCapacity();
-		bool wasAtCapacity = _pendingGems >= maxCapacity;
-
 		int extractedAmount = _pendingGems;
-		GemType gemType = _locationTemplate.PrimaryGemType;
+		GemType gemType = _game.GetPrimaryGemType();
 
 		// Capture timestamp BEFORE reset - this is the actual last mining time
 		DateTime actualLastMiningTime = _lastMiningTickTime;
@@ -407,22 +384,22 @@ public partial class MiningState : Node
 		_pendingGems = 0;
 
 		// Emit event with ACTUAL last mining time (before reset)
-		if (_game.GetEventService() != null)
+		var eventService = _game.GetEventService();
+		if (eventService != null)
 		{
-			var eventService = _game.GetEventService();
 			_ = eventService.EmitExtractCompleteAsync(gemType, extractedAmount, actualLastMiningTime);
 
 			// If this is first-time bonus extraction, emit bonus event
-		if (_firstTimeBonus)
-		{
-			var playerId = _game.GetSessionManager()?.GetPrimarySession()?.PlayerId ?? Guid.Empty;
-			var venueName = eventService.GetVenueName() ?? "default";
+			if (_firstTimeBonus)
+			{
+				var playerId = _game.GetSessionManager()?.GetPrimarySession()?.PlayerId ?? Guid.Empty;
+				var venueName = eventService.GetVenueName() ?? "default";
 
-			_ = eventService.EmitFirstTimeBonusAsync(playerId, venueName, extractedAmount);
-			_firstTimeBonus = false;
+				_ = eventService.EmitFirstTimeBonusAsync(playerId, venueName, extractedAmount);
+				_firstTimeBonus = false;
 
-			GD.Print($"[GameState] First-time bonus event emitted: {extractedAmount} gems");
-		}
+				GD.Print($"[GameState] First-time bonus event emitted: {extractedAmount} gems");
+			}
 		}
 
 		// NOW reset timer to start new mining cycle
@@ -433,12 +410,13 @@ public partial class MiningState : Node
 		
 	public bool PurchaseCredit()
 	{
-		if (!CanPurchaseCredit() || _locationTemplate == null) 
+		if (!CanPurchaseCredit())
 			return false;
 
+		var primaryGemType = _game.GetPrimaryGemType();
 		var cost = new Dictionary<GemType, int>
 		{
-			{ _locationTemplate.PrimaryGemType, _game.GetConfig().CreditCost }
+			{ primaryGemType, _game.GetConfig().CreditCost }
 		};
 
 		// Update local state
@@ -461,9 +439,10 @@ public partial class MiningState : Node
 		}
 
 		// Emit event to backend
-		if (_game.GetEventService() != null)
+		var eventService = _game.GetEventService();
+		if (eventService != null)
 		{
-			_ = _game.GetEventService().EmitCreditDepositAsync(_locationTemplate.PrimaryGemType, _game.GetConfig().CreditCost, CREDITS_PER_PURCHASE);
+			_ = eventService.EmitCreditDepositAsync(primaryGemType, _game.GetConfig().CreditCost, CREDITS_PER_PURCHASE);
 		}
 
 		return true;
@@ -471,12 +450,12 @@ public partial class MiningState : Node
 		
 	public bool PurchaseUpgrade(UpgradeType upgradeType)
 	{
-		if (!CanPurchaseUpgrade(upgradeType) || _locationTemplate == null) 
+		if (!CanPurchaseUpgrade(upgradeType))
 			return false;
 
 		int currentLevel = GetUpgradeLevel(upgradeType);
 		int newLevel = currentLevel + 1;
-		var cost = _game.GetConfig().GetUpgradeCost(upgradeType, currentLevel, _locationTemplate.PrimaryGemType);
+		var cost = _game.GetConfig().GetUpgradeCost(upgradeType, currentLevel, _game.GetPrimaryGemType());
 
 		// Update local state
 		_globalData.SpendGems(cost);
@@ -484,8 +463,11 @@ public partial class MiningState : Node
 
 		// Emit event to backend (venue-scoped for upgrade tracking)
 		var eventService = _game.GetEventService();
-		var venueName = eventService.GetVenueName();
-		_ = eventService.EmitUpgradePurchaseAsync(upgradeType, newLevel, cost, venueName);
+		if (eventService != null)
+		{
+			var venueName = eventService.GetVenueName();
+			_ = eventService.EmitUpgradePurchaseAsync(upgradeType, newLevel, cost, venueName);
+		}
 
 		return true;
 	}
@@ -494,7 +476,6 @@ public partial class MiningState : Node
 
 #region State Management
 
-	public MiningLocationData GetLocationData() => _locationTemplate;
 	public MiningGlobalDataStore GetGlobalData() => _globalData;
 
 	public void ClearAllState()

@@ -4,7 +4,12 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+
+
+# ============= CONSTANTS =============
+
+GEM_TYPES = ["ruby", "sapphire", "emerald", "diamond", "amethyst"]
 
 
 # ============= EVENT TYPES =============
@@ -99,3 +104,28 @@ class MiningStateResponse(BaseModel):
     upgrades: dict[str, int]  # {upgrade_type: level} - LOCATION-SPECIFIC
     last_extraction_time: datetime | None  # None = no extraction history - LOCATION-SPECIFIC
     metadata: MiningMetadataResponse  # LOCATION-SPECIFIC (bonus status per location)
+
+
+# ============= LOCATION REGISTRATION MODELS =============
+
+class MiningLocationResponse(BaseModel):
+    """Response from location registration/query."""
+    venue_name: str = Field(description="Venue identifier (e.g., 'best_intentions')")
+    gem_type: Literal["ruby", "sapphire", "emerald", "diamond", "amethyst"]
+    display_name: str = Field(description="Human-readable location name")
+
+    @field_validator("gem_type")
+    @classmethod
+    def validate_gem_type(cls, v: str) -> str:
+        if v not in GEM_TYPES:
+            raise ValueError(f"Invalid gem type: {v}. Must be one of {GEM_TYPES}")
+        return v
+
+
+class MiningLocationListResponse(BaseModel):
+    """List of all registered mining locations with distribution stats."""
+    locations: list[MiningLocationResponse]
+    gem_distribution: dict[str, int] = Field(
+        description="Count of locations per gem type",
+        examples=[{"ruby": 5, "sapphire": 4, "emerald": 3, "diamond": 2, "amethyst": 1}],
+    )

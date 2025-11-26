@@ -164,6 +164,54 @@ public class MiningEventService : GameEventServiceBase
 	}
 
 	/// <summary>
+	/// Register this location with the backend and get deterministic configuration.
+	/// Idempotent - returns same gem type for same venue name.
+	/// </summary>
+	/// <param name="venueName">Venue identifier (e.g., "best_intentions")</param>
+	/// <returns>Location configuration with assigned gem type</returns>
+	public async Task<Result<MiningLocationConfig>> RegisterLocationAsync(string venueName)
+	{
+		if (string.IsNullOrEmpty(venueName))
+			return Result.Failure<MiningLocationConfig>(ValidationMessages.Required("Venue name"));
+
+		var queryParams = new Dictionary<string, string> { ["venue_name"] = venueName };
+		return await QueryBackendAsync(
+			"/game/mining/location/register",
+			queryParams,
+			ParseLocationConfig
+		);
+	}
+
+	private Result<MiningLocationConfig> ParseLocationConfig(Godot.Collections.Dictionary jsonDict)
+	{
+		var venueNameResult = JsonParsingHelpers.ParseString(jsonDict, "venue_name");
+		var gemTypeResult = JsonParsingHelpers.ParseString(jsonDict, "gem_type");
+		var displayNameResult = JsonParsingHelpers.ParseString(jsonDict, "display_name");
+
+		if (venueNameResult.IsFailure(out var venueNameError))
+			return Result.Failure<MiningLocationConfig>(venueNameError.Message);
+		if (!venueNameResult.IsSuccess(out var venueName))
+			return Result.Failure<MiningLocationConfig>("Failed to extract venue_name");
+
+		if (gemTypeResult.IsFailure(out var gemTypeError))
+			return Result.Failure<MiningLocationConfig>(gemTypeError.Message);
+		if (!gemTypeResult.IsSuccess(out var gemType))
+			return Result.Failure<MiningLocationConfig>("Failed to extract gem_type");
+
+		if (displayNameResult.IsFailure(out var displayNameError))
+			return Result.Failure<MiningLocationConfig>(displayNameError.Message);
+		if (!displayNameResult.IsSuccess(out var displayName))
+			return Result.Failure<MiningLocationConfig>("Failed to extract display_name");
+
+		return Result.Success(new MiningLocationConfig
+		{
+			VenueName = venueName,
+			GemTypeString = gemType,
+			DisplayName = displayName
+		});
+	}
+
+	/// <summary>
 	/// Get complete player mining state in single request.
 	/// Replaces 4 separate API calls with unified endpoint for faster initialization.
 	/// </summary>

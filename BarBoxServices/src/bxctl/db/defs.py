@@ -83,3 +83,11 @@ class BoxSessionEvent(Base):
     timestamp: Mapped[datetime]
     payload: Mapped[JsonObject]
     session: Mapped["BoxSession"] = relationship(back_populates="events")
+
+
+class MiningLocation(Base):
+    """Registered mining locations with balanced gem type assignment."""
+    venue_name: Mapped[str] = mapped_column(unique=True, index=True)
+    gem_type: Mapped[str]  # "ruby", "sapphire", "emerald", "diamond", "amethyst"
+    display_name: Mapped[str]
+    created_at: Mapped[datetime]

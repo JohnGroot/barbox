@@ -142,3 +142,47 @@ async def reset_player_mining_state(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "OPERATION_FAILED", "message": str(e)},
         )
+
+
+# ============= LOCATION REGISTRATION =============
+
+
+@router.get("/location/register")
+async def register_location(
+    venue_name: str,
+    db_service: dependencies.Database,
+) -> schemas.MiningLocationResponse:
+    """
+    Register a mining location with balanced gem type assignment.
+
+    This is an idempotent endpoint - calling it multiple times with the same
+    venue_name returns the same location data. New locations are assigned
+    the gem type with the fewest existing locations for balance.
+
+    Args:
+        venue_name: Venue identifier (e.g., "best_intentions")
+
+    Returns:
+        Location details including assigned gem type
+    """
+    try:
+        return await service.register_or_get_location(db_service, venue_name)
+    except ValueError as e:
+        logger.error("location_registration_failed", venue_name=venue_name, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "REGISTRATION_FAILED", "message": str(e)},
+        )
+
+
+@router.get("/locations")
+async def get_all_locations(
+    db_service: dependencies.Database,
+) -> schemas.MiningLocationListResponse:
+    """
+    Get all registered mining locations with gem distribution stats.
+
+    Returns:
+        List of all locations with gem type distribution counts
+    """
+    return await service.get_all_locations(db_service)

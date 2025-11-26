@@ -39,7 +39,8 @@ public partial class MiningGameUI : Control
 
 	private MiningGame _game;
 	private MiningGameConfig _config;
-	private MiningLocationData _locationData;
+	private MiningLocationConfig _locationConfig;
+	private GemType _gemType = GemType.Amethyst;
 	private bool _isEnabled;
 
 	// Performance optimization flags
@@ -51,29 +52,116 @@ public partial class MiningGameUI : Control
 	{
 		_game = game;
 		_config = config;
-		_locationData = game.GetLocationData();
 
 		CreateUI();
 		ApplyTheme();
+
+		// Start disabled - enable only after location registered AND user logged in
+		SetEnabled(false);
 	}
 
-	public void RefreshLocationData()
+	public void ApplyLocationConfig(MiningLocationConfig config)
 	{
-		if (_game != null)
+		_locationConfig = config;
+		_gemType = config?.GetGemType() ?? GemType.Amethyst;
+
+		// Update location display
+		if (_locationLabel != null)
+			_locationLabel.Text = GetLocationDisplayName();
+
+		// Refresh UI colors based on new gem type
+		RefreshThemeColors();
+	}
+
+	private void RefreshThemeColors()
+	{
+		// Background
+		if (_background != null)
+			_background.Color = GetBackgroundColor();
+
+		// Header section
+		if (_titleLabel != null)
+			_titleLabel.AddThemeColorOverride("font_color", GetHeaderColor());
+		if (_locationLabel != null)
+			_locationLabel.AddThemeColorOverride("font_color", GetPrimaryAccent());
+
+		// Progress bar
+		if (_miningProgressBar != null)
 		{
-			_locationData = _game.GetLocationData();
+			var progressStyle = new StyleBoxFlat();
+			progressStyle.BgColor = GetProgressBarColor();
+			progressStyle.SetCornerRadiusAll(4);
+			_miningProgressBar.AddThemeStyleboxOverride("fill", progressStyle);
+		}
+
+		// Text labels
+		if (_progressLabel != null)
+			_progressLabel.AddThemeColorOverride("font_color", GetTextColor());
+		if (_gemsReadyLabel != null)
+			_gemsReadyLabel.AddThemeColorOverride("font_color", GetTextColor());
+		if (_capacityLabel != null)
+			_capacityLabel.AddThemeColorOverride("font_color", GetTextColor());
+
+		// Action buttons - recreate styles with new colors
+		RefreshButtonStyles(_extractButton);
+		RefreshButtonStyles(_purchaseCreditButton);
+
+		// Update purchase credit button text with new gem emoji
+		if (_purchaseCreditButton != null)
+			_purchaseCreditButton.Text = $"Purchase Credit ({GemTheme.GetGemEmoji(_gemType)} {_config.CreditCost})";
+
+		// Upgrade groups - they get colors from parent UI, trigger refresh
+		foreach (var upgradeGroup in _upgradeGroups.Values)
+		{
+			upgradeGroup.RefreshTheme();
+		}
+
+		// Global inventory labels
+		foreach (var label in _gemLabels.Values)
+		{
+			label.AddThemeColorOverride("font_color", GetTextColor());
 		}
 	}
 
-	private Color GetBackgroundColor() => _locationData?.BackgroundColor ?? new Color(0.1f, 0.1f, 0.15f, 0.95f);
-	public Color GetPrimaryAccent() => _locationData?.PrimaryAccent ?? new Color(0.4f, 0.2f, 0.8f);
-	public Color GetSecondaryAccent() => _locationData?.SecondaryAccent ?? new Color(0.2f, 0.6f, 0.8f);
-	private Color GetProgressBarColor() => _locationData?.ProgressBarColor ?? new Color(0.3f, 0.7f, 0.9f);
-	public Color GetButtonEnabledColor() => _locationData?.ButtonEnabledColor ?? new Color(0.2f, 0.8f, 0.4f);
-	public Color GetButtonDisabledColor() => _locationData?.ButtonDisabledColor ?? new Color(0.3f, 0.3f, 0.35f);
-	public Color GetTextColor() => _locationData?.TextColor ?? new Color(0.9f, 0.9f, 0.9f);
-	public Color GetHeaderColor() => _locationData?.HeaderColor ?? new Color(1.0f, 0.95f, 0.8f);
-	private string GetLocationDisplayName() => _locationData?.LocationDisplayName ?? "Crystal Cavern";
+	private void RefreshButtonStyles(Button button)
+	{
+		if (button == null) return;
+
+		var normalStyle = new StyleBoxFlat();
+		normalStyle.BgColor = GetButtonEnabledColor();
+		normalStyle.SetCornerRadiusAll(4);
+		normalStyle.SetContentMarginAll(8);
+		button.AddThemeStyleboxOverride("normal", normalStyle);
+
+		var hoverStyle = new StyleBoxFlat();
+		hoverStyle.BgColor = GetButtonEnabledColor() * 1.2f;
+		hoverStyle.SetCornerRadiusAll(4);
+		hoverStyle.SetContentMarginAll(8);
+		button.AddThemeStyleboxOverride("hover", hoverStyle);
+
+		var pressedStyle = new StyleBoxFlat();
+		pressedStyle.BgColor = GetButtonEnabledColor() * 0.8f;
+		pressedStyle.SetCornerRadiusAll(4);
+		pressedStyle.SetContentMarginAll(8);
+		button.AddThemeStyleboxOverride("pressed", pressedStyle);
+
+		var disabledStyle = new StyleBoxFlat();
+		disabledStyle.BgColor = GetButtonDisabledColor();
+		disabledStyle.SetCornerRadiusAll(4);
+		disabledStyle.SetContentMarginAll(8);
+		button.AddThemeStyleboxOverride("disabled", disabledStyle);
+	}
+
+	private Color GetBackgroundColor() => GemTheme.GetBackgroundColor(_gemType);
+	public Color GetPrimaryAccent() => GemTheme.GetPrimaryAccent(_gemType);
+	public Color GetSecondaryAccent() => GemTheme.GetSecondaryAccent(_gemType);
+	private Color GetProgressBarColor() => GemTheme.GetProgressBarColor(_gemType);
+	public Color GetButtonEnabledColor() => GemTheme.GetButtonEnabledColor(_gemType);
+	public Color GetButtonDisabledColor() => GemTheme.GetButtonDisabledColor(_gemType);
+	public Color GetTextColor() => GemTheme.GetTextColor(_gemType);
+	public Color GetHeaderColor() => GemTheme.GetHeaderColor(_gemType);
+	private string GetLocationDisplayName() => _locationConfig?.DisplayName ?? "Crystal Cavern";
+	internal GemType GetGemType() => _gemType;
 
 	private void CreateUI()
 	{
@@ -186,7 +274,7 @@ public partial class MiningGameUI : Control
 		_extractButton.Pressed += () => _game?.ExtractGems();
 		buttonsHBox.AddChild(_extractButton);
 
-		_purchaseCreditButton = UIBuilder.CreateActionButton($"Purchase Credit ({_locationData.GetGemEmoji(_locationData.PrimaryGemType)} {_config.CreditCost})", this);
+		_purchaseCreditButton = UIBuilder.CreateActionButton($"Purchase Credit ({GemTheme.GetGemEmoji(_gemType)} {_config.CreditCost})", this);
 		_purchaseCreditButton.CustomMinimumSize = new Vector2(200, 40);
 		_purchaseCreditButton.Pressed += () => _game?.PurchaseCredit();
 		buttonsHBox.AddChild(_purchaseCreditButton);
@@ -292,7 +380,7 @@ public partial class MiningGameUI : Control
 
 			// Clear button text to default state
 			_extractButton.Text = "Extract Gems";
-			_purchaseCreditButton.Text = $"Purchase Credit ({_locationData.GetGemEmoji(_locationData.PrimaryGemType)} {_config.CreditCost})";
+			_purchaseCreditButton.Text = $"Purchase Credit ({GemTheme.GetGemEmoji(_gemType)} {_config.CreditCost})";
 		}
 	}
 
@@ -308,8 +396,7 @@ public partial class MiningGameUI : Control
 
 	public void UpdateMiningProgress()
 	{
-		var locationTemplate = _game?.GetLocationData();
-		if (locationTemplate == null || _game == null)
+		if (_game == null)
 		{
 			// Show disabled state when no data available
 			if (!_isEnabled)
@@ -376,18 +463,10 @@ public partial class MiningGameUI : Control
 		UIBuilder.UpdateButtonState(_purchaseCreditButton, canPurchaseCredit);
 
 		// Update extract button text based on gems available
-		var locationData = _game?.GetLocationData();
-		if (locationData != null && _game != null)
+		if (_game != null)
 		{
 			int pendingGems = _game.GetPendingGems();
-			if (pendingGems > 0)
-			{
-				_extractButton.Text = $"Extract {pendingGems} Gems";
-			}
-			else
-			{
-				_extractButton.Text = "Extract Gems";
-			}
+			_extractButton.Text = pendingGems > 0 ? $"Extract {pendingGems} Gems" : "Extract Gems";
 		}
 		else
 		{
@@ -425,7 +504,7 @@ public partial class MiningGameUI : Control
 			if (_gemLabels.TryGetValue(gemType, out var label))
 			{
 				int amount = globalData.GetGems(gemType);
-				var gemEmoji = _locationData?.GetGemEmoji(gemType) ?? "💠";
+				var gemEmoji = GemTheme.GetGemEmoji(gemType);
 				label.Text = $"{gemEmoji} {gemType}: {amount}";
 			}
 		}
@@ -613,7 +692,7 @@ public partial class MiningGameUI : Control
 			headerHBox.AddThemeConstantOverride("separation", 12);
 
 			_titleLabel = new Label();
-			_titleLabel.Text = _parentUI._locationData?.GetUpgradeDisplayName(_upgradeType) ?? FormatEnumName(_upgradeType.ToString());
+			_titleLabel.Text = GemTheme.GetUpgradeDisplayName(_upgradeType);
 			_titleLabel.CustomMinimumSize = new Vector2(220, 0);
 			_titleLabel.AddThemeColorOverride("font_color", GetHeaderColor());
 			headerHBox.AddChild(_titleLabel);
@@ -629,7 +708,7 @@ public partial class MiningGameUI : Control
 
 			// Description
 			_descriptionLabel = new Label();
-			_descriptionLabel.Text = _parentUI._locationData?.GetUpgradeDescription(_upgradeType) ?? "Improves mining operations";
+			_descriptionLabel.Text = GemTheme.GetUpgradeDescription(_upgradeType);
 			_descriptionLabel.AddThemeColorOverride("font_color", Colors.Gray);
 			_descriptionLabel.AddThemeFontSizeOverride("font_size", 12);
 			AddChild(_descriptionLabel);
@@ -653,21 +732,20 @@ public partial class MiningGameUI : Control
 
 		public void UpdateUI()
 		{
-			var locationTemplate = _game?.GetLocationData();
-			if (locationTemplate == null || _game == null) return;
+			if (_game == null) return;
 
 			int currentLevel = _game.GetUpgradeLevel(_upgradeType);
 			int maxLevel = _game.Config.MaxUpgradeLevel;
 
 			// Update title with level
-			_titleLabel.Text = $"{_parentUI._locationData?.GetUpgradeDisplayName(_upgradeType) ?? FormatEnumName(_upgradeType.ToString())} (Lv.{currentLevel}/{maxLevel})";
+			_titleLabel.Text = $"{GemTheme.GetUpgradeDisplayName(_upgradeType)} (Lv.{currentLevel}/{maxLevel})";
 
 			// Update tick indicators
 			_ticksLabel.Text = GenerateTickIndicators(currentLevel, maxLevel);
 
 			// Update current stats
 			string currentStats = GetCurrentStats(_upgradeType);
-			_descriptionLabel.Text = $"{_parentUI._locationData?.GetUpgradeDescription(_upgradeType) ?? "Improves mining operations"}\n{currentStats}";
+			_descriptionLabel.Text = $"{GemTheme.GetUpgradeDescription(_upgradeType)}\n{currentStats}";
 
 			if (currentLevel >= maxLevel)
 			{
@@ -678,13 +756,14 @@ public partial class MiningGameUI : Control
 			}
 			else
 			{
-				// Show cost for next level
-				var cost = _game.Config.GetUpgradeCost(_upgradeType, currentLevel, locationTemplate.PrimaryGemType);
+				// Show cost for next level - use UI's gem type for primary gem
+				var primaryGemType = _parentUI.GetGemType();
+				var cost = _game.Config.GetUpgradeCost(_upgradeType, currentLevel, primaryGemType);
 				var costStrings = new List<string>();
 
 				foreach (var kvp in cost)
 				{
-					var gemEmoji = _parentUI._locationData?.GetGemEmoji(kvp.Key) ?? "💠";
+					var gemEmoji = GemTheme.GetGemEmoji(kvp.Key);
 					costStrings.Add($"{gemEmoji} {kvp.Value}");
 				}
 
@@ -725,6 +804,45 @@ public partial class MiningGameUI : Control
 				// When re-enabling, let the normal UpdateUI logic handle the button state
 				// based on actual game conditions (affordability, etc.)
 				UpdateUI();
+			}
+		}
+
+		public void RefreshTheme()
+		{
+			// Update label colors
+			if (_titleLabel != null)
+				_titleLabel.AddThemeColorOverride("font_color", GetHeaderColor());
+			if (_ticksLabel != null)
+				_ticksLabel.AddThemeColorOverride("font_color", GetSecondaryAccent());
+			if (_costLabel != null)
+				_costLabel.AddThemeColorOverride("font_color", GetTextColor());
+
+			// Refresh button styles
+			if (_purchaseButton != null)
+			{
+				var normalStyle = new StyleBoxFlat();
+				normalStyle.BgColor = _parentUI.GetButtonEnabledColor();
+				normalStyle.SetCornerRadiusAll(4);
+				normalStyle.SetContentMarginAll(8);
+				_purchaseButton.AddThemeStyleboxOverride("normal", normalStyle);
+
+				var hoverStyle = new StyleBoxFlat();
+				hoverStyle.BgColor = _parentUI.GetButtonEnabledColor() * 1.2f;
+				hoverStyle.SetCornerRadiusAll(4);
+				hoverStyle.SetContentMarginAll(8);
+				_purchaseButton.AddThemeStyleboxOverride("hover", hoverStyle);
+
+				var pressedStyle = new StyleBoxFlat();
+				pressedStyle.BgColor = _parentUI.GetButtonEnabledColor() * 0.8f;
+				pressedStyle.SetCornerRadiusAll(4);
+				pressedStyle.SetContentMarginAll(8);
+				_purchaseButton.AddThemeStyleboxOverride("pressed", pressedStyle);
+
+				var disabledStyle = new StyleBoxFlat();
+				disabledStyle.BgColor = _parentUI.GetButtonDisabledColor();
+				disabledStyle.SetCornerRadiusAll(4);
+				disabledStyle.SetContentMarginAll(8);
+				_purchaseButton.AddThemeStyleboxOverride("disabled", disabledStyle);
 			}
 		}
 	}

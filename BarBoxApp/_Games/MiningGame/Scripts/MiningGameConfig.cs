@@ -107,6 +107,27 @@ namespace BarBox.Games.MiningGame
 			return UpgradeTier.Tier3;
 		}
 
+		/// <summary>
+		/// Calculate max capacity at given upgrade level.
+		/// Formula: BaseCapacity + (level * CapacityPerLevel)
+		/// </summary>
+		public int GetMaxCapacity(int capacityLevel) =>
+			BaseCapacity + (capacityLevel * CapacityPerLevel);
+
+		/// <summary>
+		/// Calculate mining tick time at given upgrade level.
+		/// Formula: BaseMiningTimeSeconds * (SpeedMultiplierPerLevel ^ level)
+		/// </summary>
+		public float GetMiningTickTime(int speedLevel) =>
+			BaseMiningTimeSeconds * Mathf.Pow(SpeedMultiplierPerLevel, speedLevel);
+
+		/// <summary>
+		/// Calculate gems per tick at given upgrade level.
+		/// Formula: BaseGemsPerTick + (level * AmountPerLevel)
+		/// </summary>
+		public int GetGemsPerTick(int amountLevel) =>
+			BaseGemsPerTick + (amountLevel * AmountPerLevel);
+
 		private GemType GetRandomOtherGemType(IEnumerable<GemType> exclude)
 		{
 			var allGems = Enum.GetValues<GemType>()

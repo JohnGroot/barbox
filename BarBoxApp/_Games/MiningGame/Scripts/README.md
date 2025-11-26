@@ -13,16 +13,21 @@ Following BarBox's 4-file consolidation pattern:
 
 ```
 MiningGame/
-├── MiningGameTypes.cs      # All enums and data structures
-├── MiningGameUI.cs         # Complete UI system with nested classes
-├── MiningGame.cs           # Main game with nested Engine/State classes
-├── MiningGameConfig.cs     # Unified configuration
-├── Supporting Files:
-│   ├── MiningGlobalData.cs     # Global player data
-│   ├── MiningLocationData.cs   # Location-specific configuration
-│   ├── MiningLocationState.cs  # Local machine state
-│   ├── CreditPurchaseTimer.cs  # Timer management
-│   └── UpgradeCostData.cs     # Upgrade cost calculations
+├── Scripts/
+│   ├── MiningGame.cs              # Main game controller with async lifecycle
+│   ├── MiningGameConfig.cs        # Game mechanics configuration
+│   ├── MiningGameTypes.cs         # All enums and data structures
+│   ├── Data/
+│   │   ├── GemTheme.cs            # Deterministic UI theming from gem type
+│   │   ├── MiningLocationConfig.cs # Backend registration response DTO
+│   │   └── MiningGlobalDataStore.cs # Global player inventory
+│   ├── Logic/
+│   │   ├── MiningEngine.cs        # Core mining simulation
+│   │   └── MiningState.cs         # State management with backend queries
+│   ├── Services/
+│   │   └── MiningEventService.cs  # Backend API integration
+│   └── Visual/
+│       └── MiningGameUI.cs        # Complete UI system
 ```
 
 ### 🎯 **Core Design Patterns**
@@ -75,26 +80,32 @@ if (GodotObject.IsInstanceValid(gameHost))
 
 ## Data Architecture
 
-### **Local vs Global Data Separation**
+### **Backend-Driven Location Registration**
 
-The game implements a sophisticated data architecture that separates location-specific state from global player data:
+The game uses a backend registration system for automatic gem type assignment:
 
-#### **Global Data** (`MiningGlobalData.cs`)
+- **Location Registration**: `GET /game/mining/location/register?venue_name=X`
+  - Idempotent - same venue always gets same gem type
+  - Automatic balancing - assigns least-used gem type to new venues
+  - Returns `MiningLocationConfig` with assigned gem type and display name
+
+#### **Global Data** (`MiningGlobalDataStore.cs`)
 - Player's total gem inventory across all locations
-- Persistent across sessions and locations
-- Stored in UserData meta system
+- Persistent via event-sourcing (backend aggregation)
+- Gems from ANY location can be spent at ANY location
 
-#### **Location-Specific Data** (`MiningLocationData.cs` + `MiningLocationState.cs`)
-- Machine-specific upgrade levels and mining capacity
-- Local gem accumulation ready for extraction
-- Per-location theming and gem types
-- Persisted with location-specific keys: `mining_state_{locationId}`
+#### **Location-Specific Data** (Backend Event-Sourced)
+- Upgrade levels scoped to venue (independent progression per location)
+- First-time bonus tracked per venue
+- Extraction timestamps for offline calculation
 
 ### **Data Flow**
 ```
+Backend Registration → Gem Type Assignment → UI Theme (GemTheme)
+                                          ↓
 Real-time Mining → Local Capacity → Extraction → Global Inventory → Credit Purchase
                 ↓                              ↓
-         Location Upgrades                Player Account
+     Location Upgrades (venue-scoped)     Player Account
 ```
 
 ## Performance & Caching Strategy
@@ -106,9 +117,11 @@ private int _cachedMaxCapacity;
 
 private void RefreshCacheIfNeeded()
 {
-    if (!_cacheValid && _locationTemplate != null)
+    if (!_cacheValid)
     {
-        _cachedMaxCapacity = _locationTemplate.GetMaxCapacity(/*...*/);
+        var config = _game.GetConfig();
+        var capacityLevel = GetUpgradeLevel(UpgradeType.Capacity);
+        _cachedMaxCapacity = config.GetMaxCapacity(capacityLevel);
         _cacheValid = true;
     }
 }
@@ -152,8 +165,10 @@ private void OnUserLoggedIn(UserData userData)
 
 ### **Theme System Integration**
 ```csharp
-private Color GetBackgroundColor() => 
-    _locationData?.BackgroundColor ?? new Color(0.1f, 0.1f, 0.15f, 0.95f);
+// All UI colors derived deterministically from gem type via GemTheme static class
+private Color GetBackgroundColor() => GemTheme.GetBackgroundColor(_gemType);
+public Color GetPrimaryAccent() => GemTheme.GetPrimaryAccent(_gemType);
+public Color GetButtonEnabledColor() => GemTheme.GetButtonEnabledColor(_gemType);
 ```
 
 ### **State Management**

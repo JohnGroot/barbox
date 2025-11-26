@@ -51,8 +51,6 @@ public partial class MiningGame : GameController
 	/// </summary>
 	public override bool CanLogout => true;
 
-	[ExportCategory("Location Data")]
-	[Export] public Godot.Collections.Array<MiningLocationData> LocationDataResources { get; set; } = new();
 		
 	// ================================================================
 	// PRIVATE FIELDS
@@ -72,8 +70,8 @@ public partial class MiningGame : GameController
 	// Race condition prevention
 	private bool _isProcessingUserChange = false;
 
-	// Location data management
-	private Dictionary<string, MiningLocationData> _locationDataRegistry = new();
+	// Backend-derived location configuration
+	private MiningLocationConfig _locationConfig;
 		
 	// ================================================================
 	// INITIALIZATION
@@ -156,75 +154,24 @@ public partial class MiningGame : GameController
 		}
 	}
 		
-	private void InitializeLocationDataRegistry()
-	{
-		_locationDataRegistry.Clear();
-
-		if (LocationDataResources is { Count: > 0 })
-		{
-			foreach (var locationData in LocationDataResources)
-			{
-				if (locationData != null && !string.IsNullOrEmpty(locationData.LocationId))
-				{
-					_locationDataRegistry[locationData.LocationId] = locationData;
-				}
-			}
-		}
-		else
-		{
-			GD.PrintErr("[MiningGame] ERROR: No LocationDataResources configured! Please assign location data in the editor.");
-		}
-	}
-		
 	/// <summary>
 	/// PHASE 2: Component Initialization
 	/// Creates game components (_engine, _state, _ui)
+	/// NOTE: Location config obtained asynchronously in ActivateGame()
 	/// POST-CONDITION GUARANTEES:
 	/// - _engine exists and is valid
 	/// - _state exists and is valid
 	/// - _ui exists and is valid
-	/// - _locationDataRegistry contains at least one location
 	/// - Config is not null
 	/// </summary>
 	protected override void InitializeComponents()
 	{
 		base.InitializeComponents();
 
-		InitializeLocationDataRegistry();
-		if (_locationDataRegistry.Count == 0)
-		{
-			throw new InvalidOperationException(
-				"No LocationDataResources configured. Game cannot function without location data.");
-		}
-
-		if (Config == null)
-		{
-			if (_locationManager == null)
-				throw new InvalidOperationException("LocationManager is required but not available");
-
-			var locationId = _locationManager.VenueName;
-			if (string.IsNullOrEmpty(locationId))
-				throw new InvalidOperationException("BARBOX_VENUE_NAME environment variable is required but not set");
-
-			// GetLocationData is deprecated - use location data registry instead
-			var locationTemplate = GetLocationDataTemplate(locationId);
-			if (locationTemplate == null)
-			{
-				var availableLocations = string.Join(", ", _locationDataRegistry.Keys);
-				throw new InvalidOperationException(
-					$"Location data for '{locationId}' not found in LocationDataRegistry. " +
-					$"Available locations: {availableLocations}. " +
-					$"Either set BARBOX_VENUE_NAME to an available location or add '{locationId}' to the editor's LocationDataResources.");
-			}
-
-			// Create config based on location template
-			Config = new MiningGameConfig();
-			GD.Print($"[MiningGame] Loaded location template: {locationId}");
-		}
+		Config ??= new MiningGameConfig();
 
 		_engine = new MiningEngine(this);
 		_state = new MiningState(this);
-		_state.Initialize();
 
 		AddChild(_engine);
 		AddChild(_state);
@@ -349,8 +296,6 @@ public partial class MiningGame : GameController
 
 			if (IsInstanceValid(_ui))
 			{
-				_ui.RefreshLocationData();
-
 				if (!string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 				{
 					_ui.SetEnabled(true);
@@ -379,22 +324,111 @@ public partial class MiningGame : GameController
 
 	/// <summary>
 	/// PHASE 4: Activation Decision
-	/// Starts mining session if user is logged in, otherwise waits for login
+	/// Registers location with backend, then starts mining session if user logged in
 	/// </summary>
 	protected override void ActivateGame()
 	{
 		base.ActivateGame();
 
-		if (IsPlayerLoggedIn())
+		// Start async location registration
+		RegisterLocationAndActivateAsync();
+	}
+
+	private async void RegisterLocationAndActivateAsync()
+	{
+		try
 		{
-			StartMiningSession();
-		}
-		else
-		{
-			if (IsInstanceValid(_ui))
+			// Get venue name from environment
+			var venueName = _locationManager?.VenueName ?? "dev_location";
+			if (string.IsNullOrEmpty(venueName))
+			{
+				venueName = "dev_location";
+				GD.PushWarning("[MiningGame] BARBOX_VENUE_NAME not set, using dev_location");
+			}
+
+			GD.Print($"[MiningGame] Registering location: {venueName}");
+
+			// Register with backend (idempotent)
+			var result = await _miningEventService.RegisterLocationAsync(venueName);
+
+			// Check validity after await
+			if (!IsInstanceValid(this))
+				return;
+
+			if (result.IsFailure(out var error))
+			{
+				GD.PrintErr($"[MiningGame] Location registration failed: {error.Message}");
+
+				// Use dev fallback in non-production
+				if (!GameHost.IsProductionContext())
+				{
+					GD.Print("[MiningGame] Using dev fallback config");
+					_locationConfig = MiningLocationConfig.CreateDevDefault();
+				}
+				else
+				{
+					// Show error UI in production
+					ShowRegistrationError(error.Message);
+					return;
+				}
+			}
+			else if (result.IsSuccess(out var config))
+			{
+				_locationConfig = config;
+				GD.Print($"[MiningGame] Location registered: {config.VenueName} → {config.GemTypeString}");
+			}
+
+			// Check validity again
+			if (!IsInstanceValid(this) || !IsInstanceValid(_ui))
+				return;
+
+			// Apply location config to UI
+			_ui.ApplyLocationConfig(_locationConfig);
+
+			// Now proceed with activation
+			if (IsPlayerLoggedIn())
+			{
+				StartMiningSession();
+			}
+			else
 			{
 				_ui.SetEnabled(false);
 			}
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"[MiningGame] Error during location registration: {ex.Message}");
+
+			if (!IsInstanceValid(this))
+				return;
+
+			if (!GameHost.IsProductionContext())
+			{
+				_locationConfig = MiningLocationConfig.CreateDevDefault();
+				if (IsInstanceValid(_ui))
+				{
+					_ui.ApplyLocationConfig(_locationConfig);
+					if (IsPlayerLoggedIn())
+						StartMiningSession();
+					else
+						_ui.SetEnabled(false);
+				}
+			}
+			else
+			{
+				ShowRegistrationError(ex.Message);
+			}
+		}
+	}
+
+	private void ShowRegistrationError(string errorMessage)
+	{
+		GD.PrintErr($"[MiningGame] Registration error: {errorMessage}");
+
+		if (IsInstanceValid(_ui))
+		{
+			_ui.SetEnabled(false);
+			_ui.ShowError(ErrorMessages.BACKEND_UNAVAILABLE_TITLE, ErrorMessages.BACKEND_UNAVAILABLE_MESSAGE);
 		}
 	}
 
@@ -422,8 +456,7 @@ public partial class MiningGame : GameController
 
 	protected override HelpContentData GetHelpContent()
 	{
-		var locationData = GetLocationData();
-		var gemTypeName = locationData?.PrimaryGemType.ToString() ?? "Crystal";
+		var gemTypeName = _locationConfig?.GetGemType().ToString() ?? "Crystal";
 
 		return new HelpContentData("MINING HOW-TO")
 			.AddSection("⛏️ WELCOME TO THE MINES ⛏️",
@@ -459,6 +492,7 @@ public partial class MiningGame : GameController
 	internal SessionManager GetSessionManager() => _sessionManager;
 	internal bool IsDebugMode() => EnableDebugMode;
 	internal MiningState GetState() => _state;
+	internal MiningLocationConfig GetLocationConfig() => _locationConfig;
 
 	// ================================================================
 	// PUBLIC API
@@ -468,7 +502,6 @@ public partial class MiningGame : GameController
 	public bool CanPurchaseCredit() => _state.CanPurchaseCredit();
 	public bool CanPurchaseUpgrade(UpgradeType upgradeType) => _state.CanPurchaseUpgrade(upgradeType);
 
-	public MiningLocationData GetLocationData() => _state.GetLocationData();
 	public MiningGlobalDataStore GetGlobalData() => _state.GetGlobalData();
 
 	public float GetMiningProgress() => _engine.GetMiningProgress();
@@ -480,40 +513,21 @@ public partial class MiningGame : GameController
 	public int GetGemsPerTick() => _state.GetGemsPerTick();
 	public float GetMiningTickTime() => _state.GetMiningTickTime();
 	public int GetUpgradeLevel(UpgradeType upgradeType) => _state.GetUpgradeLevel(upgradeType);
-		
-	public MiningLocationData GetLocationDataTemplate(string locationId)
-	{
-		if (string.IsNullOrEmpty(locationId))
-			throw new ArgumentException("Location ID cannot be null or empty", nameof(locationId));
 
-		if (!_locationDataRegistry.TryGetValue(locationId, out var template))
-		{
-			var available = string.Join(", ", _locationDataRegistry.Keys);
-			throw new InvalidOperationException(
-				$"Location template '{locationId}' not found in registry. " +
-				$"Available locations: {available}. " +
-				$"Either set BARBOX_VENUE_NAME to an available location or add '{locationId}' to the editor's LocationDataResources.");
-		}
+	public GemType GetPrimaryGemType() => _locationConfig?.GetGemType() ?? GemType.Amethyst;
 
-		return template;
-	}
-		
 	public void ExtractGems()
 	{
-		if (!IsInstanceValid(_state))
+		if (!IsInstanceValid(_state) || _locationConfig == null)
 			return;
 
-		var locationTemplate = _state.GetLocationData();
-		if (locationTemplate == null || !CanExtractGems()) return;
+		if (!CanExtractGems()) return;
 
 		int amount = _state.PendingGems;
-		int maxCapacity = _state.GetMaxCapacity();
-		bool wasAtCapacity = amount >= maxCapacity;
-		GemType gemType = locationTemplate.PrimaryGemType;
+		GemType gemType = _locationConfig.GetGemType();
 
 		if (_state.ExtractGems())
 		{
-
 			if (IsInstanceValid(_ui))
 				_ui.UpdateAllUI();
 			EmitSignal(SignalName.GemsExtracted, amount, (int)gemType);
