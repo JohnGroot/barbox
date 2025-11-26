@@ -51,6 +51,39 @@ public class RacingUIState
 	public bool CanShowTracksLeaderboard { get; set; }
 	public Dictionary<string, RacingUIManager.TrackMetadata> TrackMetadata { get; set; } = new();
 	public string CurrentTrackId { get; set; } = "";
+
+	/// <summary>
+	/// Compare this state with another for equality.
+	/// Used to avoid unnecessary UI updates when state hasn't changed.
+	/// </summary>
+	public bool StateEquals(RacingUIState other)
+	{
+		if (other == null) return false;
+
+		// Compare all fields for complete state equality
+		return IsGamePaused == other.IsGamePaused
+			&& IsInCountdown == other.IsInCountdown
+			&& IsTimeTrialInProgress == other.IsTimeTrialInProgress
+			&& CanStartTimeTrial == other.CanStartTimeTrial
+			&& GameMode == other.GameMode
+			&& Math.Abs(CarSpeed - other.CarSpeed) < 0.01f
+			&& CurrentLap == other.CurrentLap
+			&& TargetLaps == other.TargetLaps
+			&& Math.Abs(TimeDisplay - other.TimeDisplay) < 0.001f
+			&& TimeLabel == other.TimeLabel
+			&& Math.Abs(MaxSpeed - other.MaxSpeed) < 0.01f
+			&& Math.Abs(LapProgress - other.LapProgress) < 0.001f
+			&& CountdownNumber == other.CountdownNumber
+			&& Math.Abs(CountdownProgress - other.CountdownProgress) < 0.001f
+			&& IsUserLoggedIn == other.IsUserLoggedIn
+			&& ShowGameOverOverlay == other.ShowGameOverOverlay
+			&& Math.Abs(FinalTime - other.FinalTime) < 0.001f
+			&& CanAffordReplay == other.CanAffordReplay
+			&& ShowTracksLeaderboardOverlay == other.ShowTracksLeaderboardOverlay
+			&& CanShowTracksLeaderboard == other.CanShowTracksLeaderboard
+			&& CurrentTrackId == other.CurrentTrackId;
+			// Note: TrackMetadata dictionary is cached separately, no need to compare
+	}
 }
 
 /// <summary>
@@ -171,6 +204,12 @@ public partial class RacingGame : GameController
 	// Track ID management for stable data storage
 	private Dictionary<int, string> _trackIndexToIdMap = new();
 	private string _currentTrackId = "unknown_track";
+
+	// Cached track metadata to avoid scene instantiation every frame
+	private Dictionary<string, RacingUIManager.TrackMetadata> _cachedTrackMetadata;
+
+	// Cached UI state to avoid allocation when state unchanged (GC optimization)
+	private RacingUIState _cachedUIState;
 
 	// ================================================================
 	// PRIVATE Fields - UI SYSTEM
@@ -861,6 +900,9 @@ public partial class RacingGame : GameController
 			}
 		}
 
+		// Invalidate UI state cache on mode transition
+		_cachedUIState = null;
+
 		SetRacingMode(RacingMode.TimeTrial);
 		ResetForNewRace(); // Complete reset including car physics state
 
@@ -889,6 +931,9 @@ public partial class RacingGame : GameController
 	/// </summary>
 	public virtual void StartPractice()
 	{
+		// Invalidate UI state cache on mode transition
+		_cachedUIState = null;
+
 		SetRacingMode(RacingMode.Practice);
 		ResetForNewRace(); // Complete reset including car physics state
 		_timingSystem?.StartPracticeMode(); // Set appropriate state
@@ -1106,13 +1151,91 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
+	/// Build track metadata cache once at initialization to avoid repeated scene instantiation.
+	/// Track properties (name, laps) are immutable at runtime - only IsCurrentTrack changes.
+	/// </summary>
+	private void BuildTrackMetadataCache()
+	{
+		_cachedTrackMetadata = new Dictionary<string, RacingUIManager.TrackMetadata>();
+
+		if (TrackScenes == null || TrackScenes.Count == 0)
+			return;
+
+		// Build metadata cache by instantiating each scene ONCE
+		for (int i = 0; i < TrackScenes.Count; i++)
+		{
+			var trackScene = TrackScenes[i];
+			if (trackScene?.ResourcePath == null)
+				continue;
+
+			var trackId = _trackIndexToIdMap.GetValueOrDefault(i, RaceDatabase.GenerateTrackId(trackScene));
+
+			// Instantiate scene ONCE to read immutable properties
+			string trackName = $"Track {i + 1}"; // Fallback
+			int defaultLaps = 3; // Fallback
+
+			try
+			{
+				var tempInstance = trackScene.Instantiate();
+				if (tempInstance is RacingTrackDefinition trackDef)
+				{
+					trackName = !string.IsNullOrEmpty(trackDef.TrackName)
+						? trackDef.TrackName
+						: $"Track {i + 1}";
+					defaultLaps = trackDef.NumberOfLaps > 0
+						? trackDef.NumberOfLaps
+						: 3;
+				}
+				tempInstance.QueueFree();
+			}
+			catch (Exception ex)
+			{
+				GD.PrintErr($"[RacingGame] Failed to read track metadata for index {i}: {ex.Message}");
+				// Use fallback values
+			}
+
+			_cachedTrackMetadata[trackId] = new RacingUIManager.TrackMetadata
+			{
+				TrackId = trackId,
+				TrackName = trackName,
+				DefaultLaps = defaultLaps,
+				Scene = trackScene,
+				Index = i,
+				IsCurrentTrack = trackId == _currentTrackId
+			};
+		}
+
+		GD.Print($"[RacingGame] Track metadata cache built with {_cachedTrackMetadata.Count} tracks");
+	}
+
+	/// <summary>
+	/// Update IsCurrentTrack flags in cached metadata (lightweight operation).
+	/// Called when user switches tracks.
+	/// </summary>
+	private void UpdateCachedTrackMetadata()
+	{
+		if (_cachedTrackMetadata == null)
+			return;
+
+		// Only update the IsCurrentTrack flag - everything else is immutable
+		foreach (var kvp in _cachedTrackMetadata)
+		{
+			var metadata = kvp.Value;
+			metadata.IsCurrentTrack = metadata.TrackId == _currentTrackId;
+		}
+	}
+
+	/// <summary>
 	/// Initialize track system with track ID mapping
 	/// </summary>
 	private void InitializeTrackSystem()
 	{
 		// Initialize track ID mappings for all available tracks
 		InitializeTrackIdMappings();
-		
+
+		// Build track metadata cache once (OPTIMIZATION: avoid scene instantiation every frame)
+		BuildTrackMetadataCache();
+
 		if (TrackScenes is { Count: > 0 })
 		{
 			_currentTrackIndex = 0;
@@ -1533,6 +1656,10 @@ public partial class RacingGame : GameController
 		LoadTrack(trackIndex);
 		_uiManager?.SetCurrentTrackIndex(trackIndex);
 
+		// Invalidate caches on track switch
+		_cachedUIState = null;
+		UpdateCachedTrackMetadata();
+
 		// Restart practice mode with new track
 		StartPractice();
 	}
@@ -1892,6 +2019,9 @@ public partial class RacingGame : GameController
 	/// </summary>
 	public void EndRace()
 	{
+		// Invalidate UI state cache on race end
+		_cachedUIState = null;
+
 		// Show game over overlay for time trials by updating UI state
 		if (GetRacingMode() == RacingMode.TimeTrial)
 		{
@@ -1942,49 +2072,38 @@ public partial class RacingGame : GameController
 
 	private void UpdateUI()
 	{
-		if (!IsInstanceValid(_uiManager)) 
+		if (!IsInstanceValid(_uiManager))
 			return;
-		
-		// Always gather fresh state - no caching, no change detection
+
+		// Gather current state (OPTIMIZED: uses cached track metadata)
 		var state = GatherCurrentState();
-		
-		// Always update UI - let Godot handle rendering optimization
+
+		// OPTIMIZATION: Skip UI update if state hasn't changed (reduces GC pressure)
+		if (_cachedUIState != null && state.StateEquals(_cachedUIState))
+		{
+			return; // State unchanged, skip redundant UI update
+		}
+
+		// State changed - update UI and cache new state
 		_uiManager.UpdateFromState(state);
+		_cachedUIState = state;
 	}
 
 	/// <summary>
-	/// Gather track metadata for UI updates
+	/// Gather track metadata for UI updates.
+	/// OPTIMIZED: Returns cached metadata instead of rebuilding every frame.
 	/// </summary>
 	private Dictionary<string, RacingUIManager.TrackMetadata> GatherTrackMetadata()
 	{
-		var metadata = new Dictionary<string, RacingUIManager.TrackMetadata>();
-		
-		if (TrackScenes == null || TrackScenes.Count == 0)
-			return metadata;
-
-		// Build basic metadata from track scenes
-		for (int i = 0; i < TrackScenes.Count; i++)
+		// Return cached metadata if available (prevents scene instantiation every frame)
+		if (_cachedTrackMetadata != null && _cachedTrackMetadata.Count > 0)
 		{
-			var trackScene = TrackScenes[i];
-			if (trackScene?.ResourcePath == null)
-				continue;
-				
-			var trackId = _trackIndexToIdMap.GetValueOrDefault(i, RaceDatabase.GenerateTrackId(trackScene));
-			var trackName = GetTrackName(trackScene, i);
-			var defaultLaps = GetTrackDefaultLaps(trackScene);
-			
-			metadata[trackId] = new RacingUIManager.TrackMetadata
-			{
-				TrackId = trackId,
-				TrackName = trackName,
-				DefaultLaps = defaultLaps,
-				Scene = trackScene,
-				Index = i,
-				IsCurrentTrack = trackId == _currentTrackId
-			};
+			return _cachedTrackMetadata;
 		}
-		
-		return metadata;
+
+		// Fallback to empty dictionary if cache not built (shouldn't happen after initialization)
+		GD.PrintErr("[RacingGame] Track metadata cache not initialized - returning empty dictionary");
+		return new Dictionary<string, RacingUIManager.TrackMetadata>();
 	}
 
 	/// <summary>
