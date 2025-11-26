@@ -228,6 +228,7 @@ public partial class LoginModal : Control
 		_createUsernameInput = new LineEdit();
 		_createUsernameInput.PlaceholderText = USERNAME_PLACEHOLDER;
 		_createUsernameInput.CustomMinimumSize = new Vector2(0, 40);
+		_createUsernameInput.SetMeta("keyboard_layout_type", "standard-characters");
 		_createUsernameInput.AddToGroup("keyboard_field");
 		_createContainer.AddChild(_createUsernameInput);
 

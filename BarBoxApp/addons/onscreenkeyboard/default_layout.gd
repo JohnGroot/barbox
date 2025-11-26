@@ -5,7 +5,7 @@ func _init():
 		"debug": false,
 		"layouts": [
 		{
-			"name": "standart-characters",
+			"name": "standard-characters",
 			"rows": [
 			make_row(
 				[],
@@ -115,7 +115,7 @@ func _init():
 			make_row(
 				[{
 					"type": "switch-layout",
-					"layout-name": "standart-characters",
+					"layout-name": "standard-characters",
 					"display": "ABC",
 					"stretch-ratio": 1.5
 				}],
