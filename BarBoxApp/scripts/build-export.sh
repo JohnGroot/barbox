@@ -4,7 +4,7 @@
 set -e  # Exit on error
 
 VERSION=${1:-$(date +%Y.%m.%d-%H%M)}
-BUILD_DIR="builds/releases/$VERSION"
+BUILD_DIR="../builds/releases/$VERSION"
 GODOT_BIN="/Applications/Godot.app/Contents/MacOS/Godot"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -48,6 +48,31 @@ if [[ ! -f "$PROJECT_DIR/$BUILD_DIR/BarBox.pck" ]]; then
 	echo "ERROR: PCK export failed"
 	exit 1
 fi
+
+# Verify .NET assemblies directory exists
+if [[ ! -d "$PROJECT_DIR/$BUILD_DIR/data_BarBox_linuxbsd_x86_64" ]]; then
+	echo "ERROR: .NET assemblies directory not created"
+	echo "Expected: $PROJECT_DIR/$BUILD_DIR/data_BarBox_linuxbsd_x86_64"
+	exit 1
+fi
+
+# Verify assemblies directory has minimum files
+ASSEMBLY_COUNT=$(ls "$PROJECT_DIR/$BUILD_DIR/data_BarBox_linuxbsd_x86_64" 2>/dev/null | wc -l)
+if [[ $ASSEMBLY_COUNT -lt 50 ]]; then
+	echo "ERROR: .NET assemblies incomplete: $ASSEMBLY_COUNT files (expected ~200)"
+	exit 1
+fi
+
+# Verify critical runtime files exist
+CRITICAL_FILES=("libcoreclr.so" "BarBox.dll" "libhostfxr.so")
+for file in "${CRITICAL_FILES[@]}"; do
+	if [[ ! -f "$PROJECT_DIR/$BUILD_DIR/data_BarBox_linuxbsd_x86_64/$file" ]]; then
+		echo "ERROR: Critical .NET file missing: $file"
+		exit 1
+	fi
+done
+
+echo "✓ .NET assemblies validated ($ASSEMBLY_COUNT files)"
 
 # Make binary executable
 chmod +x "$PROJECT_DIR/$BUILD_DIR/BarBox.x86_64"

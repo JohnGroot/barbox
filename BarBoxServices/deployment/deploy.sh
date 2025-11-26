@@ -127,7 +127,7 @@ fi
 # Auto-detect latest build if not specified
 if [ -z "$BUILD_VERSION" ] && [ -z "$PCK_VERSION" ]; then
 	log_info "No version specified, finding latest build..."
-	LATEST_BUILD=$(ls -1 "$PROJECT_ROOT/BarBoxApp/builds/releases/" 2>/dev/null | sort -r | head -n1)
+	LATEST_BUILD=$(ls -1 "$PROJECT_ROOT/builds/releases/" 2>/dev/null | sort -r | head -n1)
 
 	if [ -z "$LATEST_BUILD" ]; then
 		log_error "No builds found in builds/releases/"
@@ -144,7 +144,7 @@ TARGET="$TARGET_USER@$TARGET_IP"
 
 # Validate export builds exist if using export deployment
 if [[ "$DEPLOY_MODE" == "export" ]]; then
-	BUILD_PATH="$PROJECT_ROOT/BarBoxApp/builds/releases/$BUILD_VERSION"
+	BUILD_PATH="$PROJECT_ROOT/builds/releases/$BUILD_VERSION"
 	if [[ ! -d "$BUILD_PATH" ]]; then
 		log_error "Export build not found: $BUILD_PATH"
 		log_warn "Build the export first: cd BarBoxApp && sh scripts/build-export.sh $BUILD_VERSION"
@@ -158,9 +158,23 @@ if [[ "$DEPLOY_MODE" == "export" ]]; then
 		log_error "PCK not found in build: $BUILD_PATH/BarBox.pck"
 		exit 1
 	fi
-	log_info "Validated export build: $BUILD_VERSION"
+
+	# Validate .NET assemblies directory
+	if [[ ! -d "$BUILD_PATH/data_BarBox_linuxbsd_x86_64" ]]; then
+		log_error ".NET assemblies directory not found: $BUILD_PATH/data_BarBox_linuxbsd_x86_64"
+		log_warn "Rebuild with: cd BarBoxApp && sh scripts/build-export.sh"
+		exit 1
+	fi
+
+	ASSEMBLY_COUNT=$(ls "$BUILD_PATH/data_BarBox_linuxbsd_x86_64" 2>/dev/null | wc -l)
+	if [[ $ASSEMBLY_COUNT -lt 50 ]]; then
+		log_error ".NET assemblies incomplete: $ASSEMBLY_COUNT files (expected ~200)"
+		exit 1
+	fi
+
+	log_info "Validated export build: $BUILD_VERSION (assemblies: $ASSEMBLY_COUNT files)"
 elif [[ "$DEPLOY_MODE" == "pck_update" ]]; then
-	PCK_PATH="$PROJECT_ROOT/BarBoxApp/builds/updates/$PCK_VERSION"
+	PCK_PATH="$PROJECT_ROOT/builds/updates/$PCK_VERSION"
 	if [[ ! -f "$PCK_PATH/BarBox.pck" ]]; then
 		log_error "PCK update not found: $PCK_PATH/BarBox.pck"
 		log_warn "Build the PCK first: cd BarBoxApp && sh scripts/build-pck.sh $PCK_VERSION"
@@ -245,7 +259,7 @@ if [[ "$DEPLOY_MODE" == "export" ]]; then
 		"$BUILD_PATH/BarBox.pck" \
 		"$BUILD_PATH/VERSION" \
 		"$BUILD_PATH/checksums.txt" \
-		"$BUILD_PATH/data_BarBox_linuxbsd_x86_64/" \
+		"$BUILD_PATH/data_BarBox_linuxbsd_x86_64" \
 		"$TARGET:$TARGET_PATH/releases/$BUILD_VERSION/"
 
 	# Make binary executable
@@ -261,6 +275,17 @@ if [[ "$DEPLOY_MODE" == "export" ]]; then
 		exit 1
 	}
 
+	# Verify .NET assemblies transferred successfully
+	log_info "Verifying .NET assemblies transfer..."
+	REMOTE_ASSEMBLY_COUNT=$(ssh "$TARGET" "ls $TARGET_PATH/releases/$BUILD_VERSION/data_BarBox_linuxbsd_x86_64 2>/dev/null | wc -l" || echo "0")
+
+	if [[ "$REMOTE_ASSEMBLY_COUNT" -lt 50 ]]; then
+		log_error ".NET assemblies transfer incomplete!"
+		log_error "Found $REMOTE_ASSEMBLY_COUNT files on remote (expected ~200)"
+		exit 1
+	fi
+
+	log_info "✓ .NET assemblies verified on remote: $REMOTE_ASSEMBLY_COUNT files"
 	log_info "Export build deployed: $BUILD_VERSION"
 
 elif [[ "$DEPLOY_MODE" == "pck_update" ]]; then

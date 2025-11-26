@@ -147,6 +147,21 @@ fi
 # Set LD_LIBRARY_PATH for .NET runtime libraries
 export LD_LIBRARY_PATH="$BARBOX_ROOT/current/data_BarBox_linuxbsd_x86_64:$LD_LIBRARY_PATH"
 
+# Verify assemblies directory exists before launch
+if [[ ! -d "$BARBOX_ROOT/current/data_BarBox_linuxbsd_x86_64" ]]; then
+	log_error ".NET assemblies directory missing: $BARBOX_ROOT/current/data_BarBox_linuxbsd_x86_64"
+	log_error "Re-deploy with: cd BarBoxServices/deployment && ./deploy.sh <ip> --build <version>"
+	exit 1
+fi
+
+ASSEMBLY_COUNT=$(ls "$BARBOX_ROOT/current/data_BarBox_linuxbsd_x86_64" 2>/dev/null | wc -l)
+log_info "Found $ASSEMBLY_COUNT .NET assembly files"
+
+if [[ $ASSEMBLY_COUNT -lt 50 ]]; then
+	log_error "Insufficient .NET assemblies: $ASSEMBLY_COUNT files (expected ~200)"
+	exit 1
+fi
+
 # Start export binary and redirect output
 nohup "$FRONTEND_EXEC" >> "$LOG_FILE" 2>&1 &
 
