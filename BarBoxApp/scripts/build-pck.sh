@@ -4,7 +4,7 @@
 set -e  # Exit on error
 
 VERSION=${1:-$(date +%Y.%m.%d-%H%M)-pck}
-BUILD_DIR="builds/updates/$VERSION"
+BUILD_DIR="../builds/updates/$VERSION"
 GODOT_BIN="/Applications/Godot.app/Contents/MacOS/Godot"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"

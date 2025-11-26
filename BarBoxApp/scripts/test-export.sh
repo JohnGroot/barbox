@@ -13,7 +13,7 @@ echo ""
 # Build export
 "$SCRIPT_DIR/build-export.sh" "$VERSION"
 
-BUILD_DIR="$PROJECT_DIR/builds/releases/$VERSION"
+BUILD_DIR="$PROJECT_DIR/../builds/releases/$VERSION"
 
 # Verify files exist
 echo "Verifying build outputs..."
