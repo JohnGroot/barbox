@@ -65,9 +65,11 @@ public partial class CarromPiece : RigidBody2D
 	
 	// Velocity monitoring for tunneling protection validation (used for debugging)
 	private float _maxSpeedAchieved = 0.0f;
-	
-	// Trail system for debug visualization
-	private Queue<TrailPoint> _trailPoints = new();
+
+	// OPTIMIZATION: Trail system using circular buffer for debug visualization
+	private TrailPoint[] _trailPoints = new TrailPoint[MAX_TRAIL_POINTS];
+	private int _trailHead = 0; // Write position in circular buffer
+	private int _trailCount = 0; // Number of active trail points
 	private static bool _globalTrailsEnabled = false;
 	private const int MAX_TRAIL_POINTS = 50;
 	private const float TRAIL_SAMPLE_DISTANCE = 2.0f;
@@ -383,9 +385,13 @@ public partial class CarromPiece : RigidBody2D
 			// Calculate distance traveled this frame
 			float frameDeltaDistance = (currentPosition - _lastPositionForFriction).Length();
 			_distanceTraveled += frameDeltaDistance;
-			
-			// Update friction coefficient cache if distance changed significantly
-			if (!_frictionCacheValid || frameDeltaDistance > 1.0f)
+
+			// OPTIMIZATION: Update friction coefficient cache with smarter threshold
+			// Use threshold based on powder transition distance (5% = 10 units for 200 unit transition)
+			const float RECALC_THRESHOLD_RATIO = 0.05f; // 5% of transition distance
+			float recalcThreshold = PhysicsConfig.PowderTransitionDistance * RECALC_THRESHOLD_RATIO;
+
+			if (!_frictionCacheValid || frameDeltaDistance > recalcThreshold)
 			{
 				_cachedFrictionCoefficient = PhysicsConfig.CalculatePowderFrictionCoefficient(_distanceTraveled);
 				_frictionCacheValid = true;
@@ -737,43 +743,49 @@ public partial class CarromPiece : RigidBody2D
 	
 	public void ClearTrail()
 	{
-		_trailPoints.Clear();
+		_trailCount = 0;
+		_trailHead = 0;
 		QueueRedraw(); // Request redraw to remove trail visuals
 	}
 	
 	private void UpdateTrail()
 	{
 		if (!_globalTrailsEnabled) return;
-		
+
 		Vector2 currentPos = GlobalPosition;
 		double currentTime = Time.GetUnixTimeFromSystem();
-		
+
 		// Only add trail point if piece is moving and we've moved enough distance
 		if (_cachedSpeed > _minVelocityThreshold)
 		{
-			// Check if we've moved far enough for a new trail point
-			if (_trailPoints.Count == 0 || 
-			    (_trailPoints.Count > 0 && _trailPoints.Last().Position.DistanceTo(currentPos) >= TRAIL_SAMPLE_DISTANCE))
+			bool shouldAddPoint = _trailCount == 0 ||
+				_trailPoints[(_trailHead - 1 + MAX_TRAIL_POINTS) % MAX_TRAIL_POINTS].Position.DistanceTo(currentPos) >= TRAIL_SAMPLE_DISTANCE;
+
+			if (shouldAddPoint)
 			{
-				_trailPoints.Enqueue(new TrailPoint(currentPos, currentTime));
-				
-				// Limit trail length for performance
-				while (_trailPoints.Count > MAX_TRAIL_POINTS)
-				{
-					_trailPoints.Dequeue();
-				}
+				// Add to circular buffer (no allocation)
+				_trailPoints[_trailHead] = new TrailPoint(currentPos, currentTime);
+				_trailHead = (_trailHead + 1) % MAX_TRAIL_POINTS;
+
+				if (_trailCount < MAX_TRAIL_POINTS)
+					_trailCount++;
 			}
 		}
-		
-		// Remove old trail points
-		while (_trailPoints.Count > 0 && 
-		       (currentTime - _trailPoints.Peek().Timestamp) > TRAIL_MAX_AGE)
+
+		// Remove old trail points from tail
+		int removeCount = 0;
+		for (int i = 0; i < _trailCount; i++)
 		{
-			_trailPoints.Dequeue();
+			int index = (_trailHead - _trailCount + i + MAX_TRAIL_POINTS) % MAX_TRAIL_POINTS;
+			if ((currentTime - _trailPoints[index].Timestamp) > TRAIL_MAX_AGE)
+				removeCount++;
+			else
+				break; // Points are chronological, stop at first valid point
 		}
-		
+		_trailCount -= removeCount;
+
 		// Request redraw if we have trail points
-		if (_trailPoints.Count > 0)
+		if (_trailCount > 0)
 		{
 			QueueRedraw();
 		}
@@ -781,26 +793,28 @@ public partial class CarromPiece : RigidBody2D
 	
 	private void DrawTrail()
 	{
-		if (!_globalTrailsEnabled || _trailPoints.Count < 2) return;
-		
-		var trailArray = _trailPoints.ToArray();
+		if (!_globalTrailsEnabled || _trailCount < 2) return;
+
 		Color trailColor = GetTrailColor();
 		double currentTime = Time.GetUnixTimeFromSystem();
-		
+
 		// Draw line segments between trail points with fading effect
-		for (int i = 0; i < trailArray.Length - 1; i++)
+		for (int i = 0; i < _trailCount - 1; i++)
 		{
-			Vector2 fromPos = ToLocal(trailArray[i].Position);
-			Vector2 toPos = ToLocal(trailArray[i + 1].Position);
-			
+			int fromIndex = (_trailHead - _trailCount + i + MAX_TRAIL_POINTS) % MAX_TRAIL_POINTS;
+			int toIndex = (fromIndex + 1) % MAX_TRAIL_POINTS;
+
+			Vector2 fromPos = ToLocal(_trailPoints[fromIndex].Position);
+			Vector2 toPos = ToLocal(_trailPoints[toIndex].Position);
+
 			// Calculate alpha based on age (newer = more opaque)
-			double age = currentTime - trailArray[i].Timestamp;
+			double age = currentTime - _trailPoints[fromIndex].Timestamp;
 			float alpha = Mathf.Clamp(1.0f - (float)(age / TRAIL_MAX_AGE), 0.1f, 0.8f);
-			
+
 			// Make trail points progressively thinner and more transparent
 			float width = Mathf.Lerp(1.0f, 3.0f, alpha);
 			Color segmentColor = new Color(trailColor.R, trailColor.G, trailColor.B, alpha);
-			
+
 			DrawLine(fromPos, toPos, segmentColor, width, true);
 		}
 	}

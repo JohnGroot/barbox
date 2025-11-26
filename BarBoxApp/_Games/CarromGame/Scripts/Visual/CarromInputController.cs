@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 
 namespace BarBox.Games.Carrom;
@@ -99,14 +100,17 @@ public partial class CarromInputController : Node2D
 	private Vector2 _lastBoardPosition;
 	private bool _hasValidConversionCache = false;
 	
-	// Trajectory calculation caching
+	// OPTIMIZATION: Trajectory calculation with pooled buffers
 	private Vector2 _lastTrajectoryDirection;
 	private float _lastTrajectoryPower;
-	private Vector2[] _cachedTrajectoryPoints = new Vector2[0];
+	private Vector2[] _trajectoryPointsBuffer = new Vector2[200]; // Max trajectory steps
+	private int _trajectoryPointCount = 0;
 	private Vector2? _cachedCollisionPoint;
-	private Vector2[] _cachedPostCollisionPoints = new Vector2[0];
+	private Vector2[] _postCollisionBuffer = new Vector2[50]; // Post-collision distance
+	private int _postCollisionCount = 0;
 	private CarromPiece _cachedHitPiece;
-	private Vector2[] _cachedHitPieceTrajectory = new Vector2[0];
+	private Vector2[] _hitPieceTrajectoryBuffer = new Vector2[100]; // Hit piece trajectory
+	private int _hitPieceTrajectoryCount = 0;
 	private bool _trajectoryCacheValid = false;
 
 	// Input modes
@@ -1277,88 +1281,114 @@ public partial class CarromInputController : Node2D
 		{
 			return ([], null, [], []);
 		}
-		
-		if (_trajectoryCacheValid && 
+
+		if (_trajectoryCacheValid &&
 			_lastTrajectoryDirection.DistanceSquaredTo(direction) < TRAJECTORY_CACHE_DIRECTION_TOLERANCE_SQUARED &&
 			Mathf.Abs(_lastTrajectoryPower - power) < TRAJECTORY_CACHE_POWER_TOLERANCE)
 		{
-			return (_cachedTrajectoryPoints, _cachedCollisionPoint, _cachedPostCollisionPoints, _cachedHitPieceTrajectory);
+			// Return cached results using Array.Copy from buffers
+			var cachedTrajectory = new Vector2[_trajectoryPointCount];
+			Array.Copy(_trajectoryPointsBuffer, cachedTrajectory, _trajectoryPointCount);
+
+			var cachedPostCollision = new Vector2[_postCollisionCount];
+			Array.Copy(_postCollisionBuffer, cachedPostCollision, _postCollisionCount);
+
+			var cachedHitPiece = new Vector2[_hitPieceTrajectoryCount];
+			Array.Copy(_hitPieceTrajectoryBuffer, cachedHitPiece, _hitPieceTrajectoryCount);
+
+			return (cachedTrajectory, _cachedCollisionPoint, cachedPostCollision, cachedHitPiece);
 		}
-		
-		// Use constant distance trajectory regardless of power
+
+		// OPTIMIZATION: Use constant distance trajectory with pooled buffers
 		var result = SimulateConstantTrajectoryPath(startPos, direction, power);
-		
+
 		_lastTrajectoryDirection = direction;
 		_lastTrajectoryPower = power;
-		_cachedTrajectoryPoints = result.trajectoryPoints;
 		_cachedCollisionPoint = result.collisionPoint;
-		_cachedPostCollisionPoints = result.postCollisionPoints;
 		_cachedHitPiece = result.hitPiece;
-		_cachedHitPieceTrajectory = result.hitPieceTrajectory;
 		_trajectoryCacheValid = true;
-		
-		return (result.trajectoryPoints, result.collisionPoint, result.postCollisionPoints, result.hitPieceTrajectory);
+
+		// Create arrays from buffer counts for return
+		var trajectoryPoints = new Vector2[result.trajectoryCount];
+		Array.Copy(_trajectoryPointsBuffer, trajectoryPoints, result.trajectoryCount);
+
+		var postCollisionPoints = new Vector2[result.postCollisionCount];
+		Array.Copy(_postCollisionBuffer, postCollisionPoints, result.postCollisionCount);
+
+		var hitPieceTrajectory = new Vector2[result.hitPieceCount];
+		Array.Copy(_hitPieceTrajectoryBuffer, hitPieceTrajectory, result.hitPieceCount);
+
+		return (trajectoryPoints, result.collisionPoint, postCollisionPoints, hitPieceTrajectory);
 	}
 	
 	/// <summary>
-	/// Simulate constant distance trajectory path with collision detection
+	/// OPTIMIZATION: Simulate constant distance trajectory path using pooled buffers
 	/// </summary>
-	private (Vector2[] trajectoryPoints, Vector2? collisionPoint, Vector2[] postCollisionPoints, CarromPiece hitPiece, Vector2[] hitPieceTrajectory) SimulateConstantTrajectoryPath(Vector2 startPos, Vector2 direction, float power)
+	private (int trajectoryCount, Vector2? collisionPoint, int postCollisionCount, CarromPiece hitPiece, int hitPieceCount) SimulateConstantTrajectoryPath(Vector2 startPos, Vector2 direction, float power)
 	{
-		List<Vector2> trajectoryPoints = [];
-		List<Vector2> postCollisionPoints = [];
-		List<Vector2> hitPieceTrajectory = [];
+		_trajectoryPointCount = 0;
+		_postCollisionCount = 0;
+		_hitPieceTrajectoryCount = 0;
 		Vector2? collisionPoint = null;
 		CarromPiece hitPiece = null;
-		
+
 		Vector2 position = startPos;
 		float distanceTraveled = 0.0f;
 		float strikerRadius = _physicsConfig.GetRadiusForPieceType(_striker.Type);
-		
-		trajectoryPoints.Add(position);
-		
+
+		_trajectoryPointsBuffer[_trajectoryPointCount++] = position;
+
 		// Step along the direction until we hit max distance or collision
-		while (distanceTraveled < _trajectoryMaxDistance)
+		while (distanceTraveled < _trajectoryMaxDistance && _trajectoryPointCount < _trajectoryPointsBuffer.Length)
 		{
 			Vector2 nextPosition = position + direction * _trajectoryStepSize;
-			
+
 			// Check for collisions
 			var collision = GetFirstCollision(position, nextPosition, strikerRadius);
-			
+
 			if (collision.hasCollision)
 			{
 				// First collision detected
 				collisionPoint = collision.point;
 				hitPiece = collision.hitPiece;
-				trajectoryPoints.Add(collision.point);
-				
+				_trajectoryPointsBuffer[_trajectoryPointCount++] = collision.point;
+
 				// Calculate post-collision trajectory with simple reflection
 				Vector2 reflectedDirection = direction.Bounce(collision.normal);
 				var postCollisionResult = SimulateConstantPostCollisionPath(collision.point, reflectedDirection);
-				postCollisionPoints.AddRange(postCollisionResult);
-				
+				foreach (var point in postCollisionResult)
+				{
+					if (_postCollisionCount < _postCollisionBuffer.Length)
+						_postCollisionBuffer[_postCollisionCount++] = point;
+				}
+
 				// Calculate hit piece trajectory if we hit a piece
 				if (hitPiece != null)
 				{
 					Vector2 hitPieceDirection = CalculateHitPieceDirection(direction, collision.point, hitPiece.GlobalPosition, power);
-					
+
 					// Start trajectory from far edge of hit piece
 					float hitPieceRadius = _physicsConfig.GetRadiusForPieceType(hitPiece.Type);
 					Vector2 trajectoryStartPos = hitPiece.GlobalPosition + hitPieceDirection * hitPieceRadius;
-					
+
 					var hitPieceResult = SimulateHitPieceTrajectory(trajectoryStartPos, hitPieceDirection);
-					hitPieceTrajectory.AddRange(hitPieceResult);
+					foreach (var point in hitPieceResult)
+					{
+						if (_hitPieceTrajectoryCount < _hitPieceTrajectoryBuffer.Length)
+							_hitPieceTrajectoryBuffer[_hitPieceTrajectoryCount++] = point;
+					}
 				}
 				break;
 			}
-			
+
 			// Continue main trajectory
 			position = nextPosition;
 			distanceTraveled += _trajectoryStepSize;
-			trajectoryPoints.Add(position);
+			if (_trajectoryPointCount < _trajectoryPointsBuffer.Length)
+				_trajectoryPointsBuffer[_trajectoryPointCount++] = position;
 		}
-		
-		return (trajectoryPoints.ToArray(), collisionPoint, postCollisionPoints.ToArray(), hitPiece, hitPieceTrajectory.ToArray());
+
+		return (_trajectoryPointCount, collisionPoint, _postCollisionCount, hitPiece, _hitPieceTrajectoryCount);
 	}
 	
 	/// <summary>
@@ -1575,11 +1605,11 @@ public partial class CarromInputController : Node2D
 		
 		// Clear trajectory calculation cache
 		_trajectoryCacheValid = false;
-		_cachedTrajectoryPoints = [];
-		_cachedPostCollisionPoints = [];
+		_trajectoryPointCount = 0;
+		_postCollisionCount = 0;
+		_hitPieceTrajectoryCount = 0;
 		_cachedCollisionPoint = null;
 		_cachedHitPiece = null;
-		_cachedHitPieceTrajectory = [];
 		_lastTrajectoryDirection = Vector2.Zero;
 		_lastTrajectoryPower = 0.0f;
 		

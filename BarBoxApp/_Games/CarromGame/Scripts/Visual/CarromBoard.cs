@@ -53,7 +53,7 @@ public partial class CarromBoard : Node2D
 	
 	private PhysicsQueryCache _obstructionCache;
 	private PhysicsQueryCache _radiusCache;
-	private const float CACHE_DURATION = 0.016f; // Cache for one frame (60fps)
+	private const float CACHE_DURATION = 0.1f; // OPTIMIZATION: Cache for 100ms (~6 frames at 60fps)
 	
 	// Debug collision visualization
 	private struct CollisionDebugInfo
