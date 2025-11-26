@@ -2,16 +2,15 @@
 
 Scripts for deploying the BarBox arcade platform to remote Linux machines via Tailscale or local network.
 
-**Current Deployment Mode:** Export builds (versioned releases with instant rollback)
-**Deprecated Mode:** Source deployment (no longer supported by `start_frontend.sh`)
+**Deployment Mode:** Export builds only (versioned releases with instant rollback)
 
 ---
 
 ## Table of Contents
 
-- [Migration Guide (IMPORTANT)](#migration-guide-source--export-deployment)
 - [Quick Start](#quick-start)
 - [⚠️ Critical Warnings](#-critical-warnings)
+- [.NET Assemblies Validation](#net-assemblies-validation)
 - [Deployment Modes](#deployment-modes)
 - [Scripts Reference](#scripts-reference)
 - [Deployment Architecture](#deployment-architecture)
@@ -22,108 +21,6 @@ Scripts for deploying the BarBox arcade platform to remote Linux machines via Ta
 - [Troubleshooting](#troubleshooting)
 - [Complete Examples](#complete-examples)
 - [Notes](#notes)
-
----
-
-## Migration Guide: Source → Export Deployment
-
-**⚠️ CRITICAL**: If you have an existing source deployment, you MUST migrate to export deployment. `start_frontend.sh` no longer supports running from source.
-
-### Pre-Migration Checklist
-
-**Before starting migration:**
-- [ ] Backup database: `ssh <target> 'cd ~/Desktop/barbox/BarBoxServices && cp app.db app.db.backup-$(date +%Y%m%d)'`
-- [ ] Backup configurations: `ssh <target> 'cd ~/Desktop/barbox && tar czf barbox-config-backup.tar.gz BarBoxApp/.env.local BarBoxServices/.env'`
-- [ ] Document current Box ID: `ssh <target> 'grep BARBOX_BOX_ID ~/Desktop/barbox/BarBoxApp/.env.local'`
-- [ ] Document current API key: `ssh <target> 'grep BARBOX_API_KEY ~/Desktop/barbox/BarBoxApp/.env.local'`
-- [ ] Note current git commit: `cd BarBoxApp && git log -1 --oneline`
-
-### Migration Steps
-
-**1. Stop Existing Services**
-```bash
-ssh barbox@<target-ip>
-cd ~/Desktop/barbox
-./stop_all.sh
-```
-
-**2. Build Export on Development Machine**
-```bash
-cd BarBoxApp
-sh scripts/build-export.sh 2025.migration.01
-```
-
-**3. Deploy Export Build**
-```bash
-cd ../BarBoxServices/deployment
-./deploy.sh <target-ip> --build 2025.migration.01 --skip-register
-```
-
-The `--skip-register` flag preserves your existing `.env.local` with Box ID and API key.
-
-**4. Verify Migration**
-```bash
-ssh barbox@<target-ip>
-cd ~/Desktop/barbox
-
-# Check deployment mode
-./get-version.sh
-# Should show: Deployment Mode: Export
-#              Current Version: 2025.migration.01
-
-# Verify configurations preserved
-grep BARBOX_BOX_ID .env.local
-grep BARBOX_API_KEY .env.local
-
-# Start services
-./start_all.sh
-
-# Verify backend health
-curl http://127.0.0.1:8000/alive
-# Should return: {"status":"ok"}
-```
-
-**5. Clean Up Old Source Files (Optional)**
-```bash
-ssh barbox@<target-ip>
-cd ~/Desktop/barbox
-
-# Archive old source deployment
-tar czf barbox-source-backup-$(date +%Y%m%d).tar.gz BarBoxApp/ 2>/dev/null || true
-
-# Remove old source files (export deployment doesn't need them)
-rm -rf BarBoxApp/
-```
-
-### Post-Migration
-
-- Update your deployment workflow to use `--build <version>` flag
-- Document new version numbering scheme for your team
-- Update any automation scripts to use export deployment
-- Train operators on new deployment process
-
-### Rollback to Source (If Needed)
-
-If you encounter critical issues and need to revert:
-
-```bash
-ssh barbox@<target-ip>
-cd ~/Desktop/barbox
-
-# Stop export deployment
-./stop_all.sh
-
-# Remove export symlink
-rm -f current
-
-# Restore source files from backup
-tar xzf barbox-source-backup-*.tar.gz
-
-# Start services (will use source mode)
-./start_all.sh
-```
-
-**Note:** This rollback is temporary. Source mode will not receive updates.
 
 ---
 
@@ -250,24 +147,7 @@ This syncs backend code and restarts services without touching the frontend.
 
 ## ⚠️ Critical Warnings
 
-### 1. Source Deployment Is Deprecated
-
-**DO NOT use source deployment for new installations.**
-
-- `start_frontend.sh` only supports export builds (checks for `current/BarBox.x86_64`)
-- Source mode is maintained for backward compatibility ONLY
-- No future development on source deployment workflow
-- **Migrate existing source deployments immediately** (see [Migration Guide](#migration-guide-source--export-deployment))
-
-**If you see this error:**
-```
-[Frontend] Export binary not found at /home/barbox/Desktop/barbox/current/BarBox.x86_64
-[Frontend] Expected symlink: /home/barbox/Desktop/barbox/current -> releases/<version>/
-```
-
-**You are using source deployment. Migrate to export deployment immediately.**
-
-### 2. PCK Updates Modify Releases In-Place
+### 1. PCK Updates Modify Releases In-Place
 
 **CURRENT BEHAVIOR** (architectural limitation):
 
@@ -284,7 +164,7 @@ PCK updates will create new version entries with hardlinked binaries to preserve
 
 Always deploy full export builds (`--build`) rather than PCK updates in production environments. Use PCK updates only for development/testing rapid iteration.
 
-### 3. Deployment Does Not Auto-Rollback
+### 2. Deployment Does Not Auto-Rollback
 
 **If deployment fails, services are left in stopped state.**
 
@@ -300,7 +180,7 @@ The deployment script does NOT automatically:
 
 **Future enhancement:** `--auto-rollback` flag for automatic rollback on failure.
 
-### 4. Database Is Not Automatically Backed Up
+### 3. Database Is Not Automatically Backed Up
 
 **`BarBoxServices/app.db` is NOT backed up by deployment.**
 
@@ -315,7 +195,7 @@ The deployment script does NOT automatically:
 0 3 * * * cd ~/Desktop/barbox/BarBoxServices && cp app.db backups/app.db-$(date +\%Y\%m\%d-\%H\%M\%S)
 ```
 
-### 5. Logs Grow Unbounded
+### 4. Logs Grow Unbounded
 
 **Log files are NOT rotated automatically.**
 
@@ -329,7 +209,7 @@ Logs will eventually fill disk:
 > ~/.local/share/barbox/logs/frontend.log
 ```
 
-### 6. Resource Limits Only Apply to Systemd Services
+### 5. Resource Limits Only Apply to Systemd Services
 
 **Manual scripts have NO memory or CPU limits.**
 
@@ -341,21 +221,111 @@ If using manual scripts in production:
 
 ---
 
+## .NET Assemblies Validation
+
+BarBox implements comprehensive validation to ensure .NET assemblies are correctly transferred and available at every stage of the deployment pipeline. This prevents the common "unable to find the .net assemblies directory" error.
+
+### Four-Layer Validation System
+
+**1. Build Validation** (`build-export.sh`)
+- Verifies `data_BarBox_linuxbsd_x86_64/` directory exists after Godot export
+- Checks for minimum 50 files (expected ~200)
+- Validates critical runtime files exist: `libcoreclr.so`, `BarBox.dll`, `libhostfxr.so`
+- **Fails immediately** if assemblies directory incomplete
+
+**2. Pre-Transfer Validation** (`deploy.sh` - before rsync)
+- Verifies assemblies directory exists in local build
+- Counts assembly files and ensures minimum threshold met
+- **Prevents deployment** if assemblies missing from build
+
+**3. Post-Transfer Verification** (`deploy.sh` - after rsync)
+- SSH to target and counts files in deployed assemblies directory
+- Verifies ~200 files arrived successfully
+- **Deployment fails** if remote assemblies incomplete
+
+**4. Startup Validation** (`start_frontend.sh`)
+- Checks assemblies directory exists before launching game
+- Verifies minimum file count
+- **Game refuses to start** with clear error if assemblies missing
+
+### Error Messages
+
+Each validation layer provides clear error messages with remediation steps:
+
+**Build Error:**
+```
+ERROR: .NET assemblies directory not created
+Expected: builds/releases/<version>/data_BarBox_linuxbsd_x86_64
+```
+**Solution:** Re-export with Godot to ensure .NET assemblies included
+
+**Pre-Transfer Error:**
+```
+[ERROR] .NET assemblies directory not found: builds/releases/<version>/data_BarBox_linuxbsd_x86_64
+[WARN] Rebuild with: cd BarBoxApp && sh scripts/build-export.sh
+```
+**Solution:** Build export before deploying
+
+**Post-Transfer Error:**
+```
+[ERROR] .NET assemblies transfer incomplete!
+[ERROR] Found 0 files on remote (expected ~200)
+```
+**Solution:** Re-run deployment, check network connectivity
+
+**Startup Error:**
+```
+[ERROR] .NET assemblies directory missing: ~/Desktop/barbox/current/data_BarBox_linuxbsd_x86_64
+[ERROR] Re-deploy with: cd BarBoxServices/deployment && ./deploy.sh <ip> --build <version>
+```
+**Solution:** Deploy valid export build
+
+### rsync Configuration
+
+The deployment uses specific rsync syntax to transfer the assemblies directory correctly:
+
+```bash
+rsync -avz --checksum \
+  "$BUILD_PATH/data_BarBox_linuxbsd_x86_64" \  # NO trailing slash
+  "$TARGET:$TARGET_PATH/releases/$BUILD_VERSION/"
+```
+
+**Critical:** No trailing slash on source directory. With trailing slash, rsync copies *contents* instead of the directory itself, causing assemblies to be scattered.
+
+### LD_LIBRARY_PATH Setup
+
+The frontend startup script configures the .NET runtime to find assemblies:
+
+```bash
+export LD_LIBRARY_PATH="$BARBOX_ROOT/current/data_BarBox_linuxbsd_x86_64:$LD_LIBRARY_PATH"
+```
+
+This tells the .NET runtime where to find `libcoreclr.so` and other runtime libraries.
+
+### Typical Assembly Count
+
+A complete Godot 4.5.1 .NET export contains approximately:
+- **202 files** in `data_BarBox_linuxbsd_x86_64/` directory
+- **~85MB total size**
+- Includes .NET 9.0 runtime libraries, Godot assemblies, and game DLLs
+
+---
+
 ## Deployment Modes
 
-BarBox supports three deployment modes:
+BarBox supports two deployment modes:
 
-| Feature | Export Build (Recommended) | PCK Update (Fast Iteration) | Source (Deprecated) |
-|---------|---------------------------|------------------------------|---------------------|
-| **Use Case** | Production deployments | Rapid development iteration | Legacy only |
-| **Deployment Time** | 1-2 minutes | 30-60 seconds | N/A (unsupported) |
-| **Version Management** | Full history | Limited (in-place modification) | N/A |
-| **Rollback Support** | Instant (symlink) | Limited | N/A |
-| **Binary Changes** | Yes | No | N/A |
-| **Content Changes** | Yes | Yes | N/A |
-| **Requires Rebuild** | Yes (full export) | No (PCK only) | N/A |
-| **Disk Usage** | ~150-400MB per version | Minimal (~100-300MB PCK) | N/A |
-| **Status** | ✅ Recommended | ⚠️ Development only | ❌ Deprecated |
+| Feature | Export Build (Recommended) | PCK Update (Fast Iteration) |
+|---------|---------------------------|------------------------------|
+| **Use Case** | Production deployments | Rapid development iteration |
+| **Deployment Time** | 1-2 minutes | 30-60 seconds |
+| **Version Management** | Full history | Limited (in-place modification) |
+| **Rollback Support** | Instant (symlink) | Limited |
+| **Binary Changes** | Yes | No |
+| **Content Changes** | Yes | Yes |
+| **Requires Rebuild** | Yes (full export) | No (PCK only) |
+| **Disk Usage** | ~150-400MB per version | Minimal (~100-300MB PCK) |
+| **Status** | ✅ Recommended | ⚠️ Development only |
 
 ### Export Build Deployment
 
@@ -396,14 +366,6 @@ BarBox supports three deployment modes:
 ./deploy.sh <target-ip> --pck-update <version>
 ```
 
-### Source Deployment
-
-**DEPRECATED.** Do not use for new installations.
-
-- `start_frontend.sh` no longer supports running from source
-- Migrate existing source deployments to export builds
-- See [Migration Guide](#migration-guide-source--export-deployment)
-
 ---
 
 ## Scripts Reference
@@ -428,7 +390,7 @@ These scripts run from your development machine to deploy to remote targets.
 ./deploy.sh 100.93.137.42 --build 2025.01.15-1430
 ```
 
-- Deploys pre-built export from `BarBoxApp/builds/releases/<version>/`
+- Deploys pre-built export from `builds/releases/<version>/`
 - Creates `/releases/<version>/` on target machine
 - Updates `/current` symlink to new version
 - Verifies checksums for integrity
@@ -443,15 +405,6 @@ These scripts run from your development machine to deploy to remote targets.
 - No binary changes, much faster than full export
 - ⚠️ Modifies release in-place (see warnings)
 
-**3. Source Deployment** (Deprecated)
-```bash
-./deploy.sh 100.93.137.42
-```
-
-- Syncs raw Godot project files (legacy mode)
-- No longer supported by `start_frontend.sh`
-- **Do not use for new deployments**
-
 **Options:**
 - `--skip-deps` - Skip dependency installation (for updates when dependencies unchanged)
 - `--skip-register` - Skip box registration (if API key already configured)
@@ -462,7 +415,7 @@ These scripts run from your development machine to deploy to remote targets.
 
 **Phase 1: Code Transfer**
 - Syncs BarBoxServices (Python backend)
-- Transfers export build OR syncs BarBoxApp source (depending on mode)
+- Transfers export build to target
 - Syncs deployment scripts to target
 
 **Phase 2: Install Dependencies** (unless `--skip-deps`)
@@ -631,12 +584,12 @@ cd ~/Desktop/barbox
 - Waits 3 seconds and verifies process is running
 - Returns error if startup fails
 
-**Error if source deployment:**
+**Error if no export deployment:**
 ```
 [Frontend] Export binary not found at /home/barbox/Desktop/barbox/current/BarBox.x86_64
 ```
 
-This means you need to deploy an export build or migrate from source.
+This means you need to deploy an export build with `./deploy.sh <ip> --build <version>`.
 
 #### stop_all.sh - Stop All Services
 
@@ -728,22 +681,8 @@ Available Releases:
     2025.01.14-1800
 ```
 
-**Source Deployment Output** (if still using source mode):
-```
-BarBox Version Information
-
-Deployment Mode: Source
-
-Git Information:
-  Commit: a1b2c3d
-  Author: John Groot
-  Date:   2 hours ago
-  Message: Fix racing timing system
-```
-
 **Use Cases:**
 - Verify which version is currently deployed
-- Check if deployment mode is export or source
 - List available rollback versions
 - Troubleshoot "which version has this bug?" questions
 
@@ -1301,6 +1240,25 @@ sudo systemctl edit systemd-journald
 # SystemMaxUse=500M
 ```
 
+### Services Won't Stop (Systemd Auto-Restart)
+
+**Symptom:** Running `./stop_all.sh` appears to work, but services restart after 5-10 seconds.
+
+**Cause:** Systemd services configured with `Restart=always` automatically restart processes.
+
+**Solution:** The `stop_all.sh` script automatically detects systemd-managed services and uses `systemctl --user stop`.
+
+**Verify systemd detection:**
+```bash
+./stop_all.sh
+# Should show: "Frontend is managed by systemd"
+```
+
+**Manual systemd stop:**
+```bash
+systemctl --user stop barbox-backend barbox-frontend
+```
+
 ---
 
 ## Systemd Services
@@ -1456,6 +1414,24 @@ journalctl --user -u barbox-backend -f
 journalctl --user -u barbox-frontend -f
 ```
 
+### Systemd Service Management Best Practices
+
+**Always use:** `./stop_all.sh` (auto-detects systemd or manual mode)
+
+**Switching from systemd to manual:**
+```bash
+systemctl --user stop barbox-backend barbox-frontend
+systemctl --user disable barbox-backend barbox-frontend
+./start_all.sh
+```
+
+**Switching from manual to systemd:**
+```bash
+./stop_all.sh
+systemctl --user enable barbox-backend barbox-frontend
+systemctl --user start barbox-backend barbox-frontend
+```
+
 **Disable Auto-Start:**
 ```bash
 systemctl --user disable barbox-backend barbox-frontend
@@ -1493,7 +1469,7 @@ systemctl --user daemon-reload
 
 ### Deployment Failures
 
-#### "Export build not found: BarBoxApp/builds/releases/\<version\>"
+#### "Export build not found: builds/releases/\<version\>"
 
 **Cause:** Forgot to build export before deploying.
 
@@ -1505,7 +1481,7 @@ sh scripts/build-export.sh <version>
 
 Verify build exists:
 ```bash
-ls -lh BarBoxApp/builds/releases/<version>/
+ls -lh builds/releases/<version>/
 # Should show: BarBox.x86_64, BarBox.pck, VERSION, checksums.txt
 ```
 
@@ -1520,6 +1496,58 @@ ls -lh BarBoxApp/builds/releases/<version>/
 ```
 
 Checksums are verified after transfer to ensure integrity.
+
+#### ".NET assemblies directory not found" or "assemblies incomplete"
+
+**Cause:** .NET runtime libraries missing or incomplete in export build.
+
+**Symptoms:**
+- Build error: `ERROR: .NET assemblies directory not created`
+- Deployment error: `[ERROR] .NET assemblies directory not found`
+- Post-transfer error: `[ERROR] .NET assemblies transfer incomplete! Found 0 files on remote`
+- Startup error: `[ERROR] .NET assemblies directory missing: ~/Desktop/barbox/current/data_BarBox_linuxbsd_x86_64`
+- Game crash: `unable to find the .net assemblies directory`
+
+**Fix:**
+
+**1. Rebuild export with .NET assemblies:**
+```bash
+cd BarBoxApp
+sh scripts/build-export.sh <version>
+```
+
+**2. Verify assemblies exist locally:**
+```bash
+ls builds/releases/<version>/data_BarBox_linuxbsd_x86_64/ | wc -l
+# Should show ~202 files
+```
+
+**3. Check critical runtime files:**
+```bash
+ls builds/releases/<version>/data_BarBox_linuxbsd_x86_64/ | grep -E "libcoreclr.so|BarBox.dll|libhostfxr.so"
+# Should show all 3 files
+```
+
+**4. Re-deploy with validated build:**
+```bash
+cd BarBoxServices/deployment
+./deploy.sh <target-ip> --build <version>
+```
+
+**5. Verify on remote after deployment:**
+```bash
+ssh <target> "ls ~/Desktop/barbox/current/data_BarBox_linuxbsd_x86_64/ | wc -l"
+# Should show ~202 files
+```
+
+**Prevention:**
+The build and deployment scripts now validate assemblies at 4 stages:
+1. Build validation (build-export.sh)
+2. Pre-transfer validation (deploy.sh)
+3. Post-transfer verification (deploy.sh)
+4. Startup validation (start_frontend.sh)
+
+See [.NET Assemblies Validation](#net-assemblies-validation) for details.
 
 #### "Cannot connect via SSH"
 
@@ -1953,7 +1981,6 @@ tail -50 ~/.local/share/barbox/logs/frontend.log
 
 - **Export deployment (recommended)** - Deploy pre-built binaries with full version management, instant rollback
 - **PCK updates** - Fast updates for game content/script changes only (development use)
-- **Source deployment (deprecated)** - No longer supported by `start_frontend.sh`
 
 ### Version Management
 
