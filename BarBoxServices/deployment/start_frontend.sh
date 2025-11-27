@@ -162,16 +162,28 @@ if [[ $ASSEMBLY_COUNT -lt 50 ]]; then
 	exit 1
 fi
 
-# Start export binary and redirect output
-nohup "$FRONTEND_EXEC" >> "$LOG_FILE" 2>&1 &
-
+# Start export binary (no nohup - script stays running for signal handling)
+"$FRONTEND_EXEC" >> "$LOG_FILE" 2>&1 &
 FRONTEND_PID=$!
 
-# Write PID atomically
+# Write PID atomically (still useful for manual stop_all.sh operations)
 echo "$FRONTEND_PID" > "${PID_FILE}.tmp"
 mv "${PID_FILE}.tmp" "$PID_FILE"
 
 log_info "Frontend started (PID: $FRONTEND_PID)"
+
+# Set up signal forwarding - when this script receives SIGTERM/SIGINT,
+# forward it to Godot so SessionManager can do graceful shutdown
+cleanup() {
+	log_info "Received shutdown signal, forwarding to Godot (PID: $FRONTEND_PID)..."
+	kill -TERM "$FRONTEND_PID" 2>/dev/null || true
+	# Wait for Godot to exit gracefully (SessionManager has 5s timeout)
+	wait "$FRONTEND_PID" 2>/dev/null || true
+	rm -f "$PID_FILE"
+	log_info "Frontend shutdown complete"
+	exit 0
+}
+trap cleanup TERM INT
 
 # Wait and verify process started successfully
 sleep 3
@@ -185,5 +197,16 @@ else
 	exit 1
 fi
 
-# Release lock
+# Release lock after successful startup verification
 flock -u 200
+
+log_info "Script staying resident for signal handling (systemd Type=simple)"
+
+# Wait for Godot to exit - this keeps the script running and able to receive signals
+wait "$FRONTEND_PID"
+EXIT_CODE=$?
+
+# Godot exited on its own (crash or normal exit)
+rm -f "$PID_FILE"
+log_info "Frontend exited with code: $EXIT_CODE"
+exit $EXIT_CODE

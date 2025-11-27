@@ -80,8 +80,15 @@ else
 		if kill -0 $FRONTEND_PID 2>/dev/null; then
 			log_info "Stopping frontend (PID: $FRONTEND_PID)..."
 			kill $FRONTEND_PID 2>/dev/null || true
-			sleep 1
+			# Wait up to 8 seconds for graceful shutdown (SessionManager has 5s timeout)
+			for i in {1..8}; do
+				if ! kill -0 $FRONTEND_PID 2>/dev/null; then
+					break
+				fi
+				sleep 1
+			done
 			if kill -0 $FRONTEND_PID 2>/dev/null; then
+				log_warn "Frontend didn't exit gracefully, force killing..."
 				kill -9 $FRONTEND_PID 2>/dev/null || true
 			fi
 			log_info "Frontend stopped"
@@ -128,8 +135,9 @@ else
 	fi
 fi
 
-# Clean up stale PID files
+# Clean up stale PID and lock files
 rm -f /tmp/barbox-frontend.pid /tmp/barbox-backend.pid
+rm -f /tmp/barbox-frontend.lock /tmp/barbox-backend.lock
 
 echo ""
 log_info "All BarBox services stopped"

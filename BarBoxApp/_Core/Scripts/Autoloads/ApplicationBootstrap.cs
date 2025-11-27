@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -16,6 +17,7 @@ public partial class ApplicationBootstrap : AutoloadBase
 
 	private bool _servicesInitialized = false;
 	private readonly List<string> _failedServices = new();
+	private PosixSignalRegistration _sigtermRegistration;
 
 	private enum ServiceCriticality
 	{
@@ -25,7 +27,59 @@ public partial class ApplicationBootstrap : AutoloadBase
 
 	protected override void OnServiceReady()
 	{
+		RegisterSignalHandlers();
 		InitializeAllServices();
+	}
+
+	/// <summary>
+	/// Register POSIX signal handlers for graceful shutdown on Linux.
+	/// SIGTERM is sent by systemd when stopping the service.
+	/// Without this, Godot ignores SIGTERM and must be force-killed.
+	/// </summary>
+	private void RegisterSignalHandlers()
+	{
+		if (!OperatingSystem.IsLinux())
+		{
+			return;
+		}
+
+		try
+		{
+			_sigtermRegistration = PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnSigtermReceived);
+			LogInfo("SIGTERM handler registered for graceful shutdown");
+		}
+		catch (Exception ex)
+		{
+			LogWarning($"Failed to register SIGTERM handler: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Handle SIGTERM signal (sent by systemd during service stop).
+	/// Triggers graceful shutdown via SessionManager, same as clicking window close.
+	/// </summary>
+	private void OnSigtermReceived(PosixSignalContext context)
+	{
+		LogInfo("SIGTERM received - initiating graceful shutdown...");
+
+		// Prevent default termination so we can shutdown gracefully
+		context.Cancel = true;
+
+		// Use CallDeferred to run on main thread (signal handlers run on signal thread)
+		CallDeferred(MethodName.TriggerGracefulShutdown);
+	}
+
+	/// <summary>
+	/// Trigger graceful shutdown on the main thread.
+	/// This simulates window close request which SessionManager handles.
+	/// </summary>
+	private void TriggerGracefulShutdown()
+	{
+		LogInfo("Triggering graceful shutdown from main thread...");
+
+		// Trigger the same notification that clicking X button does
+		// SessionManager listens for this and does graceful logout
+		GetTree().Root.PropagateNotification((int)NotificationWMCloseRequest);
 	}
 
 	private async void InitializeAllServices()
@@ -172,6 +226,12 @@ public partial class ApplicationBootstrap : AutoloadBase
 	}
 
 	public bool AreServicesReady() => _servicesInitialized;
+
+	public override void _ExitTree()
+	{
+		_sigtermRegistration?.Dispose();
+		_sigtermRegistration = null;
+	}
 
 	public static ApplicationBootstrap GetAutoload()
 	{

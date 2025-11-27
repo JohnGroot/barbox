@@ -12,6 +12,7 @@ Environment="PATH=/home/barbox/.local/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=/home/barbox/Desktop/barbox/BarBoxServices/.venv/bin/fastapi run src/bxctl/web/main.py
 Restart=always
 RestartSec=5
+TimeoutStopSec=15
 StandardOutput=journal
 StandardError=journal
 

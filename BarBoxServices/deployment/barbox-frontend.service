@@ -5,9 +5,10 @@ After=barbox-backend.service graphical.target
 Wants=barbox-backend.service
 
 [Service]
-Type=forking
-PIDFile=/tmp/barbox-frontend.pid
+Type=simple
 WorkingDirectory=/home/barbox/Desktop/barbox
+TimeoutStopSec=15
+KillMode=mixed
 Environment="DISPLAY=:0"
 Environment="PATH=/home/barbox/.config/godotenv/godot/bin:/home/barbox/.dotnet/tools:/home/barbox/.local/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStartPre=/bin/sleep 3
