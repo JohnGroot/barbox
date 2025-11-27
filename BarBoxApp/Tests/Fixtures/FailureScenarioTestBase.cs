@@ -13,8 +13,10 @@ namespace BarBox.Tests.Fixtures;
 public abstract class FailureScenarioTestBase : BackendTestBase
 {
 	private EventService _eventService;
+#if DEBUG
 	private bool _eventServiceStateModified = false;
 	private bool _originalEventServiceState = false;
+#endif
 
 	protected FailureScenarioTestBase(Node testScene) : base(testScene)
 	{
@@ -28,7 +30,9 @@ public abstract class FailureScenarioTestBase : BackendTestBase
 	{
 		base.SetupTestIdentifiers();
 		_eventService = GetEventService();
+#if DEBUG
 		_eventServiceStateModified = false;
+#endif
 	}
 
 	/// <summary>

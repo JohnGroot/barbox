@@ -109,6 +109,7 @@ public class PaymentServiceTests : BackendTestBase
 	{
 #if !DEBUG
 		TestHelpers.LogTestInfo("Test skipped - requires DEBUG build for failure simulation");
+		await Task.CompletedTask;
 		return;
 #else
 		// Arrange
