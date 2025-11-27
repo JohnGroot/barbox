@@ -127,6 +127,11 @@ func _update_keyboard_size():
 	# Update hide position for animation
 	hide_position = Vector2(new_x, viewport_size.y + 10)
 
+## Re-discover and monitor fields. Call when new fields are added dynamically.
+## This is useful for modals that create LineEdit/TextEdit fields at runtime.
+func refresh_fields():
+	_discover_and_monitor_fields()
+
 func _discover_and_monitor_fields():
 	# Use groups for better performance - fields must be added to "keyboard_field" group
 	var keyboard_fields = get_tree().get_nodes_in_group("keyboard_field")

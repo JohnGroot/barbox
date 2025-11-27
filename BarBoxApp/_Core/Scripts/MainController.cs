@@ -324,9 +324,9 @@ public partial class MainController : Control
 	/// </summary>
 	public void HideMainUI()
 	{
-		// Disable keyboard auto_show during game
-		DisableKeyboardAutoShow();
-		
+		// NOTE: Keyboard auto_show remains enabled during gameplay to support modals (login, etc.)
+		// Games that need to disable keyboard can call DisableKeyboardAutoShow() explicitly
+
 		var uiContainer = GetNode<VBoxContainer>("UI");
 		if (uiContainer != null)
 		{
