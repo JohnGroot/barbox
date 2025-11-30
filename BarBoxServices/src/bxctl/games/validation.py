@@ -28,6 +28,8 @@ EVENT_PAYLOAD_MODELS: dict[str, type] = {
     # Mining events
     "mining/extract_complete": GAMES["mining"]["schemas"].MiningExtractCompletePayload,
     "mining/upgrade_purchase": GAMES["mining"]["schemas"].MiningUpgradePurchasePayload,
+    # Nines events
+    "nines/jackpot_won": GAMES["nines"]["schemas"].NinesJackpotWonPayload,
 }
 
 

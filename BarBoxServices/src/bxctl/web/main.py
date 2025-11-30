@@ -115,6 +115,10 @@ tags_metadata = [
         "description": "Mining inventory and progression tracking",
     },
     {
+        "name": "Game: Nines",
+        "description": "Nines card game with time-based jackpot system",
+    },
+    {
         "name": "Testing",
         "description": "Development and testing utilities (not available in production environments)",
     },

@@ -126,5 +126,20 @@ public partial class GameRegistry : AutoloadBase
 			Category = "Idle",
 			DifficultyRating = 1.5f
 		});
+
+		// Card prediction game with time-based jackpot
+		RegisterGame(new GameMetadata
+		{
+			GameId = "nines_game",
+			DisplayName = "Nines",
+			Description = "Card prediction game where players guess higher, lower, or same. Survive the deck to win the jackpot!",
+			ScenePath = "res://_Games/Nines/Nines.tscn",
+			ThumbnailPath = "res://_Games/Nines/Assets/thumbnail.png",
+			MaxPlayers = 8,
+			CreditCost = 100,
+			IsActive = true,
+			Category = "Card",
+			DifficultyRating = 2.0f
+		});
 	}
 }

@@ -5,13 +5,14 @@ from uuid import UUID
 from pydantic import BaseModel, Field, PlainSerializer
 
 # Import game modules for registry
-from bxctl.games import carrom, mining, racing
+from bxctl.games import carrom, mining, nines, racing
 
 # Single source of truth: All games registered here
 GAMES = {
     "carrom": {"schemas": carrom.schemas, "router": carrom.router},
     "racing": {"schemas": racing.schemas, "router": racing.router},
     "mining": {"schemas": mining.schemas, "router": mining.router},
+    "nines": {"schemas": nines.schemas, "router": nines.router},
 }
 
 
@@ -95,6 +96,7 @@ type SessionEventType = (
     | carrom.schemas.CarromEventType
     | racing.schemas.RacingEventType
     | mining.schemas.MiningEventType
+    | nines.schemas.NinesEventType
 )
 
 
