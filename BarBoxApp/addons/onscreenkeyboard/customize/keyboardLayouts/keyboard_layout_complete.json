@@ -538,10 +538,12 @@
 				{
 					"keys": [
 						{
+							"type": "spacer"
+						},
+						{
 							"type": "char",
 							"output": "0",
-							"display": "0",
-							"stretch-ratio": 2
+							"display": "0"
 						},
 						{
 							"type": "special",
@@ -615,10 +617,12 @@
 				{
 					"keys": [
 						{
+							"type": "spacer"
+						},
+						{
 							"type": "char",
 							"output": "0",
-							"display": "0",
-							"stretch-ratio": 2
+							"display": "0"
 						},
 						{
 							"type": "special",

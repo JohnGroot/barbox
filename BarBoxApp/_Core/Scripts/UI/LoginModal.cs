@@ -1,3 +1,4 @@
+using BarBox.Core.UI;
 using Godot;
 using System;
 using System.Collections.Generic;
@@ -675,10 +676,10 @@ public partial class LoginModal : Control
 	public void ShowModal()
 	{
 		// Trigger keyboard field re-discovery for dynamically created fields
-		var keyboard = GetTree().Root.GetNodeOrNull<Node>("Main/KeyboardLayer/OnscreenKeyboard");
+		var keyboard = GetTree().Root.GetNodeOrNull<OnScreenKeyboard>("Main/KeyboardLayer/OnscreenKeyboard");
 		if (IsInstanceValid(keyboard))
 		{
-			keyboard.Call("refresh_fields");
+			keyboard.RefreshFields();
 		}
 
 		Visible = true;
