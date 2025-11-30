@@ -16,7 +16,7 @@ public partial class MiningGame : GameController
 	// CONSTANTS
 	// ================================================================
 
-	private const int CREDITS_PER_PURCHASE = 1;
+	private const int CREDITS_PER_PURCHASE = 1000;
 	private const string MAIN_SCENE_PATH = "res://_Core/Scenes/Main.tscn";
 
 	private static class ErrorMessages
@@ -517,6 +517,7 @@ public partial class MiningGame : GameController
 	public int GetUpgradeLevel(UpgradeType upgradeType) => _state.GetUpgradeLevel(upgradeType);
 
 	public GemType GetPrimaryGemType() => _locationConfig?.GetGemType() ?? GemType.Amethyst;
+	public int GetCreditsPerPurchase() => CREDITS_PER_PURCHASE;
 
 	public void ExtractGems()
 	{

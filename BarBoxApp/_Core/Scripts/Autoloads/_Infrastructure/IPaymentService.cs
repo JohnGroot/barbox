@@ -9,7 +9,7 @@ public struct CreditPack(int credits, decimal price)
 {
 	public int Credits { get; init; } = credits;
 	public decimal Price { get; init; } = price;
-	public string DisplayName { get; init; } = $"{credits} Credits - ${price:F2}";
+	public string DisplayName { get; init; } = $"{credits:N0} Credits - ${price:F2}";
 }
 
 /// <summary>

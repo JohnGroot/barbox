@@ -14,12 +14,12 @@ public class DebugPaymentService : IPaymentService
 
 	private static readonly CreditPack[] _availablePacks =
 	[
-		new CreditPack(1, 1.00m),
-		new CreditPack(5, 5.00m),
-		new CreditPack(10, 10.00m),
-		new CreditPack(25, 25.00m),
-		new CreditPack(50, 50.00m),
-		new CreditPack(100, 100.00m)
+		new CreditPack(1000, 1.00m),
+		new CreditPack(5000, 5.00m),
+		new CreditPack(10000, 10.00m),
+		new CreditPack(25000, 25.00m),
+		new CreditPack(50000, 50.00m),
+		new CreditPack(100000, 100.00m)
 	];
 
 	public CreditPack[] GetAvailableCreditPacks()

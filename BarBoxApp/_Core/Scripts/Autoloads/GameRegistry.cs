@@ -91,7 +91,7 @@ public partial class GameRegistry : AutoloadBase
 			ScenePath = "res://_Games/RacingGame/Scenes/RacingGame.tscn",
 			ThumbnailPath = "res://_Games/RacingGame/Assets/thumbnail.png",
 			MaxPlayers = 1,
-			CreditCost = 1,
+			CreditCost = 1000,
 			IsActive = true,
 			Category = "Racing",
 			DifficultyRating = 2.0f
@@ -106,7 +106,7 @@ public partial class GameRegistry : AutoloadBase
 			ScenePath = "res://_Games/CarromGame/Scenes/CarromGame.tscn",
 			ThumbnailPath = "res://_Games/CarromGame/Assets/thumbnail.png",
 			MaxPlayers = 4,
-			CreditCost = 1,
+			CreditCost = 1000,
 			IsActive = true,
 			Category = "Board",
 			DifficultyRating = 3.0f
@@ -121,7 +121,7 @@ public partial class GameRegistry : AutoloadBase
 			ScenePath = "res://_Games/MiningGame/Scenes/MiningGame.tscn",
 			ThumbnailPath = "res://_Games/MiningGame/Assets/thumbnail.png",
 			MaxPlayers = 1,
-			CreditCost = 1,
+			CreditCost = 1000,
 			IsActive = true,
 			Category = "Idle",
 			DifficultyRating = 1.5f

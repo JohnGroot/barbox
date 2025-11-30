@@ -205,18 +205,18 @@ public class CarromGameTests : TestClass
 			return;
 		}
 
-		// Emit credit deduction event (competitive mode costs 1 credit per player)
+		// Emit credit deduction event (competitive mode costs 1000 credits per player)
 		var player1Credit = await _eventService.EmitEventAsync("carrom/credit_deducted", new
 		{
 			player_id = _testPlayer1Id.ToString(),
-			credits_spent = 1,
+			credits_spent = 1000,
 			reason = "competitive_game_entry"
 		});
 
 		var player2Credit = await _eventService.EmitEventAsync("carrom/credit_deducted", new
 		{
 			player_id = _testPlayer2Id.ToString(),
-			credits_spent = 1,
+			credits_spent = 1000,
 			reason = "competitive_game_entry"
 		});
 

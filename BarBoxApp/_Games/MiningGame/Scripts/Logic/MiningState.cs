@@ -27,7 +27,7 @@ public partial class MiningState : Node
 	private bool _cacheValid = false;
 
 	// Constants
-	private const int CREDITS_PER_PURCHASE = 1;
+	private const int CREDITS_PER_PURCHASE = 1000;
 
 #endregion
 

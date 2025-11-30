@@ -106,9 +106,12 @@ public partial class MiningGameUI : Control
 		RefreshButtonStyles(_extractButton);
 		RefreshButtonStyles(_purchaseCreditButton);
 
-		// Update purchase credit button text with new gem emoji
+		// Update purchase credit button text with new gem emoji and credit amount
 		if (_purchaseCreditButton != null)
-			_purchaseCreditButton.Text = $"Purchase Credit ({GemTheme.GetGemEmoji(_gemType)} {_config.CreditCost})";
+		{
+			var creditsPerPurchase = _game?.GetCreditsPerPurchase() ?? 1000;
+			_purchaseCreditButton.Text = $"Buy {creditsPerPurchase:N0} Credits ({GemTheme.GetGemEmoji(_gemType)} {_config.CreditCost})";
+		}
 
 		// Upgrade groups - they get colors from parent UI, trigger refresh
 		foreach (var upgradeGroup in _upgradeGroups.Values)
@@ -274,7 +277,8 @@ public partial class MiningGameUI : Control
 		_extractButton.Pressed += () => _game?.ExtractGems();
 		buttonsHBox.AddChild(_extractButton);
 
-		_purchaseCreditButton = UIBuilder.CreateActionButton($"Purchase Credit ({GemTheme.GetGemEmoji(_gemType)} {_config.CreditCost})", this);
+		var creditsPerPurchase = _game?.GetCreditsPerPurchase() ?? 1000;
+		_purchaseCreditButton = UIBuilder.CreateActionButton($"Buy {creditsPerPurchase:N0} Credits ({GemTheme.GetGemEmoji(_gemType)} {_config.CreditCost})", this);
 		_purchaseCreditButton.CustomMinimumSize = new Vector2(200, 40);
 		_purchaseCreditButton.Pressed += () => _game?.PurchaseCredit();
 		buttonsHBox.AddChild(_purchaseCreditButton);
@@ -380,7 +384,8 @@ public partial class MiningGameUI : Control
 
 			// Clear button text to default state
 			_extractButton.Text = "Extract Gems";
-			_purchaseCreditButton.Text = $"Purchase Credit ({GemTheme.GetGemEmoji(_gemType)} {_config.CreditCost})";
+			var creditsPerPurchase = _game?.GetCreditsPerPurchase() ?? 1000;
+			_purchaseCreditButton.Text = $"Buy {creditsPerPurchase:N0} Credits ({GemTheme.GetGemEmoji(_gemType)} {_config.CreditCost})";
 		}
 	}
 

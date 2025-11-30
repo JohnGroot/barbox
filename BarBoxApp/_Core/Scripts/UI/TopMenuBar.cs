@@ -249,7 +249,7 @@ public partial class TopMenuBar : Control
 					: "Player";
 
 				int displayCredits = credits ?? 0;
-				_userInfoLabel.Text = $"{displayName}\n{displayCredits} Credits";
+				_userInfoLabel.Text = $"{displayName}\n{displayCredits:N0} Credits";
 			}
 			else
 			{

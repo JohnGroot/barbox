@@ -238,11 +238,11 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		private int _targetSlotIndex;
 		private string _playerName;
 		private int _availableCredits;
-		private int _selectedAmount = 1;
+		private int _selectedAmount = 1000;
 
 		// Constants
-		private const int MIN_TRANSFER_AMOUNT = 1;
-		private const int MAX_TRANSFER_PER_TRANSACTION = 20;
+		private const int MIN_TRANSFER_AMOUNT = 1000;
+		private const int MAX_TRANSFER_PER_TRANSACTION = 20000;
 		private static readonly Vector2 ModalSize = new(400, 350);
 
 		// Async completion
@@ -468,12 +468,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_targetSlotIndex = slotIndex;
 			_playerName = playerName;
 			_availableCredits = availableCredits;
-			_selectedAmount = 1;
+			_selectedAmount = MIN_TRANSFER_AMOUNT;
 
 			// Update UI
 			_playerNameLabel.Text = $"Player: {_playerName}";
-			_availableCreditsLabel.Text = $"Available: {_availableCredits} credit{(_availableCredits != 1 ? "s" : "")}";
-			_amountLabel.Text = _selectedAmount.ToString();
+			_availableCreditsLabel.Text = $"Available: {_availableCredits:N0} Credits";
+			_amountLabel.Text = _selectedAmount.ToString("N0");
 			_statusLabel.Text = "";
 
 			UpdateButtonStates();
@@ -495,7 +495,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		private void UpdateButtonStates()
 		{
 			// Update amount label
-			_amountLabel.Text = _selectedAmount.ToString();
+			_amountLabel.Text = _selectedAmount.ToString("N0");
 
 			// Decrement button: disabled at minimum
 			_decrementButton.Disabled = _selectedAmount <= MIN_TRANSFER_AMOUNT;
@@ -505,14 +505,13 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_incrementButton.Disabled = _selectedAmount >= maxAmount;
 
 			// Confirm button text and state
-			string creditText = _selectedAmount != 1 ? "Credits" : "Credit";
-			_confirmButton.Text = $"Transfer {_selectedAmount} {creditText}";
+			_confirmButton.Text = $"Transfer {_selectedAmount:N0} Credits";
 			_confirmButton.Disabled = _selectedAmount > _availableCredits || _selectedAmount < MIN_TRANSFER_AMOUNT;
 
 			// Status message
 			if (_selectedAmount >= MAX_TRANSFER_PER_TRANSACTION && _availableCredits > MAX_TRANSFER_PER_TRANSACTION)
 			{
-				_statusLabel.Text = $"Maximum {MAX_TRANSFER_PER_TRANSACTION} credits per transfer";
+				_statusLabel.Text = $"Maximum {MAX_TRANSFER_PER_TRANSACTION:N0} credits per transfer";
 				_statusLabel.Modulate = Colors.Orange;
 			}
 			else if (_selectedAmount >= _availableCredits && _availableCredits < MAX_TRANSFER_PER_TRANSACTION)
@@ -530,7 +529,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		{
 			if (_selectedAmount > MIN_TRANSFER_AMOUNT)
 			{
-				_selectedAmount--;
+				_selectedAmount -= 1000;
 				UpdateButtonStates();
 			}
 		}
@@ -538,9 +537,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		private void OnIncrementPressed()
 		{
 			int maxAmount = Math.Min(MAX_TRANSFER_PER_TRANSACTION, _availableCredits);
-			if (_selectedAmount < maxAmount)
+			if (_selectedAmount + 1000 <= maxAmount)
 			{
-				_selectedAmount++;
+				_selectedAmount += 1000;
 				UpdateButtonStates();
 			}
 		}

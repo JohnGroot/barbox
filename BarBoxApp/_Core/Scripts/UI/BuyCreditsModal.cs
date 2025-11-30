@@ -12,7 +12,7 @@ public partial class BuyCreditsModal : Control
 	[Signal] public delegate void ModalClosedEventHandler();
 
 	private const string TITLE_TEXT = "Buy Credits";
-	private const string CURRENT_CREDITS_FORMAT = "Current Credits: {0}";
+	private const string CURRENT_CREDITS_FORMAT = "Current Credits: {0:N0}";
 	private const string SELECT_PACK_TEXT = "Select Credit Pack:";
 	private const string CLOSE_TEXT = "Close";
 	private const string PAYMENT_NOT_AVAILABLE = "Payment service not available";
@@ -21,7 +21,7 @@ public partial class BuyCreditsModal : Control
 	private const string NO_USER_SPECIFIED = "No user specified";
 	private const string PROCESSING_PURCHASE = "Processing purchase...";
 	private const string PURCHASE_CONFIRMATION_FORMAT = "Purchase {0}?";
-	private const string PURCHASE_SUCCESS_FORMAT = "Purchase successful! {0} credits added.";
+	private const string PURCHASE_SUCCESS_FORMAT = "Purchase successful! {0:N0} credits added.";
 	private const string PURCHASE_FAILED_FORMAT = "Purchase failed: {0}";
 	private const string ERROR_FORMAT = "Error: {0}";
 
