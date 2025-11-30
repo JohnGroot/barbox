@@ -92,6 +92,8 @@ public class RacingUIState
 [GlobalClass]
 public partial class RacingGame : GameController
 {
+	protected override string GetGameId() => "racing_game";
+
 	// ================================================================
 	// SIGNALS
 	// ================================================================
@@ -240,7 +242,6 @@ public partial class RacingGame : GameController
 	public override void _Ready()
 	{
 		// Initial game setup (before any phase)
-		GameId = "racing_game";
 		SetRacingMode(RacingMode.Practice); // Start in practice mode
 
 		// Execute phased initialization

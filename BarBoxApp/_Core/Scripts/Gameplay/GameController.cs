@@ -4,8 +4,15 @@ using System.Collections.Generic;
 [GlobalClass]
 public abstract partial class GameController : Node2D
 {
-	[ExportCategory("Game Settings")]
-	[Export] public required string GameId { get; set; }
+	/// <summary>
+	/// Returns the game ID for registry lookup. Must match an entry in GameRegistry.
+	/// </summary>
+	protected abstract string GetGameId();
+
+	/// <summary>
+	/// Public accessor for game ID (for external callers like GameHost)
+	/// </summary>
+	public string GameId => GetGameId();
 
 	/// <summary>
 	/// Whether players can logout during active gameplay.

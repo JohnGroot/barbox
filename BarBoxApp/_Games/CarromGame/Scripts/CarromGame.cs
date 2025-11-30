@@ -12,6 +12,8 @@ namespace BarBox.Games.Carrom;
 [GlobalClass]
 public partial class CarromGame : GameController
 {
+	protected override string GetGameId() => "carrom_game";
+
 	// ================================================================
 	// SIGNALS
 	// ================================================================
@@ -111,8 +113,6 @@ public partial class CarromGame : GameController
 
 	public override void _Ready()
 	{
-		GameId = "carrom_game";
-
 		// Initialize physics config early (needed for exports)
 		if (PhysicsConfig == null)
 		{

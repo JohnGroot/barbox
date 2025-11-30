@@ -10,6 +10,8 @@ namespace BarBox.Games.MiningGame;
 [GlobalClass]
 public partial class MiningGame : GameController
 {
+	protected override string GetGameId() => "mining_game";
+
 	// ================================================================
 	// CONSTANTS
 	// ================================================================
