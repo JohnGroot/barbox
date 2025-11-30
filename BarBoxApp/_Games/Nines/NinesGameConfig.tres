@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="NinesGameConfig" load_steps=2 format=3 uid="uid://c3q4xj6n7k8m2"]
+
+[ext_resource type="Script" path="res://_Games/Nines/Scripts/NinesGameConfig.cs" id="1_config"]
+
+[resource]
+script = ExtResource("1_config")
+GridSize = 3
+MaxPlayers = 8
+InitialCardCount = 9
+EntryCost = 100
+BaseJackpotValue = 5000
+DailyJackpotGrowth = 1000
+DealCardDuration = 0.3
+CardFlipDuration = 0.25
+CardPlaceDuration = 0.3
+RevealDelay = 0.5
+DealDelayBetweenCards = 0.15
+ResultFeedbackDuration = 1.5
+CardSize = Vector2(80, 112)
+GridSpacing = 20.0
+CardCornerRadius = 6.0
+CardBorderWidth = 2.0
+CardFaceColor = Color(1, 1, 1, 1)
+CardBackColor = Color(0.2, 0.3, 0.6, 1)
+CardBorderColor = Color(0.1, 0.1, 0.1, 1)
+RedSuitColor = Color(0.8, 0.1, 0.1, 1)
+BlackSuitColor = Color(0.1, 0.1, 0.1, 1)
+SelectedHighlightColor = Color(1, 0.8, 0, 0.8)
+BackgroundColor = Color(0.15, 0.4, 0.25, 1)
+PanelColor = Color(0.1, 0.1, 0.15, 0.9)
+ButtonNormalColor = Color(0.2, 0.5, 0.3, 1)
+ButtonHoverColor = Color(0.3, 0.6, 0.4, 1)
+ButtonDisabledColor = Color(0.3, 0.3, 0.3, 1)
+CorrectFeedbackColor = Color(0.2, 0.8, 0.2, 1)
+WrongFeedbackColor = Color(0.8, 0.2, 0.2, 1)
+JackpotDisplayColor = Color(1, 0.85, 0, 1)
