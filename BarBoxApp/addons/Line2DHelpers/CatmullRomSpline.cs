@@ -96,6 +96,23 @@ public static class CatmullRomSpline
 				p3 = p2 + (p2 - p1);
 			}
 
+			// Preserve boundary tangents: adjust control points so entry/exit aligns with adjacent segments
+			// First segment: adjust p0 so entry tangent aligns with incoming direction
+			if (i == startIndex && startIndex > 0)
+			{
+				// Entry tangent at p1 is 0.5*(p2-p0), want it parallel to (p1 - prevPoint)
+				Vector2 prevPoint = originalPoints[startIndex - 1];
+				p0 = p2 - (p1 - prevPoint);
+			}
+
+			// Last segment: adjust p3 so exit tangent aligns with outgoing direction
+			if (i == endIndex - 1 && endIndex + 1 < originalPoints.Length)
+			{
+				// Exit tangent at p2 is 0.5*(p3-p1), want it parallel to (nextPoint - p2)
+				Vector2 nextPoint = originalPoints[endIndex + 1];
+				p3 = p1 + (nextPoint - p2);
+			}
+
 			// Apply bulge factor to control curve tightness
 			// Bulge affects how much the tangent points influence the curve
 			Vector2 adjustedP0 = p1 + (p0 - p1) * bulgeFactor;
@@ -170,6 +187,12 @@ public static class CatmullRomSpline
 				segments.Add((i, i + 1));
 		}
 
+		// Determine first and last segment indices for boundary tangent preservation
+		// (Only applies when NOT a full loop - full loops should flow smoothly)
+		bool isFullLoop = startIndex == endIndex;
+		int firstFromIdx = segments.Count > 0 ? segments[0].from : -1;
+		int lastToIdx = segments.Count > 0 ? segments[^1].to : -1;
+
 		// Process each segment
 		foreach (var (fromIdx, toIdx) in segments)
 		{
@@ -181,6 +204,24 @@ public static class CatmullRomSpline
 			int nextIdx = (toIdx + 1) % n;
 			Vector2 p0 = originalPoints[prevIdx];
 			Vector2 p3 = originalPoints[nextIdx];
+
+			// Preserve boundary tangents for non-full-loop wrap-arounds
+			if (!isFullLoop)
+			{
+				// First segment: adjust p0 so entry tangent aligns with incoming direction
+				if (fromIdx == firstFromIdx)
+				{
+					Vector2 prevPoint = originalPoints[prevIdx];
+					p0 = p2 - (p1 - prevPoint);
+				}
+
+				// Last segment: adjust p3 so exit tangent aligns with outgoing direction
+				if (toIdx == lastToIdx)
+				{
+					Vector2 nextPoint = originalPoints[nextIdx];
+					p3 = p1 + (nextPoint - p2);
+				}
+			}
 
 			// Apply bulge factor
 			Vector2 adjustedP0 = p1 + (p0 - p1) * bulgeFactor;
@@ -202,6 +243,57 @@ public static class CatmullRomSpline
 		result.Add(originalPoints[endIndex]);
 
 		return result.ToArray();
+	}
+
+	/// <summary>
+	/// Redistribute points evenly along the curve by arc length
+	/// </summary>
+	public static Vector2[] RedistributeEvenly(Vector2[] points, int targetPointCount)
+	{
+		if (points == null || points.Length < 2 || targetPointCount < 2)
+			return points;
+
+		// Calculate cumulative arc lengths
+		float[] arcLengths = new float[points.Length];
+		arcLengths[0] = 0;
+		for (int i = 1; i < points.Length; i++)
+		{
+			arcLengths[i] = arcLengths[i - 1] + points[i].DistanceTo(points[i - 1]);
+		}
+		float totalLength = arcLengths[^1];
+
+		if (totalLength < 0.0001f)
+			return points;
+
+		// Resample at equal arc-length intervals
+		var result = new Vector2[targetPointCount];
+		result[0] = points[0];
+		result[^1] = points[^1];
+
+		for (int i = 1; i < targetPointCount - 1; i++)
+		{
+			float targetArcLength = totalLength * i / (targetPointCount - 1);
+
+			// Find segment containing this arc length
+			int segmentIdx = 0;
+			for (int j = 1; j < arcLengths.Length; j++)
+			{
+				if (arcLengths[j] >= targetArcLength)
+				{
+					segmentIdx = j - 1;
+					break;
+				}
+			}
+
+			// Interpolate within segment
+			float segmentStart = arcLengths[segmentIdx];
+			float segmentEnd = arcLengths[segmentIdx + 1];
+			float t = (targetArcLength - segmentStart) / (segmentEnd - segmentStart);
+
+			result[i] = points[segmentIdx].Lerp(points[segmentIdx + 1], t);
+		}
+
+		return result;
 	}
 }
 #endif

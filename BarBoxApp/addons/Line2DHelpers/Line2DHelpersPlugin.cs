@@ -226,9 +226,10 @@ public partial class Line2DHelpersPlugin : EditorPlugin
 		// World to node-local coordinates
 		var localPos = _pickerTargetLine.ToLocal(worldPos);
 
-		// Find closest point with zoom-aware threshold
+		// Find closest point with zoom-aware threshold (accounting for node scale)
 		float zoomScale = editorTransform.Scale.X;
-		float threshold = POINT_SELECTION_THRESHOLD / zoomScale;
+		float nodeScale = _pickerTargetLine.GlobalScale.X;
+		float threshold = POINT_SELECTION_THRESHOLD / (zoomScale * nodeScale);
 		float closestDistance = threshold;
 		int closestIndex = -1;
 

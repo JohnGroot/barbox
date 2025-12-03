@@ -27,7 +27,9 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 	private Button _endPickerButton;
 	private SpinBox _pointsPerUnitSpinBox;
 	private SpinBox _bulgeFactorSpinBox;
+	private CheckBox _evenSpacingCheckBox;
 	private Button _applyButton;
+	private Button _straightenButton;
 	private Label _statusLabel;
 
 	public void Initialize(Line2D line2D)
@@ -111,9 +113,9 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 		densityContainer.AddChild(new Label { Text = "Points per 10 units:" });
 		_pointsPerUnitSpinBox = new SpinBox
 		{
-			MinValue = 0.1,
-			MaxValue = 10.0,
-			Step = 0.1,
+			MinValue = 0.0000001,
+			MaxValue = 100000.0,
+			Step = 0.00000001,
 			Value = DEFAULT_POINTS_PER_10_UNITS,
 			CustomMinimumSize = new Vector2(60, 0)
 		};
@@ -135,6 +137,18 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 		bulgeContainer.AddChild(_bulgeFactorSpinBox);
 		mainContainer.AddChild(bulgeContainer);
 
+		// Even spacing checkbox
+		var spacingContainer = new HBoxContainer();
+		spacingContainer.AddThemeConstantOverride("separation", 4);
+		_evenSpacingCheckBox = new CheckBox
+		{
+			Text = "Even Spacing",
+			TooltipText = "Redistribute points evenly along the curve for smoother results",
+			ButtonPressed = false
+		};
+		spacingContainer.AddChild(_evenSpacingCheckBox);
+		mainContainer.AddChild(spacingContainer);
+
 		// Status label
 		_statusLabel = new Label { Text = "" };
 		_statusLabel.AddThemeColorOverride("font_color", new Color(0.6f, 0.6f, 0.6f));
@@ -155,6 +169,11 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 		_applyButton.AddThemeStyleboxOverride("pressed", _applyPressedStyle);
 
 		mainContainer.AddChild(_applyButton);
+
+		// Straighten Button
+		_straightenButton = new Button { Text = "Straighten" };
+		_straightenButton.Pressed += OnStraightenPressed;
+		mainContainer.AddChild(_straightenButton);
 	}
 
 	private static StyleBoxFlat CreateApplyStyleBox(Color bgColor)
@@ -303,11 +322,12 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 		// Convert from "points per 10 units" to "points per unit"
 		float pointsPerUnit = (float)_pointsPerUnitSpinBox.Value / 10.0f;
 		float bulgeFactor = (float)_bulgeFactorSpinBox.Value;
+		bool evenSpacing = _evenSpacingCheckBox.ButtonPressed;
 
-		ApplySmoothing(startIdx, endIdx, pointsPerUnit, bulgeFactor);
+		ApplySmoothing(startIdx, endIdx, pointsPerUnit, bulgeFactor, evenSpacing);
 	}
 
-	private void ApplySmoothing(int startIdx, int endIdx, float pointsPerUnit, float bulgeFactor)
+	private void ApplySmoothing(int startIdx, int endIdx, float pointsPerUnit, float bulgeFactor, bool evenSpacing)
 	{
 		// Get original points (Points property returns a copy)
 		var pointsArray = _targetLine2D.Points;
@@ -324,6 +344,12 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 			// 2. Wrap-around smoothing
 			smoothedSegment = CatmullRomSpline.GenerateSmoothPointsWithWrap(
 				pointsArray, startIdx, endIdx, pointsPerUnit, bulgeFactor);
+
+			// 2b. Apply even spacing if enabled
+			if (evenSpacing && smoothedSegment.Length > 2)
+			{
+				smoothedSegment = CatmullRomSpline.RedistributeEvenly(smoothedSegment, smoothedSegment.Length);
+			}
 
 			// 3. For wrap-around: keep unaffected points (between end and start), then add smoothed
 			newPointsList = new List<Vector2>();
@@ -342,6 +368,12 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 			// 2. Normal smoothing
 			smoothedSegment = CatmullRomSpline.GenerateSmoothPoints(
 				pointsArray, startIdx, endIdx, pointsPerUnit, bulgeFactor, isClosedLoop);
+
+			// 2b. Apply even spacing if enabled
+			if (evenSpacing && smoothedSegment.Length > 2)
+			{
+				smoothedSegment = CatmullRomSpline.RedistributeEvenly(smoothedSegment, smoothedSegment.Length);
+			}
 
 			// 3. Build new points array: before + smoothed + after
 			newPointsList = new List<Vector2>();
@@ -387,6 +419,70 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 		undoRedo.CommitAction();
 
 		GD.Print($"[Line2D Helpers] Smoothed points {startIdx} to {endIdx}: {originalPoints.Length} -> {newPoints.Length} points");
+	}
+
+	private void OnStraightenPressed()
+	{
+		if (_targetLine2D == null) return;
+
+		int startIdx = (int)_startIndexSpinBox.Value;
+		int endIdx = (int)_endIndexSpinBox.Value;
+
+		ApplyStraighten(startIdx, endIdx);
+	}
+
+	private void ApplyStraighten(int startIdx, int endIdx)
+	{
+		var pointsArray = _targetLine2D.Points;
+		bool isClosedLoop = _targetLine2D.Closed;
+		bool isWrapAround = isClosedLoop && endIdx <= startIdx;
+
+		var newPointsList = new List<Vector2>();
+
+		if (isWrapAround)
+		{
+			// Keep points between end and start (the non-selected portion)
+			for (int i = endIdx; i <= startIdx; i++)
+			{
+				newPointsList.Add(pointsArray[i]);
+			}
+		}
+		else
+		{
+			// Keep points before start
+			for (int i = 0; i < startIdx; i++)
+			{
+				newPointsList.Add(pointsArray[i]);
+			}
+
+			// Add only start and end points (straight line)
+			newPointsList.Add(pointsArray[startIdx]);
+			newPointsList.Add(pointsArray[endIdx]);
+
+			// Keep points after end
+			for (int i = endIdx + 1; i < pointsArray.Length; i++)
+			{
+				newPointsList.Add(pointsArray[i]);
+			}
+		}
+
+		ApplyStraightenWithUndo(_targetLine2D, newPointsList.ToArray(), pointsArray, startIdx, endIdx);
+		UpdateSpinBoxLimits();
+	}
+
+	private void ApplyStraightenWithUndo(Line2D line2D, Vector2[] newPoints, Vector2[] originalPoints, int startIdx, int endIdx)
+	{
+		var undoRedo = EditorInterface.Singleton.GetEditorUndoRedo();
+		undoRedo.CreateAction($"Straighten Line2D ({startIdx}-{endIdx})",
+			mergeMode: UndoRedo.MergeMode.Disable,
+			customContext: line2D);
+
+		undoRedo.AddDoProperty(line2D, Line2D.PropertyName.Points, newPoints);
+		undoRedo.AddUndoProperty(line2D, Line2D.PropertyName.Points, originalPoints);
+
+		undoRedo.CommitAction();
+
+		GD.Print($"[Line2D Helpers] Straightened points {startIdx} to {endIdx}: {originalPoints.Length} -> {newPoints.Length} points");
 	}
 }
 #endif
