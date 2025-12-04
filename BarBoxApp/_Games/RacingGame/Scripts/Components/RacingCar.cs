@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 
 namespace BarBox.Games.Racing
@@ -64,6 +65,12 @@ namespace BarBox.Games.Racing
 		// References to racing game systems for modifiers and transformations
 		private RacingCameraController _cameraController;
 		private RacingTrackValidationSystem _trackValidationSystem;
+
+		/// <summary>
+		/// Callback to check if input is enabled. Set by parent game to decouple from parent type.
+		/// Returns true if input should be processed, false otherwise.
+		/// </summary>
+		public Func<bool> InputEnabledCallback { get; set; }
 
 		// ================================================================
 		// CAR PHYSICS COMPONENTS
@@ -602,8 +609,7 @@ namespace BarBox.Games.Racing
 
 		private bool IsRacingInputEnabled()
 		{
-			var racingGame = GetParent<RacingGame>();
-			return racingGame?.IsInputEnabled() ?? true;
+			return InputEnabledCallback?.Invoke() ?? true;
 		}
 
 		protected virtual void OnTouchStarted(Vector2 position, int fingerId)
