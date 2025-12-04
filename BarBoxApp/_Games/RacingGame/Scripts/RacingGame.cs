@@ -415,10 +415,10 @@ public partial class RacingGame : GameController
 		_racingCar = new RacingCar();
 
 		// Set default car settings
-		_racingCar.MaxSpeed = 2500.0f;
+		_racingCar.MaxSpeed = 3300.0f;
 		_racingCar.MinSpeed = 100.0f;
 		_racingCar.MaxInputDistance = 2000.0f;
-		_racingCar.AccelerationRate = 800.0f;
+		_racingCar.AccelerationRate = 1500.0f;
 		_racingCar.DecelerationRate = 600.0f;
 		_racingCar.RotationLerpSpeed = 4.0f;
 		_racingCar.CarSize = new Vector2(100, 180);
@@ -428,6 +428,9 @@ public partial class RacingGame : GameController
 		// Initialize with validated dependencies and phone number as player ID
 		var phoneNumber = GetCurrentPlayerPhoneNumber() ?? "guest_player";
 		_racingCar.Initialize(_cameraController, _trackValidationSystem, phoneNumber, "Player");
+
+		// Set input enabled callback to decouple car from parent type
+		_racingCar.InputEnabledCallback = IsInputEnabled;
 
 		// Connect car movement events for visual feedback
 		_racingCar.CarMoved += OnCarMoved;
@@ -743,18 +746,10 @@ public partial class RacingGame : GameController
 		}
 	}
 	
-	/// <summary>
-	/// Thread-safe logging method for high score saves
-	/// </summary>
-	private void LogHighScoreSaved(float totalTime, string trackKey)
-	{
-		GD.Print($"[RacingGame] New best time saved: {totalTime:F3}s for {trackKey}");
-	}
-
+	// Thread-safe logging methods for CallDeferred usage from async contexts
 	private void LogHighScoreError(string error) => GD.PrintErr($"[RacingGame] Failed to save race data: {error}");
-	private void LogRaceSaved(float totalTime, string trackId) => GD.Print($"[RacingGame] Race completed and saved - Time: {totalTime:F3}s, Track: {trackId}");
-	private void LogPotentialBestLap(float lapTime, string trackId) => GD.Print($"[RacingGame] Potential best lap time - Time: {lapTime:F3}s, Track: {trackId} (will save on race completion)");
-	private void LogBestLapSaved(float lapTime, string trackKey) => GD.Print($"[RacingGame] New best lap time saved: {lapTime:F3}s for {trackKey}");
+	private void LogRaceSaved(float totalTime, string trackId) => GD.Print($"[RacingGame] Race completed - Time: {totalTime:F3}s, Track: {trackId}");
+	private void LogPotentialBestLap(float lapTime, string trackId) => GD.Print($"[RacingGame] Potential best lap: {lapTime:F3}s, Track: {trackId}");
 	private void LogAsyncError(string message) => GD.PrintErr($"[RacingGame] {message}");
 
 	/// <summary>
@@ -2422,6 +2417,12 @@ public partial class RacingGame : GameController
 	public override void _ExitTree()
 	{
 		base._ExitTree(); // This calls CleanupUI() which calls OnUIContextTeardown()
+
+		// Emit race abandoned event if time trial was in progress
+		if (IsRaceActive() && GetRacingMode() == RacingMode.TimeTrial)
+		{
+			_ = SavePartialRaceData(GetCurrentGamePlayerId(), "app_exit");
+		}
 
 		// Close activity session if active
 		if (_activitySessionId != Guid.Empty && _eventService != null)
