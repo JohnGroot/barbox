@@ -60,6 +60,14 @@ namespace BarBox.Games.Racing
 		private float _pulseTime = 0.0f;
 		private float _glowIntensity = 1.0f;
 
+		// Cached values for performance optimization
+		private Vector2 _cachedScreenSize;
+		private bool _screenSizeDirty = true;
+		private Font _cachedFont;
+		private Vector2 _cachedSpeedometerPos;
+		private Vector2 _cachedLapProgressPos;
+		private Vector2 _cachedCountdownPos;
+
 		// Game state
 		private float _currentSpeed = 0.0f;
 		private float _maxSpeed = 100.0f;
@@ -73,6 +81,33 @@ namespace BarBox.Games.Racing
 		// ================================================================
 
 		public bool ShouldRender { get; set; } = true;
+
+		// ================================================================
+		// LIFECYCLE
+		// ================================================================
+
+		public override void _Notification(int what)
+		{
+			base._Notification(what);
+			if (what == NotificationWMSizeChanged)
+			{
+				_screenSizeDirty = true;
+			}
+		}
+
+		private void UpdateCachedScreenData()
+		{
+			if (!_screenSizeDirty) return;
+
+			var viewport = GetViewport();
+			if (viewport == null) return;
+
+			_cachedScreenSize = viewport.GetVisibleRect().Size;
+			_cachedSpeedometerPos = new Vector2(SpeedometerPosition.X, _cachedScreenSize.Y + SpeedometerPosition.Y);
+			_cachedLapProgressPos = new Vector2(_cachedScreenSize.X + LapProgressPosition.X, _cachedScreenSize.Y + LapProgressPosition.Y);
+			_cachedCountdownPos = _cachedScreenSize * 0.5f + CountdownPosition;
+			_screenSizeDirty = false;
+		}
 
 		// ================================================================
 		// UPDATE METHODS
@@ -177,30 +212,27 @@ namespace BarBox.Games.Racing
 		{
 			if (!ShouldRender) return;
 
-			var viewport = GetViewport();
-			if (viewport == null) return;
+			// Update cached screen data only when viewport changes
+			UpdateCachedScreenData();
 
-			var screenSize = viewport.GetVisibleRect().Size;
+			if (_cachedScreenSize == Vector2.Zero) return;
 
-			// Position HUD elements relative to screen corners
-			var speedometerPos = new Vector2(SpeedometerPosition.X, screenSize.Y + SpeedometerPosition.Y);
-			var lapProgressPos = new Vector2(screenSize.X + LapProgressPosition.X, screenSize.Y + LapProgressPosition.Y);
-			var countdownPos = screenSize * 0.5f + CountdownPosition;
+			// Cache font reference once
+			_cachedFont ??= ThemeDB.FallbackFont;
 
 			// Draw speedometer arc
-			DrawSpeedometer(speedometerPos);
+			DrawSpeedometer(_cachedSpeedometerPos);
 
-			// Draw lap progress arc
 			// Draw lap progress arc (only in time trial mode)
-		if (!_isPracticeMode)
-		{
-			DrawLapProgress(lapProgressPos);
-		}
+			if (!_isPracticeMode)
+			{
+				DrawLapProgress(_cachedLapProgressPos);
+			}
 
 			// Draw countdown arc if visible
 			if (_isCountdownVisible)
 			{
-				DrawCountdown(countdownPos);
+				DrawCountdown(_cachedCountdownPos);
 			}
 		}
 
@@ -209,11 +241,11 @@ namespace BarBox.Games.Racing
 		/// </summary>
 		private void DrawSpeedometer(Vector2 position)
 		{
-			// Background arc (dark)
+			// Background arc (dark) - reduced from 64 to 32 segments for performance
 			var bgColor = new Color(0.2f, 0.2f, 0.3f, 0.6f);
 			var bgStartAngle = Mathf.Pi; // 180° (left)
 			var bgEndAngle = Mathf.Tau; // 360° (right, equivalent to 0°)
-			DrawArc(position, SpeedometerRadius, bgStartAngle, bgEndAngle, 64, bgColor, SpeedometerThickness);
+			DrawArc(position, SpeedometerRadius, bgStartAngle, bgEndAngle, 32, bgColor, SpeedometerThickness);
 
 			// Calculate arc angle based on speed (180 degrees total)
 			// Follow the same path as background: from 180° to 360°
@@ -228,12 +260,12 @@ namespace BarBox.Games.Racing
 				var startAngle = arcStart;
 				var speedColor = GetSpeedColor(_currentSpeedPercent);
 
-				// Add glow effect
+				// Add glow effect - reduced from 64 to 32 segments
 				var glowColor = speedColor * new Color(1, 1, 1, _glowIntensity * 0.3f);
-				DrawArc(position, SpeedometerRadius + 3, startAngle, endAngle, 64, glowColor, SpeedometerThickness + 4);
+				DrawArc(position, SpeedometerRadius + 3, startAngle, endAngle, 32, glowColor, SpeedometerThickness + 4);
 
-				// Main arc
-				DrawArc(position, SpeedometerRadius, startAngle, endAngle, 64, speedColor, SpeedometerThickness);
+				// Main arc - reduced from 64 to 32 segments
+				DrawArc(position, SpeedometerRadius, startAngle, endAngle, 32, speedColor, SpeedometerThickness);
 			}
 
 			// Speed needle (visual indicator pointing to current speed)
@@ -246,17 +278,16 @@ namespace BarBox.Games.Racing
 			// Draw needle with glow for better visibility
 			DrawLine(needleStart, needleEnd, Colors.Black, 5.0f); // Shadow/outline
 			DrawLine(needleStart, needleEnd, Colors.White, 3.0f); // Main needle
-			
-			// Speed text in center
+
+			// Speed text in center - use cached font
 			var speedInt = (int)(_currentSpeed * 0.1f);
-			var font = ThemeDB.FallbackFont;
 			var fontSize = 24;
 			var speedText = speedInt.ToString();
-			var textSize = font.GetStringSize(speedText, HorizontalAlignment.Center, -1, fontSize);
+			var textSize = _cachedFont.GetStringSize(speedText, HorizontalAlignment.Center, -1, fontSize);
 			var textPos = position + (Vector2.Left * textSize * 0.5f);
 
 			// Main text
-			DrawString(font, textPos, speedText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
+			DrawString(_cachedFont, textPos, speedText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
 		}
 
 		/// <summary>
@@ -267,10 +298,10 @@ namespace BarBox.Games.Racing
 			// Don't show lap counts if we're counting down
 			if (_isCountdownVisible)
 				return;
-			
-			// Background arc
+
+			// Background arc - reduced from 64 to 32 segments
 			var bgColor = new Color(0.2f, 0.2f, 0.3f, 0.6f);
-			DrawArc(position, LapRadius, 0, Mathf.Tau, 64, bgColor, LapThickness); // Full circle background
+			DrawArc(position, LapRadius, 0, Mathf.Tau, 32, bgColor, LapThickness); // Full circle background
 
 			if (_currentLapProgress > 0.01f)
 			{
@@ -281,22 +312,21 @@ namespace BarBox.Games.Racing
 				var endAngle = startAngle + sweepAngle;
 				var lapColor = LapStartColor.Lerp(LapEndColor, _currentLapProgress);
 
-				// Glow effect
+				// Glow effect - reduced from 64 to 32 segments
 				var glowColor = lapColor * new Color(1, 1, 1, _glowIntensity * 0.4f);
-				DrawArc(position, LapRadius + 2, startAngle, endAngle, 64, glowColor, LapThickness + 3);
+				DrawArc(position, LapRadius + 2, startAngle, endAngle, 32, glowColor, LapThickness + 3);
 
-				// Main arc
-				DrawArc(position, LapRadius, startAngle, endAngle, 64, lapColor, LapThickness);
+				// Main arc - reduced from 64 to 32 segments
+				DrawArc(position, LapRadius, startAngle, endAngle, 32, lapColor, LapThickness);
 			}
 
-			// Lap text - draw as separate lines for proper newline handling
-			var font = ThemeDB.FallbackFont;
+			// Lap text - use cached font
 			var fontSize = 18;
 			var lapLabel = "LAP";
 			var lapValue = $"{_currentLap}/{_targetLaps}";
 
-			var lapLabelSize = font.GetStringSize(lapLabel, HorizontalAlignment.Center, -1, fontSize);
-			var lapValueSize = font.GetStringSize(lapValue, HorizontalAlignment.Center, -1, fontSize);
+			var lapLabelSize = _cachedFont.GetStringSize(lapLabel, HorizontalAlignment.Center, -1, fontSize);
+			var lapValueSize = _cachedFont.GetStringSize(lapValue, HorizontalAlignment.Center, -1, fontSize);
 			var lineHeight = lapLabelSize.Y;
 			var totalHeight = lineHeight * 2;
 
@@ -306,8 +336,8 @@ namespace BarBox.Games.Racing
 			var lapValuePos = new Vector2(position.X - lapValueSize.X * 0.5f, startY + lineHeight);
 
 			// Draw both lines
-			DrawString(font, lapLabelPos, lapLabel, HorizontalAlignment.Left, -1, fontSize, Colors.White);
-			DrawString(font, lapValuePos, lapValue, HorizontalAlignment.Left, -1, fontSize, Colors.White);
+			DrawString(_cachedFont, lapLabelPos, lapLabel, HorizontalAlignment.Left, -1, fontSize, Colors.White);
+			DrawString(_cachedFont, lapValuePos, lapValue, HorizontalAlignment.Left, -1, fontSize, Colors.White);
 		}
 
 		/// <summary>
@@ -315,8 +345,6 @@ namespace BarBox.Games.Racing
 		/// </summary>
 		private void DrawCountdown(Vector2 position)
 		{
-			// Outer glow ring
-			var outerGlow = CountdownGlowColor * new Color(1, 1, 1, _glowIntensity * 0.3f);
 			// Multiple outer decorative rings
 			for (int i = 1; i <= 3; i++)
 			{
@@ -335,22 +363,21 @@ namespace BarBox.Games.Racing
 			var progressAngle = Mathf.Tau * (1.0f - _countdownProgress);
 			if (progressAngle > 0.01f) // Show arc even when very small
 			{
-				// Animated glow
+				// Animated glow - reduced from 64 to 32 segments
 				var glowPulse = 1.0f + 0.3f * Mathf.Sin(_countdownAnimTime * 8.0f);
 				var glowColor = CountdownColor * new Color(1, 1, 1, glowPulse * 0.5f);
-				DrawArc(position, CountdownRadius + 4, -Mathf.Pi * 0.5f, -Mathf.Pi * 0.5f + progressAngle, 64, glowColor, CountdownThickness + 6);
+				DrawArc(position, CountdownRadius + 4, -Mathf.Pi * 0.5f, -Mathf.Pi * 0.5f + progressAngle, 32, glowColor, CountdownThickness + 6);
 
-				// Main countdown arc
-				DrawArc(position, CountdownRadius, -Mathf.Pi * 0.5f, -Mathf.Pi * 0.5f + progressAngle, 64, CountdownColor, CountdownThickness);
+				// Main countdown arc - reduced from 64 to 32 segments
+				DrawArc(position, CountdownRadius, -Mathf.Pi * 0.5f, -Mathf.Pi * 0.5f + progressAngle, 32, CountdownColor, CountdownThickness);
 			}
 
-			// Countdown number with pulse scale
+			// Countdown number with pulse scale - use cached font
 			if (_countdownNumber > 0)
 			{
-				var font = ThemeDB.FallbackFont;
 				var fontSize = (int)(72 * _countdownPulseScale);
 				var numberText = _countdownNumber.ToString();
-				var textSize = font.GetStringSize(numberText, HorizontalAlignment.Center, -1, fontSize);
+				var textSize = _cachedFont.GetStringSize(numberText, HorizontalAlignment.Center, -1, fontSize);
 				var textPos = position - textSize * 0.5f;
 				textPos.Y += textSize.Y * 0.75f; // Adjust for baseline positioning
 
@@ -359,19 +386,18 @@ namespace BarBox.Games.Racing
 				for (int i = 1; i <= 3; i++)
 				{
 					var offset = Vector2.One * i * 2;
-					DrawString(font, textPos + offset, numberText, HorizontalAlignment.Center, -1, fontSize, textGlowColor * (0.3f / i));
+					DrawString(_cachedFont, textPos + offset, numberText, HorizontalAlignment.Center, -1, fontSize, textGlowColor * (0.3f / i));
 				}
 
 				// Main text
-				DrawString(font, textPos, numberText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
+				DrawString(_cachedFont, textPos, numberText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
 			}
 			else
 			{
-				// "GO!" text
-				var font = ThemeDB.FallbackFont;
+				// "GO!" text - use cached font
 				var fontSize = (int)(60 * _countdownPulseScale);
 				var goText = "GO!";
-				var textSize = font.GetStringSize(goText, HorizontalAlignment.Center, -1, fontSize);
+				var textSize = _cachedFont.GetStringSize(goText, HorizontalAlignment.Center, -1, fontSize);
 				var textPos = position - textSize * 0.5f;
 				textPos.Y += textSize.Y * 0.75f; // Adjust for baseline positioning
 
@@ -386,11 +412,11 @@ namespace BarBox.Games.Racing
 				for (int i = 1; i <= 4; i++)
 				{
 					var offset = Vector2.One * i * 3;
-					DrawString(font, textPos + offset, goText, HorizontalAlignment.Center, -1, fontSize, rainbowColor * (0.4f / i));
+					DrawString(_cachedFont, textPos + offset, goText, HorizontalAlignment.Center, -1, fontSize, rainbowColor * (0.4f / i));
 				}
 
 				// Main text
-				DrawString(font, textPos, goText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
+				DrawString(_cachedFont, textPos, goText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
 			}
 		}
 

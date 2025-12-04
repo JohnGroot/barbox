@@ -41,6 +41,13 @@ namespace BarBox.Games.Racing
 	private float _currentTurnPenaltyMultiplier = 1.0f;
 	private float _currentAccelerationPenaltyMultiplier = 1.0f;
 
+	// Position cache for expensive off-track calculations (performance optimization)
+	private Vector2 _lastCheckedPosition = Vector2.Zero;
+	private float _lastCheckedRotation = 0f;
+	private bool _cachedIsCompletelyOffTrack = false;
+	private const float POSITION_CACHE_THRESHOLD_SQ = 25.0f; // 5 pixels squared
+	private const float ROTATION_CACHE_THRESHOLD = 0.1f; // radians (~5.7 degrees)
+
 	// ================================================================
 	// PUBLIC PROPERTIES
 	// ================================================================
@@ -69,6 +76,11 @@ namespace BarBox.Games.Racing
 		_currentSpeedPenaltyMultiplier = 1.0f;
 		_currentTurnPenaltyMultiplier = 1.0f;
 		_currentAccelerationPenaltyMultiplier = 1.0f;
+
+		// Reset position cache
+		_lastCheckedPosition = Vector2.Zero;
+		_lastCheckedRotation = 0f;
+		_cachedIsCompletelyOffTrack = false;
 	}
 
 	/// <summary>
@@ -169,13 +181,24 @@ namespace BarBox.Games.Racing
 
 	public void UpdateOffTrackPenalties(Vector2 carPosition, float carRotation, Vector2 carSize, float delta)
 	{
-		// Only apply penalties when car is COMPLETELY off track (no part touching)
-		bool isCompletelyOffTrack = IsCarCompletelyOffTrack(carPosition, carRotation, carSize);
-		_isCurrentlyOffTrack = isCompletelyOffTrack;
+		// Performance optimization: Skip expensive recalculation if car hasn't moved significantly
+		// Most frames the car moves < 5 pixels, so we can reuse the cached result
+		bool needsRecalculation = _lastCheckedPosition.DistanceSquaredTo(carPosition) >= POSITION_CACHE_THRESHOLD_SQ
+			|| Mathf.Abs(carRotation - _lastCheckedRotation) >= ROTATION_CACHE_THRESHOLD;
 
-		float targetSpeedMultiplier = isCompletelyOffTrack ? OffTrackSpeedPenalty : 1.0f;
-		float targetTurnMultiplier = isCompletelyOffTrack ? OffTrackTurnPenalty : 1.0f;
-		float targetAccelerationMultiplier = isCompletelyOffTrack ? OffTrackAccelerationPenalty : 1.0f;
+		if (needsRecalculation)
+		{
+			// Only apply penalties when car is COMPLETELY off track (no part touching)
+			_cachedIsCompletelyOffTrack = IsCarCompletelyOffTrack(carPosition, carRotation, carSize);
+			_lastCheckedPosition = carPosition;
+			_lastCheckedRotation = carRotation;
+		}
+
+		_isCurrentlyOffTrack = _cachedIsCompletelyOffTrack;
+
+		float targetSpeedMultiplier = _cachedIsCompletelyOffTrack ? OffTrackSpeedPenalty : 1.0f;
+		float targetTurnMultiplier = _cachedIsCompletelyOffTrack ? OffTrackTurnPenalty : 1.0f;
+		float targetAccelerationMultiplier = _cachedIsCompletelyOffTrack ? OffTrackAccelerationPenalty : 1.0f;
 
 		float lerpSpeed = OffTrackPenaltyLerpSpeed * delta;
 		_currentSpeedPenaltyMultiplier = Mathf.Lerp(_currentSpeedPenaltyMultiplier, targetSpeedMultiplier, lerpSpeed);
@@ -268,6 +291,11 @@ namespace BarBox.Games.Racing
 		_currentSpeedPenaltyMultiplier = 1.0f;
 		_currentTurnPenaltyMultiplier = 1.0f;
 		_currentAccelerationPenaltyMultiplier = 1.0f;
+
+		// Reset position cache
+		_lastCheckedPosition = Vector2.Zero;
+		_lastCheckedRotation = 0f;
+		_cachedIsCompletelyOffTrack = false;
 	}
 
 	public bool IsInitialized()

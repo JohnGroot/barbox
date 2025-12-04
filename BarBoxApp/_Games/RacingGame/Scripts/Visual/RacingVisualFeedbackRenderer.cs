@@ -134,10 +134,11 @@ namespace BarBox.Games.Racing
 	public void UpdateVisualFeedback(float delta)
 	{
 		if (_carController?.IsInitialized != true) return;
-		
+
 		var targetPosition = _carController.GetTargetPosition();
 		var hasInput = _carController.HasInput();
-		
+		var carSpeed = _carController.GetCarSpeed(); // Cache for multiple uses
+
 		// Track mouse movement state
 		if (targetPosition != _lastMousePosition)
 		{
@@ -153,19 +154,25 @@ namespace BarBox.Games.Racing
 		// Update arc rotation for moving indicator (purely visual animation)
 		_arcRotation += delta * 3.0f;
 		if (_arcRotation > Mathf.Pi * 2) _arcRotation -= Mathf.Pi * 2;
-		
+
 		// Update cached values for performance
 		UpdateCachedValues();
 
-		// Track input state changes for visual feedback
-		if (hasInput != _wasInputActive)
+		// Track input state change
+		bool inputStateChanged = hasInput != _wasInputActive;
+		if (inputStateChanged)
 		{
 			_wasInputActive = hasInput;
-			QueueRedraw();
 		}
 
-		// Queue redraw for animated elements
-		if (hasInput || _mouseStationaryTime < 2.0f || _carController.GetCarSpeed() > 1.0f)
+		// Queue redraw only once per frame when visual state needs updating
+		// Consolidates multiple QueueRedraw calls into single conditional check
+		bool needsRedraw = inputStateChanged
+			|| hasInput
+			|| _mouseStationaryTime < 2.0f
+			|| carSpeed > 1.0f;
+
+		if (needsRedraw)
 		{
 			QueueRedraw();
 		}
@@ -350,7 +357,8 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Draw a single trail line with fading effect
+	/// Draw a single trail line with fading effect.
+	/// Optimized to use DrawPolylineColors for batched rendering instead of individual DrawLine calls.
 	/// </summary>
 	/// <param name="trail">Trail points to draw</param>
 	private void DrawTrailLine(List<(Vector2 position, ulong timestamp, Color zoneColor)> trail)
@@ -358,17 +366,23 @@ namespace BarBox.Games.Racing
 		if (trail.Count < 2) return;
 
 		var currentTime = Time.GetTicksMsec();
+		var trailCount = trail.Count;
 
-		for (int i = 0; i < trail.Count - 1; i++)
+		// Build arrays for batched drawing - much faster than individual DrawLine calls
+		var points = new Vector2[trailCount];
+		var colors = new Color[trailCount];
+
+		for (int i = 0; i < trailCount; i++)
 		{
+			points[i] = trail[i].position;
 			var age = currentTime - trail[i].timestamp;
 			var normalizedAge = Mathf.Clamp(age / TrailLifetime, 0.0f, 1.0f);
 			var alpha = 1.0f - normalizedAge;
-
-			// Use the stored zone color for this trail segment
-			var trailColor = trail[i].zoneColor * new Color(1, 1, 1, alpha * 0.8f);
-			DrawLine(trail[i].position, trail[i + 1].position, trailColor, TireTrailWidth);
+			colors[i] = trail[i].zoneColor * new Color(1, 1, 1, alpha * 0.8f);
 		}
+
+		// Single batched draw call instead of (trailCount-1) individual DrawLine calls
+		DrawPolylineColors(points, colors, TireTrailWidth);
 	}
 
 	/// <summary>
