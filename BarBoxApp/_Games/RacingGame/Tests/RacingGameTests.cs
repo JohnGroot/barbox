@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using Chickensoft.GoDotTest;
 using Godot;
 using BarBox.Tests.Fixtures;
-using ZLinq;
 using Shouldly;
 
 namespace BarBox.Games.Racing.Tests;
