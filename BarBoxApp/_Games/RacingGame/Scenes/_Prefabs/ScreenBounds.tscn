@@ -1,0 +1,5 @@
+[gd_scene format=3 uid="uid://b1nj0oyeai45g"]
+
+[node name="ScreenBounds" type="Line2D"]
+points = PackedVector2Array(-2300, -3600, 2300, -3600, 2300, 3600, -2300, 3600)
+closed = true
