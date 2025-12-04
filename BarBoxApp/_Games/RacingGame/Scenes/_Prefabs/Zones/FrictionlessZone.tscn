@@ -1,0 +1,22 @@
+[gd_scene load_steps=2 format=3 uid="uid://bfrctlss0nhkm"]
+
+[ext_resource type="Script" path="res://_Games/RacingGame/Scripts/Components/RacingZone.cs" id="1_zone"]
+
+[node name="FrictionlessZone" type="Area2D" node_paths=PackedStringArray("VisualPolygon")]
+script = ExtResource("1_zone")
+Type = 2
+SpeedModifier = 1.0
+AccelerationModifier = 1.0
+TurnModifier = 1.0
+BlocksInput = true
+Duration = 2.0
+ZoneColor = Color(0.2, 1, 1, 0.3)
+VisualPolygon = NodePath("VisualPolygon")
+ShowVisual = true
+
+[node name="CollisionPolygon2D" type="CollisionPolygon2D" parent="."]
+polygon = PackedVector2Array(-50, -50, 50, -50, 50, 50, -50, 50)
+
+[node name="VisualPolygon" type="Polygon2D" parent="."]
+color = Color(0.2, 1, 1, 0.3)
+polygon = PackedVector2Array(-50, -50, 50, -50, 50, 50, -50, 50)

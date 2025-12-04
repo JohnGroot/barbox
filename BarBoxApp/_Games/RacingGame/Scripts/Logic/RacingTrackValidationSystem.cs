@@ -3,34 +3,37 @@ using Godot;
 namespace BarBox.Games.Racing
 {
 	/// <summary>
-	/// Handles track validation and off-track penalty calculations for racing games
-	/// Extracted from RacingGame to follow single responsibility principle
+	/// Handles track validation and off-track penalty calculations for racing games.
+	/// Integrates with RacingZoneManager to combine track penalties with zone modifiers.
 	/// </summary>
 	[GlobalClass]
 	public partial class RacingTrackValidationSystem : Node
-{
-	// ================================================================
-	// EXPORT PROPERTIES - TRACK PERFORMANCE
-	// ================================================================
-	
-	[ExportCategory("Track Performance")]
-	[Export] public float CenterLineProximityRange { get; set; } = 40.0f;
-	[Export] public float CenterLineAccelerationBonus { get; set; } = 1.5f;
-	[Export] public float TrackProximityRange { get; set; } = 20.0f;
+	{
+		// ================================================================
+		// EXPORT PROPERTIES - TRACK PERFORMANCE
+		// ================================================================
 
-	[ExportCategory("Off-Track Penalties")]
-	[Export] public float OffTrackSpeedPenalty { get; set; } = 0.3f;
-	[Export] public float OffTrackTurnPenalty { get; set; } = 0.3f;
-	[Export] public float OffTrackAccelerationPenalty { get; set; } = 0.3f;
-	[Export] public float OffTrackPenaltyLerpSpeed { get; set; } = 3.0f;
+		[ExportCategory("Track Performance")]
+		[Export] public float CenterLineProximityRange { get; set; } = 40.0f;
+		[Export] public float CenterLineAccelerationBonus { get; set; } = 1.5f;
+		[Export] public float TrackProximityRange { get; set; } = 20.0f;
 
-	// ================================================================
-	// PRIVATE FIELDS
-	// ================================================================
+		[ExportCategory("Off-Track Penalties")]
+		[Export] public float OffTrackSpeedPenalty { get; set; } = 0.3f;
+		[Export] public float OffTrackTurnPenalty { get; set; } = 0.3f;
+		[Export] public float OffTrackAccelerationPenalty { get; set; } = 0.3f;
+		[Export] public float OffTrackPenaltyLerpSpeed { get; set; } = 3.0f;
 
-	// Track references
-	private IRacingTrackDefinition _trackDefinition;
-	private Curve2D _trackCurve;
+		// ================================================================
+		// PRIVATE FIELDS
+		// ================================================================
+
+		// Track references
+		private IRacingTrackDefinition _trackDefinition;
+		private Curve2D _trackCurve;
+
+		// Zone manager for combining zone modifiers
+		private RacingZoneManager _zoneManager;
 
 	// Off-track penalty state
 	private bool _isCurrentlyOffTrack = false;
@@ -60,7 +63,7 @@ namespace BarBox.Games.Racing
 	{
 		_trackDefinition = trackDefinition;
 		_trackCurve = trackCurve;
-		
+
 		// Reset penalty state
 		_isCurrentlyOffTrack = false;
 		_currentSpeedPenaltyMultiplier = 1.0f;
@@ -68,13 +71,38 @@ namespace BarBox.Games.Racing
 		_currentAccelerationPenaltyMultiplier = 1.0f;
 	}
 
+	/// <summary>
+	/// Set the zone manager for combining zone modifiers with track penalties
+	/// </summary>
+	public void SetZoneManager(RacingZoneManager zoneManager)
+	{
+		_zoneManager = zoneManager;
+	}
+
+	/// <summary>
+	/// Get the zone manager (may be null if not set)
+	/// </summary>
+	public RacingZoneManager GetZoneManager() => _zoneManager;
+
 	// ================================================================
 	// TRACK VALIDATION
 	// ================================================================
 
+	/// <summary>
+	/// Check if a position is on valid track surface.
+	/// Includes kerb zones as valid track areas.
+	/// </summary>
 	public bool IsOnTrack(Vector2 position)
 	{
-		return _trackDefinition?.IsValidTrackPoint(position) ?? true;
+		// First check if on main track surface
+		if (_trackDefinition?.IsValidTrackPoint(position) == true)
+			return true;
+
+		// Then check if on a kerb zone (counts as on-track)
+		if (_zoneManager?.IsInKerbZone(position) == true)
+			return true;
+
+		return false;
 	}
 
 	/// <summary>
@@ -89,18 +117,65 @@ namespace BarBox.Games.Racing
 		return position.DistanceTo(closestPoint);
 	}
 
+	/// <summary>
+	/// Check if the car is completely off track (no part of car bounds touching track).
+	/// Checks 8 sample points: 4 corners + 4 edge midpoints of rotated car bounds.
+	/// </summary>
+	public bool IsCarCompletelyOffTrack(Vector2 carCenter, float carRotation, Vector2 carSize)
+	{
+		var halfSize = carSize / 2.0f;
+
+		// Check 4 corners + 4 edge midpoints = 8 sample points
+		Vector2[] sampleOffsets =
+		{
+			// 4 corners
+			new Vector2(-halfSize.X, -halfSize.Y),
+			new Vector2(halfSize.X, -halfSize.Y),
+			new Vector2(halfSize.X, halfSize.Y),
+			new Vector2(-halfSize.X, halfSize.Y),
+			// 4 edge midpoints
+			new Vector2(0, -halfSize.Y),
+			new Vector2(halfSize.X, 0),
+			new Vector2(0, halfSize.Y),
+			new Vector2(-halfSize.X, 0),
+		};
+
+		// If ANY point is on track, car is not completely off
+		foreach (var offset in sampleOffsets)
+		{
+			var rotatedOffset = RotatePoint(offset, carRotation);
+			var worldPoint = carCenter + rotatedOffset;
+
+			if (IsOnTrack(worldPoint))
+				return false;
+		}
+
+		return true; // All points off track
+	}
+
+	private static Vector2 RotatePoint(Vector2 point, float rotation)
+	{
+		float cos = Mathf.Cos(rotation);
+		float sin = Mathf.Sin(rotation);
+		return new Vector2(
+			point.X * cos - point.Y * sin,
+			point.X * sin + point.Y * cos
+		);
+	}
+
 	// ================================================================
 	// PENALTY SYSTEM
 	// ================================================================
 
-	public void UpdateOffTrackPenalties(Vector2 carPosition, float delta)
+	public void UpdateOffTrackPenalties(Vector2 carPosition, float carRotation, Vector2 carSize, float delta)
 	{
-		bool isOnTrack = IsOnTrack(carPosition);
-		_isCurrentlyOffTrack = !isOnTrack;
+		// Only apply penalties when car is COMPLETELY off track (no part touching)
+		bool isCompletelyOffTrack = IsCarCompletelyOffTrack(carPosition, carRotation, carSize);
+		_isCurrentlyOffTrack = isCompletelyOffTrack;
 
-		float targetSpeedMultiplier = isOnTrack ? 1.0f : OffTrackSpeedPenalty;
-		float targetTurnMultiplier = isOnTrack ? 1.0f : OffTrackTurnPenalty;
-		float targetAccelerationMultiplier = isOnTrack ? 1.0f : OffTrackAccelerationPenalty;
+		float targetSpeedMultiplier = isCompletelyOffTrack ? OffTrackSpeedPenalty : 1.0f;
+		float targetTurnMultiplier = isCompletelyOffTrack ? OffTrackTurnPenalty : 1.0f;
+		float targetAccelerationMultiplier = isCompletelyOffTrack ? OffTrackAccelerationPenalty : 1.0f;
 
 		float lerpSpeed = OffTrackPenaltyLerpSpeed * delta;
 		_currentSpeedPenaltyMultiplier = Mathf.Lerp(_currentSpeedPenaltyMultiplier, targetSpeedMultiplier, lerpSpeed);
@@ -109,7 +184,7 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Returns speed multiplier (1.0 = normal, less than 1.0 = penalty)
+	/// Returns speed multiplier from track penalties only (1.0 = normal, less than 1.0 = penalty)
 	/// </summary>
 	public float GetSpeedModifier(Vector2 carPosition)
 	{
@@ -117,14 +192,23 @@ namespace BarBox.Games.Racing
 	}
 
 	/// <summary>
-	/// Get acceleration modifier for car based on track position and bonuses/penalties
+	/// Returns combined speed multiplier from track penalties AND zone modifiers.
+	/// Modifiers are multiplicative (0.5 track penalty * 0.5 zone = 0.25 total)
 	/// </summary>
-	/// <param name="carPosition">Current car position</param>
-	/// <returns>Acceleration multiplier (1.0 = normal, greater than 1.0 = bonus, less than 1.0 = penalty)</returns>
+	public float GetSpeedModifier(Node2D body, Vector2 carPosition)
+	{
+		float trackModifier = _currentSpeedPenaltyMultiplier;
+		float zoneModifier = _zoneManager?.GetCombinedSpeedModifier(body) ?? 1.0f;
+		return trackModifier * zoneModifier;
+	}
+
+	/// <summary>
+	/// Get acceleration modifier from track position and bonuses/penalties only
+	/// </summary>
 	public float GetAccelerationModifier(Vector2 carPosition)
 	{
 		float baseModifier = _currentAccelerationPenaltyMultiplier;
-		
+
 		// Apply center line bonus if on track
 		if (IsOnTrack(carPosition))
 		{
@@ -134,16 +218,44 @@ namespace BarBox.Games.Racing
 				baseModifier = Mathf.Max(baseModifier, CenterLineAccelerationBonus);
 			}
 		}
-		
+
 		return baseModifier;
 	}
 
 	/// <summary>
-	/// Returns turn multiplier (1.0 = normal, less than 1.0 = penalty)
+	/// Get combined acceleration modifier from track AND zone modifiers
+	/// </summary>
+	public float GetAccelerationModifier(Node2D body, Vector2 carPosition)
+	{
+		float trackModifier = GetAccelerationModifier(carPosition);
+		float zoneModifier = _zoneManager?.GetCombinedAccelerationModifier(body) ?? 1.0f;
+		return trackModifier * zoneModifier;
+	}
+
+	/// <summary>
+	/// Returns turn multiplier from track penalties only (1.0 = normal, less than 1.0 = penalty)
 	/// </summary>
 	public float GetTurnModifier(Vector2 carPosition)
 	{
 		return _currentTurnPenaltyMultiplier;
+	}
+
+	/// <summary>
+	/// Returns combined turn multiplier from track penalties AND zone modifiers
+	/// </summary>
+	public float GetTurnModifier(Node2D body, Vector2 carPosition)
+	{
+		float trackModifier = _currentTurnPenaltyMultiplier;
+		float zoneModifier = _zoneManager?.GetCombinedTurnModifier(body) ?? 1.0f;
+		return trackModifier * zoneModifier;
+	}
+
+	/// <summary>
+	/// Check if input is blocked for the given body (e.g., in frictionless zone)
+	/// </summary>
+	public bool IsInputBlocked(Node2D body)
+	{
+		return _zoneManager?.IsInputBlocked(body) ?? false;
 	}
 
 	// ================================================================

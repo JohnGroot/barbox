@@ -1,4 +1,5 @@
 using Godot;
+using System.Collections.Generic;
 
 namespace BarBox.Games.Racing
 {
@@ -37,6 +38,12 @@ namespace BarBox.Games.Racing
 		[ExportCategory("Input Settings")]
 		[Export] public float MaxInputDistance { get; set; } = 300.0f;
 
+		[ExportCategory("Turn Penalty Settings")]
+		[Export] public float TurnPenaltySpeedMultiplier { get; set; } = 0.8f;
+		[Export] public float TurnPenaltyAccelMultiplier { get; set; } = 0.8f;
+		[Export] public float MaxAngularVelocityForPenalty { get; set; } = 10.0f;
+		[Export] public float TurnPenaltyLerpSpeed { get; set; } = 3.0f;
+
 		// ================================================================
 		// CONSTANTS - POSITIONING RATIOS
 		// ================================================================
@@ -70,12 +77,29 @@ namespace BarBox.Games.Racing
 		// ================================================================
 		// CAR PHYSICS STATE
 		// ================================================================
-		
+
 		protected Vector2 _targetPosition;
 		protected Vector2 _lastTargetPosition;
 		protected Vector2 _velocity = Vector2.Zero;
 		protected float _currentSpeed = 0.0f;
 		protected bool _hasInput = false;
+
+		// ================================================================
+		// FRICTIONLESS ZONE STATE
+		// ================================================================
+
+		private bool _isInFrictionlessState = false;
+		private float _frictionlessTimeRemaining = 0.0f;
+		private Vector2 _lockedVelocity = Vector2.Zero;
+		private float _lockedRotation = 0.0f;
+
+		// ================================================================
+		// TURN PENALTY STATE
+		// ================================================================
+
+		private float _previousRotation;
+		private float _angularVelocity;
+		private float _currentTurnPenalty = 1.0f;
 
 		// ================================================================
 		// CACHED POSITION DATA
@@ -134,14 +158,8 @@ namespace BarBox.Games.Racing
 			PlayerId = playerId;
 			PlayerName = playerName;
 
-			// Set default car properties (can be overridden via UpdateSettings)
-			MaxSpeed = 1800.0f;
-			MinSpeed = 100.0f;
-			MaxInputDistance = 500.0f;
-			AccelerationRate = 300.0f;
-			DecelerationRate = 600.0f;
-			RotationLerpSpeed = 5.0f;
-			CarSize = new Vector2(40, 80);
+			// Note: Physics properties (MaxSpeed, CarSize, etc.) are set by RacingGame
+			// before AddChild, so they're already configured when this is called
 		}
 
 		public void UpdateSettings(float maxSpeed, float minSpeed, float maxInputDistance, float accelerationRate, float decelerationRate, float rotationLerpSpeed, Vector2 carSize)
@@ -275,6 +293,19 @@ namespace BarBox.Games.Racing
 		{
 			if (_carBody == null) return;
 
+			// Check for frictionless state first - maintains locked velocity and ignores all input
+			if (_isInFrictionlessState)
+			{
+				UpdateFrictionlessState(delta);
+				return;
+			}
+
+			// Check if we should enter frictionless state from zone manager
+			CheckFrictionlessZoneEntry();
+
+			// Update turn penalty based on angular velocity
+			UpdateTurnPenalty(delta);
+
 			Vector2 inputDirection = Vector2.Zero;
 			float targetSpeed = 0.0f;
 
@@ -283,11 +314,11 @@ namespace BarBox.Games.Racing
 				// Calculate direction and distance to target
 				var directionToTarget = (_targetPosition - _carBody.GlobalPosition);
 				var distanceToTarget = directionToTarget.Length();
-				
+
 				if (distanceToTarget > 1.0f)
 				{
 					inputDirection = directionToTarget.Normalized();
-					
+
 					// Calculate speed based on distance (closer = slower, farther = faster)
 					var normalizedDistance = Mathf.Clamp(distanceToTarget / MaxInputDistance, 0.0f, 1.0f);
 					targetSpeed = Mathf.Lerp(MinSpeed, MaxSpeed, normalizedDistance);
@@ -304,9 +335,9 @@ namespace BarBox.Games.Racing
 				targetSpeed = 0.0f;
 			}
 
-			// Apply track penalties
+			// Apply track penalties and zone modifiers
 			targetSpeed *= GetSpeedModifier();
-			
+
 			// Update velocity
 			if (targetSpeed > _currentSpeed)
 			{
@@ -321,7 +352,7 @@ namespace BarBox.Games.Racing
 			{
 				// Apply turn penalty to rotation speed
 				var effectiveRotationSpeed = RotationLerpSpeed * GetTurnModifier() * delta;
-				
+
 				// Lerp car rotation towards target direction
 				if (_hasInput)
 				{
@@ -334,7 +365,7 @@ namespace BarBox.Games.Racing
 					// When not actively steering, rotate towards movement direction
 					_carBody.Rotation = Mathf.LerpAngle(_carBody.Rotation, _velocity.Angle() + Mathf.Pi / 2, effectiveRotationSpeed);
 				}
-				
+
 				// Calculate velocity relative to car's forward direction
 				var carForward = new Vector2(Mathf.Sin(_carBody.Rotation), -Mathf.Cos(_carBody.Rotation));
 				_velocity = carForward * _currentSpeed * GetTurnModifier();
@@ -353,6 +384,127 @@ namespace BarBox.Games.Racing
 			// Emit movement signals
 			EmitSignal(SignalName.CarMoved, _carBody.GlobalPosition, _velocity);
 			EmitSignal(SignalName.CarRotated, _carBody.Rotation);
+		}
+
+		// ================================================================
+		// FRICTIONLESS ZONE HANDLING
+		// ================================================================
+
+		private void CheckFrictionlessZoneEntry()
+		{
+			if (_trackValidationSystem == null || _carBody == null)
+				return;
+
+			var zoneManager = _trackValidationSystem.GetZoneManager();
+			if (zoneManager == null)
+				return;
+
+			var (isActive, timeRemaining, lockedVelocity, lockedRotation) = zoneManager.GetFrictionlessState(_carBody);
+			if (isActive && !_isInFrictionlessState)
+			{
+				EnterFrictionlessState(lockedVelocity, lockedRotation, timeRemaining);
+			}
+		}
+
+		/// <summary>
+		/// Get zones at a specific world position (for visual feedback like tire trails)
+		/// </summary>
+		public List<RacingZone> GetZonesAtPosition(Vector2 position)
+		{
+			return _trackValidationSystem?.GetZoneManager()?.GetZonesAtPosition(position) ?? [];
+		}
+
+		/// <summary>
+		/// Enter frictionless state - locks velocity and rotation, ignores input
+		/// </summary>
+		public void EnterFrictionlessState(Vector2 velocity, float rotation, float duration)
+		{
+			_isInFrictionlessState = true;
+			_frictionlessTimeRemaining = duration;
+			_lockedVelocity = velocity;
+			_lockedRotation = rotation;
+
+			// Ensure the car body has the locked rotation
+			if (_carBody != null)
+			{
+				_carBody.Rotation = rotation;
+			}
+		}
+
+		private void UpdateFrictionlessState(float delta)
+		{
+			if (_carBody == null) return;
+
+			_frictionlessTimeRemaining -= delta;
+
+			// Check if effect has expired
+			if (_frictionlessTimeRemaining <= 0)
+			{
+				ExitFrictionlessState();
+				return;
+			}
+
+			// Maintain locked velocity and rotation - ignore all input
+			_carBody.Rotation = _lockedRotation;
+			_carBody.Velocity = _lockedVelocity;
+			_carBody.MoveAndSlide();
+
+			// Update velocity to match actual movement
+			_velocity = _lockedVelocity;
+			_currentSpeed = _lockedVelocity.Length();
+
+			InvalidatePositionCache();
+
+			// Emit movement signals
+			EmitSignal(SignalName.CarMoved, _carBody.GlobalPosition, _lockedVelocity);
+			EmitSignal(SignalName.CarRotated, _lockedRotation);
+		}
+
+		private void ExitFrictionlessState()
+		{
+			_isInFrictionlessState = false;
+			_frictionlessTimeRemaining = 0.0f;
+			// Keep current velocity and rotation, just resume normal physics
+		}
+
+		/// <summary>
+		/// Check if car is currently in frictionless state
+		/// </summary>
+		public bool IsInFrictionlessState => _isInFrictionlessState;
+
+		/// <summary>
+		/// Get remaining time in frictionless state
+		/// </summary>
+		public float FrictionlessTimeRemaining => _frictionlessTimeRemaining;
+
+		// ================================================================
+		// TURN PENALTY CALCULATION
+		// ================================================================
+
+		private void UpdateTurnPenalty(float delta)
+		{
+			if (_carBody == null || delta <= 0) return;
+
+			// Calculate angular velocity (rad/s)
+			float rotationDelta = Mathf.AngleDifference(_previousRotation, _carBody.Rotation);
+			_angularVelocity = Mathf.Abs(rotationDelta / delta);
+			_previousRotation = _carBody.Rotation;
+
+			// Normalize to 0-1 range (0 = no turn, 1 = max turn)
+			float turnIntensity = Mathf.Clamp(_angularVelocity / MaxAngularVelocityForPenalty, 0f, 1f);
+
+			// Target penalty factor (1.0 = no penalty, lower = more penalty)
+			float targetPenalty = 1.0f - turnIntensity * (1.0f - TurnPenaltySpeedMultiplier);
+
+			// Smooth the penalty to avoid jarring changes
+			_currentTurnPenalty = Mathf.Lerp(_currentTurnPenalty, targetPenalty, TurnPenaltyLerpSpeed * delta);
+		}
+
+		private float GetTurnAccelerationPenalty()
+		{
+			// Calculate accel-specific penalty based on current angular velocity
+			float turnIntensity = Mathf.Clamp(_angularVelocity / MaxAngularVelocityForPenalty, 0f, 1f);
+			return 1.0f - turnIntensity * (1.0f - TurnPenaltyAccelMultiplier);
 		}
 
 		// ================================================================
@@ -415,20 +567,33 @@ namespace BarBox.Games.Racing
 
 		protected virtual float GetSpeedModifier()
 		{
-			var carPosition = GetCarBody()?.GlobalPosition ?? Vector2.Zero;
-			return _trackValidationSystem?.GetSpeedModifier(carPosition) ?? 1.0f;
+			var carBody = GetCarBody();
+			if (carBody == null || _trackValidationSystem == null)
+				return _currentTurnPenalty;
+
+			// Use body-based overload to include zone modifiers, then apply turn penalty
+			return _trackValidationSystem.GetSpeedModifier(carBody, carBody.GlobalPosition) * _currentTurnPenalty;
 		}
 
 		protected virtual float GetAccelerationModifier()
 		{
-			var carPosition = GetCarBody()?.GlobalPosition ?? Vector2.Zero;
-			return _trackValidationSystem?.GetAccelerationModifier(carPosition) ?? 1.0f;
+			var carBody = GetCarBody();
+			float turnAccelPenalty = GetTurnAccelerationPenalty();
+			if (carBody == null || _trackValidationSystem == null)
+				return turnAccelPenalty;
+
+			// Use body-based overload to include zone modifiers, then apply turn penalty
+			return _trackValidationSystem.GetAccelerationModifier(carBody, carBody.GlobalPosition) * turnAccelPenalty;
 		}
 
 		protected virtual float GetTurnModifier()
 		{
-			var carPosition = GetCarBody()?.GlobalPosition ?? Vector2.Zero;
-			return _trackValidationSystem?.GetTurnModifier(carPosition) ?? 1.0f;
+			var carBody = GetCarBody();
+			if (carBody == null || _trackValidationSystem == null)
+				return 1.0f;
+
+			// Use body-based overload to include zone modifiers
+			return _trackValidationSystem.GetTurnModifier(carBody, carBody.GlobalPosition);
 		}
 
 		// ================================================================
@@ -512,7 +677,13 @@ namespace BarBox.Games.Racing
 			_targetPosition = Vector2.Zero;
 			_lastTargetPosition = Vector2.Zero;
 			_hasInput = false;
-			
+
+			// Reset frictionless state
+			_isInFrictionlessState = false;
+			_frictionlessTimeRemaining = 0.0f;
+			_lockedVelocity = Vector2.Zero;
+			_lockedRotation = 0.0f;
+
 			// Also reset the car body's physics velocity
 			if (_carBody != null)
 			{

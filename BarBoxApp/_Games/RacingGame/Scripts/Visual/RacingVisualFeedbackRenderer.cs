@@ -20,9 +20,9 @@ namespace BarBox.Games.Racing
 	[Export] public Color MouseMovingColor { get; set; } = Colors.Cyan;
 	[Export] public Color MouseStationaryColor { get; set; } = Colors.LimeGreen;
 	[Export] public Color TireTrailColor { get; set; } = Colors.DarkGray;
-	[Export] public float InputLineWidth { get; set; } = 3.0f;
-	[Export] public float MouseIndicatorRadius { get; set; } = 25.0f;
-	[Export] public float TireTrailWidth { get; set; } = 2.0f;
+	[Export] public float InputLineWidth { get; set; } = 10.0f;
+	[Export] public float MouseIndicatorRadius { get; set; } = 75.0f;
+	[Export] public float TireTrailWidth { get; set; } = 5.0f;
 	[Export] public int MaxTrailPoints { get; set; } = 1000;
 	[Export] public float TrailUpdateDistance { get; set; } = 3.0f;
 	[Export] public float TrailLifetime { get; set; } = 3000.0f;
@@ -32,8 +32,8 @@ namespace BarBox.Games.Racing
 	// ================================================================
 
 	// Visual feedback tracking
-	private List<(Vector2 position, ulong timestamp)> _leftTireTrail = [];
-	private List<(Vector2 position, ulong timestamp)> _rightTireTrail = [];
+	private List<(Vector2 position, ulong timestamp, Color zoneColor)> _leftTireTrail = [];
+	private List<(Vector2 position, ulong timestamp, Color zoneColor)> _rightTireTrail = [];
 	private Vector2 _lastTrailPosition = Vector2.Zero;
 	private bool _wasInputActive = false;
 	private Vector2 _lastMousePosition = Vector2.Zero;
@@ -133,7 +133,7 @@ namespace BarBox.Games.Racing
 	/// <param name="delta">Frame delta time</param>
 	public void UpdateVisualFeedback(float delta)
 	{
-		if (!(_carController?.IsInitialized == true)) return;
+		if (_carController?.IsInitialized != true) return;
 		
 		var targetPosition = _carController.GetTargetPosition();
 		var hasInput = _carController.HasInput();
@@ -197,15 +197,19 @@ namespace BarBox.Games.Racing
 		if (_lastTrailPosition.DistanceTo(carPosition) < TrailUpdateDistance) return;
 
 		_cachedValuesValid = false;
-		
+
 		// Use cached tire positions from car controller for performance
 		var leftTirePosition = _carController.LeftTirePosition;
 		var rightTirePosition = _carController.RightTirePosition;
-		
-		// Add trail points for both tires
-		AddTrailPoint(_leftTireTrail, leftTirePosition, currentTime);
-		AddTrailPoint(_rightTireTrail, rightTirePosition, currentTime);
-		
+
+		// Get zone colors at each tire position
+		var leftZoneColor = GetBlendedZoneColor(leftTirePosition);
+		var rightZoneColor = GetBlendedZoneColor(rightTirePosition);
+
+		// Add trail points for both tires with zone colors
+		AddTrailPoint(_leftTireTrail, leftTirePosition, currentTime, leftZoneColor);
+		AddTrailPoint(_rightTireTrail, rightTirePosition, currentTime, rightZoneColor);
+
 		_lastTrailPosition = carPosition;
 	}
 
@@ -216,13 +220,10 @@ namespace BarBox.Games.Racing
 	/// <summary>
 	/// Add a new trail point to the specified trail
 	/// </summary>
-	/// <param name="trail">Trail to add point to</param>
-	/// <param name="point">Position of the trail point</param>
-	/// <param name="timestamp">Timestamp for the trail point</param>
-	private void AddTrailPoint(List<(Vector2 position, ulong timestamp)> trail, Vector2 point, ulong timestamp)
+	private void AddTrailPoint(List<(Vector2 position, ulong timestamp, Color zoneColor)> trail, Vector2 point, ulong timestamp, Color zoneColor)
 	{
-		trail.Add((point, timestamp));
-		
+		trail.Add((point, timestamp, zoneColor));
+
 		// Limit trail length
 		while (trail.Count > MaxTrailPoints)
 		{
@@ -233,12 +234,10 @@ namespace BarBox.Games.Racing
 	/// <summary>
 	/// Remove expired trail points from the specified trail
 	/// </summary>
-	/// <param name="trail">Trail to clean up</param>
-	/// <param name="currentTime">Current timestamp</param>
-	private void CleanupExpiredTrailPoints(List<(Vector2 position, ulong timestamp)> trail, ulong currentTime)
+	private void CleanupExpiredTrailPoints(List<(Vector2 position, ulong timestamp, Color zoneColor)> trail, ulong currentTime)
 	{
 		if (trail == null) return;
-		
+
 		for (int i = trail.Count - 1; i >= 0; i--)
 		{
 			var age = currentTime - trail[i].timestamp;
@@ -262,7 +261,7 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public override void _Draw()
 	{
-		if (!ShouldRender || !(_carController?.IsInitialized == true)) return;
+		if (!ShouldRender || _carController?.IsInitialized != true) return;
 
 		DrawInputLine();
 		DrawMouseIndicators();
@@ -354,19 +353,20 @@ namespace BarBox.Games.Racing
 	/// Draw a single trail line with fading effect
 	/// </summary>
 	/// <param name="trail">Trail points to draw</param>
-	private void DrawTrailLine(List<(Vector2 position, ulong timestamp)> trail)
+	private void DrawTrailLine(List<(Vector2 position, ulong timestamp, Color zoneColor)> trail)
 	{
 		if (trail.Count < 2) return;
 
 		var currentTime = Time.GetTicksMsec();
-		
+
 		for (int i = 0; i < trail.Count - 1; i++)
 		{
 			var age = currentTime - trail[i].timestamp;
 			var normalizedAge = Mathf.Clamp(age / TrailLifetime, 0.0f, 1.0f);
 			var alpha = 1.0f - normalizedAge;
-			
-			var trailColor = TireTrailColor * new Color(1, 1, 1, alpha * 0.8f);
+
+			// Use the stored zone color for this trail segment
+			var trailColor = trail[i].zoneColor * new Color(1, 1, 1, alpha * 0.8f);
 			DrawLine(trail[i].position, trail[i + 1].position, trailColor, TireTrailWidth);
 		}
 	}
@@ -441,6 +441,29 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	// UTILITY METHODS
 	// ================================================================
+
+	/// <summary>
+	/// Get blended color from all zones at the given position
+	/// </summary>
+	private Color GetBlendedZoneColor(Vector2 position)
+	{
+		var zones = _carController?.GetZonesAtPosition(position);
+		if (zones == null || zones.Count == 0)
+			return TireTrailColor;
+
+		// Average all zone colors
+		Color blended = new Color(0, 0, 0, 0);
+		foreach (var zone in zones)
+		{
+			blended += zone.ZoneColor;
+		}
+		return new Color(
+			blended.R / zones.Count,
+			blended.G / zones.Count,
+			blended.B / zones.Count,
+			Mathf.Max(0.8f, blended.A / zones.Count)
+		);
+	}
 
 	/// <summary>
 	/// Update car controller dependency

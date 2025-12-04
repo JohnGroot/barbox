@@ -177,6 +177,9 @@ public partial class RacingGame : GameController
 	// Track validation system
 	private RacingTrackValidationSystem _trackValidationSystem;
 
+	// Zone manager for track zones (boost, slowdown, frictionless, kerbs)
+	private RacingZoneManager _zoneManager;
+
 	// Local game mode state
 	private RacingMode _currentGameMode = RacingMode.Practice;
 
@@ -363,12 +366,18 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Setup the track validation system
+	/// Setup the track validation system and zone manager
 	/// </summary>
 	private void SetupTrackValidationSystem()
 	{
+		// Create zone manager first (will be used by track validation system)
+		_zoneManager = new RacingZoneManager();
+		_zoneManager.Name = "RacingZoneManager";
+		AddChild(_zoneManager);
+
+		// Create track validation system
 		_trackValidationSystem = new RacingTrackValidationSystem();
-		
+
 		// Set default values (these would be configurable via exports on the system)
 		_trackValidationSystem.CenterLineProximityRange = 40.0f;
 		_trackValidationSystem.CenterLineAccelerationBonus = 1.5f;
@@ -377,10 +386,11 @@ public partial class RacingGame : GameController
 		_trackValidationSystem.OffTrackTurnPenalty = 0.3f;
 		_trackValidationSystem.OffTrackAccelerationPenalty = 0.3f;
 		_trackValidationSystem.OffTrackPenaltyLerpSpeed = 3.0f;
-		
+
+		// Connect zone manager to track validation system
+		_trackValidationSystem.SetZoneManager(_zoneManager);
+
 		AddChild(_trackValidationSystem);
-		
-		// RacingTrackValidationSystem initialized successfully
 	}
 
 	/// <summary>
@@ -405,13 +415,13 @@ public partial class RacingGame : GameController
 		_racingCar = new RacingCar();
 
 		// Set default car settings
-		_racingCar.MaxSpeed = 1800.0f;
+		_racingCar.MaxSpeed = 2500.0f;
 		_racingCar.MinSpeed = 100.0f;
-		_racingCar.MaxInputDistance = 500.0f;
-		_racingCar.AccelerationRate = 300.0f;
+		_racingCar.MaxInputDistance = 2000.0f;
+		_racingCar.AccelerationRate = 800.0f;
 		_racingCar.DecelerationRate = 600.0f;
-		_racingCar.RotationLerpSpeed = 5.0f;
-		_racingCar.CarSize = new Vector2(40, 80);
+		_racingCar.RotationLerpSpeed = 4.0f;
+		_racingCar.CarSize = new Vector2(100, 180);
 		
 		AddChild(_racingCar);
 
@@ -519,7 +529,8 @@ public partial class RacingGame : GameController
 		}
 
 		// Update racing-specific systems (guaranteed valid after Phase 2 initialization)
-		_trackValidationSystem.UpdateOffTrackPenalties(_racingCar.GetCarPosition(), (float)delta);
+		_trackValidationSystem.UpdateOffTrackPenalties(_racingCar.GetCarPosition(), _racingCar.GetCarBody().Rotation, _racingCar.CarSize, (float)delta);
+		_zoneManager?.UpdateFrictionlessEffects((float)delta);
 		_visualRenderer.UpdateVisualFeedback((float)delta);
 		_visualRenderer.UpdateTireTrails();
 
@@ -1320,15 +1331,18 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void SetupLoadedTrack()
 	{
-		if (_trackDefinition == null) 
+		if (_trackDefinition == null)
 			return;
 
 		_trackDefinition.SetupTrack();
 		_trackCurve = _trackDefinition.GetTrackCurve();
-		
+
 		// Initialize track validation system with track data
 		_trackValidationSystem.Initialize(_trackDefinition, _trackCurve);
-		
+
+		// Register zones from the track with the zone manager
+		RegisterTrackZones();
+
 		// Initialize camera controller with track data
 		_cameraController.SetTrackDefinition(_trackDefinition);
 		_cameraController.PositionCameraOverTrack();
@@ -1338,6 +1352,52 @@ public partial class RacingGame : GameController
 		InitializeCheckpointTracking();
 		ConnectTrackSignals();
 		PositionCarAtStart();
+	}
+
+	/// <summary>
+	/// Register all RacingZone nodes from the track with the zone manager
+	/// </summary>
+	private void RegisterTrackZones()
+	{
+		if (_zoneManager == null || _trackDefinition == null)
+			return;
+
+		// Clear any previously registered zones
+		_zoneManager.ClearAllZones();
+
+		// Find all RacingZone nodes in the track
+		var zones = FindZonesRecursive(_trackDefinition);
+
+		foreach (var zone in zones)
+		{
+			_zoneManager.RegisterZone(zone);
+		}
+
+		if (zones.Count > 0)
+		{
+			GD.Print($"[RacingGame] Registered {zones.Count} zones from track");
+		}
+	}
+
+	/// <summary>
+	/// Recursively find all RacingZone nodes in the node tree
+	/// </summary>
+	private List<RacingZone> FindZonesRecursive(Node root)
+	{
+		var zones = new List<RacingZone>();
+
+		foreach (Node child in root.GetChildren())
+		{
+			if (child is RacingZone zone)
+			{
+				zones.Add(zone);
+			}
+
+			// Recursively search children
+			zones.AddRange(FindZonesRecursive(child));
+		}
+
+		return zones;
 	}
 
 	/// <summary>
