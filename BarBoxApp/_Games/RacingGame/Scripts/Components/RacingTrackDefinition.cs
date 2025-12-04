@@ -120,21 +120,11 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		if (TrackLine == null)
 			return false;
 
-		// Convert global point to local coordinates relative to this TrackDefinition node
-		var localPoint = ToLocal(point);
-		
-		// Further transform to TrackLine's local coordinate space to account for TrackLine position offset
-		var trackLineLocalPoint = localPoint - TrackLine.Position;
-		
-		var result = LineUtils.IsPointNearLine2D(trackLineLocalPoint, TrackLine);
+		// Convert global point directly to TrackLine's local coordinate space
+		// This handles position, rotation, and scale correctly
+		var trackLineLocalPoint = TrackLine.ToLocal(point);
 
-		// // Debug logging for coordinate transformation (remove after testing)
-		// if (GD.Randf() < 0.01f) // Log ~1% of checks to avoid spam
-		// {
-		// 	GD.Print($"Track Check - Global: {point}, Local: {localPoint}, TrackLineLocal: {trackLineLocalPoint}, OnTrack: {result}, LineWidth: {TrackLine.Width}");
-		// }
-		
-		return result;
+		return LineUtils.IsPointNearLine2D(trackLineLocalPoint, TrackLine);
 	}
 
 	public Vector2 GetStartLinePosition()
@@ -146,9 +136,9 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	{
 		if (StartLine == null)
 			return Vector2.Right;
-		
-		// Get direction from StartLine's rotation
-		return Vector2.FromAngle(StartLine.Rotation);
+
+		// Get direction from StartLine's global rotation (accounts for parent transforms)
+		return Vector2.FromAngle(StartLine.GlobalRotation);
 	}
 
 	/// <summary>
@@ -165,9 +155,9 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	public Vector2 GetFinishLineDirection()
 	{
 		if (FinishLine != null)
-			return Vector2.FromAngle(FinishLine.Rotation);
+			return Vector2.FromAngle(FinishLine.GlobalRotation);
 		if (StartLine != null)
-			return Vector2.FromAngle(StartLine.Rotation);
+			return Vector2.FromAngle(StartLine.GlobalRotation);
 		return Vector2.Right;
 	}
 
