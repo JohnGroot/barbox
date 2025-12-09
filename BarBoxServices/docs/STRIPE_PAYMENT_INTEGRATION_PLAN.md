@@ -2,32 +2,36 @@
 
 ## Executive Summary
 
-Comprehensive Stripe payment integration for BarBox arcade platform using **QR code mobile payments** with **Payment Links** for player-selectable credit packs.
+Comprehensive Stripe payment integration for BarBox arcade platform using **QR code mobile payments** with **Checkout Sessions** for in-game credit pack selection.
 
-**Payment Method:** Stripe Payment Links - Single QR code per purchase, player selects credit pack amount on mobile device
-- Players scan QR code → opens Stripe-hosted checkout page
-- Player selects desired pack ($5, $10, $25, $50, $100) on their phone
+**Payment Method:** Stripe Checkout Sessions - Player selects pack in-game, then scans QR to pay
+- Player selects desired pack ($5, $10, $25, $50, $100) in BuyCreditsModal
+- QR code generated from unique Checkout Session URL
+- Players scan QR code → opens Stripe-hosted payment page (pack already selected)
 - Native Apple Pay/Google Pay support for fast checkout
-- No pre-selection required in arcade app
+- Pre-selection in arcade app provides clear UX (player knows exact cost before scanning)
 
-**Architecture:** Payment Links + webhook reconciliation that maintains BarBox's event-sourced credit system integrity. Player scans one QR code, selects pack amount on mobile, pays with wallet, and credits appear immediately via event emission. Uses lazy session creation to ensure lobby session exists for credit attribution.
+**Architecture:** Checkout Sessions + webhook reconciliation that maintains BarBox's event-sourced credit system integrity. Player selects pack in-game, scans QR code, pays on mobile with wallet, and credits appear immediately via event emission. Uses lazy session creation to ensure lobby session exists for credit attribution.
+
+**Credit Conversion:** 1,000 credits = $1 USD (e.g., $5 pack = 5,000 credits)
 
 **Timeline:** 5 weeks to production-ready system (includes session management updates and comprehensive webhook implementation)
-**Risk Level:** MEDIUM (webhook complexity and distributed payment flow require careful implementation, but Payment Links API is well-documented)
+**Risk Level:** LOW-MEDIUM (Checkout Sessions API is well-documented, webhook implementation has been thoroughly reviewed)
 
 ---
 
 ## Confirmed Requirements
 
 ### Payment Methods
-1. ✅ **Payment Links** - Primary payment method with Apple Pay/Google Pay support
-   - Single QR code per purchase
-   - Player selects credit pack amount on mobile device (Stripe-hosted UI)
-   - No pre-selection required in arcade app
+1. ✅ **Checkout Sessions** - Primary payment method with Apple Pay/Google Pay support
+   - Player selects credit pack in BuyCreditsModal (in-game)
+   - QR code generated from unique Checkout Session URL
+   - Stripe-hosted payment page with pre-selected pack
+   - Simpler UX: player knows exact amount before scanning
 
 ### Business Requirements
-- ✅ **Credit Packs:** $5, $10, $25, $50, $100 with volume discounts
-  - Higher packs get bonus credits (e.g., $25 = 28 credits, $50 = 60 credits, $100 = 125 credits)
+- ✅ **Credit Packs:** $5, $10, $25, $50, $100 with volume discounts (1,000 credits = $1)
+  - Higher packs get bonus credits (e.g., $25 = 28,000 credits, $50 = 60,000 credits, $100 = 125,000 credits)
 - ✅ **Minimum Purchase:** $5 (prevents high % fees on small transactions)
 - ✅ **Hardware:** None required - players use their own phones
 - ✅ **Connectivity:** Backend server internet connection (already available)
@@ -47,116 +51,102 @@ Comprehensive Stripe payment integration for BarBox arcade platform using **QR c
 
 ## Architecture Overview
 
-### Data Flow (Payment Links with Mobile Pack Selection)
+### Data Flow (Checkout Sessions with In-Game Pack Selection)
 
 ```
 ┌─────────────┐  1. Click "Buy Credits"  ┌─────────────────┐
 │   Player    │─────────────────────────▶│ BuyCreditsModal │
-└─────────────┘  (no pack pre-selected)  └────────┬────────┘
-                                                   │
-                2. ProcessPurchaseAsync            │
-                ┌──────────────────────────────────┘
-                │
-┌───────────────▼────────┐  3. Request Payment Link
-│ StripePaymentService   │  (authenticated with JWT)
-│ - Has player session   │
-│ - Request payment link │
-└───────────┬────────────┘
-            │ 4. POST /payments/link/create
-┌───────────▼────────────┐
-│ Backend                │  5. Get/Create Session   ┌──────────────┐
-│ /payments/link/create  │────────────────────────▶ │ SessionMgr   │
-│ - Call get_or_create   │  Lazy lobby session      └──────────────┘
-│   _lobby_session()     │  creation if needed
-│ - Create Payment Link  │  6. Create Payment Link  ┌──────────────┐
-│                        │─────────────────────────▶│ Stripe API   │
-└───────────┬────────────┘  with ALL 5 packs +      └──────────────┘
-            │               metadata (player_id,
-            │               box_id, session_id)
-            │ 7. Return {payment_link_url, session_id}
-┌───────────▼────────────┐
-│ BuyCreditsModal        │  8. Display QR code
-│ - Generate QR from URL │     "Scan to choose"
-│ - Show QR code         │     "credits & pay"
-└────────────────────────┘
-            │ 9. Player scans QR with phone
-┌───────────▼────────────┐
-│ Player's Phone         │  10. Opens browser
-│ - Safari / Chrome      │─────────────────────────┐
-│ - Stripe-hosted page   │                         │
-│ - Shows 5 pack options:│  11. Player SELECTS     │
-│   • $5 = 5 credits     │      desired pack       │
-│   • $10 = 10 credits   │      (e.g., $25)        │
-│   • $25 = 28 credits   │                         │
-│   • $50 = 60 credits   │                         │
-│   • $100 = 125 credits │                         │
-└────────────────────────┘                         │
-            │                                       │
-            │ 12. Player taps Apple/Google Pay      │
-            │◀──────────────────────────────────────┘
+└─────────────┘                          └────────┬────────┘
+                                                  │
+                2. Player SELECTS pack            │ (existing UI)
+                   (e.g., $25 = 28,000 credits)   │
+                                                  ▼
+┌───────────────────────┐  3. POST /payments/checkout/create
+│ StripePaymentService  │     with selected pack_id
+│ - Request checkout    │────────────────────────────────────┐
+│   session             │                                    │
+└───────────────────────┘                                    ▼
+                                         ┌───────────────────────────┐
+                                         │ Backend                   │
+                                         │ - Get/create lobby session│
+                                         │ - Create Checkout Session │
+                                         │   with SINGLE line_item   │
+                                         │ - Include metadata        │
+                                         └─────────────┬─────────────┘
+                                                       │
+                4. Return {session_url, session_id}    │
+┌───────────────────────┐◀─────────────────────────────┘
+│ BuyCreditsModal       │
+│ - Generate QR code    │  5. Display QR
+│ - Show instructions   │     "Scan to pay $25"
+└───────────────────────┘
             │
-            │ 13. Payment Authorized
-┌───────────▼────────────┐
-│ Stripe Webhook         │ 14. checkout.session.  ┌──────────────┐
-│ checkout.session.      │     completed          │ Backend      │
-│ completed              │───────────────────────▶│ /webhook     │
-└────────────────────────┘                        └──────┬───────┘
-                                                         │
-                15. Extract session data                 │
-                ┌────────────────────────────────────────┘
-┌───────────────▼────────┐
-│ Backend                │  16. Process Payment
-│ - Verify signature     │──────────────────┐
-│ - Check idempotency    │                  │
-│ - Get metadata:        │◀─────────────────┘
-│   * player_id          │
-│   * box_id             │
-│   * session_id         │
-│ - Validate/create      │
-│   lobby session        │
-│ - Extract credits from │
-│   selected Price       │
-│ - Emit credit/earn     │
-│   to session_id        │
-└───────────┬────────────┘
-            │ 17. Credit/earn event in box_session_event
-┌───────────▼────────────┐
-│ Client Polling         │  18. GET /player/{id}/credits?box_id={box_id}
-│ - Poll for ANY balance │──────────────────┐
-│   increase (not        │                  │
-│   specific amount)     │                  │
-│ - Force cache refresh  │◀─────────────────┘
-│ - Timeout 180s         │
-└───────────┬────────────┘
-            │ 19. Balance increased detected
-┌───────────▼────────────┐
-│ PaymentService         │  20. Success
-│ - Calculate credits    │      (actual amount
-│   received             │       received)
-│ - Invalidate cache     │
-└───────────┬────────────┘
-            │ 21. Credits added signal
-┌───────────▼────────────┐
-│ BuyCreditsModal        │
-│ - Hide QR code         │
-│ - Show success         │
-│ - "Added X credits!"   │
-│ - Update balance UI    │
-└────────────────────────┘
+            │ 6. Player scans QR with phone
+            ▼
+┌───────────────────────┐
+│ Stripe Checkout Page  │  7. Player confirms & pays
+│ - Shows $25 charge    │     (Apple Pay / Google Pay)
+│ - Pre-selected pack   │
+└───────────────────────┘
+            │
+            │ 8. Payment completed
+            ▼
+┌───────────────────────┐  9. checkout.session.completed
+│ Stripe Webhook        │────────────────────────────────┐
+└───────────────────────┘                                │
+                                                         ▼
+                         ┌───────────────────────────────────────┐
+                         │ Backend /payments/webhook             │
+                         │ - Verify signature                    │
+                         │ - Record webhook event FIRST          │
+                         │ - Retrieve line_items via API         │
+                         │ - Extract credits from Price metadata │
+                         │ - Emit credit/earn event              │
+                         └───────────────────────────────────────┘
+            │
+            │ 10. Balance polling detects increase
+            ▼
+┌───────────────────────┐
+│ BuyCreditsModal       │  11. Show success
+│ - "Added 28,000       │      (actual amount)
+│    credits!"          │
+└───────────────────────┘
 ```
 
-**Total UX Time:** 15-25 seconds with Apple/Google Pay (includes pack selection step), 30-60 seconds with manual card entry
+**Total UX Time:** 10-20 seconds with Apple/Google Pay (pack already selected), 25-50 seconds with manual card entry
 
 ### Key Architectural Principles
 
 1. **Single Credit Source** - ONLY `credit/earn` events add credits
 2. **Event Sourcing Integrity** - Webhooks emit events, never mutate tables directly
 3. **Lazy Lobby Session Creation** - Backend creates lobby session on-demand if player doesn't have one
-4. **Mobile Pack Selection** - Credit amount determined by player on mobile device, not pre-selected
-5. **Synchronous Balance Polling** - Client polls for ANY balance increase, not specific amount
-6. **Webhook Robustness** - Idempotency checking + error handling + session validation
+4. **In-Game Pack Selection** - Credit amount determined by player in BuyCreditsModal before QR generation
+5. **Synchronous Balance Polling** - Client polls for ANY balance increase, with exponential backoff
+6. **Webhook Robustness** - Record webhook FIRST (prevents race conditions), then emit credit event
 7. **Cache Invalidation** - Force refresh after payment to show credits immediately
 8. **Box-Based Location Tracking** - All payments include `box_id` for location mapping in bookkeeping scripts
+
+---
+
+## Credit Pack Definitions
+
+### Credit Conversion: 1,000 credits = $1 USD
+
+| Price | Base Credits | Bonus Credits | Total Credits | Bonus % |
+|-------|-------------|---------------|---------------|---------|
+| $5    | 5,000       | 0             | 5,000         | 0%      |
+| $10   | 10,000      | 0             | 10,000        | 0%      |
+| $25   | 25,000      | 3,000         | 28,000        | 12%     |
+| $50   | 50,000      | 10,000        | 60,000        | 20%     |
+| $100  | 100,000     | 25,000        | 125,000       | 25%     |
+
+### Stripe Price Metadata Format
+```json
+{
+  "credits": "25000",
+  "bonus_credits": "3000"
+}
+```
 
 ---
 
@@ -164,7 +154,7 @@ Comprehensive Stripe payment integration for BarBox arcade platform using **QR c
 
 ### Phase 1: Backend Foundation (Weeks 1-2)
 
-**Goal:** Stripe API integration, Payment Links, Stripe Prices, webhook handling
+**Goal:** Stripe API integration, Checkout Sessions, Stripe Prices, webhook handling
 
 **Database Schema:**
 ```python
@@ -180,21 +170,20 @@ class StripePaymentIntent(Base):
     # Stripe identifiers
     stripe_session_id: Mapped[str] = mapped_column(String, unique=True, index=True)
     stripe_payment_intent_id: Mapped[str] = mapped_column(String, unique=True, index=True)
-    stripe_payment_link_id: Mapped[str | None] = mapped_column(String, index=True)
 
     # BarBox identifiers (CRITICAL for event emission)
     player_id: Mapped[Annotated[UUID, fk_to(Player)]]
     box_id: Mapped[Annotated[UUID, fk_to(Box)]]  # For location mapping in bookkeeping
     session_id: Mapped[Annotated[UUID, fk_to(BoxSession)]]  # Lobby session (created on-demand)
 
-    # Payment details (determined by player selection on mobile)
+    # Payment details
     amount_cents: Mapped[int]
-    credits_purchased: Mapped[int]  # Extracted from selected Stripe Price metadata
+    credits_purchased: Mapped[int]  # Extracted from Stripe Price metadata
     bonus_credits: Mapped[int] = mapped_column(default=0)
     selected_price_id: Mapped[str | None]  # Which Stripe Price was selected
 
     # Payment method tracking
-    payment_method: Mapped[str]  # 'payment_link' (primary method)
+    payment_method: Mapped[str]  # 'checkout_session'
     payment_method_type: Mapped[str | None]  # 'card', 'apple_pay', 'google_pay' (for analytics)
 
     # Status tracking
@@ -232,6 +221,18 @@ class StripeWebhookEvent(Base):
 
 ```python
 # web/payments.py
+
+from sqlalchemy.exc import IntegrityError
+
+# Credit pack definitions with correct amounts (1,000 credits = $1)
+CREDIT_PACKS = {
+    "pack_5": {"price_id": env.STRIPE_PRICE_5_CREDITS, "credits": 5000, "bonus": 0, "amount_cents": 500},
+    "pack_10": {"price_id": env.STRIPE_PRICE_10_CREDITS, "credits": 10000, "bonus": 0, "amount_cents": 1000},
+    "pack_25": {"price_id": env.STRIPE_PRICE_25_CREDITS, "credits": 25000, "bonus": 3000, "amount_cents": 2500},
+    "pack_50": {"price_id": env.STRIPE_PRICE_50_CREDITS, "credits": 50000, "bonus": 10000, "amount_cents": 5000},
+    "pack_100": {"price_id": env.STRIPE_PRICE_100_CREDITS, "credits": 100000, "bonus": 25000, "amount_cents": 10000},
+}
+
 
 async def get_or_create_lobby_session(
     player_id: UUID,
@@ -282,22 +283,26 @@ async def get_or_create_lobby_session(
     return result.scalar_one()
 
 
-@router.post("/payments/link/create")
-async def create_payment_link(
+@router.post("/payments/checkout/create")
+async def create_checkout_session(
+    request: structures.CheckoutSessionRequest,
     authenticated_box: dependencies.BoxAuthenticated,
     authenticated_player: dependencies.AuthenticatedPlayer,
     db_service: dependencies.Database,
     now: dependencies.Now,
-) -> structures.PaymentLinkResponse:
+) -> structures.CheckoutSessionResponse:
     """
-    Create Stripe Payment Link with all credit pack options.
-    Player selects desired pack on mobile device.
+    Create Stripe Checkout Session for a specific credit pack.
+    Player has already selected the pack in BuyCreditsModal.
 
     Authentication: Requires both Box API key AND Player JWT token.
-    All context comes from headers - no request body needed.
-
-    Automatically creates lobby session if player doesn't have one active.
     """
+    # Validate pack_id
+    if request.pack_id not in CREDIT_PACKS:
+        raise HTTPException(status_code=400, detail=f"Invalid pack_id: {request.pack_id}")
+
+    pack = CREDIT_PACKS[request.pack_id]
+
     # Get or create lobby session for player
     lobby_session = await get_or_create_lobby_session(
         player_id=authenticated_player,
@@ -306,32 +311,26 @@ async def create_payment_link(
         now=now,
     )
 
-    # Create Payment Link with ALL 5 credit packs as line items
-    payment_link = stripe.PaymentLink.create(
+    # Create Checkout Session with SINGLE selected pack
+    checkout_session = stripe.checkout.Session.create(
         line_items=[
-            {"price": env.STRIPE_PRICE_5_CREDITS, "quantity": 1},
-            {"price": env.STRIPE_PRICE_10_CREDITS, "quantity": 1},
-            {"price": env.STRIPE_PRICE_25_CREDITS, "quantity": 1},
-            {"price": env.STRIPE_PRICE_50_CREDITS, "quantity": 1},
-            {"price": env.STRIPE_PRICE_100_CREDITS, "quantity": 1},
+            {"price": pack["price_id"], "quantity": 1},
         ],
+        mode="payment",
         metadata={
             "player_id": str(authenticated_player),
             "box_id": str(authenticated_box.id),
             "session_id": str(lobby_session.id),
+            "pack_id": request.pack_id,
         },
-        after_completion={
-            "type": "hosted_confirmation",
-            "hosted_confirmation": {
-                "custom_message": "Credits added! Return to the game."
-            }
-        }
+        success_url="https://barbox.app/payment/success",  # Placeholder - player returns to game
+        cancel_url="https://barbox.app/payment/cancel",
     )
 
-    return structures.PaymentLinkResponse(
-        payment_link_id=payment_link.id,
-        url=payment_link.url,
-        session_id=lobby_session.id,  # Return session ID for client tracking
+    return structures.CheckoutSessionResponse(
+        session_id=checkout_session.id,
+        session_url=checkout_session.url,
+        lobby_session_id=lobby_session.id,
     )
 
 
@@ -342,8 +341,14 @@ async def stripe_webhook(
     now: dependencies.Now,
 ):
     """
-    Handle Stripe webhooks for Payment Link completions.
+    Handle Stripe webhooks for Checkout Session completions.
     Emits credit/earn event to player's lobby session (creates if needed).
+
+    CRITICAL: This handler implements all production safety patterns:
+    1. Signature verification
+    2. Idempotency via database constraint (record webhook FIRST)
+    3. Explicit line_items retrieval via API (not in webhook payload)
+    4. Proper error handling and edge case validation
     """
     payload = await request.body()
     signature = request.headers.get("Stripe-Signature")
@@ -351,7 +356,7 @@ async def stripe_webhook(
     if not signature:
         raise HTTPException(status_code=400, detail="Missing Stripe-Signature header")
 
-    # Verify signature
+    # 1. Verify signature
     try:
         event = stripe.Webhook.construct_event(
             payload, signature, env.STRIPE_WEBHOOK_SECRET
@@ -363,30 +368,56 @@ async def stripe_webhook(
         logger.error("webhook_payload_invalid", error=str(e))
         raise HTTPException(status_code=400, detail="Invalid payload")
 
-    # Check idempotency - has this event been processed before?
-    existing_event = await db_service.session.execute(
+    # 2. Check idempotency (CORRECTED - assign result, then check)
+    result = await db_service.session.execute(
         select(db.defs.StripeWebhookEvent).where(
             db.defs.StripeWebhookEvent.stripe_event_id == event.id
         )
     )
-    if existing_event.scalar_one_or_none():
+    existing = result.scalar_one_or_none()
+    if existing:
         logger.info("webhook_already_processed", event_id=event.id)
         return {"status": "already_processed"}
 
-    # Handle checkout.session.completed
     if event.type == "checkout.session.completed":
         session_data = event.data.object
 
-        # Extract metadata
+        # 3. CRITICAL: Retrieve line items via API (not in webhook payload)
+        try:
+            checkout_session = stripe.checkout.Session.retrieve(
+                session_data.id,
+                expand=['line_items.data.price']
+            )
+        except stripe.error.StripeError as e:
+            logger.error("webhook_stripe_api_error", error=str(e))
+            raise HTTPException(status_code=502, detail="Failed to retrieve session")
+
+        # 4. Validate line items exist
+        if not checkout_session.line_items or not checkout_session.line_items.data:
+            logger.error("webhook_no_line_items", session_id=session_data.id)
+            raise HTTPException(status_code=400, detail="No line items in session")
+
+        # 5. Extract metadata with validation
         try:
             player_id = UUID(session_data.metadata["player_id"])
             box_id = UUID(session_data.metadata["box_id"])
             original_session_id = UUID(session_data.metadata["session_id"])
         except (KeyError, ValueError) as e:
             logger.error("webhook_invalid_metadata", error=str(e))
-            raise HTTPException(status_code=400, detail="Invalid metadata")
+            raise HTTPException(status_code=400, detail=f"Invalid metadata: {e}")
 
-        # Validate/create lobby session (handles session expiration gracefully)
+        # 6. Get credits from Price metadata
+        line_item = checkout_session.line_items.data[0]
+        price = line_item.price
+
+        if "credits" not in price.metadata:
+            logger.error("webhook_price_missing_credits", price_id=price.id)
+            raise HTTPException(status_code=400, detail="Price missing credits metadata")
+
+        credits = int(price.metadata["credits"])
+        bonus = int(price.metadata.get("bonus_credits", "0"))
+
+        # 7. Get or create lobby session (handles expiration gracefully)
         lobby_session = await get_or_create_lobby_session(
             player_id=player_id,
             box_id=box_id,
@@ -394,13 +425,25 @@ async def stripe_webhook(
             now=now,
         )
 
-        # Extract credits from selected Price (player chose on mobile)
-        line_item = session_data.line_items.data[0]
-        selected_price = line_item.price
-        credits = int(selected_price.metadata["credits"])
-        bonus = int(selected_price.metadata.get("bonus_credits", "0"))
+        # 8. CRITICAL: Record webhook FIRST (prevents race conditions via DB constraint)
+        try:
+            await db_service.create(
+                target=db.defs.StripeWebhookEvent,
+                data={
+                    "id": uuid4(),
+                    "stripe_event_id": event.id,
+                    "stripe_event_type": event.type,
+                    "processed": True,
+                    "processed_at": now,
+                    "event_data": event.to_dict(),
+                }
+            )
+        except IntegrityError:
+            # Duplicate webhook detected via database constraint
+            logger.info("webhook_duplicate_detected", event_id=event.id)
+            return {"status": "already_processed"}
 
-        # CRITICAL: Emit credit/earn event to lobby session
+        # 9. THEN emit credit/earn event (after webhook recorded)
         event_id = uuid4()
         await db_service.create(
             target=db.defs.BoxSessionEvent,
@@ -410,12 +453,11 @@ async def stripe_webhook(
                 "type": "credit/earn",
                 "timestamp": now,
                 "payload": {
-                    "box_id": str(box_id),  # For location mapping in bookkeeping
                     "amount": credits + bonus,
-                    "reason": f"Stripe payment - ${session_data.amount_total / 100:.2f}",
+                    "source": "stripe_payment",
+                    "box_id": str(box_id),
                     "stripe_session_id": session_data.id,
-                    "stripe_payment_intent_id": session_data.payment_intent,
-                    "selected_price_id": selected_price.id,
+                    "transaction_id": session_data.payment_intent,
                 }
             }
         )
@@ -427,15 +469,14 @@ async def stripe_webhook(
                 "id": uuid4(),
                 "stripe_session_id": session_data.id,
                 "stripe_payment_intent_id": session_data.payment_intent,
-                "stripe_payment_link_id": session_data.metadata.get("payment_link_id"),
                 "player_id": player_id,
                 "box_id": box_id,
                 "session_id": lobby_session.id,
                 "amount_cents": session_data.amount_total,
                 "credits_purchased": credits,
                 "bonus_credits": bonus,
-                "selected_price_id": selected_price.id,
-                "payment_method": "payment_link",
+                "selected_price_id": price.id,
+                "payment_method": "checkout_session",
                 "payment_method_type": session_data.payment_method_types[0] if session_data.payment_method_types else None,
                 "status": "succeeded",
                 "completed_at": now,
@@ -451,97 +492,129 @@ async def stripe_webhook(
             amount_cents=session_data.amount_total,
         )
 
-    # Record webhook processing
-    await db_service.create(
-        target=db.defs.StripeWebhookEvent,
-        data={
-            "id": uuid4(),
-            "stripe_event_id": event.id,
-            "stripe_event_type": event.type,
-            "processed": True,
-            "processed_at": now,
-            "event_data": event.to_dict(),
-        }
-    )
-
     return {"status": "success"}
+```
+
+**Stripe CLI Commands for Price Creation:**
+
+```bash
+# Create $5 pack: 5,000 credits (no bonus)
+stripe prices create \
+  --unit-amount=500 \
+  --currency=usd \
+  --product=prod_BarBoxCredits \
+  --metadata[credits]=5000 \
+  --metadata[bonus_credits]=0
+
+# Create $10 pack: 10,000 credits (no bonus)
+stripe prices create \
+  --unit-amount=1000 \
+  --currency=usd \
+  --product=prod_BarBoxCredits \
+  --metadata[credits]=10000 \
+  --metadata[bonus_credits]=0
+
+# Create $25 pack: 28,000 credits (25k base + 3k bonus)
+stripe prices create \
+  --unit-amount=2500 \
+  --currency=usd \
+  --product=prod_BarBoxCredits \
+  --metadata[credits]=25000 \
+  --metadata[bonus_credits]=3000
+
+# Create $50 pack: 60,000 credits (50k base + 10k bonus)
+stripe prices create \
+  --unit-amount=5000 \
+  --currency=usd \
+  --product=prod_BarBoxCredits \
+  --metadata[credits]=50000 \
+  --metadata[bonus_credits]=10000
+
+# Create $100 pack: 125,000 credits (100k base + 25k bonus)
+stripe prices create \
+  --unit-amount=10000 \
+  --currency=usd \
+  --product=prod_BarBoxCredits \
+  --metadata[credits]=100000 \
+  --metadata[bonus_credits]=25000
 ```
 
 **Tasks:**
 - [ ] Add `stripe` Python SDK to `pyproject.toml` (`stripe>=6.0.0`)
 - [ ] Create database models in `db/defs.py` (StripePaymentIntent, StripeWebhookEvent)
-- [ ] Create 5 Stripe Prices in Stripe Dashboard with metadata:
-  - $5 pack: `metadata = {"credits": "5", "bonus_credits": "0"}`
-  - $10 pack: `metadata = {"credits": "10", "bonus_credits": "0"}`
-  - $25 pack: `metadata = {"credits": "25", "bonus_credits": "3"}`
-  - $50 pack: `metadata = {"credits": "50", "bonus_credits": "10"}`
-  - $100 pack: `metadata = {"credits": "100", "bonus_credits": "25"}`
+- [ ] Create 5 Stripe Prices with metadata (via Stripe CLI or Dashboard):
+  - $5 pack: `metadata = {"credits": "5000", "bonus_credits": "0"}`
+  - $10 pack: `metadata = {"credits": "10000", "bonus_credits": "0"}`
+  - $25 pack: `metadata = {"credits": "25000", "bonus_credits": "3000"}`
+  - $50 pack: `metadata = {"credits": "50000", "bonus_credits": "10000"}`
+  - $100 pack: `metadata = {"credits": "100000", "bonus_credits": "25000"}`
 - [ ] Implement `get_or_create_lobby_session()` helper function
-  - Check for existing active lobby session
-  - Create new lobby session if not found
-  - Return validated session
-- [ ] Implement `/payments/link/create` endpoint in `web/payments.py`
-  - No request body needed (all context from auth headers)
-  - Call `get_or_create_lobby_session()` for lazy session creation
-  - Create Payment Link with ALL 5 prices as line items
-  - Include metadata (player_id, box_id, session_id)
-  - Return Payment Link URL + session_id
-- [ ] Implement `/payments/webhook` endpoint for `checkout.session.completed` events
-  - Webhook signature verification with error handling
-  - Idempotency checking via StripeWebhookEvent table
-  - Extract and validate metadata (player_id, box_id, session_id)
-  - Call `get_or_create_lobby_session()` to handle session expiration
-  - Extract credits from selected Price metadata
-  - Emit `credit/earn` event with box_id in payload (not location_id)
-  - Record payment and webhook event in database
-- [ ] Add payment DTOs to `structures.py` (PaymentLinkResponse with session_id)
-- [ ] Configure environment variables in `env.py`:
-  - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
-  - Stripe Price IDs (STRIPE_PRICE_5_CREDITS, etc.)
-- [ ] Update `GET /player/{id}/credits` to accept `box_id` parameter instead of `location_id`
+- [ ] Implement `/payments/checkout/create` endpoint
+  - Accept `pack_id` in request body
+  - Create Checkout Session with SINGLE line_item
+  - Include metadata (player_id, box_id, session_id, pack_id)
+  - Return session URL for QR code generation
+- [ ] Implement `/payments/webhook` endpoint
+  - Record webhook event FIRST (prevents race conditions)
+  - Retrieve line_items via explicit API call (expand=['line_items.data.price'])
+  - Extract credits from Price metadata
+  - Emit `credit/earn` event
+- [ ] Add DTOs to `structures.py`:
+  - `CheckoutSessionRequest` with `pack_id`
+  - `CheckoutSessionResponse` with `session_url`, `session_id`
+- [ ] Configure environment variables in `env.py`
 - [ ] Write Hurl integration tests
 
-**Deliverable:** Backend can create Payment Links and process webhooks correctly, extracting credits from player-selected packs
+**Deliverable:** Backend can create Checkout Sessions and process webhooks correctly
 
 ---
 
 ### Phase 2: Godot Client Core (Week 3)
 
-**Goal:** QR code display (from Payment Link URL) and balance polling (any increase) in Godot
+**Goal:** QR code display (from Checkout Session URL) and balance polling in Godot
 
 **Implementation:**
 
 ```csharp
-// BarBoxApp/_Core/Scripts/Autoloads/_Infrastructure/StripePaymentLinkService.cs
+// BarBoxApp/_Core/Scripts/Autoloads/_Infrastructure/StripePaymentService.cs
 
-public partial class StripePaymentLinkService : Node, IPaymentService
+public partial class StripePaymentService : Node, IPaymentService
 {
     private EventService _eventService;
     private CreditService _creditService;
-    private SessionManager _sessionManager;
+    private QRCodeCache _qrCache;
 
-    private const float QR_POLL_TIMEOUT = 180.0f;  // 3 minutes for mobile UX + selection
-    private const float POLL_INTERVAL = 1.0f;  // Start with 1s interval (exponential backoff)
+    private const float QR_POLL_TIMEOUT = 120.0f;  // 2 minutes (pack already selected)
+    private const float POLL_INTERVAL = 1.0f;
 
-    public override async Task<PaymentResult> ProcessPurchaseAsync(Guid playerId)
+    public override async Task<PaymentResult> ProcessPurchaseAsync(Guid playerId, CreditPack pack)
     {
-        // 1. Request Payment Link from backend (no request body needed)
-        // Authentication via JWT token + Box API key in headers
-        // Backend creates lobby session automatically if needed
-        var response = await _eventService.PostAsync<PaymentLinkResponse>(
-            "/payments/link/create"
+        // 1. Request Checkout Session from backend (with selected pack)
+        var request = new CheckoutSessionRequest { PackId = pack.PackId };
+        var response = await _eventService.PostAsync<CheckoutSessionRequest, CheckoutSessionResponse>(
+            "/payments/checkout/create",
+            request
         );
 
-        if (!response.IsSuccess(out var paymentLinkData))
-            return PaymentResult.Failure("Failed to create payment link");
+        if (!response.IsSuccess(out var sessionData))
+            return PaymentResult.Failure("Failed to create checkout session");
 
-        // 2. Display QR code (client-side QR generation from URL)
-        ShowQRCodeModal(paymentLinkData.Url);
+        // 2. Generate QR code from Checkout Session URL
+        var qrTexture = _qrCache.GetOrCreateQRCode(
+            sessionData.SessionUrl,
+            sessionData.SessionId
+        );
 
-        // 3. Get initial balance before payment
+        if (qrTexture == null)
+            return PaymentResult.Failure("Failed to generate QR code");
+
+        // 3. Display QR code modal with pack info
+        ShowQRCodeModal(qrTexture, pack);
+
+        // 4. Get initial balance before payment
         var initialBalance = await _creditService.GetBalanceAsync(playerId);
 
-        // 4. Poll for ANY balance increase (don't know pack selection yet)
+        // 5. Poll for balance increase
         var confirmed = await PollForBalanceIncreaseWithBackoff(
             playerId,
             initialBalance.Value,
@@ -550,40 +623,26 @@ public partial class StripePaymentLinkService : Node, IPaymentService
 
         HideQRCodeModal();
 
+        // 6. Clear cache (unique URL per session)
+        _qrCache.ClearPaymentCache(sessionData.SessionUrl);
+
         if (confirmed)
         {
-            // Get new balance to show actual credits received
             var newBalance = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
             var creditsAdded = newBalance.Value - initialBalance.Value;
             return PaymentResult.Success(creditsAdded);
         }
 
-        return PaymentResult.Timeout("Payment not detected within 3 minutes");
+        return PaymentResult.Timeout("Payment not detected within 2 minutes");
     }
 
-    private void ShowQRCodeModal(string paymentLinkUrl)
+    private void ShowQRCodeModal(Texture2D qrTexture, CreditPack pack)
     {
-        // Generate QR code from Payment Link URL (client-side)
-        // Using Godot's built-in Image/Texture generation or a QR library
-        var qrImage = GenerateQRCode(paymentLinkUrl);
-        var texture = ImageTexture.CreateFromImage(qrImage);
-
-        _qrCodeDisplay.Texture = texture;
+        _qrCodeDisplay.Texture = qrTexture;
         _qrCodeDisplay.Visible = true;
 
-        _instructionsLabel.Text = "Scan with your phone\n" +
-                                  "Choose credits & pay";
-    }
-
-    private Image GenerateQRCode(string url)
-    {
-        // TODO: Implement QR code generation
-        // Option 1: Use a C# QR library (e.g., QRCoder)
-        // Option 2: Use Godot addon for QR generation
-        // Option 3: Request pre-generated QR from backend (simpler)
-
-        // For now, placeholder:
-        return new Image();
+        _instructionsLabel.Text = $"Scan to pay ${pack.Price:F2}\n" +
+                                  $"for {pack.TotalCredits:N0} credits";
     }
 
     protected async Task<bool> PollForBalanceIncreaseWithBackoff(
@@ -599,17 +658,14 @@ public partial class StripePaymentLinkService : Node, IPaymentService
 
         while ((Time.GetTicksMsec() - startTime) / 1000.0f < timeoutSeconds)
         {
-            // CRITICAL: Force cache refresh to get latest balance
             var balanceResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
 
-            // Check for ANY balance increase (not specific amount)
             if (balanceResult.IsSuccess(out var currentBalance) && currentBalance > initialBalance)
             {
                 return true;
             }
 
-            // Exponential backoff: 1s, 1.5s, 2.25s, 3.375s, 5s, 5s, ...
-            await Task.Delay((int)(currentInterval * 1000));
+            await DelayAsync(currentInterval);
             currentInterval = Math.Min(currentInterval * BACKOFF_MULTIPLIER, MAX_INTERVAL);
         }
 
@@ -618,57 +674,81 @@ public partial class StripePaymentLinkService : Node, IPaymentService
 }
 ```
 
+**CreditPack Struct (Updated for 1,000 credits = $1):**
+
+```csharp
+// BarBoxApp/_Core/Scripts/Autoloads/_Infrastructure/IPaymentService.cs
+
+public struct CreditPack
+{
+    public string PackId { get; init; }          // e.g., "pack_25"
+    public int Credits { get; init; }            // e.g., 25000
+    public int BonusCredits { get; init; }       // e.g., 3000
+    public decimal Price { get; init; }          // e.g., 25.00m
+    public string PriceId { get; init; }         // Stripe Price ID
+
+    public int TotalCredits => Credits + BonusCredits;
+
+    public string DisplayName => BonusCredits > 0
+        ? $"{TotalCredits:N0} Credits (${Price:F2}) - {BonusCredits:N0} bonus!"
+        : $"{Credits:N0} Credits (${Price:F2})";
+}
+
+// Available packs
+public static readonly CreditPack[] AvailablePacks = new[]
+{
+    new CreditPack { PackId = "pack_5", Credits = 5000, BonusCredits = 0, Price = 5.00m },
+    new CreditPack { PackId = "pack_10", Credits = 10000, BonusCredits = 0, Price = 10.00m },
+    new CreditPack { PackId = "pack_25", Credits = 25000, BonusCredits = 3000, Price = 25.00m },
+    new CreditPack { PackId = "pack_50", Credits = 50000, BonusCredits = 10000, Price = 50.00m },
+    new CreditPack { PackId = "pack_100", Credits = 100000, BonusCredits = 25000, Price = 100.00m },
+};
+```
+
+**QR Code Caching Notes (Checkout Sessions):**
+
+Each Checkout Session generates a **unique URL**, so:
+- **Cache hit rate for new purchases:** ~0% (unique URL each time)
+- **Cache hit rate for retries/timeouts:** ~99% (same session URL)
+- **Clear cache after each payment attempt** (success or timeout)
+
+```csharp
+// Cache strategy for Checkout Sessions
+// - Short TTL (session expires in 24h, but we clear after 2min timeout)
+// - Clear immediately after payment completion or timeout
+// - No cross-attempt caching (each purchase = new session URL)
+```
+
 **Tasks:**
 - [ ] Add QRCoder NuGet package to `BarBoxApp.csproj` (`QRCoder >= 1.6.0`)
 - [ ] Implement `QRCodeCache.cs` autoload service
-  - URL-based two-tier cache (QRCodeData + Texture2D)
-  - LRU eviction with 50 entry limit (~10MB max memory)
-  - Eager cleanup on payment success/timeout
-  - Periodic expiration (30min TTL, 5min check interval)
-  - Performance target: < 20ms generation, < 1ms cache hits
-- [ ] Implement `StripePaymentLinkService.cs` class
-  - Integrate QRCodeCache for texture generation
-  - Call `GetOrCreateQRCode()` with Payment Link URL
-  - Clear cache after payment completes or times out
-- [ ] Update `BuyCreditsModal.cs` to display QR code
-  - Accept Texture2D directly (no URL processing needed)
-  - Display 400x400px QR code centered on screen
-  - Show "Scan with your phone - Choose credits & pay" instructions
-  - Remove pack pre-selection UI (no longer needed)
-  - Add timeout warning message after 2 minutes of waiting
-- [ ] Implement exponential backoff polling (180s timeout)
-  - Start at 1s interval, increase to max 5s
-  - Reduces server load from ~240 requests to ~50 requests
-  - Display actual credits received in success message
-- [ ] Update payment endpoint call to send no request body
-  - Remove PaymentLinkRequest (empty body)
-  - Backend handles session creation automatically
-- [ ] Update `PaymentService.cs` provider selection for Payment Links
-- [ ] Add payment DTOs to `BackendStructures.cs` (PaymentLinkResponse with session_id)
-- [ ] Add loading/success/error states to modal
-- [ ] Test QR generation performance (< 20ms first gen, < 1ms cache hit)
-- [ ] Test QR scanability on real arcade hardware (1-3 feet distance)
-- [ ] Verify no memory leaks over 100+ payment attempts
+- [ ] Implement `StripePaymentService.cs` class
+  - Accept `CreditPack` parameter (pack selected in-game)
+  - Request Checkout Session with `pack_id`
+  - Generate QR from session URL
+  - Poll for balance increase (120s timeout - pack already selected)
+- [ ] Update `BuyCreditsModal.cs`:
+  - Keep existing pack selection UI
+  - After pack selection, show QR code with "Scan to pay $X"
+  - Clear instructions (pack already chosen)
+- [ ] Update `PaymentService.cs` for Checkout Sessions
+- [ ] Add DTOs to `BackendStructures.cs`
+- [ ] Test QR scanability on real hardware
 
-**Deliverable:** Godot client can display Payment Link QR codes and poll for payment completion with any pack amount
+**Deliverable:** Godot client can display Checkout Session QR codes and poll for payment completion
 
 ---
 
 ### Phase 3: Testing & Production Hardening (Week 4)
 
-**Goal:** Comprehensive testing and production readiness for Payment Links
+**Goal:** Comprehensive testing and production readiness
 
 **Testing Strategy:**
 
 **Local Development:**
 ```bash
-# 1. Create Stripe Prices with metadata (one-time setup)
-# In Stripe Dashboard or via API:
-# - $5 pack: metadata = {"credits": "5", "bonus_credits": "0"}
-# - $10 pack: metadata = {"credits": "10", "bonus_credits": "0"}
-# - $25 pack: metadata = {"credits": "25", "bonus_credits": "3"}
-# - $50 pack: metadata = {"credits": "50", "bonus_credits": "10"}
-# - $100 pack: metadata = {"credits": "100", "bonus_credits": "25"}
+# 1. Create Stripe Prices with correct metadata (one-time setup)
+# Use Stripe CLI commands from Phase 1
 
 # 2. Start backend with test keys
 cd BarBoxServices
@@ -680,54 +760,38 @@ sh scripts/dev.sh
 stripe listen --forward-to localhost:8000/payments/webhook
 
 # 4. Test with Stripe test mode
-# - Request Payment Link from app (no pack pre-selection)
+# - Select credit pack in BuyCreditsModal (e.g., $25)
 # - Scan QR code with phone
-# - Select credit pack on Stripe-hosted page (e.g., $25 pack)
-# - Complete payment with test card (4242 4242 4242 4242) or Apple Pay test
+# - Confirm payment (Apple Pay / test card)
 # - Verify credits appear in Godot app
-# - Verify actual amount received is displayed (e.g., "Added 28 credits!")
+# - Verify success message shows "Added 28,000 credits!"
 ```
 
 **Integration Tests (Hurl):**
 ```
 test/02-feature/payments/
-├── payment-link-creation.hurl           # Test Payment Link endpoint (no request body)
-├── webhook-payment-link-completed.hurl  # Test webhook with Price metadata extraction
-├── webhook-idempotency.hurl             # Test duplicate webhook handling
-├── payment-box-tracking.hurl            # Test box_id in metadata
-└── multi-pack-selection.hurl            # Test different pack selections
+├── checkout-session-creation.hurl      # Test Checkout Session endpoint
+├── webhook-checkout-completed.hurl     # Test webhook with line_items retrieval
+├── webhook-idempotency.hurl            # Test duplicate webhook handling
+├── webhook-race-condition.hurl         # Test concurrent webhook protection
+└── payment-box-tracking.hurl           # Test box_id in metadata
 ```
 
 **Real Device Testing:**
-- [ ] Test with iPhone (Apple Pay)
-  - Scan QR code, select $25 pack, pay with Apple Pay
-  - Verify credits appear in app
-  - Verify success message shows "Added 28 credits!"
-- [ ] Test with Android phone (Google Pay)
-  - Scan QR code, select $10 pack, pay with Google Pay
-  - Verify credits appear in app
+- [ ] Test with iPhone (Apple Pay) - select $25 pack, verify 28,000 credits
+- [ ] Test with Android phone (Google Pay) - select $10 pack, verify 10,000 credits
 - [ ] Test manual card entry fallback
-  - Select $5 pack, enter test card manually
-- [ ] Test pack selection UX on mobile
-  - Verify all 5 packs displayed clearly
-  - Verify bonus amounts shown correctly
-- [ ] Verify QR code displays clearly on arcade screen
-  - Test QR size, contrast, instructions
-- [ ] Test payment timeout scenarios (player doesn't complete payment)
-- [ ] Test cancelled payments (player backs out of Stripe page)
+- [ ] Verify QR code displays with correct amount ("Scan to pay $25")
+- [ ] Test payment timeout scenarios
 - [ ] Test duplicate webhook handling
 
 **Tasks:**
-- [ ] Write Hurl integration tests for all endpoints
+- [ ] Write Hurl integration tests
 - [ ] Test with Stripe CLI webhook forwarding
 - [ ] Test with real phones (iPhone + Android)
-- [ ] Verify metadata flows correctly through webhooks (box_id, player_id, session_id)
-- [ ] Test core edge cases:
-  - Payment cancelled mid-flow
-  - Webhook delivery delayed
-  - Duplicate webhooks
-- [ ] Load test: 100 concurrent QR code generations
-- [ ] Verify no race conditions in webhook processing
+- [ ] Verify metadata flows correctly through webhooks
+- [ ] Load test: 100 concurrent Checkout Session creations
+- [ ] Verify race condition protection in webhook handler
 
 **Deliverable:** Fully tested payment system ready for production
 
@@ -738,38 +802,28 @@ test/02-feature/payments/
 **Goal:** Deploy to production with monitoring and operational procedures
 
 **Security:**
-- [ ] Rate limiting on payment endpoints (FastAPI-Limiter)
+- [ ] Rate limiting on payment endpoints
 - [ ] Audit logging for all payment events
-- [ ] Review webhook signature verification implementation
+- [ ] Review webhook signature verification
 - [ ] Validate no secrets in client code
 - [ ] Complete PCI SAQ-A questionnaire
 
 **Monitoring:**
-- [ ] Stripe webhook delivery success rate tracking
+- [ ] Stripe webhook delivery success rate
 - [ ] Payment success rate dashboard
-- [ ] Basic logging of payment events for customer support
-- [ ] Monitor payment timeout rates (players not completing purchase)
+- [ ] Payment timeout rate monitoring
 
 **Edge Cases:**
-- [ ] Refund workflow (manual process via customer support)
-- [ ] Manual credit adjustment for failed webhooks (customer support endpoint)
-- [ ] Handle Payment Link expiration (regenerate if needed)
-- [ ] Player changes mind on pack selection (cancel and restart)
-
-**Documentation:**
-- [ ] Operations runbook: Payment disputes
-- [ ] Operations runbook: Manual refunds
-- [ ] Operations runbook: Webhook replay
-- [ ] Architecture documentation
-- [ ] Player-facing QR code payment instructions
+- [ ] Refund workflow (manual process)
+- [ ] Manual credit adjustment endpoint
+- [ ] Checkout Session expiration handling
 
 **Deployment:**
 - [ ] Set up production Stripe account
+- [ ] Create production Prices with correct metadata
 - [ ] Configure production webhook endpoint URL
-- [ ] Test with live Stripe keys
 - [ ] Deploy to first location
 - [ ] Monitor first week of transactions
-- [ ] Roll out to remaining locations
 
 **Deliverable:** Production-ready QR code payment system
 
@@ -777,438 +831,56 @@ test/02-feature/payments/
 
 ## Critical Implementation Details
 
-### 1. Webhook Event Sourcing with Payment Links (CRITICAL)
+### 1. Webhook Line Items Retrieval (CRITICAL)
+
+**Problem:** Webhook payload does NOT auto-expand line_items.
+
+**Solution:** Explicit API call to retrieve line_items:
+
 ```python
-# ✅ CORRECT: Webhook emits credit/earn event, extracting credits from selected Price
-@router.post("/payments/webhook")
-async def stripe_webhook(...):
-    # Verify signature
-    event = stripe.Webhook.construct_event(payload, signature, secret)
+# WRONG - line_items not in webhook payload
+line_item = session_data.line_items.data[0]  # AttributeError!
 
-    # Check idempotency
-    if await webhook_already_processed(event.id):
-        return {"status": "already_processed"}
-
-    # Handle checkout.session.completed
-    if event.type == "checkout.session.completed":
-        session = event.data.object  # Session from Payment Link
-
-        # Extract metadata from session
-        player_id = UUID(session.metadata["player_id"])
-        box_id = UUID(session.metadata["box_id"])
-        session_id = UUID(session.metadata["session_id"])  # Lobby session from metadata
-
-        # CRITICAL: Extract credits from selected Price metadata (player chose on mobile)
-        line_item = session.line_items.data[0]
-        selected_price = line_item.price
-        credits = int(selected_price.metadata["credits"])
-        bonus = int(selected_price.metadata.get("bonus_credits", "0"))
-
-        # Validate/create lobby session (handles expiration gracefully)
-        lobby_session = await get_or_create_lobby_session(
-            player_id=player_id,
-            box_id=box_id,
-            db_service=db_service,
-            now=now,
-        )
-
-        # CRITICAL: Emit credit/earn event to lobby session
-        await db_service.create(
-            target=db.defs.BoxSessionEvent,
-            data={
-                "session_id": lobby_session.id,
-                "type": "credit/earn",
-                "timestamp": datetime.now(UTC),
-                "payload": {
-                    "box_id": str(box_id),  # For bookkeeping scripts to map to location
-                    "amount": credits + bonus,
-                    "reason": f"Stripe Payment Link - ${session.amount_total / 100:.2f}",
-                    "stripe_session_id": session.id,
-                    "selected_price_id": selected_price.id
-                }
-            }
-        )
-
-    # Record webhook processing
-    await record_webhook_event(event.id)
-```
-
-### 2. Balance Polling Pattern for Payment Links (CRITICAL)
-```csharp
-// ✅ CORRECT: Poll for ANY balance increase (don't know pack selection upfront)
-// Note: 120s timeout for mobile payment flow (includes pack selection step)
-private async Task<bool> PollForBalanceIncrease(
-    Guid playerId,
-    int initialBalance,
-    float timeoutSeconds = 120.0f  // 2 minutes for mobile payment + selection
+# CORRECT - retrieve via API with expand
+checkout_session = stripe.checkout.Session.retrieve(
+    session_data.id,
+    expand=['line_items.data.price']
 )
-{
-    var startTime = Time.GetTicksMsec();
-
-    while ((Time.GetTicksMsec() - startTime) / 1000.0f < timeoutSeconds)
-    {
-        // Force cache refresh to get latest balance from event aggregation
-        var currentBalance = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
-
-        // Check for ANY increase (player selected pack on mobile)
-        if (currentBalance.IsSuccess(out var balance) && balance > initialBalance)
-        {
-            return true;
-        }
-
-        await DelayAsync(0.5f);
-    }
-
-    return false;
-}
-
-// Usage in ProcessPurchaseAsync:
-var initialBalance = await _creditService.GetBalanceAsync(playerId);
-var confirmed = await PollForBalanceIncrease(playerId, initialBalance.Value);
-
-if (confirmed)
-{
-    var newBalance = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
-    var creditsAdded = newBalance.Value - initialBalance.Value;
-    return PaymentResult.Success(creditsAdded);  // Show actual amount received
-}
+line_item = checkout_session.line_items.data[0]
 ```
 
-### 3. QR Code Generation & Caching (CRITICAL)
+### 2. Race Condition Prevention (CRITICAL)
 
-**Client-side QR generation using QRCoder library with intelligent caching:**
+**Problem:** Two webhooks could pass idempotency check simultaneously.
 
-```csharp
-// BarBoxApp/_Core/Scripts/Autoloads/_Infrastructure/QRCodeCache.cs
+**Solution:** Record webhook FIRST with database constraint:
 
-using Godot;
-using QRCoder;
-using System;
-using System.Collections.Generic;
-
-/// <summary>
-/// Manages QR code generation and caching for payment flows.
-/// Caches both QRCodeData and rendered Textures to minimize CPU usage.
-/// </summary>
-public partial class QRCodeCache : AutoloadBase
-{
-    private const int MAX_CACHE_SIZE = 50;
-    private const int QR_PIXELS_PER_MODULE = 20; // High resolution for arcade screens
-    private const QRCodeGenerator.ECCLevel ERROR_CORRECTION = QRCodeGenerator.ECCLevel.M;
-
-    // Two-tier cache: URL -> (QRCodeData, Texture2D, Timestamp)
-    private readonly Dictionary<string, CachedQRCode> _cache = new();
-    private readonly QRCodeGenerator _generator = new();
-
-    private struct CachedQRCode
-    {
-        public QRCodeData Data;
-        public Texture2D Texture;
-        public DateTime CachedAt;
-        public string PlayerSessionId; // For debug/tracking
-    }
-
-    /// <summary>
-    /// Generate or retrieve cached QR code texture for Payment Link URL.
-    /// Cache hit = instant return (~0.1ms), miss = generation (~5-15ms).
-    /// </summary>
-    public Texture2D GetOrCreateQRCode(string paymentLinkUrl, string playerSessionId)
-    {
-        // Check cache first (cache hit = instant return)
-        if (_cache.TryGetValue(paymentLinkUrl, out var cached))
-        {
-            GD.Print($"[QRCodeCache] Cache HIT for session {playerSessionId}");
-            return cached.Texture;
-        }
-
-        GD.Print($"[QRCodeCache] Cache MISS - generating QR for session {playerSessionId}");
-
-        // Generate QRCodeData (encodes URL into QR matrix)
-        using var qrCodeData = _generator.CreateQrCode(paymentLinkUrl, ERROR_CORRECTION);
-
-        // Render to PNG byte array (high resolution for 1080p/4K arcade screens)
-        var pngRenderer = new PngByteQRCode(qrCodeData);
-        byte[] pngBytes = pngRenderer.GetGraphic(QR_PIXELS_PER_MODULE);
-
-        // Convert PNG bytes -> Godot Image -> Texture2D
-        var image = new Image();
-        var error = image.LoadPngFromBuffer(pngBytes);
-        if (error != Error.Ok)
-        {
-            GD.PrintErr($"[QRCodeCache] Failed to load PNG: {error}");
-            return null;
-        }
-
-        var texture = ImageTexture.CreateFromImage(image);
-
-        // Cache texture for future requests
-        CacheTexture(paymentLinkUrl, qrCodeData, texture, playerSessionId);
-
-        return texture;
-    }
-
-    private void CacheTexture(string url, QRCodeData data, Texture2D texture, string sessionId)
-    {
-        // Enforce cache size limit (LRU-style eviction)
-        if (_cache.Count >= MAX_CACHE_SIZE)
-        {
-            EvictOldestEntry();
-        }
-
-        _cache[url] = new CachedQRCode
-        {
-            Data = data,
-            Texture = texture,
-            CachedAt = DateTime.UtcNow,
-            PlayerSessionId = sessionId
-        };
-
-        GD.Print($"[QRCodeCache] Cached QR for session {sessionId} (cache size: {_cache.Count})");
-    }
-
-    /// <summary>
-    /// Clear cache entry after successful payment (frees memory).
-    /// </summary>
-    public void ClearPaymentCache(string paymentLinkUrl)
-    {
-        if (_cache.Remove(paymentLinkUrl, out var cached))
-        {
-            cached.Texture?.Dispose();
-            cached.Data?.Dispose();
-            GD.Print($"[QRCodeCache] Cleared cache for session {cached.PlayerSessionId}");
-        }
-    }
-
-    private void EvictOldestEntry()
-    {
-        string oldestKey = null;
-        DateTime oldestTime = DateTime.MaxValue;
-
-        foreach (var kvp in _cache)
-        {
-            if (kvp.Value.CachedAt < oldestTime)
-            {
-                oldestTime = kvp.Value.CachedAt;
-                oldestKey = kvp.Key;
-            }
-        }
-
-        if (oldestKey != null)
-        {
-            ClearPaymentCache(oldestKey);
-        }
-    }
-
-    public override void _ExitTree()
-    {
-        // Cleanup all cached resources
-        foreach (var cached in _cache.Values)
-        {
-            cached.Texture?.Dispose();
-            cached.Data?.Dispose();
-        }
-        _cache.Clear();
-        _generator?.Dispose();
-    }
-}
-```
-
-**Integration with Payment Service:**
-
-```csharp
-// BarBoxApp/_Core/Scripts/Autoloads/_Infrastructure/StripePaymentLinkService.cs
-
-public override async Task<PaymentResult> ProcessPurchaseAsync(Guid playerId)
-{
-    // 1. Request Payment Link from backend
-    var response = await _eventService.PostAsync<PaymentLinkResponse>("/payments/link/create");
-
-    if (!response.IsSuccess(out var paymentLinkData))
-        return PaymentResult.Failure("Failed to create payment link");
-
-    // 2. Generate QR code from Payment Link URL (cached by URL)
-    var qrTexture = _qrCache.GetOrCreateQRCode(
-        paymentLinkData.Url,
-        paymentLinkData.SessionId.ToString()
-    );
-
-    if (qrTexture == null)
-        return PaymentResult.Failure("Failed to generate QR code");
-
-    // 3. Display QR code modal
-    ShowQRCodeModal(qrTexture, paymentLinkData.Url);
-
-    // 4. Poll for balance increase
-    var initialBalance = await _creditService.GetBalanceAsync(playerId);
-    var confirmed = await PollForBalanceIncreaseWithBackoff(playerId, initialBalance.Value, 180.0f);
-
-    HideQRCodeModal();
-
-    if (confirmed)
-    {
-        // Clear cache after successful payment (free memory)
-        _qrCache.ClearPaymentCache(paymentLinkData.Url);
-
-        var newBalance = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
-        var creditsAdded = newBalance.Value - initialBalance.Value;
-        return PaymentResult.Success(creditsAdded);
-    }
-
-    // Timeout - clear cache and allow retry
-    _qrCache.ClearPaymentCache(paymentLinkData.Url);
-    return PaymentResult.Timeout("Payment not detected within 3 minutes");
-}
-```
-
-**Performance Characteristics:**
-
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **First generation** | 5-15ms | QRCodeData creation + PNG rendering |
-| **Cache hit** | ~0.1ms | Dictionary lookup only |
-| **Memory per entry** | ~200KB | 400x400px PNG texture |
-| **Max memory usage** | ~10MB | 50 cached entries |
-| **QR scan distance** | 1-3 feet | 20px/module at 1080p |
-
-**Why QRCoder Library:**
-- ✅ Zero network latency (no backend round-trip for QR image)
-- ✅ Cross-platform compatible (works on all Godot export targets)
-- ✅ Lightweight (no external dependencies)
-- ✅ Fast caching (99% hit rate on retries/timeouts)
-- ✅ Error Correction Level M (15% recovery) - balanced for digital displays
-
-**Cache Invalidation Strategy:**
-1. **Eager cleanup** - Clear immediately after successful payment
-2. **Timeout cleanup** - Clear when payment times out (allows retry with new link)
-3. **LRU eviction** - Remove oldest entry when cache reaches 50 entries
-4. **Periodic expiration** - Optional background task to clear entries older than 30 minutes
-
-### 4. Lazy Session Creation (CRITICAL)
 ```python
-# Backend creates lobby session automatically if needed
-@router.post("/payments/link/create")
-async def create_payment_link(
-    authenticated_box: dependencies.BoxAuthenticated,
-    authenticated_player: dependencies.AuthenticatedPlayer,
-    db_service: dependencies.Database,
-    now: dependencies.Now,
-):
-    # Get or create lobby session (lazy creation pattern)
-    lobby_session = await get_or_create_lobby_session(
-        player_id=authenticated_player,
-        box_id=authenticated_box.id,
-        db_service=db_service,
-        now=now,
-    )
+# CORRECT ORDER:
+# 1. Record webhook event FIRST (database constraint prevents duplicates)
+try:
+    await db_service.create(target=StripeWebhookEvent, data={...})
+except IntegrityError:
+    return {"status": "already_processed"}  # Caught by DB constraint
 
-    # Create Payment Link with all metadata
-    payment_link = stripe.PaymentLink.create(
-        line_items=[
-            {"price": price_id, "quantity": 1}
-            for price_id in CREDIT_PACK_PRICE_IDS  # All 5 packs
-        ],
-        metadata={
-            "player_id": str(authenticated_player),
-            "box_id": str(authenticated_box.id),  # For bookkeeping
-            "session_id": str(lobby_session.id),
-        }
-    )
-
-    return structures.PaymentLinkResponse(
-        payment_link_id=payment_link.id,
-        url=payment_link.url,
-        session_id=lobby_session.id,
-    )
+# 2. THEN emit credit event (only if webhook recorded successfully)
+await db_service.create(target=BoxSessionEvent, data={...})
 ```
 
-**Why Lazy Creation?**
-- Simplifies client logic (no pre-creation needed)
-- Handles session expiration gracefully
-- Webhook can recreate session if needed
-- Player always has valid session when logged in
+### 3. QR Code Caching for Checkout Sessions
 
----
+**Key Difference from Payment Links:**
+- Payment Links: Reusable URL, high cache hit rate
+- Checkout Sessions: Unique URL per session, low cache hit rate
 
-## Testing Strategy
-
-### Local Development
-```bash
-# 1. Start backend with test keys
-cd BarBoxServices
-export STRIPE_SECRET_KEY=sk_test_...
-export STRIPE_WEBHOOK_SECRET=whsec_...
-export STRIPE_TEST_MODE=true
-sh scripts/dev.sh
-
-# 2. Forward webhooks to localhost
-stripe listen --forward-to localhost:8000/payments/webhook
-
-# 3. Test with test cards
-# Success: 4242 4242 4242 4242
-# Declined: 4000 0000 0000 0002
-```
-
-### Integration Tests (Hurl)
-```
-test/02-feature/payments/
-├── payment-link-creation.hurl        # Test Payment Link endpoint (no request body)
-├── qr-code-generation.hurl           # Test QR code generation
-├── webhook-checkout-completed.hurl   # Test webhook with Price metadata
-├── webhook-idempotency.hurl          # Test duplicate webhook handling
-└── payment-box-tracking.hurl         # Test box_id in metadata
-```
-
-### QR Code Testing
-
-**Performance Benchmarks:**
-- [ ] Measure QR generation time (target: < 20ms first gen)
-- [ ] Measure cache hit performance (target: < 1ms)
-- [ ] Test 100 concurrent QR generations (stress test)
-- [ ] Monitor memory usage over 50+ cached entries (target: ~10MB max)
-- [ ] Verify no memory leaks over 100+ payment attempts
-
-**Cache Behavior:**
-- [ ] Verify cache hit when retrying same payment
-- [ ] Verify cache eviction at 50 entry limit (LRU policy)
-- [ ] Verify cache cleanup after successful payment
-- [ ] Verify cache cleanup after payment timeout
-- [ ] Test cache behavior with multiple simultaneous players
-
-**Visual & Scanability:**
-- [ ] QR code displays correctly on arcade screen (1080p)
-- [ ] QR code displays correctly on 4K displays
-- [ ] QR code scannable from 1-2 feet away (20px/module)
-- [ ] Test with iPhone camera (native + 3rd party apps)
-- [ ] Test with Android camera (Google Lens, native)
-- [ ] Verify QR renders correctly on different aspect ratios
-- [ ] Test QR size, contrast, clarity on real hardware
-
-**Payment Flow:**
-- [ ] QR code generation for all credit pack amounts ($5, $10, $25, $50, $100)
-- [ ] Apple Pay payment flow (iPhone) - verify < 25s total time
-- [ ] Google Pay payment flow (Android) - verify < 25s total time
-- [ ] Manual card entry fallback - verify works but slower
-- [ ] Payment declined handling (proper error message)
-- [ ] Cancelled payment (user backs out of Stripe page)
-- [ ] Session expiration handling (Payment Link timeout)
-
-### Failure Scenarios (C#)
+**Cache Strategy:**
 ```csharp
-[Test] Payment_EventServiceNotReady_ReturnsFailure()
-[Test] Payment_WebhookDelayed_CreditsStillAppear()
-[Test] Payment_DuplicateWebhook_NoDuplicateCredits()
-[Test] Payment_NetworkFailure_Retries()
-[Test] QR_UserCancels_NoCharge()
-[Test] QR_PaymentDeclined_ProperErrorMessage()
-[Test] QR_TwoPlayersScan_OnlyOneGetsCredits()
-```
+// Each Checkout Session has unique URL
+// Cache only helps for retries during same payment attempt
+// Clear cache after payment completes or times out
 
-### Multi-Box Testing
-- [ ] Test at Box A, verify credits tracked with box_id A
-- [ ] Test at Box B, verify credits tracked with box_id B
-- [ ] Verify bookkeeping scripts can map box_id to location
-- [ ] Test backend connectivity at each box
-- [ ] Validate QR codes work at all boxes
+_qrCache.ClearPaymentCache(sessionData.SessionUrl);  // Always clear after attempt
+```
 
 ---
 
@@ -1216,14 +888,12 @@ test/02-feature/payments/
 
 | Weeks | Phase | Milestone | Deliverable |
 |-------|-------|-----------|-------------|
-| 1-2 | Backend Foundation | Backend Payment Links ready | Payment Link creation + webhook + Price metadata extraction + lazy session creation working |
-| 3 | Godot Core | QR code display + polling working | Client displays QR codes and polls for balance increase with exponential backoff |
-| 4 | Testing & Production | Production-ready system | All tests pass, webhook idempotency verified, customer support procedures documented |
-| 5 | Deployment & Monitoring | First location live | Deployed to first location, monitoring in place, bookkeeping scripts tested |
+| 1-2 | Backend Foundation | Backend Checkout Sessions ready | Checkout Session creation + webhook + Price metadata extraction working |
+| 3 | Godot Core | QR code display + polling working | Client displays QR codes with in-game pack selection |
+| 4 | Testing & Production | Production-ready system | All tests pass, webhook safety verified |
+| 5 | Deployment & Monitoring | First location live | Deployed to first location, monitoring in place |
 
 **Total: 5 weeks to production-ready system**
-
-*Additional week accounts for session management updates, comprehensive webhook implementation, and bookkeeping integration*
 
 ---
 
@@ -1237,107 +907,45 @@ test/02-feature/payments/
 - $25 purchase = $1.03 (4.1%)
 - $100 purchase = $3.20 (3.2%)
 
-**Comparison to Card-Present Rates:**
-- Card-present (M2/S700): 2.7% + $0.05
-- Difference per $25 transaction: ~$0.30 more for QR code
-- Annual difference at 1000 transactions/month: ~$3,600/year
-
 ### Hardware Costs
 - **QR Code Approach: $0** (players use their own phones)
-- Alternative M2 Reader: $59 per location (saved)
 - Alternative S700 Reader: $349 per location (saved)
 
-**Savings: $295 - $1,745 upfront hardware costs (5 locations)**
-
-### Monthly Operational Estimate
-Assumptions:
-- 5 locations × 200 transactions/month = 1000 total transactions
-- Average transaction: $30
-- 100% QR code usage
-
-**Fees:**
-- QR Code: 1000 × ($30 × 0.029 + $0.30) = **$1,170/month**
-
-**Connectivity:**
-- Backend server internet: Already covered (no additional cost)
-
-**Grand Total: ~$1,170/month operational costs**
-
-**Comparison:** $220/month more than M2 hardware approach, but $0 upfront + zero deployment complexity
+**Savings: $1,745 upfront hardware costs (5 locations)**
 
 ---
 
 ## Risk Assessment
 
-### Overall Risk: MEDIUM
+### Overall Risk: LOW-MEDIUM
 
 | Risk | Severity | Likelihood | Mitigation |
 |------|----------|------------|------------|
-| Players don't have smartphones | LOW | VERY LOW | Very rare in 2025; could add hardware readers later |
-| QR code scanning issues | LOW | LOW | Large QR codes, clear instructions, test on real phones |
-| Players don't have Apple/Google Pay | LOW | MEDIUM | Manual card entry works (slower but functional) |
-| Webhook delivery failures | MEDIUM | LOW | Idempotency table + webhook retry + manual reconciliation via customer support |
-| Distributed payment flow complexity | MEDIUM | MEDIUM | Comprehensive testing, exponential backoff polling, 180s timeout |
-| Payment timeout (user confusion) | MEDIUM | LOW | Clear UI instructions, 180s timeout, timeout warning messages |
-| Session expiration during payment | LOW | LOW | Lazy session creation handles gracefully (get_or_create pattern) |
-
----
-
-## Success Criteria
-
-### Phase 1: Backend Foundation
-- [ ] Backend creates valid Payment Links with metadata (box_id, player_id, session_id)
-- [ ] Lazy session creation (get_or_create_lobby_session) works correctly
-- [ ] QR codes generate correctly (base64 PNG)
-- [ ] Webhooks emit credit/earn events correctly with box_id
-- [ ] Idempotency prevents duplicate credits (StripeWebhookEvent table)
-- [ ] Integration tests pass
-
-### Phase 2: Godot Client
-- [ ] QR codes display clearly on arcade screen
-- [ ] QR codes scannable from 1-2 feet away
-- [ ] Client polls balance successfully with 180s timeout and exponential backoff
-- [ ] Credits appear after payment completes
-- [ ] Loading/success/error states work correctly
-- [ ] Actual credit amount received is displayed (not pre-selected)
-
-### Phase 3: Testing & Production
-- [ ] Apple Pay works on iPhone (< 10 seconds)
-- [ ] Google Pay works on Android (< 10 seconds)
-- [ ] Manual card entry works as fallback
-- [ ] System handles 100 concurrent QR code generations
-- [ ] Webhook delivery > 95% success rate
-- [ ] No orphaned payments detected
-- [ ] PCI SAQ-A compliance completed
-- [ ] Payment flow intuitive for players
-- [ ] Successfully deployed to first location
+| Webhook line_items not expanded | HIGH | N/A | Explicit Session.retrieve() with expand |
+| Race conditions in webhook | HIGH | LOW | Database constraint + reordered operations |
+| Duplicate credits | HIGH | LOW | StripeWebhookEvent idempotency table |
+| Session expiration | LOW | LOW | Lazy session creation handles gracefully |
+| QR code scanning issues | LOW | LOW | Large QR codes, clear instructions |
 
 ---
 
 ## Recommendation
 
-✅ **PROCEED WITH PAYMENT LINKS IMPLEMENTATION**
+✅ **PROCEED WITH CHECKOUT SESSIONS IMPLEMENTATION**
 
 This plan:
-1. **Player-selectable packs** - Credit amount chosen on mobile device, not pre-selected in app
-2. **Simplest Stripe integration** - Payment Links with hosted checkout UI (no custom web page needed)
-3. **Maintains event-sourced credit integrity** - Same architecture, credits extracted from Price metadata
-4. **Good UX** - 15-25 seconds with Apple/Google Pay (includes pack selection step)
-5. **Comprehensive webhook handling** - Idempotency table, error handling, lazy session creation
-6. **Aligns with BarBox patterns** - Lazy sessions, event sourcing, balance polling with exponential backoff
-7. **Zero hardware deployment** - No readers to install, charge, or troubleshoot
-8. **Simple location tracking** - Uses box_id, maps to locations via bookkeeping scripts
+1. **In-game pack selection** - Player knows exact cost before scanning QR
+2. **Simpler UX** - No pack selection on mobile device needed
+3. **Maintains event-sourced credit integrity** - Credits via `credit/earn` events only
+4. **Fast UX** - 10-20 seconds with Apple/Google Pay (pack already selected)
+5. **Production-safe webhook handling** - All race conditions and edge cases handled
+6. **Correct credit amounts** - 1,000 credits = $1 USD
 
-**Estimated effort:** 5 weeks (includes session management updates and comprehensive webhook implementation)
-**Risk level:** MEDIUM (webhook complexity and distributed payment flow require careful implementation, but Payment Links API is well-documented)
-**ROI:** Enables revenue generation with minimal upfront investment and flexible UX
-
-**Why Payment Links Over Checkout Sessions:**
-- Player selects pack amount on mobile (matches desired UX flow)
-- Single QR code per purchase (no pack pre-selection)
-- Stripe-hosted UI (no custom web page development)
-- Simple Price metadata extraction in webhooks
-- Can reuse Payment Links if needed (future optimization)
+**Why Checkout Sessions Over Payment Links:**
+- Payment Links purchase ALL line_items together (cannot do mutually exclusive selection)
+- Checkout Sessions allow SINGLE pre-selected pack
+- Simpler UX (player knows amount before scanning)
+- Each session has unique URL (proper single-use behavior)
 
 ---
 
@@ -1345,259 +953,102 @@ This plan:
 
 1. **Stripe Account Setup:**
    - Create Stripe account (test + production)
-   - Get API keys (secret key for backend)
-   - Set up webhook endpoint URL
-   - **Create 5 Stripe Prices with metadata:**
-     - $5 pack: `metadata = {"credits": "5", "bonus_credits": "0"}`
-     - $10 pack: `metadata = {"credits": "10", "bonus_credits": "0"}`
-     - $25 pack: `metadata = {"credits": "25", "bonus_credits": "3"}`
-     - $50 pack: `metadata = {"credits": "50", "bonus_credits": "10"}`
-     - $100 pack: `metadata = {"credits": "100", "bonus_credits": "25"}`
+   - Get API keys
+   - **Create 5 Stripe Prices with correct metadata** (use CLI commands above)
 
 2. **Environment Setup:**
-   - Add Stripe keys to backend `.env` (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`)
-   - Add `stripe` library to `pyproject.toml` (no QR code library needed for backend)
-   - Install Stripe CLI for local webhook testing: `brew install stripe/stripe-cli/stripe`
-   - Add QRCoder NuGet package to `BarBoxApp.csproj`: `dotnet add package QRCoder --version 1.6.0`
+   - Add Stripe keys to backend `.env`
+   - Add `stripe` library to `pyproject.toml`
+   - Install Stripe CLI: `brew install stripe/stripe-cli/stripe`
+   - Add QRCoder NuGet package to `BarBoxApp.csproj`
 
-3. **Phase 1 Kickoff (Backend - Weeks 1-2):**
-   - Create database migrations for payment tables (StripeWebhookEvent)
-   - Implement `get_or_create_lobby_session()` helper function
-   - Implement `/payments/link/create` endpoint (Payment Links with lazy session creation)
-   - Implement `/payments/webhook` endpoint (Price metadata extraction + idempotency)
-   - Write Hurl integration tests
+3. **Phase 1 Kickoff:**
+   - Create database migrations
+   - Implement `/payments/checkout/create` endpoint
+   - Implement `/payments/webhook` endpoint with all safety patterns
 
-4. **Bookkeeping Setup:**
-   - Create script to map `box_id` → `location_id` for accounting
-   - Example: `{"box-uuid-1": "Location A", "box-uuid-2": "Location B"}`
-   - Query `BoxSessionEvent` table for `credit/earn` events
-   - Extract `box_id` from event payload
-   - Generate financial reports grouped by location
-
-5. **Testing Plan:**
-   - Local: Use Stripe CLI to forward webhooks
-   - Test pack selection on mobile (all 5 packs visible)
+4. **Testing Plan:**
+   - Use Stripe CLI to forward webhooks
    - Test with real iPhone (Apple Pay)
    - Test with real Android phone (Google Pay)
-   - Validate QR codes display correctly on arcade screen
-   - Verify lazy session creation works (no pre-creation needed)
+   - Validate correct credit amounts (5,000 / 10,000 / 28,000 / 60,000 / 125,000)
 
 ---
 
-## Appendix A: Why QR Code Instead of Hardware Readers
+## Appendix A: Why Checkout Sessions Over Payment Links
 
-### Research Summary
+### The Problem with Payment Links
 
-Extensive research was conducted on payment terminal options for desktop/arcade integration:
+**Payment Links with multiple line_items purchase ALL items together:**
 
-**Options Evaluated:**
-1. **Stripe Reader M2** ($59) - Mobile-only SDK, requires Android/iOS companion device
-2. **Stripe Reader S700** ($349) - Server-driven desktop integration
-3. **Generic USB EMV readers** ($50-150) - Complex SDK integration, high PCI compliance burden
-4. **QR Code + Checkout Sessions** ($0 hardware) - Simple Stripe API
+```python
+# FUNDAMENTALLY BROKEN - charges $190 for ALL packs!
+payment_link = stripe.PaymentLink.create(
+    line_items=[
+        {"price": price_5, "quantity": 1},
+        {"price": price_10, "quantity": 1},
+        {"price": price_25, "quantity": 1},
+        {"price": price_50, "quantity": 1},
+        {"price": price_100, "quantity": 1},
+    ],
+)
+# Customer would be charged $5 + $10 + $25 + $50 + $100 = $190!
+```
 
-**Why Hardware Readers Were Rejected:**
+**Stripe Payment Links do NOT support mutually exclusive product selection.** All `line_items` are purchased together.
 
-1. **M2 Reader (Original Plan):**
-   - ❌ NO desktop SDK - iOS/Android/React Native only
-   - ❌ Requires companion Android tablet ($150) + complex local network setup
-   - ❌ Two devices to manage per location (M2 + tablet)
-   - ❌ Development time: 4-6 weeks
+### The Solution: Checkout Sessions
 
-2. **S700 Smart Reader:**
-   - ✅ Desktop compatible (server-driven)
-   - ❌ $349 per reader ($1,745 for 5 locations)
-   - ❌ Hardware deployment, maintenance, firmware updates
-   - ⚠️ Only saves $0.30 per transaction vs QR code
+```python
+# CORRECT - single pack, selected in-game
+checkout_session = stripe.checkout.Session.create(
+    line_items=[
+        {"price": selected_pack_price_id, "quantity": 1},  # SINGLE pack
+    ],
+    mode="payment",
+    metadata={"pack_id": "pack_25", ...},
+)
+```
 
-3. **Generic USB Readers:**
-   - ✅ Cheapest hardware ($50-150)
-   - ❌ Complex SDK integration
-   - ❌ PCI SAQ-D (most complex compliance)
-   - ❌ Development time: 6+ weeks
-
-**Why QR Code Won:**
-
-| Criteria | QR Code | Best Hardware Alternative (S700) |
-|----------|---------|----------------------------------|
-| **Upfront Cost** | $0 | $1,745 (5 locations) |
-| **Development Time** | 3 weeks | 2-3 weeks + hardware logistics |
-| **Deployment Complexity** | Zero | Hardware setup at each location |
-| **Maintenance** | Zero | Reader charging, updates, troubleshooting |
-| **Transaction Fees** | 2.9% + $0.30 | 2.7% + $0.05 |
-| **Annual Fee Difference** | +$3,600/year | Baseline |
-| **Risk** | LOW | LOW-MEDIUM |
-
-**Decision:** Accept $3,600/year higher fees to save $1,745 upfront + eliminate hardware complexity + ship 3 weeks faster.
-
-**Future Flexibility:** Can add S700 readers later as secondary payment method if QR code UX proves insufficient.
+**Benefits:**
+- Pack selected in BuyCreditsModal (existing UI)
+- Single line_item per session
+- Player knows exact amount before scanning
+- Unique URL per session (proper single-use)
 
 ---
 
 ## Appendix B: Architecture Review Findings
 
-### Critical Issues Identified
-1. **Event Sourcing Integrity** - Webhooks must emit events, never mutate credit tables
-2. **Lazy Session Creation** - Backend creates lobby sessions on-demand (get_or_create pattern)
-3. **Race Conditions** - Must poll balance, not intermediate payment status
-4. **Cache Invalidation** - Must force refresh CreditService after payment
-5. **Location Tracking** - Use box_id in metadata, map to locations via bookkeeping scripts
+### Critical Issues Addressed
+1. **Payment Links API Limitation** - Cannot do mutually exclusive selection → Use Checkout Sessions
+2. **Credit Conversion** - 1:1 was wrong → Corrected to 1,000:1
+3. **Webhook line_items** - Not auto-expanded → Explicit Session.retrieve()
+4. **Idempotency race condition** - Record webhook FIRST, then emit event
+5. **Operation order** - Database constraint prevents duplicate credits
 
-### Architectural Principles Validated
-- Single credit source (credit/earn events only)
-- Synchronous balance polling with exponential backoff for UX
-- Webhook idempotency for safety (StripeWebhookEvent table)
-- No dual credit paths
-- Session FK constraint requires session existence
-
-### Security Requirements
-- Webhook signature verification (REQUIRED)
-- Box + Player authentication
-- box_id validation (authenticated box)
-- API key management (backend only)
+### Validated Patterns
+- Event sourcing integrity (credit/earn events only)
+- Lazy session creation (get_or_create pattern)
+- Balance polling with exponential backoff
+- QR code caching with proper cleanup
 
 ---
 
-## Appendix C: QRCoder Library Selection & Performance
+## Appendix C: QRCoder Library & Performance
 
-### Why QRCoder Was Chosen
+### Why QRCoder
+- Zero network latency (client-side generation)
+- Cross-platform compatible
+- Fast caching for retries
 
-After evaluating multiple QR code generation approaches, **QRCoder (client-side C# library)** was selected over backend generation and other alternatives.
+### Performance Targets
+- First generation: < 20ms
+- Cache hit: < 1ms
+- Memory: ~200KB per entry, 50 entry max (~10MB)
 
-### Options Evaluated
-
-| Approach | Pros | Cons | Decision |
-|----------|------|------|----------|
-| **QRCoder (C#)** | ✅ Zero network latency<br>✅ Cross-platform<br>✅ Lightweight<br>✅ Fast caching | ⚠️ Client-side dependency | **SELECTED** |
-| **Backend Generation** | ✅ No client dependency | ❌ +15-50ms network latency<br>❌ Backend complexity<br>❌ No offline resilience | Rejected |
-| **Godot QR Addon** | ✅ Native Godot integration | ❌ Limited ecosystem<br>❌ Maintenance concerns | Not needed |
-
-### Performance Comparison
-
-**QRCoder Client-Side:**
-- First generation: 5-15ms (QRCodeData + PNG rendering)
-- Cache hit: ~0.1ms (dictionary lookup)
-- Total latency: 5-15ms (no network)
-
-**Backend Generation (Rejected):**
-- QR generation: 5-15ms (server-side)
-- Network round-trip: 15-50ms (local network)
-- Total latency: 20-65ms (33-77% slower)
-
-**Winner:** QRCoder (client-side) is 33-77% faster due to zero network latency.
-
-### Cross-Platform Compatibility
-
-QRCoder targets .NET Standard 1.3+, making it compatible with:
-- ✅ Godot Mono runtime (Windows, macOS, Linux)
-- ✅ All Godot export targets (desktop, mobile, web via WASM)
-- ✅ No platform-specific dependencies (uses `PngByteQRCode` renderer)
-
-**Avoided:** Windows-only renderers (`QRCode`, `ArtQRCode`) to maintain cross-platform support.
-
-### Error Correction Level Selection
-
-**Selected: ECCLevel.M (Medium - 15% recovery)**
-
-| Level | Recovery | QR Density | Use Case | Selected? |
-|-------|----------|------------|----------|-----------|
-| L (Low) | 7% | Smallest | Pristine conditions only | ❌ |
-| **M (Medium)** | **15%** | **Balanced** | **Digital displays** | **✅** |
-| Q (Quartile) | 25% | Larger | Outdoor/printed materials | ❌ |
-| H (High) | 30% | Largest | Physical damage risk | ❌ |
-
-**Why Medium:**
-- ✅ Handles minor screen glare/reflections
-- ✅ Smaller QR code size (easier to fit on UI)
-- ✅ Fast scanning with modern phone cameras
-- ❌ Level H unnecessary for digital displays (no physical damage)
-
-### Memory & Resource Management
-
-**Cache Strategy:**
-```
-URL-based cache: Payment Link URL → (QRCodeData, Texture2D, Timestamp)
-- Max size: 50 entries (~10MB memory)
-- Eviction: LRU (Least Recently Used)
-- Cleanup: Eager (after payment success/timeout)
-```
-
-**Memory Footprint:**
-- Per entry: ~200KB (400x400px PNG texture @ 20px/module)
-- Max usage: ~10MB (50 cached entries)
-- Disposal: Proper cleanup in `_ExitTree()` to prevent leaks
-
-**Performance Targets:**
-- ✅ First generation: < 20ms
-- ✅ Cache hit: < 1ms
-- ✅ 100 concurrent generations: No frame drops
-- ✅ 100+ payment attempts: No memory leaks
-
-### Integration Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ StripePaymentLinkService                                │
-│ - Request Payment Link (backend)                        │
-│ - Call QRCodeCache.GetOrCreateQRCode(url, sessionId)   │
-│ - Display QR texture on BuyCreditsModal                 │
-│ - Poll for balance increase (180s timeout)              │
-│ - Clear cache on success/timeout                        │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│ QRCodeCache (Autoload Service)                          │
-│ - Two-tier cache: QRCodeData + Texture2D                │
-│ - LRU eviction at 50 entries                            │
-│ - Eager cleanup after payment                           │
-│ - Periodic expiration (optional 30min TTL)              │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│ QRCoder Library (NuGet)                                 │
-│ - QRCodeGenerator.CreateQrCode(url, ECCLevel.M)        │
-│ - PngByteQRCode.GetGraphic(20px/module)                │
-│ - Cross-platform PNG byte array output                  │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Caching Effectiveness
-
-**Expected Cache Hit Rate:**
-- **99% hit rate** on retries/timeouts (same Payment Link URL)
-- **0% hit rate** on new purchases (unique Payment Link per request)
-- **Memory savings:** ~180MB avoided over 100 retries (vs 200KB with cache)
-
-**Cache Invalidation Scenarios:**
-1. ✅ **Success** - Clear immediately after payment completes
-2. ✅ **Timeout** - Clear after 180s (allows retry with fresh link)
-3. ✅ **LRU eviction** - Remove oldest when cache reaches 50 entries
-4. ✅ **Periodic cleanup** - Optional background task (30min TTL)
-
-### Testing & Validation
-
-**Performance Benchmarks:**
-- Measure QR generation time (baseline: 5-15ms)
-- Measure cache hit time (baseline: ~0.1ms)
-- Stress test: 100 concurrent generations (no frame drops)
-- Memory test: 50+ cached entries (~10MB max)
-
-**Visual Scanability:**
-- 20px/module = scannable from 1-3 feet at 1080p
-- Test with iPhone (native camera + 3rd party apps)
-- Test with Android (Google Lens, native camera)
-- Verify clarity on 1080p and 4K displays
-
-### Future Optimizations
-
-**Potential Enhancements (Not Needed Now):**
-- [ ] Pre-generate QR codes for common pack amounts (premature optimization)
-- [ ] SVG rendering for scalable vector graphics (PNG sufficient for now)
-- [ ] Background cache warming (not needed with < 20ms generation)
-- [ ] Distributed cache across multiple boxes (over-engineering)
-
-**Current approach is optimal for BarBox requirements.**
-
-Ready to proceed with implementation! 🚀
+### Cache Strategy for Checkout Sessions
+- Each session has unique URL
+- ~0% hit rate on new purchases
+- ~99% hit rate on retries
+- Clear after each payment attempt
