@@ -5,18 +5,42 @@ using System.Threading.Tasks;
 namespace BarBox.Core.Autoloads;
 
 /// <summary>
-/// Payment service autoload for managing payment providers
-/// Handles provider selection and payment processing coordination
+/// Payment service autoload for managing payment providers.
+/// Handles provider selection and payment processing coordination.
+///
+/// Provider Selection:
+/// - Production: Always uses StripePaymentService
+/// - Development: Uses StripePaymentService when FORCE_STRIPE_PROVIDER=true,
+///   otherwise uses DebugPaymentService for instant purchases
 /// </summary>
 public partial class PaymentService : AutoloadBase
 {
+	/// <summary>
+	/// Toggle Stripe provider in development mode.
+	/// Set to 'true' to test real Stripe integration during development.
+	/// Set to 'false' to use DebugPaymentService for instant purchases (no QR code).
+	///
+	/// Hardcoded constant rationale: This is a compile-time developer setting,
+	/// not a runtime configuration. Changing payment providers at runtime
+	/// would require additional validation and could introduce bugs.
+	/// For production deployment, GameHost.IsProductionContext() ensures
+	/// Stripe is always used regardless of this setting.
+	/// </summary>
+	private const bool FORCE_STRIPE_PROVIDER = true;
+
 	public static PaymentService GetInstance()
 	{
 		return GetAutoload<PaymentService>();
 	}
 
 	private IPaymentService _currentProvider;
+	private StripePaymentService _stripeProvider;
 	private CreditService _creditService;
+
+	/// <summary>
+	/// Get the Stripe payment service for QR code events (null if not using Stripe)
+	/// </summary>
+	public StripePaymentService StripeService => _stripeProvider;
 
 	protected override void OnServiceInitialize()
 	{
@@ -89,27 +113,37 @@ public partial class PaymentService : AutoloadBase
 				return paymentResult;
 			}
 
-			// Add credits to user account via CreditService
-			var addResult = await _creditService.AddAsync(playerId, creditPack.Credits,
-				$"Credit purchase - Transaction: {paymentResult.TransactionId}");
-
-			if (addResult.IsFailure(out var addError))
+			// Stripe: Credits are added by backend webhook, StripePaymentService polls for balance change
+			// Debug: Credits need to be added manually here
+			if (!IsUsingStripe)
 			{
-				LogError($"CRITICAL: Failed to add credits for player {playerId} after successful payment {paymentResult.TransactionId}");
-				LogError($"Error: {addError.Message}");
-				LogError("This requires manual intervention for refund");
+				// Add credits to user account via CreditService (debug mode only)
+				var addResult = await _creditService.AddAsync(playerId, creditPack.TotalCredits,
+					$"Credit purchase - Transaction: {paymentResult.TransactionId}");
 
-				// TODO: In production, queue for automatic refund processing
-				return PaymentResult.Failure(
-					$"Payment processed but credit addition failed. Transaction ID: {paymentResult.TransactionId}. " +
-					$"Please contact support for resolution."
-				);
+				if (addResult.IsFailure(out var addError))
+				{
+					LogError($"CRITICAL: Failed to add credits for player {playerId} after successful payment {paymentResult.TransactionId}");
+					LogError($"Error: {addError.Message}");
+					LogError("This requires manual intervention for refund");
+
+					return PaymentResult.Failure(
+						$"Payment processed but credit addition failed. Transaction ID: {paymentResult.TransactionId}. " +
+						$"Please contact support for resolution."
+					);
+				}
+
+				if (addResult.IsSuccess(out var newBalance))
+				{
+					LogInfo($"Purchase completed for player {playerId}: {creditPack.TotalCredits} credits added, new balance: {newBalance} (Transaction: {paymentResult.TransactionId})");
+				}
+			}
+			else
+			{
+				// Stripe: Credits already added via webhook, just log completion
+				LogInfo($"Stripe purchase completed for player {playerId}: {creditPack.TotalCredits} credits (Transaction: {paymentResult.TransactionId})");
 			}
 
-			if (addResult.IsSuccess(out var newBalance))
-			{
-				LogInfo($"Purchase completed for player {playerId}: {creditPack.Credits} credits added, new balance: {newBalance} (Transaction: {paymentResult.TransactionId})");
-			}
 			return paymentResult;
 		}
 		catch (System.Exception ex)
@@ -159,15 +193,31 @@ public partial class PaymentService : AutoloadBase
 
 	private void InitializePaymentProvider()
 	{
-		// For now, always use debug provider
-		// In production, this would select based on configuration
-		var debugProvider = new DebugPaymentService();
-		_currentProvider = debugProvider;
-
-		LogInfo("Initialized with DebugPaymentService");
+		// Use Stripe in production, or when FORCE_STRIPE_PROVIDER is true
+		if (FORCE_STRIPE_PROVIDER || GameHost.IsProductionContext())
+		{
+			_stripeProvider = new StripePaymentService();
+			_currentProvider = _stripeProvider;
+			var mode = GameHost.IsProductionContext() ? "production" : "development (forced)";
+			LogInfo($"Initialized with StripePaymentService ({mode})");
+		}
+		else
+		{
+			_currentProvider = new DebugPaymentService();
+			LogInfo("Initialized with DebugPaymentService (development mode)");
+		}
 	}
+
+	/// <summary>
+	/// Check if using Stripe payment provider
+	/// </summary>
+	public bool IsUsingStripe => _stripeProvider != null && _currentProvider == _stripeProvider;
 
 	protected override void OnServiceDestroyed()
 	{
+		// Dispose Stripe provider if it was used
+		_stripeProvider?.Dispose();
+		_stripeProvider = null;
+		_currentProvider = null;
 	}
 }
