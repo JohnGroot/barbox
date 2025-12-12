@@ -40,7 +40,7 @@ public class PaymentServiceTests : BackendTestBase
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		_eventService.ShouldNotBeNull("EventService must be available");
 
-		var creditPack = new CreditPack(25, 25.00m);
+		var creditPack = CreditPack.CreateForTest(25, 25.00m);
 
 		// Create user session first
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -117,7 +117,7 @@ public class PaymentServiceTests : BackendTestBase
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		_eventService.ShouldNotBeNull("EventService must be available");
 
-		var creditPack = new CreditPack(10, 10.00m);
+		var creditPack = CreditPack.CreateForTest(10, 10.00m);
 
 		// Create user session
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -194,7 +194,7 @@ public class PaymentServiceTests : BackendTestBase
 	{
 		// Arrange
 		_paymentService.ShouldNotBeNull("PaymentService must be available");
-		var creditPack = new CreditPack(10, 10.00m);
+		var creditPack = CreditPack.CreateForTest(10, 10.00m);
 		var fakePhoneNumber = "9999999999"; // Phone number with no session
 
 		// Act
@@ -215,7 +215,7 @@ public class PaymentServiceTests : BackendTestBase
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		_eventService.ShouldNotBeNull("EventService must be available");
 
-		var smallPack = new CreditPack(5, 5.00m);
+		var smallPack = CreditPack.CreateForTest(5, 5.00m);
 
 		// Create user session
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -311,6 +311,119 @@ public class PaymentServiceTests : BackendTestBase
 		else
 		{
 			TestHelpers.LogTestInfo("✓ Service availability matches dependency state");
+		}
+	}
+
+	[Test]
+	public void CancelPayment_WhenNoPurchaseActive_DoesNotThrow()
+	{
+		// Arrange
+		_paymentService.ShouldNotBeNull("PaymentService must be available");
+		var stripeService = _paymentService.StripeService;
+
+		// Skip if not using Stripe provider
+		if (stripeService == null)
+		{
+			TestHelpers.LogTestInfo("Test skipped - StripePaymentService not active");
+			return;
+		}
+
+		// Act & Assert - Should not throw
+		try
+		{
+			stripeService.CancelPayment();
+			TestHelpers.LogTestInfo("✓ CancelPayment completed without throwing when no purchase active");
+		}
+		catch (Exception ex)
+		{
+			throw new Exception($"CancelPayment should not throw when no purchase active: {ex.Message}");
+		}
+	}
+
+	[Test]
+	public void StripeService_OnPollingErrorEvent_CanBeSubscribed()
+	{
+		// Arrange
+		_paymentService.ShouldNotBeNull("PaymentService must be available");
+		var stripeService = _paymentService.StripeService;
+
+		// Skip if not using Stripe provider
+		if (stripeService == null)
+		{
+			TestHelpers.LogTestInfo("Test skipped - StripePaymentService not active");
+			return;
+		}
+
+		// Act - Subscribe to event
+		stripeService.OnPollingError += (_) => { };
+
+		// Assert - Event should be subscribable without error
+		TestHelpers.LogTestInfo("✓ OnPollingError event subscription successful");
+
+		// Note: Event will fire during actual polling failures
+		// This test verifies the event can be subscribed to without error
+	}
+
+	[Test]
+	public async Task ConcurrentPurchase_WhileAnotherInProgress_ReturnsFalse()
+	{
+		// Arrange
+		_paymentService.ShouldNotBeNull("PaymentService must be available");
+		_sessionManager.ShouldNotBeNull("SessionManager must be available");
+		_eventService.ShouldNotBeNull("EventService must be available");
+
+		var stripeService = _paymentService.StripeService;
+
+		// Skip if not using Stripe provider
+		if (stripeService == null)
+		{
+			TestHelpers.LogTestInfo("Test skipped - StripePaymentService not active");
+			return;
+		}
+
+		var creditPack = CreditPack.CreateForTest(25, 25.00m);
+
+		// Create user session first
+		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
+		if (loginResult.IsFailure(out var loginError))
+		{
+			TestHelpers.LogTestInfo($"Test skipped - login failed: {loginError.Message}");
+			return;
+		}
+
+		try
+		{
+			if (!_eventService.IsReady)
+			{
+				TestHelpers.LogTestInfo("Test skipped - EventService not ready");
+				return;
+			}
+
+			var initialSession = _sessionManager.GetSessionByPhone(TestPlayerPhone);
+			var playerId = initialSession.PlayerId.ToString();
+
+			// Start first purchase (don't await - will block waiting for QR scan)
+			var firstTask = stripeService.ProcessPurchaseAsync(playerId, creditPack);
+
+			// Give first task a moment to start processing
+			await AutoloadBase.StaticDelayAsync(0.1f);
+
+			// Attempt second purchase while first is in progress
+			var secondResult = await stripeService.ProcessPurchaseAsync(playerId, creditPack);
+
+			// Assert - Second should fail due to concurrent purchase guard
+			secondResult.IsSuccess.ShouldBeFalse("Second concurrent purchase should be blocked");
+			secondResult.ErrorMessage.ShouldNotBeNull("Error message should be provided");
+			secondResult.ErrorMessage.ToLower().ShouldContain("already in progress");
+			TestHelpers.LogTestInfo($"✓ Concurrent purchase correctly blocked: {secondResult.ErrorMessage}");
+
+			// Cancel the first task
+			stripeService.CancelPayment();
+		}
+		finally
+		{
+			// Cleanup
+			await _sessionManager.LogoutUserAsync(TestPlayerPhone);
 		}
 	}
 

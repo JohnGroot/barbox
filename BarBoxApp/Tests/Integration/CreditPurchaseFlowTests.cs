@@ -52,7 +52,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 			return;
 		}
 
-		var creditPack = new CreditPack(25, 25.00m);
+		var creditPack = CreditPack.CreateForTest(25, 25.00m);
 		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 
 		// Get initial credits from CreditService (single source of truth)
@@ -108,7 +108,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 			return;
 		}
 
-		var creditPack = new CreditPack(10, 10.00m);
+		var creditPack = CreditPack.CreateForTest(10, 10.00m);
 
 		// Check backend state
 		var isBackendRunning = _backendManager?.IsBackendRunning() ?? false;
@@ -185,7 +185,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 			return;
 		}
 
-		var smallPack = new CreditPack(5, 5.00m);
+		var smallPack = CreditPack.CreateForTest(5, 5.00m);
 		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 
 		// Get initial credits from CreditService (single source of truth)
@@ -253,7 +253,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
 		if (loginResult.IsSuccess(out var _))
 		{
-			var creditPack = new CreditPack(10, 10.00m);
+			var creditPack = CreditPack.CreateForTest(10, 10.00m);
 			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
@@ -286,7 +286,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		}
 
 		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
-		var creditPack = new CreditPack(25, 25.00m);
+		var creditPack = CreditPack.CreateForTest(25, 25.00m);
 
 		// Get initial balance with forced refresh to ensure we have accurate starting point
 		var creditService = CreditService.GetInstance();

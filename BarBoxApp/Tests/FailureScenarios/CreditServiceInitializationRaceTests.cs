@@ -153,7 +153,7 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 		}
 
 		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
-		var creditPack = new CreditPack(25, 25.00m);
+		var creditPack = CreditPack.CreateForTest(25, 25.00m);
 
 		// Get initial credits from CreditService (single source of truth)
 		var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
