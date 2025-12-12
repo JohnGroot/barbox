@@ -16,6 +16,7 @@ dependencies = [
     "bcrypt>=5.0.0",
     "slowapi>=0.1.9",
     "phonenumbers>=8.13.0",
+    "stripe>=6.0.0",
 ]
 
 [build-system]

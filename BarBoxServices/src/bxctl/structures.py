@@ -224,3 +224,79 @@ class ValidationResult(BaseModel):
     """Result of validation check"""
     valid: bool
     errors: list[ValidationErrorDetail] = []
+
+
+# ============= STRIPE PAYMENT STRUCTURES =============
+
+class CheckoutSessionRequest(BaseModel):
+    """Request to create a Stripe Checkout Session for credit purchase."""
+    pack_id: str  # Credit pack identifier: pack_5, pack_10, pack_25, pack_50, pack_100
+
+
+class CheckoutSessionResponse(BaseModel):
+    """Response with Stripe Checkout Session details for QR code generation."""
+    session_id: str  # Stripe Checkout Session ID
+    session_url: str  # URL to redirect/display as QR code
+
+
+class StripePriceMetadata(BaseModel):
+    """Type-safe validation for Stripe Price metadata.
+
+    Stripe Prices store credits and bonus_credits in metadata as strings.
+    This model validates and parses them safely.
+    """
+    credits: int = Field(gt=0, description="Base credits (must be positive)")
+    bonus_credits: int = Field(ge=0, default=0, description="Bonus credits (default 0)")
+
+    @classmethod
+    def from_stripe_metadata(cls, metadata: dict[str, str] | None) -> "StripePriceMetadata":
+        """Parse Stripe metadata dict into validated model.
+
+        Args:
+            metadata: Stripe Price.metadata dict (string values)
+
+        Raises:
+            ValueError: If credits is missing or not a positive integer
+        """
+        if not metadata or "credits" not in metadata:
+            raise ValueError("Price metadata missing required 'credits' field")
+
+        return cls(
+            credits=int(metadata["credits"]),
+            bonus_credits=int(metadata.get("bonus_credits", "0")),
+        )
+
+
+class PaymentMismatch(BaseModel):
+    """A payment record that may have issues."""
+    payment_id: UUID
+    stripe_session_id: str
+    player_id: UUID
+    box_id: UUID
+    amount_cents: int
+    credits_purchased: int
+    status: str
+    credit_event_id: UUID | None
+    created_at: Annotated[
+        datetime,
+        PlainSerializer(lambda v: v.isoformat()),
+    ]
+
+
+class ReconciliationReport(BaseModel):
+    """Report of payment/credit mismatches for admin review."""
+    payments_without_credits: list[PaymentMismatch]  # Payment succeeded but no credit event
+    orphan_credit_events: list[dict[str, Any]]  # Credit events without payment record
+    total_missing_credits: int  # Sum of credits that should have been issued
+    report_generated_at: Annotated[
+        datetime,
+        PlainSerializer(lambda v: v.isoformat()),
+    ]
+
+
+class RetryResult(BaseModel):
+    """Result of manually retrying credit issuance for a payment."""
+    success: bool
+    credits_issued: int
+    payment_intent_id: UUID
+    error: str | None = None
