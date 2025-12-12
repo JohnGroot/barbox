@@ -12,19 +12,9 @@ public class DebugPaymentService : IPaymentService
 {
 	private const string TXN_PREFIX = "DEBUG_TXN";
 
-	private static readonly CreditPack[] _availablePacks =
-	[
-		new CreditPack(1000, 1.00m),
-		new CreditPack(5000, 5.00m),
-		new CreditPack(10000, 10.00m),
-		new CreditPack(25000, 25.00m),
-		new CreditPack(50000, 50.00m),
-		new CreditPack(100000, 100.00m)
-	];
-
 	public CreditPack[] GetAvailableCreditPacks()
 	{
-		return _availablePacks;
+		return CreditPack.AvailablePacks;
 	}
 
 	public async Task<PaymentResult> ProcessPurchaseAsync(string userId, CreditPack creditPack)

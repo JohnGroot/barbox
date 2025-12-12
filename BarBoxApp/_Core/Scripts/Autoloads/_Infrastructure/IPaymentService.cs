@@ -5,11 +5,43 @@ namespace BarBox.Core.Autoloads;
 /// <summary>
 /// Credit pack options for purchase
 /// </summary>
-public struct CreditPack(int credits, decimal price)
+public struct CreditPack
 {
-	public int Credits { get; init; } = credits;
-	public decimal Price { get; init; } = price;
-	public string DisplayName { get; init; } = $"{credits:N0} Credits - ${price:F2}";
+	public string PackId { get; init; }
+	public int Credits { get; init; }
+	public int BonusCredits { get; init; }
+	public decimal Price { get; init; }
+	public int TotalCredits => Credits + BonusCredits;
+
+	public string DisplayName => BonusCredits > 0
+		? $"{Credits:N0} + {BonusCredits:N0} Bonus Credits - ${Price:F2}"
+		: $"{Credits:N0} Credits - ${Price:F2}";
+
+	/// <summary>
+	/// Available credit packs matching backend CREDIT_PACKS configuration
+	/// </summary>
+	public static readonly CreditPack[] AvailablePacks =
+	[
+		new() { PackId = "pack_5", Credits = 5000, BonusCredits = 0, Price = 5.00m },
+		new() { PackId = "pack_10", Credits = 10000, BonusCredits = 0, Price = 10.00m },
+		new() { PackId = "pack_25", Credits = 25000, BonusCredits = 3000, Price = 25.00m },
+		new() { PackId = "pack_50", Credits = 50000, BonusCredits = 10000, Price = 50.00m },
+		new() { PackId = "pack_100", Credits = 100000, BonusCredits = 25000, Price = 100.00m },
+	];
+
+	/// <summary>
+	/// Create a credit pack for testing purposes (allows custom values)
+	/// </summary>
+	public static CreditPack CreateForTest(int credits, decimal price)
+	{
+		return new CreditPack
+		{
+			PackId = $"test_{credits}",
+			Credits = credits,
+			BonusCredits = 0,
+			Price = price
+		};
+	}
 }
 
 /// <summary>
