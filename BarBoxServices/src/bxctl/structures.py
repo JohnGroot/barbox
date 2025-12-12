@@ -229,12 +229,18 @@ class ValidationResult(BaseModel):
 # ============= STRIPE PAYMENT STRUCTURES =============
 
 class CheckoutSessionRequest(BaseModel):
-    """Request to create a Stripe Checkout Session for credit purchase."""
+    """Request to create a Stripe Checkout Session for credit purchase.
+
+    Stripe API: https://docs.stripe.com/api/checkout/sessions/create
+    """
     pack_id: str  # Credit pack identifier: pack_5, pack_10, pack_25, pack_50, pack_100
 
 
 class CheckoutSessionResponse(BaseModel):
-    """Response with Stripe Checkout Session details for QR code generation."""
+    """Response with Stripe Checkout Session details for QR code generation.
+
+    Stripe API: https://docs.stripe.com/api/checkout/sessions/object
+    """
     session_id: str  # Stripe Checkout Session ID
     session_url: str  # URL to redirect/display as QR code
 
@@ -244,6 +250,8 @@ class StripePriceMetadata(BaseModel):
 
     Stripe Prices store credits and bonus_credits in metadata as strings.
     This model validates and parses them safely.
+
+    Stripe API: https://docs.stripe.com/api/prices/object#price_object-metadata
     """
     credits: int = Field(gt=0, description="Base credits (must be positive)")
     bonus_credits: int = Field(ge=0, default=0, description="Bonus credits (default 0)")

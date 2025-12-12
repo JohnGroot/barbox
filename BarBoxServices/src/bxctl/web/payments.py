@@ -7,6 +7,11 @@ SDK Patterns (Modern):
 - Uses StripeClient class instead of module-level stripe.api_key
 - Wraps sync Stripe calls with asyncio.to_thread() for non-blocking async
 - Specific error handling for different Stripe error types
+
+Stripe API References:
+- Checkout Sessions: https://docs.stripe.com/api/checkout/sessions
+- Webhooks: https://docs.stripe.com/webhooks
+- Error Handling: https://docs.stripe.com/error-handling
 """
 
 import asyncio
@@ -137,6 +142,8 @@ async def create_checkout_session(
 	authenticated_player: dependencies.AuthenticatedPlayer,
 ) -> structures.CheckoutSessionResponse:
 	"""Create Stripe Checkout Session for a specific credit pack.
+
+	Stripe API: https://docs.stripe.com/api/checkout/sessions/create
 
 	Player has already selected the pack in BuyCreditsModal.
 
@@ -292,6 +299,11 @@ async def stripe_webhook(
 ) -> dict:
 	"""Handle Stripe webhooks for Checkout Session completions.
 
+	Stripe API References:
+	- Webhook Events: https://docs.stripe.com/api/events
+	- Signature Verification: https://docs.stripe.com/webhooks/signatures
+	- checkout.session.completed: https://docs.stripe.com/api/events/types#event_types-checkout.session.completed
+
 	CRITICAL SAFETY PATTERNS:
 	1. Signature verification (with explicit 5-minute tolerance)
 	2. Atomic idempotency (INSERT ON CONFLICT - prevents race conditions)
@@ -344,6 +356,9 @@ async def stripe_webhook(
 	session_data = event.data.object
 
 	# 2. Retrieve line items OUTSIDE transaction (network I/O)
+	# Stripe API: https://docs.stripe.com/api/checkout/sessions/retrieve
+	# NOTE: line_items are NOT included in webhook payload - explicit retrieval required
+	# See: https://docs.stripe.com/api/checkout/sessions/line_items
 	# Use asyncio.to_thread to avoid blocking the async event loop
 	try:
 		stripe_client = _get_stripe_client()

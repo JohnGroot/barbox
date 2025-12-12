@@ -20,10 +20,13 @@ public struct StripePaymentData
 ///
 /// Flow:
 /// 1. Create Checkout Session via backend
-/// 2. Generate QR code for session URL
+/// 2. Generate QR code for session URL (using ZXing library)
 /// 3. Display QR code for mobile payment
 /// 4. Poll for balance increase (1s intervals)
 /// 5. Return success when credits appear
+///
+/// Stripe Checkout: https://docs.stripe.com/payments/checkout
+/// How Checkout Works: https://docs.stripe.com/payments/checkout/how-checkout-works
 ///
 /// Implements IDisposable for proper CancellationTokenSource cleanup.
 /// </summary>
@@ -33,6 +36,8 @@ public class StripePaymentService : IPaymentService, IDisposable
 	private const float MAX_POLL_INTERVAL = 3.0f;
 	private const float POLL_TIMEOUT = 120.0f;
 
+	// Stripe Checkout Session URLs always start with this domain
+	// See: https://docs.stripe.com/payments/checkout/how-checkout-works
 	private const string STRIPE_CHECKOUT_DOMAIN = "https://checkout.stripe.com/";
 
 	private readonly QRCodeCache _qrCache = new();
