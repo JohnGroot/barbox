@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 /// <summary>
 /// Modal dialog for purchasing credit packs
 /// Provides credit pack selection and purchase confirmation functionality
-/// Supports QR code display for Stripe mobile payments
+/// Supports QR code display for payment URLs (Stripe mobile payments)
 /// </summary>
 public partial class BuyCreditsModal : Control
 {
@@ -53,13 +53,13 @@ public partial class BuyCreditsModal : Control
 	private Label _timeoutMessageLabel;
 	private Button _qrCancelButton;
 	private bool _showingQRCode;
-	private ulong _qrViewStartTime;
 	private string _currentUsername;
 	private int _currentBalance;
 
 	private PaymentService _paymentService;
 	private SessionManager _sessionManager;
 	private CreditService _creditService;
+	private QRCodeCache _qrCache;
 	private string _targetPhoneNumber;
 	private CreditPack _pendingPurchasePack;
 
@@ -68,6 +68,7 @@ public partial class BuyCreditsModal : Control
 		_paymentService = PaymentService.GetInstance();
 		_sessionManager = SessionManager.GetInstance();
 		_creditService = CreditService.GetInstance();
+		_qrCache = new QRCodeCache();
 
 		SetupModalLayout();
 		CreateModalUI();
@@ -80,12 +81,7 @@ public partial class BuyCreditsModal : Control
 
 	public override void _Process(double delta)
 	{
-		if (!_showingQRCode || _timeoutProgressBar == null)
-			return;
-
-		var elapsedSeconds = (Time.GetTicksMsec() - _qrViewStartTime) / 1000.0f;
-		var remainingSeconds = POLL_TIMEOUT - elapsedSeconds;
-		_timeoutProgressBar.Value = Math.Max(0, remainingSeconds);
+		// Progress bar is now updated via OnProgressUpdate event
 	}
 
 	private void SetupModalLayout()
@@ -303,34 +299,55 @@ public partial class BuyCreditsModal : Control
 		if (_closeButton != null)
 			_closeButton.Pressed += OnClosePressed;
 
-		// Connect to Stripe events if available
-		ConnectStripeEvents();
+		// Connect to PaymentService generic events
+		ConnectPaymentEvents();
 	}
 
-	private void ConnectStripeEvents()
+	private void ConnectPaymentEvents()
 	{
-		if (_paymentService?.StripeService == null)
+		if (_paymentService == null)
 			return;
 
-		_paymentService.StripeService.OnQRCodeReady += OnStripeQRCodeReady;
-		_paymentService.StripeService.OnPaymentTimeout += OnStripePaymentTimeout;
+		_paymentService.OnPaymentUrlReady += OnPaymentUrlReady;
+		_paymentService.OnProgressUpdate += OnPaymentProgressUpdate;
+		_paymentService.OnPaymentTimeout += OnPaymentTimeout;
 	}
 
-	private void DisconnectStripeEvents()
+	private void DisconnectPaymentEvents()
 	{
-		if (_paymentService?.StripeService == null)
+		if (_paymentService == null)
 			return;
 
-		_paymentService.StripeService.OnQRCodeReady -= OnStripeQRCodeReady;
-		_paymentService.StripeService.OnPaymentTimeout -= OnStripePaymentTimeout;
+		_paymentService.OnPaymentUrlReady -= OnPaymentUrlReady;
+		_paymentService.OnProgressUpdate -= OnPaymentProgressUpdate;
+		_paymentService.OnPaymentTimeout -= OnPaymentTimeout;
 	}
 
-	private void OnStripeQRCodeReady(StripePaymentData data)
+	private void OnPaymentUrlReady(string paymentUrl)
 	{
-		CallDeferred(nameof(ShowQRCodeViewDeferred), data.QRCodeTexture, (float)_pendingPurchasePack.Price);
+		// Generate QR code from URL using cache
+		var qrTexture = _qrCache.GetOrCreateQRCode(paymentUrl);
+		if (qrTexture != null)
+		{
+			CallDeferred(nameof(ShowQRCodeViewDeferred), qrTexture, (float)_pendingPurchasePack.Price);
+		}
 	}
 
-	private void OnStripePaymentTimeout()
+	private void OnPaymentProgressUpdate(float secondsRemaining)
+	{
+		// Update progress bar via deferred call for thread safety
+		CallDeferred(nameof(UpdateProgressBarDeferred), secondsRemaining);
+	}
+
+	private void UpdateProgressBarDeferred(float secondsRemaining)
+	{
+		if (_timeoutProgressBar != null && _showingQRCode)
+		{
+			_timeoutProgressBar.Value = Math.Max(0, secondsRemaining);
+		}
+	}
+
+	private void OnPaymentTimeout()
 	{
 		CallDeferred(nameof(OnPaymentTimedOutDeferred));
 	}
@@ -349,7 +366,6 @@ public partial class BuyCreditsModal : Control
 	private void ShowQRCodeView(ImageTexture qrTexture, decimal price)
 	{
 		_showingQRCode = true;
-		_qrViewStartTime = Time.GetTicksMsec();
 		_contentContainer.Visible = false;
 		_qrContainer.Visible = true;
 
@@ -413,7 +429,7 @@ public partial class BuyCreditsModal : Control
 
 	private void OnQRCancelPressed()
 	{
-		_paymentService?.StripeService?.CancelPayment();
+		_paymentService?.CancelPayment();
 		HideQRCodeView();
 		ClearStatusMessage();
 	}
@@ -470,7 +486,7 @@ public partial class BuyCreditsModal : Control
 		// Cancel payment and hide QR view if showing
 		if (_showingQRCode)
 		{
-			_paymentService?.StripeService?.CancelPayment();
+			_paymentService?.CancelPayment();
 			HideQRCodeView();
 		}
 
@@ -531,7 +547,7 @@ public partial class BuyCreditsModal : Control
 			return;
 		}
 
-		// Store pending pack for Stripe QR code events
+		// Store pending pack for QR code display
 		_pendingPurchasePack = creditPack;
 
 		var confirmMessage = string.Format(PURCHASE_CONFIRMATION_FORMAT, creditPack.DisplayName);
@@ -540,15 +556,7 @@ public partial class BuyCreditsModal : Control
 		if (!confirmed)
 			return;
 
-		// Ensure Stripe events connected just-in-time (PaymentService fully initialized by now)
-		if (_paymentService.IsUsingStripe)
-		{
-			DisconnectStripeEvents();
-			ConnectStripeEvents();
-		}
-
-		// For Stripe: QR code view will be shown via OnStripeQRCodeReady event
-		// For Debug: Show processing message immediately
+		// For providers without URL (debug mode): Show processing message immediately
 		if (!_paymentService.IsUsingStripe)
 		{
 			ShowStatusMessage(PROCESSING_PURCHASE, true);
@@ -631,8 +639,8 @@ public partial class BuyCreditsModal : Control
 
 	public override void _ExitTree()
 	{
-		// Disconnect Stripe events
-		DisconnectStripeEvents();
+		// Disconnect PaymentService events
+		DisconnectPaymentEvents();
 
 		// Disconnect UI signals
 		if (IsInstanceValid(_closeButton))
@@ -640,6 +648,9 @@ public partial class BuyCreditsModal : Control
 
 		if (IsInstanceValid(_qrCancelButton))
 			_qrCancelButton.Pressed -= OnQRCancelPressed;
+
+		// Cleanup QR cache
+		_qrCache?.ClearCache();
 
 		base._ExitTree();
 	}

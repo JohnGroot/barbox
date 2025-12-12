@@ -1,4 +1,7 @@
+using System;
+using System.Threading;
 using System.Threading.Tasks;
+using LightResults;
 
 namespace BarBox.Core.Autoloads;
 
@@ -78,8 +81,23 @@ public struct PaymentResult
 }
 
 /// <summary>
-/// Interface for payment processing services
-/// Prepares for future integration with payment APIs while providing debug implementation
+/// Result of initiating a payment - may or may not require user action.
+/// If PaymentUrl is null, the payment completes immediately (e.g., debug mode).
+/// If PaymentUrl is set, the user must complete payment via the URL (e.g., Stripe checkout).
+/// </summary>
+public struct PaymentCheckout
+{
+	public string SessionId { get; init; }
+	public string PaymentUrl { get; init; }
+	public bool RequiresUserAction => !string.IsNullOrEmpty(PaymentUrl);
+	public CreditPack CreditPack { get; init; }
+	public DateTime CreatedAtUtc { get; init; }
+}
+
+/// <summary>
+/// Interface for payment processing services.
+/// Uses a two-phase approach: InitiatePaymentAsync creates the payment session,
+/// AwaitPaymentCompletionAsync waits for user action (if required).
 /// </summary>
 public interface IPaymentService
 {
@@ -89,12 +107,32 @@ public interface IPaymentService
 	CreditPack[] GetAvailableCreditPacks();
 
 	/// <summary>
-	/// Process a credit pack purchase
+	/// Phase 1: Initiate a payment. Returns checkout info.
+	/// If PaymentUrl is null, payment completes immediately (no user action needed).
 	/// </summary>
 	/// <param name="userId">User making the purchase</param>
 	/// <param name="creditPack">Credit pack to purchase</param>
-	/// <returns>Payment result with transaction details</returns>
-	Task<PaymentResult> ProcessPurchaseAsync(string userId, CreditPack creditPack);
+	/// <returns>Checkout info with optional payment URL</returns>
+	Task<Result<PaymentCheckout>> InitiatePaymentAsync(string userId, CreditPack creditPack);
+
+	/// <summary>
+	/// Phase 2: Wait for payment completion.
+	/// Only call if PaymentCheckout.RequiresUserAction is true.
+	/// If called when RequiresUserAction is false, returns immediate success.
+	/// </summary>
+	/// <param name="checkout">Checkout from InitiatePaymentAsync</param>
+	/// <param name="cancellationToken">Token to cancel the wait</param>
+	/// <param name="onProgressUpdate">Optional callback for progress updates (seconds remaining)</param>
+	/// <returns>Final payment result</returns>
+	Task<PaymentResult> AwaitPaymentCompletionAsync(
+		PaymentCheckout checkout,
+		CancellationToken cancellationToken,
+		Action<float> onProgressUpdate = null);
+
+	/// <summary>
+	/// Cancel any in-progress payment operation
+	/// </summary>
+	void CancelPayment();
 
 	/// <summary>
 	/// Validate if a payment service is available and ready
