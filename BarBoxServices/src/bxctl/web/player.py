@@ -496,7 +496,10 @@ async def get_player_credits(
     JOIN box_session bs ON bse.session_id = bs.id
     WHERE bs.host_player_id = :player_id
     AND bse.type IN ('credit/earn', 'credit/spend')
-    AND json_extract(bse.payload, '$.location_id') = :location_id
+    AND (
+        json_extract(bse.payload, '$.location_id') = :location_id
+        OR json_extract(bse.payload, '$.global') = 1
+    )
     """
 
     result = await db_service.get_many_raw(sql, {
