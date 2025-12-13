@@ -40,7 +40,7 @@ public class PaymentServiceTests : BackendTestBase
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		_eventService.ShouldNotBeNull("EventService must be available");
 
-		var creditPack = new CreditPack(25, 25.00m);
+		var creditPack = CreditPack.CreateForTest(25, 25.00m);
 
 		// Create user session first
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -117,7 +117,7 @@ public class PaymentServiceTests : BackendTestBase
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		_eventService.ShouldNotBeNull("EventService must be available");
 
-		var creditPack = new CreditPack(10, 10.00m);
+		var creditPack = CreditPack.CreateForTest(10, 10.00m);
 
 		// Create user session
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -194,7 +194,7 @@ public class PaymentServiceTests : BackendTestBase
 	{
 		// Arrange
 		_paymentService.ShouldNotBeNull("PaymentService must be available");
-		var creditPack = new CreditPack(10, 10.00m);
+		var creditPack = CreditPack.CreateForTest(10, 10.00m);
 		var fakePhoneNumber = "9999999999"; // Phone number with no session
 
 		// Act
@@ -215,7 +215,7 @@ public class PaymentServiceTests : BackendTestBase
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		_eventService.ShouldNotBeNull("EventService must be available");
 
-		var smallPack = new CreditPack(5, 5.00m);
+		var smallPack = CreditPack.CreateForTest(5, 5.00m);
 
 		// Create user session
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -311,6 +311,67 @@ public class PaymentServiceTests : BackendTestBase
 		else
 		{
 			TestHelpers.LogTestInfo("✓ Service availability matches dependency state");
+		}
+	}
+
+	[Test]
+	public void CancelPayment_WhenNoPurchaseActive_DoesNotThrow()
+	{
+		// Arrange
+		_paymentService.ShouldNotBeNull("PaymentService must be available");
+
+		// Act & Assert - Should not throw
+		try
+		{
+			_paymentService.CancelPayment();
+			TestHelpers.LogTestInfo("✓ CancelPayment completed without throwing when no purchase active");
+		}
+		catch (Exception ex)
+		{
+			throw new Exception($"CancelPayment should not throw when no purchase active: {ex.Message}");
+		}
+	}
+
+	[Test]
+	public void PaymentService_EventsCanBeSubscribed()
+	{
+		// Arrange
+		_paymentService.ShouldNotBeNull("PaymentService must be available");
+
+		// Act - Subscribe to events
+		_paymentService.OnPaymentUrlReady += (_) => { };
+		_paymentService.OnProgressUpdate += (_) => { };
+		_paymentService.OnPaymentTimeout += () => { };
+
+		// Assert - Events should be subscribable without error
+		TestHelpers.LogTestInfo("✓ PaymentService events subscription successful");
+
+		// Cleanup - Unsubscribe
+		_paymentService.OnPaymentUrlReady -= (_) => { };
+		_paymentService.OnProgressUpdate -= (_) => { };
+		_paymentService.OnPaymentTimeout -= () => { };
+	}
+
+	[Test]
+	public void RequiresUserActionForPayments_ReflectsProviderBehavior()
+	{
+		// Arrange
+		_paymentService.ShouldNotBeNull("PaymentService must be available");
+
+		// Act
+		var requiresUserAction = _paymentService.RequiresUserActionForPayments;
+		var providerName = _paymentService.GetProviderName();
+
+		// Assert
+		TestHelpers.LogTestInfo($"Provider: {providerName}, RequiresUserAction: {requiresUserAction}");
+
+		if (requiresUserAction)
+		{
+			providerName.ShouldBe("Stripe", "Provider requiring user action should be Stripe");
+		}
+		else
+		{
+			providerName.ShouldContain("Debug");
 		}
 	}
 

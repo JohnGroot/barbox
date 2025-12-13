@@ -23,6 +23,11 @@ class _Settings(BaseSettings):
     - JWT_ALGORITHM: JWT signing algorithm, defaults to "HS256"
     - JWT_EXPIRATION_HOURS: JWT token expiration in hours, defaults to 24
     - BCRYPT_ROUNDS: Bcrypt hashing cost factor, defaults to 12
+    - STRIPE_SECRET_KEY: Stripe API secret key (REQUIRED in production)
+    - STRIPE_WEBHOOK_SECRET: Stripe webhook signing secret (REQUIRED in production)
+    - STRIPE_SUCCESS_URL: Post-payment redirect URL
+    - STRIPE_CANCEL_URL: Payment cancellation redirect URL
+    - STRIPE_PRICE_*_CREDITS: Stripe Price IDs for credit packs
     """
 
     model_config = SettingsConfigDict(
@@ -49,6 +54,19 @@ class _Settings(BaseSettings):
     cors_allow_credentials: bool = True
     cors_allow_methods: str = "*"  # Comma-separated list, or "*"
     cors_allow_headers: str = "*"  # Comma-separated list, or "*"
+
+    # Stripe Configuration
+    stripe_secret_key: str = ""  # Stripe API secret key (REQUIRED in production)
+    stripe_webhook_secret: str = ""  # Stripe webhook signing secret (REQUIRED in production)
+    stripe_success_url: str = "https://barbox.app/payment/success"  # Post-payment redirect
+    stripe_cancel_url: str = "https://barbox.app/payment/cancel"  # Payment cancellation redirect
+
+    # Stripe Price IDs (created via Stripe Dashboard or CLI)
+    stripe_price_5_credits: str = ""  # $5 pack: 5,000 credits
+    stripe_price_10_credits: str = ""  # $10 pack: 10,000 credits
+    stripe_price_25_credits: str = ""  # $25 pack: 28,000 credits (3k bonus)
+    stripe_price_50_credits: str = ""  # $50 pack: 60,000 credits (10k bonus)
+    stripe_price_100_credits: str = ""  # $100 pack: 125,000 credits (25k bonus)
 
     @property
     def db_url(self) -> str:
@@ -77,6 +95,14 @@ class _Settings(BaseSettings):
             raise ValueError(
                 "Production environment requires secure JWT_SECRET_KEY environment variable. "
                 "Generate one with: openssl rand -base64 64"
+            )
+        if self.is_production() and not self.stripe_secret_key:
+            raise ValueError(
+                "Production environment requires STRIPE_SECRET_KEY environment variable."
+            )
+        if self.is_production() and not self.stripe_webhook_secret:
+            raise ValueError(
+                "Production environment requires STRIPE_WEBHOOK_SECRET environment variable."
             )
 
 

@@ -48,7 +48,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			return;
 		}
 
-		var creditPack = new CreditPack(25, 25.00m);
+		var creditPack = CreditPack.CreateForTest(25, 25.00m);
 
 		try
 		{
@@ -96,7 +96,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 		}
 
 		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
-		var creditPack = new CreditPack(25, 25.00m);
+		var creditPack = CreditPack.CreateForTest(25, 25.00m);
 
 		// Get initial credits from CreditService (single source of truth)
 		var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
@@ -145,7 +145,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			return;
 		}
 
-		var creditPack = new CreditPack(10, 10.00m);
+		var creditPack = CreditPack.CreateForTest(10, 10.00m);
 
 		try
 		{
@@ -195,7 +195,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 
 			// Act
 			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
-			var result = await _paymentService.PurchaseCreditsAsync(playerId, new CreditPack(5, 5.00m));
+			var result = await _paymentService.PurchaseCreditsAsync(playerId, CreditPack.CreateForTest(5, 5.00m));
 
 			// Assert - Error message must contain diagnostic info
 			result.IsSuccess.ShouldBeFalse("Purchase should fail when EventService not ready");
@@ -243,7 +243,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 		}
 
 		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
-		var creditPack = new CreditPack(10, 10.00m);
+		var creditPack = CreditPack.CreateForTest(10, 10.00m);
 
 		// Get initial credits from CreditService (single source of truth)
 		var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);

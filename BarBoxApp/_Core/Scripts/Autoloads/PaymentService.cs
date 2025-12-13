@@ -1,15 +1,33 @@
 using Godot;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BarBox.Core.Autoloads;
 
 /// <summary>
-/// Payment service autoload for managing payment providers
-/// Handles provider selection and payment processing coordination
+/// Payment service autoload for managing payment providers.
+/// Handles provider selection, payment orchestration, and generic event firing.
+///
+/// Provider Selection:
+/// - Production: Always uses StripePaymentService
+/// - Development: Uses StripePaymentService when FORCE_STRIPE_PROVIDER=true,
+///   otherwise uses DebugPaymentService for instant purchases
+///
+/// Events:
+/// - OnPaymentUrlReady: Fired when a payment URL is available for QR display
+/// - OnProgressUpdate: Fired during payment polling with remaining seconds
+/// - OnPaymentTimeout: Fired when payment times out
 /// </summary>
 public partial class PaymentService : AutoloadBase
 {
+	/// <summary>
+	/// Toggle Stripe provider in development mode.
+	/// Set to 'true' to test real Stripe integration during development.
+	/// Set to 'false' to use DebugPaymentService for instant purchases (no QR code).
+	/// </summary>
+	private const bool FORCE_STRIPE_PROVIDER = true;
+
 	public static PaymentService GetInstance()
 	{
 		return GetAutoload<PaymentService>();
@@ -17,6 +35,27 @@ public partial class PaymentService : AutoloadBase
 
 	private IPaymentService _currentProvider;
 	private CreditService _creditService;
+	private CancellationTokenSource _paymentCancellation;
+
+	/// <summary>
+	/// Fired when a payment URL is ready for display (e.g., as QR code)
+	/// </summary>
+	public event Action<string> OnPaymentUrlReady;
+
+	/// <summary>
+	/// Fired during payment polling with remaining seconds
+	/// </summary>
+	public event Action<float> OnProgressUpdate;
+
+	/// <summary>
+	/// Fired when payment times out
+	/// </summary>
+	public event Action OnPaymentTimeout;
+
+	/// <summary>
+	/// Check if provider requires user action (e.g., Stripe with QR code)
+	/// </summary>
+	public bool RequiresUserActionForPayments => _currentProvider?.RequiresUserActionForPayments ?? false;
 
 	protected override void OnServiceInitialize()
 	{
@@ -27,7 +66,6 @@ public partial class PaymentService : AutoloadBase
 			return;
 		}
 
-		// Initialize payment provider based on context
 		InitializePaymentProvider();
 
 		LogInfo($"PaymentService initialized with provider: {_currentProvider?.GetProviderName()}");
@@ -39,7 +77,8 @@ public partial class PaymentService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Charges payment provider, then adds credits to user account
+	/// Process a credit purchase through the payment provider.
+	/// Handles two-phase payment: initiate → display URL → await completion.
 	/// </summary>
 	public async Task<PaymentResult> PurchaseCreditsAsync(Guid playerId, CreditPack creditPack)
 	{
@@ -71,52 +110,96 @@ public partial class PaymentService : AutoloadBase
 		}
 
 		// CRITICAL: Check EventService readiness BEFORE processing payment
-		// This prevents charging users when credits cannot be added
 		var validation = ValidateEventServiceReady();
 		if (validation.HasValue)
 			return validation.Value;
+
+		// Cancel any previous payment, create new cancellation token
+		_paymentCancellation?.Cancel();
+		_paymentCancellation?.Dispose();
+		_paymentCancellation = new CancellationTokenSource();
 
 		try
 		{
 			LogInfo($"Processing purchase for player {playerId}: {creditPack.DisplayName}");
 
-			// NOW safe to process payment - we know credits can be added
-			var paymentResult = await _currentProvider.ProcessPurchaseAsync(playerId.ToString(), creditPack);
+			// Phase 1: Initiate payment
+			var checkoutResult = await _currentProvider.InitiatePaymentAsync(playerId.ToString(), creditPack);
 
-			if (!paymentResult.IsSuccess)
+			if (checkoutResult.IsFailure(out var checkoutError))
 			{
-				LogWarning($"Payment failed for player {playerId}: {paymentResult.ErrorMessage}");
-				return paymentResult;
+				LogWarning($"Payment initiation failed for player {playerId}: {checkoutError.Message}");
+				return PaymentResult.Failure(checkoutError.Message);
 			}
 
-			// Add credits to user account via CreditService
-			var addResult = await _creditService.AddAsync(playerId, creditPack.Credits,
-				$"Credit purchase - Transaction: {paymentResult.TransactionId}");
+			checkoutResult.IsSuccess(out var checkout);
 
-			if (addResult.IsFailure(out var addError))
+			if (checkout.RequiresUserAction)
 			{
-				LogError($"CRITICAL: Failed to add credits for player {playerId} after successful payment {paymentResult.TransactionId}");
-				LogError($"Error: {addError.Message}");
-				LogError("This requires manual intervention for refund");
+				// Notify UI to display payment URL as QR code
+				OnPaymentUrlReady?.Invoke(checkout.PaymentUrl);
 
-				// TODO: In production, queue for automatic refund processing
-				return PaymentResult.Failure(
-					$"Payment processed but credit addition failed. Transaction ID: {paymentResult.TransactionId}. " +
-					$"Please contact support for resolution."
-				);
+				// Phase 2: Wait for payment completion with progress updates
+				var result = await _currentProvider.AwaitPaymentCompletionAsync(
+					checkout,
+					_paymentCancellation.Token,
+					onProgressUpdate: (secondsRemaining) =>
+					{
+						OnProgressUpdate?.Invoke(secondsRemaining);
+					});
+
+				// Check if timeout occurred
+				if (!result.IsSuccess && result.ErrorMessage?.Contains("timed out") == true)
+				{
+					OnPaymentTimeout?.Invoke();
+				}
+
+				if (result.IsSuccess)
+				{
+					LogInfo($"Stripe purchase completed for player {playerId}: {creditPack.TotalCredits} credits (Transaction: {result.TransactionId})");
+				}
+				else
+				{
+					LogWarning($"Payment failed for player {playerId}: {result.ErrorMessage}");
+				}
+
+				return result;
 			}
-
-			if (addResult.IsSuccess(out var newBalance))
+			else
 			{
-				LogInfo($"Purchase completed for player {playerId}: {creditPack.Credits} credits added, new balance: {newBalance} (Transaction: {paymentResult.TransactionId})");
+				// Instant payment (debug mode) - add credits directly
+				var addResult = await _creditService.AddAsync(playerId, creditPack.TotalCredits,
+					$"Credit purchase - Transaction: {checkout.SessionId}");
+
+				if (addResult.IsFailure(out var addError))
+				{
+					LogError($"Failed to add credits for player {playerId}: {addError.Message}");
+					return PaymentResult.Failure($"Credit addition failed: {addError.Message}");
+				}
+
+				if (addResult.IsSuccess(out var newBalance))
+				{
+					LogInfo($"Purchase completed for player {playerId}: {creditPack.TotalCredits} credits added, new balance: {newBalance} (Transaction: {checkout.SessionId})");
+				}
+
+				return PaymentResult.Success(checkout.SessionId, creditPack);
 			}
-			return paymentResult;
 		}
-		catch (System.Exception ex)
+		catch (Exception ex)
 		{
 			LogError($"Error processing purchase for player {playerId}: {ex.Message}");
 			return PaymentResult.Failure($"Purchase processing error: {ex.Message}");
 		}
+	}
+
+	/// <summary>
+	/// Cancel any in-progress payment
+	/// </summary>
+	public void CancelPayment()
+	{
+		_paymentCancellation?.Cancel();
+		_currentProvider?.CancelPayment();
+		LogInfo("Payment cancelled");
 	}
 
 	public async Task<bool> IsServiceAvailableAsync()
@@ -154,20 +237,34 @@ public partial class PaymentService : AutoloadBase
 				$"Diagnostics: EventService exists: {eventServiceExists}, EventService ready: {eventServiceReady}");
 		}
 
-		return null; // Validation passed
+		return null;
 	}
 
 	private void InitializePaymentProvider()
 	{
-		// For now, always use debug provider
-		// In production, this would select based on configuration
-		var debugProvider = new DebugPaymentService();
-		_currentProvider = debugProvider;
-
-		LogInfo("Initialized with DebugPaymentService");
+		if (FORCE_STRIPE_PROVIDER || GameHost.IsProductionContext())
+		{
+			_currentProvider = new StripePaymentService();
+			var mode = GameHost.IsProductionContext() ? "production" : "development (forced)";
+			LogInfo($"Initialized with StripePaymentService ({mode})");
+		}
+		else
+		{
+			_currentProvider = new DebugPaymentService();
+			LogInfo("Initialized with DebugPaymentService (development mode)");
+		}
 	}
 
 	protected override void OnServiceDestroyed()
 	{
+		_paymentCancellation?.Cancel();
+		_paymentCancellation?.Dispose();
+		_paymentCancellation = null;
+
+		if (_currentProvider is IDisposable disposable)
+		{
+			disposable.Dispose();
+		}
+		_currentProvider = null;
 	}
 }

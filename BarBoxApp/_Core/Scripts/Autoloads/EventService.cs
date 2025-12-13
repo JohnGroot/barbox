@@ -1108,6 +1108,44 @@ public partial class EventService : AutoloadBase
 	}
 
 	/// <summary>
+	/// Create a Stripe Checkout Session for credit purchase
+	/// Returns session URL for QR code display
+	/// </summary>
+	/// <param name="packId">Credit pack identifier (e.g., "pack_25")</param>
+	/// <param name="playerId">Player making the purchase (requires JWT authentication)</param>
+	public async Task<Result<CheckoutSessionResponse>> CreateCheckoutSessionAsync(string packId, Guid playerId)
+	{
+		var request = new CheckoutSessionRequest { PackId = packId };
+
+		var result = await PostAsync<CheckoutSessionRequest, CheckoutSessionResponse>(
+			"/payments/checkout/create",
+			request,
+			201,
+			playerId: playerId
+		);
+
+		if (result.IsSuccess(out var response))
+		{
+			var validation = response.ValidateRequired();
+			if (validation.IsFailure(out var validationError))
+			{
+				return Result.Failure<CheckoutSessionResponse>(validationError.Message);
+			}
+
+			LogInfo($"Checkout session created: {response.SessionId}");
+			return Result.Success(response);
+		}
+
+		if (result.IsFailure(out var error))
+		{
+			LogError($"Failed to create checkout session: {error.Message}");
+			return Result.Failure<CheckoutSessionResponse>(error.Message);
+		}
+
+		return Result.Failure<CheckoutSessionResponse>("Unknown error creating checkout session");
+	}
+
+	/// <summary>
 	/// Get machine credit pot balance and player contributions
 	/// </summary>
 	public async Task<Result<MachineCreditsResponse>> GetMachineCreditsAsync(string gameTag, Guid boxId)

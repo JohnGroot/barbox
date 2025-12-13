@@ -333,4 +333,39 @@ public static class ResponseValidationExtensions
 
 		return Result.Success(response);
 	}
+
+	public static Result<CheckoutSessionResponse> ValidateRequired(this CheckoutSessionResponse response)
+	{
+		if (response == null)
+			return Result.Failure<CheckoutSessionResponse>("Response is null");
+
+		if (string.IsNullOrEmpty(response.SessionId))
+			return Result.Failure<CheckoutSessionResponse>("Missing session_id in checkout response");
+
+		if (string.IsNullOrEmpty(response.SessionUrl))
+			return Result.Failure<CheckoutSessionResponse>("Missing session_url in checkout response");
+
+		return Result.Success(response);
+	}
+}
+
+/// <summary>
+/// Request to create a Stripe Checkout Session for credit purchase
+/// </summary>
+public record CheckoutSessionRequest
+{
+	[JsonPropertyName("pack_id")]
+	public required string PackId { get; init; }
+}
+
+/// <summary>
+/// Response containing Stripe Checkout Session details for QR code display
+/// </summary>
+public record CheckoutSessionResponse
+{
+	[JsonPropertyName("session_id")]
+	public string SessionId { get; init; } = "";
+
+	[JsonPropertyName("session_url")]
+	public string SessionUrl { get; init; } = "";
 }

@@ -1,55 +1,63 @@
 using Godot;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
+using LightResults;
 
 namespace BarBox.Core.Autoloads;
 
 /// <summary>
-/// Debug implementation of IPaymentService for development and testing
-/// Simulates payment processing with instant approval and logging
+/// Debug implementation of IPaymentService for development and testing.
+/// Returns PaymentUrl = null indicating instant payment (no user action required).
+/// Credits are added directly by PaymentService orchestrator when RequiresUserAction is false.
 /// </summary>
 public class DebugPaymentService : IPaymentService
 {
 	private const string TXN_PREFIX = "DEBUG_TXN";
 
-	private static readonly CreditPack[] _availablePacks =
-	[
-		new CreditPack(1000, 1.00m),
-		new CreditPack(5000, 5.00m),
-		new CreditPack(10000, 10.00m),
-		new CreditPack(25000, 25.00m),
-		new CreditPack(50000, 50.00m),
-		new CreditPack(100000, 100.00m)
-	];
-
 	public CreditPack[] GetAvailableCreditPacks()
 	{
-		return _availablePacks;
+		return CreditPack.AvailablePacks;
 	}
 
-	public async Task<PaymentResult> ProcessPurchaseAsync(string userId, CreditPack creditPack)
+	public Task<Result<PaymentCheckout>> InitiatePaymentAsync(string userId, CreditPack creditPack)
 	{
-		GD.Print($"[DebugPaymentService] Processing purchase for user {userId}: {creditPack.DisplayName}");
+		GD.Print($"[DebugPaymentService] Initiating purchase for user {userId}: {creditPack.DisplayName}");
 
-		await Task.Delay(1);
-		
-		// Generate mock transaction ID
-		var transactionId = $"{TXN_PREFIX}_{DateTime.UtcNow:yyyyMMddHHmmss}_{GD.Randi() % 10000:D4}";
+		// No payment URL = instant payment (no user action required)
+		var checkout = new PaymentCheckout
+		{
+			SessionId = $"{TXN_PREFIX}_{DateTime.UtcNow:yyyyMMddHHmmss}_{GD.Randi() % 10000:D4}",
+			PaymentUrl = null,
+			CreditPack = creditPack,
+			CreatedAtUtc = DateTime.UtcNow
+		};
 
-		// In debug mode, always approve the transaction
-		var result = PaymentResult.Success(transactionId, creditPack);
+		GD.Print($"[DebugPaymentService] Checkout created - Session ID: {checkout.SessionId}, RequiresUserAction: {checkout.RequiresUserAction}");
 
-		GD.Print($"[DebugPaymentService] Purchase approved - Transaction ID: {transactionId}");
+		return Task.FromResult(Result.Success(checkout));
+	}
 
-		return result;
+	public Task<PaymentResult> AwaitPaymentCompletionAsync(
+		PaymentCheckout checkout,
+		CancellationToken cancellationToken,
+		Action<float> onProgressUpdate = null)
+	{
+		// Should never be called for debug (RequiresUserAction = false)
+		// If called, return immediate success
+		GD.Print($"[DebugPaymentService] AwaitPaymentCompletionAsync called (returning immediate success)");
+		return Task.FromResult(PaymentResult.Success(checkout.SessionId, checkout.CreditPack));
+	}
+
+	public void CancelPayment()
+	{
+		// No-op for debug - instant payments can't be cancelled
+		GD.Print("[DebugPaymentService] CancelPayment called (no-op)");
 	}
 
 	public async Task<bool> IsServiceAvailableAsync()
 	{
-		// Simulate service check delay
-		await Task.Delay(100);
-
-		// Debug service is always available
+		await Task.CompletedTask;
 		return true;
 	}
 
@@ -57,4 +65,6 @@ public class DebugPaymentService : IPaymentService
 	{
 		return "Debug Payment Provider";
 	}
+
+	public bool RequiresUserActionForPayments => false;
 }

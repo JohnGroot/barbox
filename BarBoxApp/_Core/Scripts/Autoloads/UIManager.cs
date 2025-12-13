@@ -384,9 +384,24 @@ public partial class UIManager : AutoloadBase
 		EmitSignal(SignalName.ReturnToMenuRequested);
 	}
 
-	private void OnUserLoggedIn(string userId)
+	private async void OnUserLoggedIn(string userId)
 	{
-		UpdateUserDisplay();
+		UpdateUserDisplay(); // Shows cached/0 initially
+
+		// Trigger async credit fetch - CreditsChanged signal will update UI with correct value
+		try
+		{
+			var session = _sessionManager?.GetPrimarySession();
+			if (session != null && _creditService != null)
+			{
+				await _creditService.GetBalanceAsync(session.PlayerId, forceRefresh: true);
+				// CreditsChanged signal emitted by CreditService → OnCreditsChanged updates UI
+			}
+		}
+		catch (System.Exception ex)
+		{
+			LogError($"Failed to fetch credits after login: {ex.Message}");
+		}
 	}
 
 	private void OnUserLoggedOut(string userId)
@@ -406,8 +421,13 @@ public partial class UIManager : AutoloadBase
 
 	private void OnCreditsChanged(string playerId, int newBalance)
 	{
-		// Credits changed (from any source), update user display
-		UpdateUserDisplay();
+		// Check if this is the primary user's credits
+		var session = _sessionManager?.GetPrimarySession();
+		if (session != null && session.PlayerId.ToString() == playerId && _topMenuBar != null)
+		{
+			// Update UI directly with the balance we received (avoid re-fetching)
+			_topMenuBar.UpdateUserInfo(session, newBalance);
+		}
 	}
 
 	private void OnGameStarted(string gameId)
