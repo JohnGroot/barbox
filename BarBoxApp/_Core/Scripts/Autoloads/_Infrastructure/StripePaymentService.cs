@@ -221,6 +221,8 @@ public class StripePaymentService : IPaymentService, IDisposable
 		return "Stripe";
 	}
 
+	public bool RequiresUserActionForPayments => true;
+
 	private static async Task DelayAsync(float seconds)
 	{
 		await AutoloadBase.StaticDelayAsync(seconds);

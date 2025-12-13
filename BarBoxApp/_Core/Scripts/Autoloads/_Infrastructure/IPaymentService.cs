@@ -143,4 +143,10 @@ public interface IPaymentService
 	/// Get the display name of the payment provider
 	/// </summary>
 	string GetProviderName();
+
+	/// <summary>
+	/// Indicates if this provider typically requires user action (e.g., QR code scan).
+	/// Use to determine UI flow before initiating payment.
+	/// </summary>
+	bool RequiresUserActionForPayments { get; }
 }

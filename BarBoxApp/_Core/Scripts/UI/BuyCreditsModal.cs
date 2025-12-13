@@ -557,7 +557,7 @@ public partial class BuyCreditsModal : Control
 			return;
 
 		// For providers without URL (debug mode): Show processing message immediately
-		if (!_paymentService.IsUsingStripe)
+		if (!_paymentService.RequiresUserActionForPayments)
 		{
 			ShowStatusMessage(PROCESSING_PURCHASE, true);
 		}

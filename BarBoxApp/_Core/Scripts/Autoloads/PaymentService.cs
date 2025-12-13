@@ -53,9 +53,9 @@ public partial class PaymentService : AutoloadBase
 	public event Action OnPaymentTimeout;
 
 	/// <summary>
-	/// Check if using a provider that requires user action (e.g., Stripe with QR code)
+	/// Check if provider requires user action (e.g., Stripe with QR code)
 	/// </summary>
-	public bool IsUsingStripe => _currentProvider is StripePaymentService;
+	public bool RequiresUserActionForPayments => _currentProvider?.RequiresUserActionForPayments ?? false;
 
 	protected override void OnServiceInitialize()
 	{

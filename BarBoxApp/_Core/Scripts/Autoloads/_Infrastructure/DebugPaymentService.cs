@@ -65,4 +65,6 @@ public class DebugPaymentService : IPaymentService
 	{
 		return "Debug Payment Provider";
 	}
+
+	public bool RequiresUserActionForPayments => false;
 }

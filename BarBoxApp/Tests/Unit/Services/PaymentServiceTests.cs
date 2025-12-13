@@ -353,25 +353,25 @@ public class PaymentServiceTests : BackendTestBase
 	}
 
 	[Test]
-	public void IsUsingStripe_ReflectsProviderType()
+	public void RequiresUserActionForPayments_ReflectsProviderBehavior()
 	{
 		// Arrange
 		_paymentService.ShouldNotBeNull("PaymentService must be available");
 
 		// Act
-		var isUsingStripe = _paymentService.IsUsingStripe;
+		var requiresUserAction = _paymentService.RequiresUserActionForPayments;
 		var providerName = _paymentService.GetProviderName();
 
 		// Assert
-		TestHelpers.LogTestInfo($"Provider: {providerName}, IsUsingStripe: {isUsingStripe}");
+		TestHelpers.LogTestInfo($"Provider: {providerName}, RequiresUserAction: {requiresUserAction}");
 
-		if (isUsingStripe)
+		if (requiresUserAction)
 		{
-			providerName.ShouldBe("Stripe", "Provider name should be 'Stripe' when IsUsingStripe is true");
+			providerName.ShouldBe("Stripe", "Provider requiring user action should be Stripe");
 		}
 		else
 		{
-			providerName.ShouldNotBe("Stripe", "Provider name should not be 'Stripe' when IsUsingStripe is false");
+			providerName.ShouldContain("Debug");
 		}
 	}
 
