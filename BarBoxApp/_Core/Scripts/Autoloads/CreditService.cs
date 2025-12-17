@@ -55,11 +55,7 @@ public partial class CreditService : AutoloadBase
 	/// </summary>
 	public async Task<Result<int>> GetBalanceAsync(Guid playerId, bool forceRefresh = false)
 	{
-		var validation = ValidateEventService<int>();
-		if (validation.HasValue)
-			return validation.Value;
-
-		// Check cache if not forcing refresh
+		// Check cache first (before waiting for EventService)
 		if (!forceRefresh && _balanceCache.TryGetValue(playerId, out var cached))
 		{
 			if (!cached.IsStale)
@@ -68,8 +64,12 @@ public partial class CreditService : AutoloadBase
 			}
 		}
 
+		// Ensure EventService is ready (with retry for race condition)
+		var eventServiceResult = await EnsureEventServiceReadyAsync();
+		if (!eventServiceResult.IsSuccess(out var eventService))
+			return Result.Failure<int>("Credit service unavailable");
+
 		// Query backend
-		var eventService = EventService.GetInstance();
 		var result = await eventService.GetPlayerCreditsAsync(playerId);
 		if (result.IsSuccess(out var credits))
 		{
@@ -85,14 +85,13 @@ public partial class CreditService : AutoloadBase
 	/// </summary>
 	public async Task<Result<int>> SpendAsync(Guid playerId, int amount, string reason)
 	{
-		var validation = ValidateEventService<int>();
-		if (validation.HasValue)
-			return validation.Value;
-
 		if (amount <= 0)
 			return Result.Failure<int>("Amount must be positive");
 
-		var eventService = EventService.GetInstance();
+		// Ensure EventService is ready (with retry for race condition)
+		var eventServiceResult = await EnsureEventServiceReadyAsync();
+		if (!eventServiceResult.IsSuccess(out var eventService))
+			return Result.Failure<int>("Credit service unavailable");
 
 		// Ensure lobby session exists (lazy creation via SessionManager)
 		var sessionManager = SessionManager.GetInstance();
@@ -172,14 +171,13 @@ public partial class CreditService : AutoloadBase
 	/// </summary>
 	public async Task<Result<int>> AddAsync(Guid playerId, int amount, string reason)
 	{
-		var validation = ValidateEventService<int>();
-		if (validation.HasValue)
-			return validation.Value;
-
 		if (amount <= 0)
 			return Result.Failure<int>("Amount must be positive");
 
-		var eventService = EventService.GetInstance();
+		// Ensure EventService is ready (with retry for race condition)
+		var eventServiceResult = await EnsureEventServiceReadyAsync();
+		if (!eventServiceResult.IsSuccess(out var eventService))
+			return Result.Failure<int>("Credit service unavailable");
 
 		// Ensure lobby session exists (lazy creation via SessionManager)
 		var sessionManager = SessionManager.GetInstance();
@@ -297,15 +295,35 @@ public partial class CreditService : AutoloadBase
 		_balanceCache[playerId] = new CachedBalance(amount, DateTime.UtcNow);
 	}
 
-	private Result<T>? ValidateEventService<T>()
+	/// <summary>
+	/// Validates EventService is ready, with retry logic to handle initialization race conditions.
+	/// Waits up to 1 second for EventService to become ready before failing.
+	/// </summary>
+	private async Task<Result<EventService>> EnsureEventServiceReadyAsync()
 	{
 		var eventService = EventService.GetInstance();
-		if (eventService == null || !eventService.IsReady)
+		if (eventService != null && eventService.IsReady)
+			return Result.Success(eventService);
+
+		// Wait for EventService to become ready (handles initialization race condition)
+		const int MAX_RETRIES = 10;
+		const float RETRY_DELAY_SECONDS = 0.1f;
+
+		for (int i = 0; i < MAX_RETRIES; i++)
 		{
-			LogError("EventService not available");
-			return Result.Failure<T>("Credit service unavailable");
+			await DelayAsync(RETRY_DELAY_SECONDS);
+			eventService = EventService.GetInstance();
+			if (eventService != null && eventService.IsReady)
+			{
+				LogInfo($"EventService became ready after {(i + 1) * RETRY_DELAY_SECONDS:F1}s");
+				return Result.Success(eventService);
+			}
 		}
-		return null; // Validation passed
+
+		var exists = EventService.GetInstance() != null;
+		var ready = EventService.GetInstance()?.IsReady ?? false;
+		LogError($"EventService not available (exists: {exists}, ready: {ready})");
+		return Result.Failure<EventService>("Credit service unavailable");
 	}
 
 	private async Task<int> GetInitialBalanceAsync(EventService eventService, Guid playerId)

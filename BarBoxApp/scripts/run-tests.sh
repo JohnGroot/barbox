@@ -180,7 +180,8 @@ if [ "$TEST_MODE" != "backend" ]; then
 	print_info "Running GoDotTest via Godot headless mode..."
 
 	# Set environment variables for test backend
-	export BARBOX_BACKEND_PORT=8001
+	# CRITICAL: Set BARBOX_BACKEND_URL to override .env.local which may point to staging
+	export BARBOX_BACKEND_URL=http://127.0.0.1:8001
 	export BARBOX_TEST_MODE=1
 	# BARBOX_API_KEY and BARBOX_BOX_ID already exported from seed step
 
@@ -188,7 +189,7 @@ if [ "$TEST_MODE" != "backend" ]; then
 	print_info "Environment variables for Godot:"
 	print_info "  BARBOX_API_KEY=${BARBOX_API_KEY:0:8}..."
 	print_info "  BARBOX_BOX_ID=$BARBOX_BOX_ID"
-	print_info "  BARBOX_BACKEND_PORT=$BARBOX_BACKEND_PORT"
+	print_info "  BARBOX_BACKEND_URL=$BARBOX_BACKEND_URL"
 
 	# Run tests with godot
 	if $GODOT_CMD --path . --headless --run-tests --quit-on-finish; then
