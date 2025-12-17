@@ -245,6 +245,18 @@ class CheckoutSessionResponse(BaseModel):
     session_url: str  # URL to redirect/display as QR code
 
 
+class CheckoutStatusResponse(BaseModel):
+    """Response for checking payment completion status.
+
+    Used by clients to poll for payment completion instead of
+    polling credit balance (which is expensive and brittle).
+    """
+    session_id: str  # Stripe Checkout Session ID
+    status: Literal["pending", "completed", "failed"]
+    credits_granted: int | None = None  # Total credits (base + bonus) if completed
+    completed_at: datetime | None = None  # When payment was processed
+
+
 class StripePriceMetadata(BaseModel):
     """Type-safe validation for Stripe Price metadata.
 
