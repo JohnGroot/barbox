@@ -35,27 +35,27 @@ namespace BarBox.Games.Racing
 		// Zone manager for combining zone modifiers
 		private RacingZoneManager _zoneManager;
 
-	// Off-track penalty state
-	private bool _isCurrentlyOffTrack = false;
-	private float _currentSpeedPenaltyMultiplier = 1.0f;
-	private float _currentTurnPenaltyMultiplier = 1.0f;
-	private float _currentAccelerationPenaltyMultiplier = 1.0f;
+		// Off-track penalty state
+		private bool _isCurrentlyOffTrack = false;
+		private float _currentSpeedPenaltyMultiplier = 1.0f;
+		private float _currentTurnPenaltyMultiplier = 1.0f;
+		private float _currentAccelerationPenaltyMultiplier = 1.0f;
 
-	// Position cache for expensive off-track calculations (performance optimization)
-	private Vector2 _lastCheckedPosition = Vector2.Zero;
-	private float _lastCheckedRotation = 0f;
-	private bool _cachedIsCompletelyOffTrack = false;
-	private const float POSITION_CACHE_THRESHOLD_SQ = 25.0f; // 5 pixels squared
-	private const float ROTATION_CACHE_THRESHOLD = 0.1f; // radians (~5.7 degrees)
+		// Position cache for expensive off-track calculations (performance optimization)
+		private Vector2 _lastCheckedPosition = Vector2.Zero;
+		private float _lastCheckedRotation = 0f;
+		private bool _cachedIsCompletelyOffTrack = false;
+		private const float POSITION_CACHE_THRESHOLD_SQ = 25.0f; // 5 pixels squared
+		private const float ROTATION_CACHE_THRESHOLD = 0.1f; // radians (~5.7 degrees)
 
-	// ================================================================
-	// PUBLIC PROPERTIES
-	// ================================================================
+		// ================================================================
+		// PUBLIC PROPERTIES
+		// ================================================================
 
-	public bool IsCurrentlyOffTrack => _isCurrentlyOffTrack;
-	public float CurrentSpeedPenaltyMultiplier => _currentSpeedPenaltyMultiplier;
-	public float CurrentTurnPenaltyMultiplier => _currentTurnPenaltyMultiplier;
-	public float CurrentAccelerationPenaltyMultiplier => _currentAccelerationPenaltyMultiplier;
+		public bool IsCurrentlyOffTrack => _isCurrentlyOffTrack;
+		public float CurrentSpeedPenaltyMultiplier => _currentSpeedPenaltyMultiplier;
+		public float CurrentTurnPenaltyMultiplier => _currentTurnPenaltyMultiplier;
+		public float CurrentAccelerationPenaltyMultiplier => _currentAccelerationPenaltyMultiplier;
 
 	// ================================================================
 	// INITIALIZATION

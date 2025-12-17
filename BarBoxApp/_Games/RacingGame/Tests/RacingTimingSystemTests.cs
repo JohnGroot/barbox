@@ -20,9 +20,10 @@ public class RacingTimingSystemTests : TestClass
 	{
 	}
 
-	[SetupAll]
+	[Setup]
 	public void Setup()
 	{
+		// Create fresh system for each test to avoid state carryover
 		_timingSystem = new RacingTimingSystem();
 		TestScene.AddChild(_timingSystem);
 	}
@@ -30,13 +31,12 @@ public class RacingTimingSystemTests : TestClass
 	[Cleanup]
 	public void Cleanup()
 	{
-		_timingSystem.ResetRacingData();
-	}
-
-	[CleanupAll]
-	public void TearDown()
-	{
-		_timingSystem?.QueueFree();
+		// Clean up after each test
+		if (_timingSystem != null && Godot.GodotObject.IsInstanceValid(_timingSystem))
+		{
+			_timingSystem.QueueFree();
+			_timingSystem = null;
+		}
 	}
 
 	// ================================================================
@@ -79,15 +79,15 @@ public class RacingTimingSystemTests : TestClass
 	{
 		_timingSystem.StartCountdown();
 
-		// Advance past countdown duration
-		bool completed = false;
-		for (int i = 0; i < 10 && !completed; i++)
+		// Advance past countdown duration (4 seconds default)
+		// Note: UpdateCountdown returns true both when number changes AND on completion
+		// We need to keep updating until IsInCountdown becomes false
+		for (int i = 0; i < 10 && _timingSystem.IsInCountdown; i++)
 		{
-			completed = _timingSystem.UpdateCountdown(1.0f);
+			_timingSystem.UpdateCountdown(1.0f);
 		}
 
-		completed.ShouldBeTrue();
-		_timingSystem.IsInCountdown.ShouldBeFalse();
+		_timingSystem.IsInCountdown.ShouldBeFalse("Countdown should complete after enough time");
 		_timingSystem.CurrentRacingState.ShouldBe(RacingTimingSystem.RacingState.Racing);
 	}
 

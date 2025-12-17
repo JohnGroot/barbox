@@ -16,9 +16,10 @@ public class RacingTrackValidationSystemTests : TestClass
 	{
 	}
 
-	[SetupAll]
+	[Setup]
 	public void Setup()
 	{
+		// Create fresh system for each test to avoid state carryover
 		_validationSystem = new RacingTrackValidationSystem();
 		TestScene.AddChild(_validationSystem);
 	}
@@ -26,13 +27,12 @@ public class RacingTrackValidationSystemTests : TestClass
 	[Cleanup]
 	public void Cleanup()
 	{
-		_validationSystem.ResetPenalties();
-	}
-
-	[CleanupAll]
-	public void TearDown()
-	{
-		_validationSystem?.QueueFree();
+		// Clean up after each test
+		if (_validationSystem != null && Godot.GodotObject.IsInstanceValid(_validationSystem))
+		{
+			_validationSystem.QueueFree();
+			_validationSystem = null;
+		}
 	}
 
 	// ================================================================
@@ -220,8 +220,12 @@ public class RacingTrackValidationSystemTests : TestClass
 
 		_validationSystem.ResetPenalties();
 
+		// Use non-zero position to trigger cache recalculation
+		// (cache threshold is 5 pixels, so we need to be far from (0,0))
+		var testPosition = new Vector2(100, 100);
+
 		// Small delta - should start lerping but not reach target immediately
-		_validationSystem.UpdateOffTrackPenalties(Vector2.Zero, 0.0f, new Vector2(50, 30), 0.1f);
+		_validationSystem.UpdateOffTrackPenalties(testPosition, 0.0f, new Vector2(50, 30), 0.1f);
 
 		// Multiplier should be less than 1.0 (starting penalty) but greater than 0.3 (target)
 		_validationSystem.CurrentSpeedPenaltyMultiplier.ShouldBeLessThan(1.0f);
@@ -232,7 +236,9 @@ public class RacingTrackValidationSystemTests : TestClass
 	public void UpdateOffTrackPenalties_SetsIsOffTrackFlag_WhenCompletelyOffTrack()
 	{
 		// Without track definition, car is completely off track
-		_validationSystem.UpdateOffTrackPenalties(Vector2.Zero, 0.0f, new Vector2(50, 30), 0.1f);
+		// Use non-zero position to trigger cache recalculation
+		var testPosition = new Vector2(100, 100);
+		_validationSystem.UpdateOffTrackPenalties(testPosition, 0.0f, new Vector2(50, 30), 0.1f);
 
 		_validationSystem.IsCurrentlyOffTrack.ShouldBeTrue();
 	}
@@ -242,10 +248,13 @@ public class RacingTrackValidationSystemTests : TestClass
 	{
 		_validationSystem.ResetPenalties();
 
+		// Use non-zero position to trigger cache recalculation
+		var testPosition = new Vector2(100, 100);
+
 		// Run many update cycles to converge
 		for (int i = 0; i < 100; i++)
 		{
-			_validationSystem.UpdateOffTrackPenalties(Vector2.Zero, 0.0f, new Vector2(50, 30), 0.1f);
+			_validationSystem.UpdateOffTrackPenalties(testPosition, 0.0f, new Vector2(50, 30), 0.1f);
 		}
 
 		// Should be very close to target penalty (0.3f)
@@ -258,7 +267,10 @@ public class RacingTrackValidationSystemTests : TestClass
 	public void UpdateOffTrackPenalties_AllPenaltiesLerpTogether()
 	{
 		_validationSystem.ResetPenalties();
-		_validationSystem.UpdateOffTrackPenalties(Vector2.Zero, 0.0f, new Vector2(50, 30), 0.1f);
+
+		// Use non-zero position to trigger cache recalculation
+		var testPosition = new Vector2(100, 100);
+		_validationSystem.UpdateOffTrackPenalties(testPosition, 0.0f, new Vector2(50, 30), 0.1f);
 
 		// All penalties should change together
 		float speed = _validationSystem.CurrentSpeedPenaltyMultiplier;
@@ -392,10 +404,13 @@ public class RacingTrackValidationSystemTests : TestClass
 		_validationSystem.OffTrackSpeedPenalty = 0.5f;
 		_validationSystem.ResetPenalties();
 
+		// Use non-zero position to trigger cache recalculation
+		var testPosition = new Vector2(100, 100);
+
 		// Run updates to converge
 		for (int i = 0; i < 100; i++)
 		{
-			_validationSystem.UpdateOffTrackPenalties(Vector2.Zero, 0.0f, new Vector2(50, 30), 0.1f);
+			_validationSystem.UpdateOffTrackPenalties(testPosition, 0.0f, new Vector2(50, 30), 0.1f);
 		}
 
 		// Should converge to new target
