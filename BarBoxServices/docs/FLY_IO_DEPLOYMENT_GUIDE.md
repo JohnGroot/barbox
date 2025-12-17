@@ -55,7 +55,7 @@ COPY src/ ./src/
 # Install dependencies
 RUN uv venv .venv && \
     . .venv/bin/activate && \
-    uv pip install -e .
+    uv pip install .
 
 # Expose port 8080 (Fly.io standard)
 EXPOSE 8080
@@ -161,15 +161,13 @@ primary_region = "ord"  # Chicago - Central US location for lower latency to mid
   auto_start_machines = true
   min_machines_running = 1
 
-  # Health check configuration
-  [http_service.checks]
-    [http_service.checks.alive]
-      type = "http"
-      interval = "30s"
-      timeout = "5s"
-      grace_period = "10s"
-      method = "GET"
-      path = "/alive"
+# Health check configuration
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/alive"
 
 [[vm]]
   size = "shared-cpu-1x"
@@ -264,7 +262,8 @@ fly secrets set \
 # Generate strong JWT secret
 openssl rand -base64 64
 
-# Save output - you'll use it in the next step
+# Example output (DO NOT USE - generate your own):
+# your-unique-base64-secret-here-replace-before-production
 ```
 
 ### Step 2: Create Fly.io App
@@ -297,12 +296,25 @@ fly volumes list
 ### Step 4: Set Production Secrets
 
 ```bash
-# Set JWT secret (use output from openssl command above)
-fly secrets set JWT_SECRET_KEY="<paste-generated-secret-here>"
+# Generate strong JWT secret
+JWT_SECRET=$(openssl rand -base64 64)
+
+# Set ALL production secrets (JWT + Stripe)
+fly secrets set \
+  JWT_SECRET_KEY="$JWT_SECRET" \
+  STRIPE_SECRET_KEY="sk_live_YOUR_LIVE_KEY" \
+  STRIPE_WEBHOOK_SECRET="whsec_YOUR_WEBHOOK_SECRET" \
+  STRIPE_PRICE_5_CREDITS="price_..." \
+  STRIPE_PRICE_10_CREDITS="price_..." \
+  STRIPE_PRICE_25_CREDITS="price_..." \
+  STRIPE_PRICE_50_CREDITS="price_..." \
+  STRIPE_PRICE_100_CREDITS="price_..."
 
 # Verify secrets (values will be redacted)
 fly secrets list
 ```
+
+**Important:** Replace the Stripe placeholders with your actual keys from the Stripe Dashboard. See the [Stripe Integration Configuration](#stripe-integration-configuration) section for details on obtaining these values.
 
 ### Step 5: Deploy Application
 
@@ -361,8 +373,8 @@ fly ssh console
 # Check database file exists
 ls -lh /data/app.db
 
-# Verify backend is running
-curl http://localhost:8080/alive
+# Verify backend is running (curl not available in slim image, use Python)
+python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8080/alive').read().decode())"
 
 # Exit SSH session
 exit
@@ -440,6 +452,12 @@ fly secrets set JWT_SECRET_KEY="new-secret-here"
 
 # Update multiple secrets at once
 fly secrets set CORS_ORIGINS="https://yourdomain.com" JWT_ACCESS_TOKEN_HOURS="4"
+
+# Rotate Stripe webhook secret (after regenerating in Stripe Dashboard)
+fly secrets set STRIPE_WEBHOOK_SECRET="whsec_new_secret"
+
+# Switch from test to live Stripe keys (production launch)
+fly secrets set STRIPE_SECRET_KEY="sk_live_..."
 ```
 
 ---
@@ -487,9 +505,9 @@ fly secrets set CORS_ORIGINS="https://yourdomain.com" JWT_ACCESS_TOKEN_HOURS="4"
 # Check application logs
 fly logs
 
-# Verify /alive endpoint responds
+# Verify /alive endpoint responds (inside container)
 fly ssh console
-curl http://localhost:8080/alive
+python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8080/alive').read().decode())"
 ```
 
 **Solution:** Ensure FastAPI app is binding to `0.0.0.0:8080` in Dockerfile CMD.
@@ -526,6 +544,44 @@ fly status
 
 # Scale up memory
 fly scale memory 1024
+```
+
+**Note:** 512MB is the recommended minimum for this FastAPI application. Do not reduce below this threshold as webhook processing and database operations can spike memory usage.
+
+### Issue: App fails to start with Stripe error
+```bash
+# Check logs for startup validation errors
+fly logs --recent
+```
+
+**Common errors:**
+- `Production environment requires STRIPE_SECRET_KEY` → Set the secret: `fly secrets set STRIPE_SECRET_KEY="sk_live_..."`
+- `Production environment requires STRIPE_WEBHOOK_SECRET` → Set the secret: `fly secrets set STRIPE_WEBHOOK_SECRET="whsec_..."`
+
+### Issue: Stripe webhooks not received
+```bash
+# Verify webhook endpoint is reachable
+curl -X POST https://your-app.fly.dev/payments/webhook \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Expected: 400 error (signature validation failed, but endpoint is reachable)
+```
+
+**Solutions:**
+1. Verify webhook URL in Stripe Dashboard matches your Fly.io URL
+2. Ensure `checkout.session.completed` event is selected
+3. Check webhook signing secret matches `STRIPE_WEBHOOK_SECRET`
+
+### Issue: Webhook signature verification failed
+```bash
+# Check logs for signature errors
+fly logs | grep -i "signature"
+```
+
+**Solution:** The webhook secret may be incorrect or rotated. Get the current signing secret from Stripe Dashboard → Developers → Webhooks, then update:
+```bash
+fly secrets set STRIPE_WEBHOOK_SECRET="whsec_correct_secret"
 ```
 
 ---
@@ -684,6 +740,101 @@ fly secrets list --app barbox-backend-prod
 # Remove unused secrets
 fly secrets unset OLD_SECRET_NAME --app barbox-backend-prod
 ```
+
+---
+
+## Stripe Integration Configuration
+
+This section covers setting up Stripe for in-app credit purchases.
+
+### Obtaining Stripe Keys
+
+**API Keys (Stripe Dashboard → Developers → API Keys):**
+
+| Key Type | Format | Usage |
+|----------|--------|-------|
+| **Test Secret Key** | `sk_test_...` | Local development and staging |
+| **Live Secret Key** | `sk_live_...` | Production only |
+
+**Webhook Signing Secret (Stripe Dashboard → Developers → Webhooks):**
+
+1. Create a new webhook endpoint:
+   - URL: `https://your-app.fly.dev/payments/webhook`
+   - Events: `checkout.session.completed`
+2. Copy the "Signing secret" (starts with `whsec_`)
+
+### Secrets Reference
+
+| Secret | Purpose | Where to Find |
+|--------|---------|---------------|
+| `STRIPE_SECRET_KEY` | API authentication | Stripe Dashboard → Developers → API Keys |
+| `STRIPE_WEBHOOK_SECRET` | Webhook signature verification | Stripe Dashboard → Developers → Webhooks → Signing secret |
+| `STRIPE_PRICE_*` | Credit pack pricing | Stripe Dashboard → Products → Price IDs |
+
+### Creating Stripe Products
+
+Each credit pack requires a Stripe Product with a Price. The Price ID is what you configure in secrets.
+
+**Required metadata on each Price:**
+```json
+{
+  "credits": "25",
+  "bonus_credits": "5"
+}
+```
+
+**Example credit packs:**
+
+| Pack | Price | Credits | Bonus | Total |
+|------|-------|---------|-------|-------|
+| 5 Credits | $5.00 | 5 | 0 | 5 |
+| 10 Credits | $10.00 | 10 | 0 | 10 |
+| 25 Credits | $20.00 | 25 | 5 | 30 |
+| 50 Credits | $35.00 | 50 | 15 | 65 |
+| 100 Credits | $60.00 | 100 | 40 | 140 |
+
+**Creating via Stripe CLI:**
+```bash
+# Create a product
+stripe products create --name="25 Credit Pack" --description="25 credits + 5 bonus"
+
+# Create a price with metadata
+stripe prices create \
+  --product="prod_xxx" \
+  --unit-amount=2000 \
+  --currency=usd \
+  --metadata[credits]=25 \
+  --metadata[bonus_credits]=5
+```
+
+### Production Validation
+
+The backend automatically validates Stripe configuration on startup:
+
+- **Missing `STRIPE_SECRET_KEY`** → App fails to start with clear error
+- **Missing `STRIPE_WEBHOOK_SECRET`** → App fails to start with clear error
+- **Invalid JWT secret** (starts with "dev-") → App fails to start
+
+This ensures misconfigured deployments fail fast rather than accepting payments without proper security.
+
+### Test vs Production Keys
+
+| Environment | Secret Key | Webhook URL |
+|-------------|------------|-------------|
+| **Local** | `sk_test_...` | Use Stripe CLI: `stripe listen --forward-to localhost:8000/payments/webhook` |
+| **Staging** | `sk_test_...` | `https://barbox-backend-staging.fly.dev/payments/webhook` |
+| **Production** | `sk_live_...` | `https://barbox-backend.fly.dev/payments/webhook` |
+
+**Important:** Never mix test and live keys in the same environment.
+
+### Webhook Secret Rotation
+
+When rotating webhook secrets:
+
+1. Generate new webhook in Stripe Dashboard (keep old one active)
+2. Update Fly.io secret: `fly secrets set STRIPE_WEBHOOK_SECRET="whsec_new_secret"`
+3. Wait for deployment to complete
+4. Delete old webhook in Stripe Dashboard
 
 ---
 
@@ -954,24 +1105,172 @@ fly machine status <machine-id> --app barbox-backend-prod
 
 After successful deployment:
 
-1. **Configure Godot Client:**
-   - Update `BackendManager.cs` with Fly.io URL
-   - Set Box API key from registration response
+1. **Configure Godot Client** - See [Configuring Client Machines](#configuring-client-machines) below
+2. **Test Full Flow** - Register players, create sessions, submit scores
+3. **Monitor Costs** - Check Fly.io dashboard weekly
 
-2. **Test Full Flow:**
-   - Register player from Godot client
-   - Create game session
-   - Submit scores
-   - Verify leaderboards work
+---
 
-3. **Monitor Costs:**
-   - Check Fly.io dashboard weekly
-   - Verify staying within free tier
+## Configuring Client Machines
 
-4. **Optional Enhancements:**
-   - Set up custom domain (`fly certs add yourdomain.com`)
-   - Enable Sentry integration for monitoring
-   - Add database backup strategy
+This section covers how to configure BarBoxApp (Godot client) to connect to your Fly.io backend.
+
+### Overview
+
+The Godot client uses environment variables to configure backend connectivity. Configuration is loaded from `.env.local` files (machine-specific, gitignored).
+
+| Environment | Backend URL | Use Case |
+|-------------|-------------|----------|
+| **Local Dev** | `http://localhost:8000` | Development with auto-started backend |
+| **Local → Remote** | `https://barbox-backend.fly.dev` | Testing production from editor |
+| **Test/Production** | `https://barbox-backend.fly.dev` | Physical arcade machines |
+
+### Step 1: Register Box on Fly.io Backend
+
+Each physical machine (or test environment) needs its own registered box:
+
+```bash
+# Generate unique box ID
+TEST_BOX_ID=$(uuidgen)
+echo "Box ID: $TEST_BOX_ID"
+
+# Register box on production backend
+curl -X PUT "https://barbox-backend.fly.dev/box/$TEST_BOX_ID" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"id\": \"$TEST_BOX_ID\",
+    \"name\": \"Test Box 1\",
+    \"tag\": \"test_box_1\"
+  }"
+```
+
+**Save the API key from the response!** You'll need it for client configuration.
+
+Example response:
+```json
+{
+  "id": "12345678-1234-1234-1234-123456789012",
+  "name": "Test Box 1",
+  "tag": "test_box_1",
+  "api_key": "YOUR_API_KEY_HERE"
+}
+```
+
+### Step 2: Configure Client Environment
+
+Create or update `.env.local` in the `BarBoxApp/` directory:
+
+**For Test/Production Machines:**
+```bash
+# BarBoxApp/.env.local
+
+# Backend connection
+BARBOX_BACKEND_URL=https://barbox-backend.fly.dev
+
+# Box identity (from Step 1)
+BARBOX_BOX_ID=12345678-1234-1234-1234-123456789012
+BARBOX_API_KEY=YOUR_API_KEY_HERE
+
+# Display names
+BARBOX_BOX_NAME=test_box_1
+BARBOX_VENUE_NAME=test_venue
+```
+
+**For Local Editor Testing Against Remote Backend:**
+```bash
+# BarBoxApp/.env.local
+
+# Backend connection
+BARBOX_BACKEND_URL=https://barbox-backend.fly.dev
+
+# Box identity (register a test box for your dev machine)
+BARBOX_BOX_ID=<your-dev-test-box-uuid>
+BARBOX_API_KEY=<your-dev-test-box-api-key>
+
+# IMPORTANT: Skip local backend auto-start
+BARBOX_TEST_MODE=1
+
+# Display names
+BARBOX_BOX_NAME=dev_remote_test
+BARBOX_VENUE_NAME=dev_venue
+```
+
+### Step 3: Verify Connection
+
+**From command line:**
+```bash
+# Test backend is reachable
+curl https://barbox-backend.fly.dev/alive
+# Expected: {"status":"alive"}
+
+# Test box authentication
+curl -X GET "https://barbox-backend.fly.dev/box/<your-box-id>" \
+  -H "X-Box-API-Key: <your-api-key>"
+```
+
+**From Godot:**
+1. Launch the app in editor (or run exported build)
+2. Check console for "Backend is available and healthy"
+3. Test player registration flow
+
+### Configuration Quick Reference
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `BARBOX_BACKEND_URL` | Yes | `http://localhost:8000` | Full backend URL |
+| `BARBOX_BOX_ID` | Yes | Dev UUID | Box UUID from registration |
+| `BARBOX_API_KEY` | Yes | Dev key | API key from registration |
+| `BARBOX_BOX_NAME` | No | `default` | Human-readable box name |
+| `BARBOX_VENUE_NAME` | No | `default` | Venue identifier |
+| `BARBOX_TEST_MODE` | No | (unset) | Set to `1` to skip local backend auto-start |
+
+### Switching Between Environments
+
+**Tip:** Keep multiple config files and copy as needed:
+
+```bash
+# Save current config
+cp BarBoxApp/.env.local BarBoxApp/.env.local.remote
+
+# Create local dev config
+cat > BarBoxApp/.env.local.dev << 'EOF'
+BARBOX_BACKEND_URL=http://localhost:8000
+BARBOX_BOX_ID=00000000-0000-0000-0000-000000000001
+BARBOX_API_KEY=<dev-api-key>
+BARBOX_BOX_NAME=dev_box
+BARBOX_VENUE_NAME=dev_local
+EOF
+
+# Switch to local dev
+cp BarBoxApp/.env.local.dev BarBoxApp/.env.local
+
+# Switch to remote testing
+cp BarBoxApp/.env.local.remote BarBoxApp/.env.local
+```
+
+### Troubleshooting Client Connection
+
+**Issue: "Backend failed" error in Godot**
+```bash
+# Check backend is running
+curl https://barbox-backend.fly.dev/alive
+
+# Verify .env.local has correct URL
+cat BarBoxApp/.env.local | grep BACKEND_URL
+```
+
+**Issue: Local backend auto-starts when testing remote**
+- Add `BARBOX_TEST_MODE=1` to `.env.local`
+- This tells BackendManager to skip auto-start
+
+**Issue: 401 Unauthorized errors**
+- Verify `BARBOX_API_KEY` matches the key from box registration
+- Check `BARBOX_BOX_ID` is correct
+- Re-register the box if keys were lost
+
+**Issue: Box not found (404)**
+- The box may not be registered on the backend
+- Run the registration curl command from Step 1
 
 ---
 
