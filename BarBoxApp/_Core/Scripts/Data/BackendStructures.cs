@@ -369,3 +369,31 @@ public record CheckoutSessionResponse
 	[JsonPropertyName("session_url")]
 	public string SessionUrl { get; init; } = "";
 }
+
+/// <summary>
+/// Response for checking payment completion status.
+/// Used by clients to poll for payment completion instead of polling credit balance.
+/// </summary>
+public record CheckoutStatusResponse
+{
+	[JsonPropertyName("session_id")]
+	public string SessionId { get; init; } = "";
+
+	/// <summary>
+	/// Payment status: "pending", "completed", or "failed"
+	/// </summary>
+	[JsonPropertyName("status")]
+	public string Status { get; init; } = "";
+
+	/// <summary>
+	/// Total credits granted (base + bonus) if completed, null otherwise
+	/// </summary>
+	[JsonPropertyName("credits_granted")]
+	public int? CreditsGranted { get; init; }
+
+	/// <summary>
+	/// When payment was processed, null if not completed
+	/// </summary>
+	[JsonPropertyName("completed_at")]
+	public DateTime? CompletedAt { get; init; }
+}

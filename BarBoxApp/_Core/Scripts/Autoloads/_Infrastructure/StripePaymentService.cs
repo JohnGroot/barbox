@@ -25,14 +25,13 @@ public class StripePaymentService : IPaymentService, IDisposable
 	private const float INITIAL_POLL_INTERVAL = 1.0f;
 	private const float MAX_POLL_INTERVAL = 3.0f;
 	private const float POLL_TIMEOUT = 120.0f;
+	private const int MAX_CONSECUTIVE_FAILURES = 5;
 
 	// Stripe Checkout Session URLs always start with this domain
 	// See: https://docs.stripe.com/payments/checkout/how-checkout-works
 	private const string STRIPE_CHECKOUT_DOMAIN = "https://checkout.stripe.com/";
 
 	private EventService _eventService;
-	private Guid _currentPlayerId;
-	private int _initialBalance;
 	private CancellationTokenSource _pollCancellation;
 	private bool _isProcessingPurchase;
 
@@ -50,10 +49,11 @@ public class StripePaymentService : IPaymentService, IDisposable
 		}
 
 		_isProcessingPurchase = true;
+		bool initiationSucceeded = false;
 		try
 		{
 			_eventService = EventService.GetInstance();
-			if (_eventService == null || !_eventService.IsReady)
+			if (!IsEventServiceValid())
 			{
 				return Result.Failure<PaymentCheckout>("Payment service not available");
 			}
@@ -63,20 +63,7 @@ public class StripePaymentService : IPaymentService, IDisposable
 				return Result.Failure<PaymentCheckout>("Invalid user ID format");
 			}
 
-			_currentPlayerId = playerId;
-
-			// Get initial balance for comparison during polling
-			var initialBalanceResult = await _eventService.GetPlayerCreditsAsync(playerId);
-			if (initialBalanceResult.IsFailure(out var balanceError))
-			{
-				return Result.Failure<PaymentCheckout>($"Failed to get current balance: {balanceError.Message}");
-			}
-
-			initialBalanceResult.IsSuccess(out var initialBalance);
-			_initialBalance = initialBalance;
-
 			GD.Print($"[StripePaymentService] Starting purchase: {creditPack.DisplayName}");
-			GD.Print($"[StripePaymentService] Initial balance: {_initialBalance}, expected credits: {creditPack.TotalCredits}");
 
 			// Create checkout session
 			var sessionResult = await _eventService.CreateCheckoutSessionAsync(creditPack.PackId, playerId);
@@ -95,6 +82,7 @@ public class StripePaymentService : IPaymentService, IDisposable
 				return Result.Failure<PaymentCheckout>("Invalid payment session URL");
 			}
 
+			initiationSucceeded = true;
 			return Result.Success(new PaymentCheckout
 			{
 				SessionId = session.SessionId,
@@ -107,6 +95,14 @@ public class StripePaymentService : IPaymentService, IDisposable
 		{
 			GD.PrintErr($"[StripePaymentService] Error initiating payment: {ex.Message}");
 			return Result.Failure<PaymentCheckout>($"Failed to initiate payment: {ex.Message}");
+		}
+		finally
+		{
+			// Reset flag on failure - if initiation succeeded, AwaitPaymentCompletionAsync will reset it
+			if (!initiationSucceeded)
+			{
+				_isProcessingPurchase = false;
+			}
 		}
 	}
 
@@ -134,6 +130,7 @@ public class StripePaymentService : IPaymentService, IDisposable
 		{
 			var startTime = Time.GetTicksMsec();
 			var pollInterval = INITIAL_POLL_INTERVAL;
+			var consecutiveFailures = 0;
 
 			while (!linkedCts.Token.IsCancellationRequested)
 			{
@@ -150,26 +147,40 @@ public class StripePaymentService : IPaymentService, IDisposable
 				onProgressUpdate?.Invoke(remainingSeconds);
 
 				// Validate EventService is still available
-				if (_eventService == null || !GodotObject.IsInstanceValid(_eventService) || !_eventService.IsReady)
+				if (!IsEventServiceValid())
 				{
 					GD.PrintErr("[StripePaymentService] EventService became unavailable during polling");
 					return PaymentResult.Failure("Payment service lost connection. Please try again.");
 				}
 
-				// Check balance
-				var balanceResult = await _eventService.GetPlayerCreditsAsync(_currentPlayerId);
-				if (balanceResult.IsSuccess(out var currentBalance))
+				// Check payment status directly (more efficient than balance polling)
+				var statusResult = await _eventService.GetCheckoutStatusAsync(checkout.SessionId);
+				if (statusResult.IsSuccess(out var status))
 				{
-					if (currentBalance >= _initialBalance + checkout.CreditPack.TotalCredits)
+					consecutiveFailures = 0; // Reset on success
+					if (status.Status == "completed")
 					{
-						GD.Print($"[StripePaymentService] Payment confirmed! Balance: {_initialBalance} -> {currentBalance}");
-						return PaymentResult.Success(
-							$"stripe_{DateTime.UtcNow:yyyyMMddHHmmss}",
-							checkout.CreditPack
-						);
+						GD.Print($"[StripePaymentService] Payment confirmed! Credits: {status.CreditsGranted}");
+						return PaymentResult.Success(checkout.SessionId, checkout.CreditPack);
+					}
+					if (status.Status == "failed")
+					{
+						GD.Print("[StripePaymentService] Payment failed");
+						return PaymentResult.Failure("Payment failed. Please try again.");
+					}
+					// status is "pending" - continue polling
+				}
+				else
+				{
+					consecutiveFailures++;
+					GD.PrintErr($"[StripePaymentService] Status check failed ({consecutiveFailures}/{MAX_CONSECUTIVE_FAILURES})");
+
+					if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+					{
+						GD.PrintErr("[StripePaymentService] Too many consecutive status check failures");
+						return PaymentResult.Failure("Unable to verify payment status. Please check your account.");
 					}
 				}
-				// Balance check failures are silent - continue polling
 
 				// Wait before next poll (frame-aware delay)
 				await DelayAsync(pollInterval);
@@ -178,7 +189,7 @@ public class StripePaymentService : IPaymentService, IDisposable
 				if (linkedCts.Token.IsCancellationRequested)
 					break;
 
-				if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
+				if (!IsEventServiceValid())
 				{
 					GD.PrintErr("[StripePaymentService] EventService invalidated during delay");
 					return PaymentResult.Failure("Payment service connection lost. Please try again.");
@@ -206,14 +217,9 @@ public class StripePaymentService : IPaymentService, IDisposable
 
 	public async Task<bool> IsServiceAvailableAsync()
 	{
-		var eventService = EventService.GetInstance();
-		if (eventService == null || !eventService.IsReady)
-		{
-			return false;
-		}
-
+		_eventService = EventService.GetInstance();
 		await Task.CompletedTask;
-		return true;
+		return IsEventServiceValid();
 	}
 
 	public string GetProviderName()
@@ -222,6 +228,16 @@ public class StripePaymentService : IPaymentService, IDisposable
 	}
 
 	public bool RequiresUserActionForPayments => true;
+
+	/// <summary>
+	/// Check if EventService is valid and ready for requests
+	/// </summary>
+	private bool IsEventServiceValid()
+	{
+		return _eventService != null &&
+		       GodotObject.IsInstanceValid(_eventService) &&
+		       _eventService.IsReady;
+	}
 
 	private static async Task DelayAsync(float seconds)
 	{

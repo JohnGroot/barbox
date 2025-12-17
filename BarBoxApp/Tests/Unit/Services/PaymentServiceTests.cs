@@ -40,6 +40,15 @@ public class PaymentServiceTests : BackendTestBase
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		_eventService.ShouldNotBeNull("EventService must be available");
 
+		// Skip if using Stripe provider - Stripe requires user action (QR payment)
+		// which can't complete in automated tests without real payment
+		if (_paymentService.RequiresUserActionForPayments)
+		{
+			TestHelpers.LogTestInfo("Skipping - Stripe provider requires user action (QR payment)");
+			TestHelpers.LogTestInfo("This test validates credit addition for instant-payment providers like DebugPaymentService");
+			return;
+		}
+
 		var creditPack = CreditPack.CreateForTest(25, 25.00m);
 
 		// Create user session first
@@ -116,6 +125,15 @@ public class PaymentServiceTests : BackendTestBase
 		_paymentService.ShouldNotBeNull("PaymentService must be available");
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		_eventService.ShouldNotBeNull("EventService must be available");
+
+		// Skip if using Stripe provider - Stripe requires user action (QR payment)
+		// which can't complete in automated tests without real payment
+		if (_paymentService.RequiresUserActionForPayments)
+		{
+			TestHelpers.LogTestInfo("Skipping - Stripe provider requires user action (QR payment)");
+			TestHelpers.LogTestInfo("This test validates failure diagnostics for instant-payment providers like DebugPaymentService");
+			return;
+		}
 
 		var creditPack = CreditPack.CreateForTest(10, 10.00m);
 
@@ -214,6 +232,15 @@ public class PaymentServiceTests : BackendTestBase
 		_paymentService.ShouldNotBeNull("PaymentService must be available");
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		_eventService.ShouldNotBeNull("EventService must be available");
+
+		// Skip if using Stripe provider - Stripe requires user action (QR payment)
+		// which can't complete in automated tests without real payment
+		if (_paymentService.RequiresUserActionForPayments)
+		{
+			TestHelpers.LogTestInfo("Skipping - Stripe provider requires user action (QR payment)");
+			TestHelpers.LogTestInfo("This test validates sequential purchases for instant-payment providers like DebugPaymentService");
+			return;
+		}
 
 		var smallPack = CreditPack.CreateForTest(5, 5.00m);
 
