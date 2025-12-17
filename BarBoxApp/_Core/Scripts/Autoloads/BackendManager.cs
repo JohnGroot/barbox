@@ -34,19 +34,12 @@ public partial class BackendManager : AutoloadBase
 	private const string CMD_KILL = "kill";
 	private static readonly string[] HEALTH_CHECK_HEADERS = ["Accept: application/json"];
 
-	// Configuration with environment variable support
-	private static readonly string BACKEND_HOST =
-		System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_HOST") ?? "127.0.0.1";
-
-	private static readonly int BACKEND_PORT =
-		int.TryParse(System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_PORT"), out var port)
-			? port
-			: 8000;
-
-
-	// Test mode detection - when set, skip auto-start and wait for external backend
-	private static readonly bool IS_TEST_MODE =
-		!string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("BARBOX_TEST_MODE"));
+	// Configuration - initialized in OnServiceInitializeAsync after LocationManager loads .env files
+	// (Static readonly fields would capture env vars before .env is loaded!)
+	private string _backendHost;
+	private int _backendPort;
+	private bool _isTestMode;
+	private bool _useHttps;
 
 	private const float CONNECTION_TIMEOUT_SECONDS = 5.0f;
 	private const float HEALTH_CHECK_TIMEOUT_SECONDS = 5.0f;
@@ -59,10 +52,23 @@ public partial class BackendManager : AutoloadBase
 
 	protected override async Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
+		// Get configuration from LocationManager (centralized config source)
+		// LocationManager is initialized before BackendManager in Phase 1
+		var locationManager = LocationManager.GetAutoload();
+		if (locationManager == null)
+			throw new InvalidOperationException("LocationManager required but not available - cannot get backend configuration");
+
+		_backendHost = locationManager.BackendHost;
+		_backendPort = locationManager.BackendPort;
+		_isTestMode = locationManager.IsTestMode;
+		_useHttps = locationManager.UseHttps;
+
+		LogInfo($"Backend configuration: {_backendHost}:{_backendPort}, TestMode: {_isTestMode}, HTTPS: {_useHttps}");
+
 		Result<bool> result;
 
 		// In test mode, skip auto-start and wait for external backend
-		if (IS_TEST_MODE)
+		if (_isTestMode)
 		{
 			LogInfo("Test mode detected - waiting for external backend (no auto-start)");
 			result = await WaitForExternalBackendAsync(cancellationToken);
@@ -77,7 +83,7 @@ public partial class BackendManager : AutoloadBase
 		{
 			// Backend failed to start - show concise error and throw exception
 			LogError($"Backend initialization failed: {error.Message}");
-			LogError($"Backend not available at {BACKEND_HOST}:{BACKEND_PORT}");
+			LogError($"Backend not available at {_backendHost}:{_backendPort}");
 			LogError("To start manually: cd BarBoxServices && sh scripts/dev.sh");
 
 			CallDeferred(MethodName.EmitSignal, SignalName.BackendStartFailed, error.Message);
@@ -86,7 +92,7 @@ public partial class BackendManager : AutoloadBase
 		}
 
 		_isBackendRunning = true;
-		LogInfo($"Backend is available and healthy at {BACKEND_HOST}:{BACKEND_PORT}");
+		LogInfo($"Backend is available and healthy at {_backendHost}:{_backendPort}");
 		CallDeferred(MethodName.EmitSignal, SignalName.BackendReady);
 	}
 
@@ -98,7 +104,7 @@ public partial class BackendManager : AutoloadBase
 	/// </summary>
 	private async Task<Result<bool>> WaitForExternalBackendAsync(CancellationToken cancellationToken = default)
 	{
-		LogInfo($"Waiting for external test backend at {BACKEND_HOST}:{BACKEND_PORT}...");
+		LogInfo($"Waiting for external test backend at {_backendHost}:{_backendPort}...");
 		const float EXTERNAL_BACKEND_TIMEOUT = 30.0f;
 		var startTime = Time.GetTicksMsec();
 
@@ -113,7 +119,7 @@ public partial class BackendManager : AutoloadBase
 			if (healthResult.IsSuccess(out var isHealthy) && isHealthy)
 			{
 				_isBackendRunning = true;
-				LogInfo($"External backend ready at {BACKEND_HOST}:{BACKEND_PORT}");
+				LogInfo($"External backend ready at {_backendHost}:{_backendPort}");
 				return Result.Success(true);
 			}
 
@@ -274,12 +280,12 @@ public partial class BackendManager : AutoloadBase
 		}
 
 		// Check for stale processes (but NOT in test mode!)
-		if (IsPortInUse(BACKEND_PORT))
+		if (IsPortInUse(_backendPort))
 		{
-			if (IS_TEST_MODE)
+			if (_isTestMode)
 			{
 				// In test mode, assume port usage is legitimate (test backend starting)
-				LogInfo($"Port {BACKEND_PORT} in use (test mode) - waiting for health check");
+				LogInfo($"Port {_backendPort} in use (test mode) - waiting for health check");
 
 				// Wait for health instead of killing
 				const float WAIT_TIMEOUT = 10.0f;
@@ -306,16 +312,16 @@ public partial class BackendManager : AutoloadBase
 			else
 			{
 				// Normal mode: only kill processes we own
-				LogWarning($"Port {BACKEND_PORT} is in use but backend not healthy - attempting cleanup");
-				KillOwnedProcessOnPort(BACKEND_PORT);
+				LogWarning($"Port {_backendPort} is in use but backend not healthy - attempting cleanup");
+				KillOwnedProcessOnPort(_backendPort);
 			}
 		}
 
 		// Verify port is actually free before starting new backend
-		if (IsPortInUse(BACKEND_PORT))
+		if (IsPortInUse(_backendPort))
 		{
 			// Port still in use - must be owned by another process (e.g., manually-started dev.sh)
-			LogInfo($"Port {BACKEND_PORT} in use by external process - waiting for health check");
+			LogInfo($"Port {_backendPort} in use by external process - waiting for health check");
 
 			// Wait for the external backend to become healthy
 			const float EXTERNAL_WAIT_TIMEOUT = 30.0f;
@@ -338,7 +344,7 @@ public partial class BackendManager : AutoloadBase
 			}
 
 			return Result.Failure<bool>(
-				$"Port {BACKEND_PORT} in use by external process but backend not healthy. " +
+				$"Port {_backendPort} in use by external process but backend not healthy. " +
 				"Please stop the conflicting process and restart.");
 		}
 
@@ -378,7 +384,7 @@ public partial class BackendManager : AutoloadBase
 			healthResult = await IsBackendHealthyAsync();
 			if (healthResult.IsSuccess(out isHealthy) && isHealthy)
 			{
-				LogInfo($"Backend started successfully at {BACKEND_HOST}:{BACKEND_PORT}");
+				LogInfo($"Backend started successfully at {_backendHost}:{_backendPort}");
 				return Result.Success(true);
 			}
 
@@ -393,7 +399,15 @@ public partial class BackendManager : AutoloadBase
 		var httpClient = new HttpClient();
 		try
 		{
-			var error = httpClient.ConnectToHost(BACKEND_HOST, BACKEND_PORT);
+			// Configure TLS options for HTTPS
+			TlsOptions tlsOptions = null;
+			if (_useHttps)
+			{
+				// Pass hostname for SNI (Server Name Indication) - required for Fly.io's shared IP
+				tlsOptions = TlsOptions.Client(null, _backendHost);
+			}
+
+			var error = httpClient.ConnectToHost(_backendHost, _backendPort, tlsOptions);
 
 			if (error != Godot.Error.Ok)
 				return Result.Failure<bool>($"Failed to initiate connection: {error}");
@@ -488,7 +502,7 @@ public partial class BackendManager : AutoloadBase
 		if (result.IsSuccess(out _))
 		{
 			_isBackendRunning = true;
-			LogInfo($"Backend reconnected successfully at {BACKEND_HOST}:{BACKEND_PORT}");
+			LogInfo($"Backend reconnected successfully at {_backendHost}:{_backendPort}");
 			CallDeferred(MethodName.EmitSignal, SignalName.BackendReady);
 		}
 		else if (result.IsFailure(out var error))
@@ -502,7 +516,7 @@ public partial class BackendManager : AutoloadBase
 
 	public string GetBackendInfo()
 	{
-		return $"{BACKEND_HOST}:{BACKEND_PORT}";
+		return $"{_backendHost}:{_backendPort}";
 	}
 
 	public static BackendManager GetInstance()

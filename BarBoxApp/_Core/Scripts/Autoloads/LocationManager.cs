@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BarBox.Core.Autoloads;
@@ -44,9 +45,47 @@ public partial class LocationManager : AutoloadBase
 	public string BoxApiKey => _boxApiKey;
 	public bool IsConfigLoaded => _isConfigLoaded;
 
+	// Cached URI to avoid repeated parsing and potential exceptions
+	private Uri _backendUri;
+
+	/// <summary>
+	/// Backend host extracted from BackendUrl
+	/// Used by BackendManager for connection
+	/// </summary>
+	public string BackendHost => _backendUri?.Host ?? "127.0.0.1";
+
+	/// <summary>
+	/// Backend port extracted from BackendUrl
+	/// Uses default port 8000 if not specified or URL is invalid
+	/// </summary>
+	public int BackendPort => _backendUri?.Port ?? 8000;
+
+	/// <summary>
+	/// Whether HTTPS should be used (determined from BackendUrl scheme)
+	/// </summary>
+	public bool UseHttps => _backendUri != null &&
+		_backendUri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Whether test mode is enabled (from BARBOX_TEST_MODE env var)
+	/// </summary>
+	public bool IsTestMode => !string.IsNullOrEmpty(
+		System.Environment.GetEnvironmentVariable("BARBOX_TEST_MODE"));
+
+	// Note: .env loading moved to ApplicationBootstrap.OnServiceEnterTree()
+	// This ensures env vars are set before ANY service (including LocationManager) initializes
+
+	protected override Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
+	{
+		// Load configuration values during async init phase
+		// Env vars are already set by ApplicationBootstrap.OnServiceEnterTree()
+		LoadEnvironmentConfiguration();
+		return Task.CompletedTask;
+	}
+
 	protected override void OnServiceReady()
 	{
-		LoadEnvironmentConfiguration();
+		// Config already loaded in OnServiceInitializeAsync
 		var apiKeyStatus = string.IsNullOrEmpty(_boxApiKey) ? "NOT SET" : "SET";
 		LogInfo($"LocationManager initialized - Venue: {_venueName}, BoxName: {_boxName}, BoxId: {_boxId}, ApiKey: {apiKeyStatus}");
 
@@ -59,10 +98,7 @@ public partial class LocationManager : AutoloadBase
 
 	private void LoadEnvironmentConfiguration()
 	{
-		// Try loading .env file first (development)
-		TryLoadDotEnvFile();
-
-		// Load and validate configuration
+		// .env file already loaded in OnServiceEnterTree() - just load config values
 		_venueName = LoadVenueName();
 		_boxName = LoadBoxName();
 		_boxId = LoadBoxId();
@@ -185,8 +221,25 @@ public partial class LocationManager : AutoloadBase
 
 	private string LoadBackendUrl()
 	{
-		return System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_URL") ??
-		       "http://localhost:8000";
+		var url = System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_URL") ??
+		          "http://localhost:8000";
+
+		// Validate and cache the URI
+		try
+		{
+			_backendUri = new Uri(url);
+		}
+		catch (UriFormatException ex)
+		{
+			LogError($"Invalid BARBOX_BACKEND_URL format: {url}");
+			LogError($"URL parse error: {ex.Message}");
+			LogError("Using fallback: http://localhost:8000");
+
+			url = "http://localhost:8000";
+			_backendUri = new Uri(url);
+		}
+
+		return url;
 	}
 
 	private string LoadBoxApiKey()

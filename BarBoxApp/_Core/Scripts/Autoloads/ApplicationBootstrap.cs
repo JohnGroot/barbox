@@ -25,6 +25,13 @@ public partial class ApplicationBootstrap : AutoloadBase
 		Optional     // Warn and continue
 	}
 
+	protected override void OnServiceEnterTree()
+	{
+		// Load .env FIRST - before any _Ready() or async initialization runs
+		// This ensures environment variables are set before any service reads them
+		LoadDotEnvFile();
+	}
+
 	protected override void OnServiceReady()
 	{
 		RegisterSignalHandlers();
@@ -82,6 +89,64 @@ public partial class ApplicationBootstrap : AutoloadBase
 		GetTree().Root.PropagateNotification((int)NotificationWMCloseRequest);
 	}
 
+	/// <summary>
+	/// Load environment variables from .env file.
+	/// Called in OnServiceEnterTree to ensure env vars are set before any service initialization.
+	/// </summary>
+	private void LoadDotEnvFile()
+	{
+		string[] envPaths = ["res://.env.local", "res://.env", "user://.env.local"];
+
+		foreach (var path in envPaths)
+		{
+			if (FileAccess.FileExists(path))
+			{
+				LoadEnvFileContents(path);
+				GD.Print($"[ApplicationBootstrap] Loaded environment from: {path}");
+				return;
+			}
+		}
+
+		GD.Print("[ApplicationBootstrap] No .env file found, using system environment variables");
+	}
+
+	/// <summary>
+	/// Parse and load environment variables from a file.
+	/// Does NOT overwrite existing environment variables (allows test runners to override .env values).
+	/// </summary>
+	private void LoadEnvFileContents(string path)
+	{
+		using var file = FileAccess.Open(path, FileAccess.ModeFlags.Read);
+		if (file == null)
+		{
+			GD.PrintErr($"[ApplicationBootstrap] Failed to open .env file at: {path}");
+			return;
+		}
+
+		while (!file.EofReached())
+		{
+			var line = file.GetLine().Trim();
+
+			// Skip comments and empty lines
+			if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
+				continue;
+
+			// Parse KEY=VALUE format
+			var parts = line.Split('=', 2);
+			if (parts.Length == 2)
+			{
+				var key = parts[0].Trim();
+				var value = parts[1].Trim().Trim('"', '\'');
+
+				// Only set if not already defined (allows test runners to override)
+				if (string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable(key)))
+				{
+					System.Environment.SetEnvironmentVariable(key, value);
+				}
+			}
+		}
+	}
+
 	private async void InitializeAllServices()
 	{
 		LogInfo("Initializing all services in staged phases...");
@@ -129,16 +194,23 @@ public partial class ApplicationBootstrap : AutoloadBase
 
 	private async Task<bool> InitializePhase1Async(CancellationToken cancellationToken)
 	{
-		LogInfo("Phase 1: Foundation services (LocationManager, BackendManager)");
-		var phase1Tasks = new[]
-		{
-			InitializeServiceAsync("LocationManager", LocationManager.GetAutoload(), ServiceCriticality.Optional, cancellationToken),
-			InitializeServiceAsync("BackendManager", BackendManager.GetInstance(), ServiceCriticality.Required, cancellationToken)
-		};
-		var phase1Results = await Task.WhenAll(phase1Tasks);
+		// Phase 1a: Configuration service (LocationManager MUST complete first)
+		// LocationManager reads all config values and exposes them via properties
+		LogInfo("Phase 1: Foundation services (LocationManager, then BackendManager)");
+		var locationReady = await InitializeServiceAsync("LocationManager",
+			LocationManager.GetAutoload(), ServiceCriticality.Required, cancellationToken);
 
-		// If any REQUIRED service failed, return false
-		return !_failedServices.Contains("BackendManager");
+		if (!locationReady)
+		{
+			LogError("LocationManager failed - cannot continue (configuration unavailable)");
+			return false;
+		}
+
+		// Phase 1b: Backend service (depends on LocationManager for config)
+		var backendReady = await InitializeServiceAsync("BackendManager",
+			BackendManager.GetInstance(), ServiceCriticality.Required, cancellationToken);
+
+		return backendReady;
 	}
 
 	private async Task InitializePhase2Async(CancellationToken cancellationToken)

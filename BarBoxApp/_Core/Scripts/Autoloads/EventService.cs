@@ -17,25 +17,25 @@ namespace BarBox.Core.Autoloads;
 /// </summary>
 public partial class EventService : AutoloadBase
 {
-	// Configuration with environment variable support (matches BackendManager)
-	// Supports two configuration modes:
-	// 1. Full URL: BARBOX_BACKEND_URL="http://127.0.0.1:8000" (preferred)
-	// 2. Host+Port: BARBOX_BACKEND_HOST="127.0.0.1" + BARBOX_BACKEND_PORT="8000" (fallback)
-	private static readonly string BACKEND_HOST =
-		System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_HOST") ?? "127.0.0.1";
+	// Configuration - initialized in OnServiceInitializeAsync after LocationManager loads .env files
+	// (Static readonly fields would capture env vars before .env is loaded!)
+	private string _baseUrl;
+	private string _backendHost;
+	private int _backendPort;
+	private bool _useHttps;
 
-	private static readonly int BACKEND_PORT =
-		int.TryParse(System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_PORT"), out var port)
-			? port
-			: 8000;
-
-	// Allow full URL override for deployment flexibility (supports http:// or https://)
-	private static readonly string BASE_URL =
-		System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_URL")
-		?? $"http://{BACKEND_HOST}:{BACKEND_PORT}";
-
-	// Detect HTTPS from URL scheme (not from port or environment flags)
-	private static readonly bool USE_HTTPS = BASE_URL.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+	private static Uri ParseBackendUrl(string url)
+	{
+		try
+		{
+			return new Uri(url);
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"[EventService] Invalid BARBOX_BACKEND_URL '{url}': {ex.Message}. Using default.");
+			return new Uri("http://127.0.0.1:8000");
+		}
+	}
 
 	private const int REQUEST_TIMEOUT_MS = 5000;
 	private const int POLL_INTERVAL_MS = 10;
@@ -64,8 +64,23 @@ public partial class EventService : AutoloadBase
 	{
 		_httpClient = new HttpClient();
 
-		// Load box identity from LocationManager
+		// Load configuration AFTER LocationManager has loaded .env files
+		// (Static readonly fields would capture env vars before .env is loaded!)
 		var locationManager = LocationManager.GetAutoload();
+		_baseUrl = locationManager?.BackendUrl
+			?? System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_URL")
+			?? "http://127.0.0.1:8000";
+
+		var parsedUrl = new Uri(_baseUrl);
+		_backendHost = parsedUrl.Host;
+		_backendPort = parsedUrl.Port;
+		_useHttps = parsedUrl.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
+
+		// Log backend configuration at startup for debugging
+		LogInfo($"Backend configuration: {_backendHost}:{_backendPort} (HTTPS: {_useHttps})");
+		LogInfo($"BASE_URL: {_baseUrl}");
+
+		// Load box identity from LocationManager (reuse variable from above)
 		if (locationManager == null || !locationManager.IsConfigLoaded)
 			throw new InvalidOperationException("LocationManager is required but not available or not initialized");
 
@@ -114,7 +129,7 @@ public partial class EventService : AutoloadBase
 			throw new InvalidOperationException("BackendManager failed to become ready within timeout");
 		}
 
-		LogInfo($"EventService ready - backend available at {BASE_URL}");
+		LogInfo($"EventService ready - backend available at {_baseUrl}");
 	}
 
 
@@ -1146,6 +1161,30 @@ public partial class EventService : AutoloadBase
 	}
 
 	/// <summary>
+	/// Check payment completion status by Stripe session ID.
+	/// More efficient than polling credit balance (single indexed lookup vs full aggregation).
+	/// </summary>
+	/// <param name="sessionId">Stripe Checkout Session ID</param>
+	/// <returns>Status response with "pending", "completed", or "failed" status</returns>
+	public async Task<Result<CheckoutStatusResponse>> GetCheckoutStatusAsync(string sessionId)
+	{
+		var result = await QueryAsync<CheckoutStatusResponse>($"/payments/checkout/{sessionId}/status");
+
+		if (result.IsSuccess(out var response))
+		{
+			return Result.Success(response);
+		}
+
+		if (result.IsFailure(out var error))
+		{
+			LogError($"Failed to get checkout status: {error.Message}");
+			return Result.Failure<CheckoutStatusResponse>(error.Message);
+		}
+
+		return Result.Failure<CheckoutStatusResponse>("Unknown error getting checkout status");
+	}
+
+	/// <summary>
 	/// Get machine credit pot balance and player contributions
 	/// </summary>
 	public async Task<Result<MachineCreditsResponse>> GetMachineCreditsAsync(string gameTag, Guid boxId)
@@ -1342,19 +1381,18 @@ public partial class EventService : AutoloadBase
 
 		// Establish new connection
 #if DEBUG_HTTP_LIFECYCLE
-		LogInfo($"[HTTP] Establishing new connection to {BACKEND_HOST}:{BACKEND_PORT} (HTTPS: {USE_HTTPS})");
+		LogInfo($"[HTTP] Establishing new connection to {_backendHost}:{_backendPort} (HTTPS: {_useHttps})");
 #endif
 
 		// Configure TLS options for HTTPS
 		TlsOptions tlsOptions = null;
-		if (USE_HTTPS)
+		if (_useHttps)
 		{
-			tlsOptions = TlsOptions.Client();
-			// In development with self-signed certificates, we may need to allow unsafe connections
-			// For production, proper CA-signed certificates should be used
+			// Pass hostname for SNI (Server Name Indication) - required for Fly.io's shared IP infrastructure
+			tlsOptions = TlsOptions.Client(null, _backendHost);
 		}
 
-		var error = _httpClient.ConnectToHost(BACKEND_HOST, BACKEND_PORT, tlsOptions);
+		var error = _httpClient.ConnectToHost(_backendHost, _backendPort, tlsOptions);
 		if (error != Godot.Error.Ok)
 			throw new InvalidOperationException($"Failed to connect to backend: {error}");
 
