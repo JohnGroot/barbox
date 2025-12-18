@@ -86,7 +86,12 @@ public partial class LocationManager : AutoloadBase
 	protected override void OnServiceReady()
 	{
 		// Config already loaded in OnServiceInitializeAsync
-		var apiKeyStatus = string.IsNullOrEmpty(_boxApiKey) ? "NOT SET" : "SET";
+		// Show masked API key preview for debugging (helps confirm correct key)
+		var apiKeyStatus = string.IsNullOrEmpty(_boxApiKey)
+			? "NOT SET"
+			: _boxApiKey.Length > 12
+				? $"{_boxApiKey[..8]}..."
+				: "SET (short)";
 		LogInfo($"LocationManager initialized - Venue: {_venueName}, BoxName: {_boxName}, BoxId: {_boxId}, ApiKey: {apiKeyStatus}");
 
 		// In production, schedule box verification after services are ready
@@ -302,23 +307,45 @@ public partial class LocationManager : AutoloadBase
 
 			if (result.IsSuccess(out var response))
 			{
-				// If API key returned, this is first registration - must save it
-				if (!string.IsNullOrEmpty(response.ApiKey))
+				// Detect first-time registration vs re-registration via warning message
+				// First registration: warning starts with "Save this API key..."
+				// Re-registration: warning contains "already registered" or "exists with different"
+				var isFirstRegistration = !string.IsNullOrEmpty(response.Warning)
+					&& response.Warning.StartsWith("Save", StringComparison.OrdinalIgnoreCase);
+
+				if (isFirstRegistration && !string.IsNullOrEmpty(response.ApiKey))
 				{
+					// First registration - show action required banner with masked key
+					var maskedKey = response.ApiKey.Length > 12
+						? $"{response.ApiKey[..8]}...{response.ApiKey[^4..]}"
+						: "********";
+
 					LogError("╔════════════════════════════════════════════════════════════╗");
 					LogError("║ NEW BOX REGISTERED - ACTION REQUIRED                       ║");
 					LogError("║                                                            ║");
 					LogError("║ An API key was generated for this box.                    ║");
 					LogError("║ Add this line to BarBoxApp/.env.local and RESTART:        ║");
 					LogError("║                                                            ║");
-					LogError($"║ BARBOX_API_KEY={response.ApiKey}");
-					LogError("║                                                            ║");
-					LogError("║ WARNING: Key will not be shown again!                     ║");
+					LogError($"║ BARBOX_API_KEY={maskedKey}");
+					LogError("║ (Full key shown in Godot Output console below)            ║");
 					LogError("╚════════════════════════════════════════════════════════════╝");
+
+					// Print full key to console only (not persisted logs)
+					GD.Print($"BARBOX_API_KEY={response.ApiKey}");
 				}
 				else
 				{
-					LogInfo($"Box verified: {_venueName} (BoxName: {_boxName})");
+					// Re-registration - just log verification with masked key
+					var maskedKey = !string.IsNullOrEmpty(response.ApiKey) && response.ApiKey.Length > 12
+						? $"{response.ApiKey[..8]}...{response.ApiKey[^4..]}"
+						: "***";
+					LogInfo($"Box verified: {_venueName} (BoxName: {_boxName}), key: {maskedKey}");
+
+					// Log warning if name/tag mismatch was detected
+					if (!string.IsNullOrEmpty(response.Warning) && response.Warning.Contains("different"))
+					{
+						LogWarning($"Box registration note: {response.Warning}");
+					}
 				}
 			}
 			else if (result.IsFailure(out var error))

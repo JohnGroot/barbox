@@ -1025,17 +1025,28 @@ public partial class EventService : AutoloadBase
 
 		if (result.IsSuccess(out var response))
 		{
-			// Security: Only log partial API key if present
-			if (!string.IsNullOrEmpty(response.ApiKey))
+			// API key is always returned now - mask it for logging
+			var maskedKey = !string.IsNullOrEmpty(response.ApiKey) && response.ApiKey.Length > 12
+				? $"{response.ApiKey[..8]}...{response.ApiKey[^4..]}"
+				: "***";
+
+			// Detect first-time registration vs re-registration via warning message
+			var isFirstRegistration = !string.IsNullOrEmpty(response.Warning)
+				&& response.Warning.StartsWith("Save", StringComparison.OrdinalIgnoreCase);
+
+			if (isFirstRegistration)
 			{
-				var maskedKey = response.ApiKey.Length > 12
-					? $"{response.ApiKey.Substring(0, 8)}...{response.ApiKey.Substring(response.ApiKey.Length - 4)}"
-					: "***";
-				LogInfo($"Box registered with new API key: {maskedKey}");
+				LogInfo($"Box registered (first time): {locationName} ({boxId}), key: {maskedKey}");
 			}
 			else
 			{
-				LogInfo($"Box verified: {locationName} ({boxId})");
+				LogInfo($"Box verified: {locationName} ({boxId}), key: {maskedKey}");
+
+				// Log warning if name/tag mismatch was detected
+				if (!string.IsNullOrEmpty(response.Warning) && response.Warning.Contains("different"))
+				{
+					LogWarning($"Box registration note: {response.Warning}");
+				}
 			}
 
 			return Result.Success(response);

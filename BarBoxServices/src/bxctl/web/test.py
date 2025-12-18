@@ -7,15 +7,35 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from structlog import get_logger
 
 from bxctl import db, env, structures
 
-from . import auth, dependencies
+from . import auth, dependencies, payments
 
 router = APIRouter(prefix="/test", tags=["Testing"])
 logger = get_logger()
+
+
+class MockWebhookRequest(BaseModel):
+	"""Test-only webhook request with primitive fields (no Stripe structures).
+
+	WARNING: This model is used by the /test/payments/webhook-mock endpoint
+	which issues real credits. Only available in dev/test environments.
+
+	Uses primitive types to avoid coupling test code to Stripe SDK structures.
+	"""
+	event_id: str = Field(description="Test event ID (must start with 'evt_test_')")
+	session_id: str = Field(description="Checkout session ID")
+	payment_intent_id: str = Field(description="Payment intent ID")
+	player_id: UUID = Field(description="Player receiving credits")
+	box_id: UUID = Field(description="Box where purchase was made")
+	credits: int = Field(gt=0, description="Base credits to issue (must be positive)")
+	bonus_credits: int = Field(ge=0, default=0, description="Bonus credits (non-negative)")
+	amount_cents: int = Field(gt=0, description="Payment amount in cents")
+	pack_id: str = Field(description="Credit pack identifier (pack_5, pack_10, etc.)")
 
 
 async def _seed_test_box_and_players(
@@ -224,5 +244,102 @@ async def get_environment_info() -> dict:
         "is_test_mode": settings.is_test_mode(),
         "is_dev_mode": settings.is_dev_mode(),
     }
+
+
+@router.post("/payments/webhook-mock", status_code=200)
+async def mock_webhook(
+    request: MockWebhookRequest,
+    db_service: dependencies.Database,
+    now: dependencies.Now,
+) -> dict:
+    """Test-only webhook that bypasses Stripe signature verification.
+
+    WARNING: This endpoint issues real credits. Only available in dev/test.
+    All invocations are audit logged.
+
+    Use this endpoint to test the credit issuance flow without:
+    - Real Stripe webhook events
+    - Stripe signature verification
+    - Stripe API calls
+
+    Event IDs must start with 'evt_test_' prefix for safety.
+
+    Returns:
+        200: Credits issued successfully
+        400: Invalid request (bad event_id prefix, validation error)
+        404: Endpoint not available in production
+    """
+    # CRITICAL: Production guard (first line)
+    if env.is_production():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test endpoints are not available in production",
+        )
+
+    # CRITICAL: Event ID validation - must use test prefix
+    if not request.event_id.startswith("evt_test_"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "VALIDATION_ERROR",
+                "message": "Test events must use 'evt_test_' prefix",
+                "field": "event_id",
+            },
+        )
+
+    # CRITICAL: Audit logging for all test credit grants
+    logger.warning(
+        "test_webhook_invoked",
+        event_id=request.event_id,
+        session_id=request.session_id,
+        player_id=str(request.player_id),
+        box_id=str(request.box_id),
+        credits=request.credits,
+        bonus_credits=request.bonus_credits,
+        pack_id=request.pack_id,
+    )
+
+    # Check for idempotency by session_id (simpler than real webhook's event_id check)
+    existing_payment = await db_service.session.execute(
+        select(db.defs.StripePaymentIntent)
+        .where(db.defs.StripePaymentIntent.stripe_session_id == request.session_id)
+    )
+    if existing_payment.scalar_one_or_none():
+        logger.info("test_webhook_already_processed", session_id=request.session_id)
+        return {"status": "already_processed", "session_id": request.session_id}
+
+    # Call pure business logic (same function used by real webhook)
+    try:
+        result = await payments._issue_credits_for_payment(
+            event_id=request.event_id,
+            session_id=request.session_id,
+            payment_intent_id=request.payment_intent_id,
+            player_id=request.player_id,
+            box_id=request.box_id,
+            credits=request.credits,
+            bonus_credits=request.bonus_credits,
+            amount_cents=request.amount_cents,
+            pack_id=request.pack_id,
+            price_id=None,  # No Stripe Price ID for test
+            payment_method_type="test",
+            db_service=db_service,
+            now=now,
+            webhook_event_id=None,  # No StripeWebhookEvent for test
+        )
+        return result
+    except Exception as e:
+        logger.error(
+            "test_webhook_failed",
+            event_id=request.event_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "PROCESSING_FAILED",
+                "message": str(e),
+            },
+        ) from e
 
 

@@ -67,10 +67,19 @@ public partial class BackendManager : AutoloadBase
 
 		Result<bool> result;
 
+		// Check if connecting to remote backend (not localhost)
+		bool isRemoteBackend = !IsLocalBackend(_backendHost);
+
 		// In test mode, skip auto-start and wait for external backend
 		if (_isTestMode)
 		{
 			LogInfo("Test mode detected - waiting for external backend (no auto-start)");
+			result = await WaitForExternalBackendAsync(cancellationToken);
+		}
+		else if (isRemoteBackend)
+		{
+			// Remote backend (e.g., Fly.io) - don't try to auto-start local dev.sh
+			LogInfo($"Remote backend detected ({_backendHost}) - waiting for connection (no auto-start)");
 			result = await WaitForExternalBackendAsync(cancellationToken);
 		}
 		else
@@ -98,13 +107,28 @@ public partial class BackendManager : AutoloadBase
 
 
 	/// <summary>
-	/// Wait for external backend to become healthy (test mode only).
-	/// This method does NOT start a backend - it assumes an external test runner
-	/// has already started the backend and waits for it to become healthy.
+	/// Check if host is local (localhost/127.0.0.1/etc) vs remote
+	/// </summary>
+	private static bool IsLocalBackend(string host)
+	{
+		if (string.IsNullOrEmpty(host))
+			return true; // Assume local if not set
+
+		return host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+		       host.Equals("127.0.0.1", StringComparison.Ordinal) ||
+		       host.Equals("::1", StringComparison.Ordinal) ||
+		       host.StartsWith("192.168.", StringComparison.Ordinal) ||
+		       host.StartsWith("10.", StringComparison.Ordinal);
+	}
+
+	/// <summary>
+	/// Wait for external backend to become healthy (test mode or remote backend).
+	/// This method does NOT start a backend - it assumes an external process
+	/// (test runner or remote service) has already started the backend.
 	/// </summary>
 	private async Task<Result<bool>> WaitForExternalBackendAsync(CancellationToken cancellationToken = default)
 	{
-		LogInfo($"Waiting for external test backend at {_backendHost}:{_backendPort}...");
+		LogInfo($"Waiting for backend at {_backendHost}:{_backendPort}...");
 		const float EXTERNAL_BACKEND_TIMEOUT = 30.0f;
 		var startTime = Time.GetTicksMsec();
 
@@ -139,7 +163,18 @@ public partial class BackendManager : AutoloadBase
 	private string FindBackendStartScript()
 	{
 		var projectPath = ProjectSettings.GlobalizePath("res://");
+		if (string.IsNullOrEmpty(projectPath))
+		{
+			LogWarning("Could not resolve project path");
+			return null;
+		}
+
 		var projectDir = System.IO.Path.GetDirectoryName(projectPath.TrimEnd('/'));
+		if (string.IsNullOrEmpty(projectDir))
+		{
+			LogWarning("Could not determine project directory");
+			return null;
+		}
 
 		// Try source deployment path first (BarBoxApp/../BarBoxServices)
 		var sourceBackendPath = System.IO.Path.Combine(projectDir, "BarBoxServices", "scripts", "dev.sh");
@@ -150,21 +185,27 @@ public partial class BackendManager : AutoloadBase
 		}
 
 		// Try export deployment path (from releases/vX.Y.Z/ -> ../../BarBoxServices)
-		var exportBackendPath = System.IO.Path.Combine(
-			System.IO.Path.GetDirectoryName(projectDir),
-			"BarBoxServices",
-			"scripts",
-			"dev.sh"
-		);
-		if (System.IO.File.Exists(exportBackendPath))
+		var parentDir = System.IO.Path.GetDirectoryName(projectDir);
+		if (!string.IsNullOrEmpty(parentDir))
 		{
-			LogInfo($"Found backend script (export deployment): {exportBackendPath}");
-			return exportBackendPath;
+			var exportBackendPath = System.IO.Path.Combine(parentDir, "BarBoxServices", "scripts", "dev.sh");
+			if (System.IO.File.Exists(exportBackendPath))
+			{
+				LogInfo($"Found backend script (export deployment): {exportBackendPath}");
+				return exportBackendPath;
+			}
+
+			LogError("Backend start script not found. Checked:");
+			LogError($"  Source: {sourceBackendPath}");
+			LogError($"  Export: {exportBackendPath}");
+		}
+		else
+		{
+			LogError("Backend start script not found. Checked:");
+			LogError($"  Source: {sourceBackendPath}");
+			LogError("  Export: (could not determine parent directory)");
 		}
 
-		LogError("Backend start script not found. Checked:");
-		LogError($"  Source: {sourceBackendPath}");
-		LogError($"  Export: {exportBackendPath}");
 		return null;
 	}
 

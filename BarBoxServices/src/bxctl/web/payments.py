@@ -96,6 +96,158 @@ def _get_stripe_price_id(pack_id: str) -> str:
 	return price_map.get(pack_id, "")
 
 
+async def _issue_credits_for_payment(
+	*,
+	event_id: str,
+	session_id: str,
+	payment_intent_id: str,
+	player_id: UUID,
+	box_id: UUID,
+	credits: int,
+	bonus_credits: int,
+	amount_cents: int,
+	pack_id: str,
+	price_id: str | None,
+	payment_method_type: str | None,
+	db_service: dependencies.Database,
+	now: datetime,
+	webhook_event_id: UUID | None = None,
+) -> dict:
+	"""Issue credits for a completed payment.
+
+	Pure function with primitive parameters - no Stripe SDK types.
+	Used by both the real webhook handler and the test endpoint.
+
+	This function handles:
+	- Get/create credit session (prefer lobby, else ephemeral)
+	- Create StripePaymentIntent record (source of truth)
+	- Create credit/earn event
+	- Mark webhook event as processed (if webhook_event_id provided)
+
+	Args:
+		event_id: Stripe event ID or test event ID
+		session_id: Checkout session ID
+		payment_intent_id: Stripe payment intent ID
+		player_id: Player receiving credits
+		box_id: Box where purchase was made
+		credits: Base credits to issue
+		bonus_credits: Bonus credits to issue
+		amount_cents: Payment amount in cents
+		pack_id: Credit pack identifier
+		price_id: Stripe Price ID (None for test)
+		payment_method_type: Payment method type (card, etc.)
+		db_service: Database service
+		now: Current timestamp
+		webhook_event_id: StripeWebhookEvent ID to mark as processed (optional)
+
+	Returns:
+		dict with status and credits_added
+	"""
+	internal_payment_id = uuid4()
+	credit_event_id = uuid4()
+
+	try:
+		# Get/create session for credit event (prefer lobby, else ephemeral)
+		credit_session_id = await get_or_create_credit_session(
+			player_id=player_id,
+			box_id=box_id,
+			db_service=db_service,
+			now=now,
+		)
+
+		# Create payment record FIRST (source of truth)
+		db_service.session.add(defs.StripePaymentIntent(
+			id=internal_payment_id,
+			created_at=now,
+			stripe_session_id=session_id,
+			stripe_payment_intent_id=payment_intent_id,
+			player_id=player_id,
+			box_id=box_id,
+			amount_cents=amount_cents,
+			credits_purchased=credits,
+			bonus_credits=bonus_credits,
+			selected_price_id=price_id or "",
+			payment_method="checkout_session",
+			payment_method_type=payment_method_type,
+			status="succeeded",
+			completed_at=now,
+			# Reconciliation links
+			credit_event_id=credit_event_id,
+			credited_to_session_id=credit_session_id,
+			credited_at=now,
+			payment_metadata={"pack_id": pack_id},
+		))
+
+		# Emit credit/earn event (global credits, references payment)
+		# Use Core INSERT to bypass MappedAsDataclass FK/relationship sync issues
+		await db_service.session.execute(
+			insert(defs.BoxSessionEvent).values(
+				id=credit_event_id,
+				session_id=credit_session_id,
+				type="credit/earn",
+				timestamp=now,
+				payload={
+					"amount": credits + bonus_credits,
+					"source": "stripe_payment",
+					"global": True,  # Spendable at any location
+					"stripe_payment_intent_id": str(internal_payment_id),
+					"box_id": str(box_id),  # Where purchased (for bookkeeping)
+				}
+			)
+		)
+
+		# Mark webhook event as processed (if provided)
+		if webhook_event_id:
+			await db_service.session.execute(
+				update(defs.StripeWebhookEvent)
+				.where(defs.StripeWebhookEvent.id == webhook_event_id)
+				.values(processed=True, processed_at=now, payment_intent_id=internal_payment_id)
+			)
+
+		# Commit all changes
+		await db_service.session.commit()
+
+		total_credits = credits + bonus_credits
+		logger.info(
+			"payment_completed",
+			event_id=event_id,
+			player_id=str(player_id),
+			session_id=str(credit_session_id),
+			credits=total_credits,
+			amount_cents=amount_cents,
+			payment_intent_id=str(internal_payment_id),
+		)
+		return {"status": "success", "credits_added": total_credits}
+
+	except Exception as e:
+		logger.error(
+			"credit_issuance_failed",
+			event_id=event_id,
+			error=str(e),
+			error_type=type(e).__name__,
+		)
+		await db_service.session.rollback()
+
+		# Mark webhook event as failed (if provided)
+		if webhook_event_id:
+			try:
+				await db_service.session.execute(
+					update(defs.StripeWebhookEvent)
+					.where(defs.StripeWebhookEvent.id == webhook_event_id)
+					.values(processing_error=str(e))
+				)
+				await db_service.session.commit()
+			except Exception as recording_error:
+				logger.error(
+					"webhook_error_recording_failed",
+					event_id=event_id,
+					original_error=str(e),
+					recording_error=str(recording_error),
+				)
+
+		raise
+
+
 async def get_or_create_credit_session(
 	player_id: UUID,
 	box_id: UUID,
@@ -539,103 +691,31 @@ async def stripe_webhook(
 	bonus = price_metadata.bonus_credits
 	logger.info("webhook_credits_extracted", credits=credits, bonus=bonus)
 
-	# 4. Process payment and create credit event
-	payment_intent_id = uuid4()
-	credit_event_id = uuid4()
-
+	# 4. Process payment and create credit event using extracted pure function
 	try:
-		# Get/create session for credit event (prefer lobby, else ephemeral)
-		credit_session_id = await get_or_create_credit_session(
+		result = await _issue_credits_for_payment(
+			event_id=event.id,
+			session_id=session_data.id,
+			payment_intent_id=session_data.payment_intent or "",
 			player_id=player_id,
 			box_id=box_id,
+			credits=credits,
+			bonus_credits=bonus,
+			amount_cents=session_data.amount_total,
+			pack_id=pack_id or "",
+			price_id=price.id,
+			payment_method_type=session_data.payment_method_types[0] if session_data.payment_method_types else None,
 			db_service=db_service,
 			now=now,
+			webhook_event_id=webhook_event_id,
 		)
-
-		# Create payment record FIRST (source of truth)
-		db_service.session.add(defs.StripePaymentIntent(
-			id=payment_intent_id,
-			created_at=now,
-			stripe_session_id=session_data.id,
-			stripe_payment_intent_id=session_data.payment_intent or "",
-			player_id=player_id,
-			box_id=box_id,
-			amount_cents=session_data.amount_total,
-			credits_purchased=credits,
-			bonus_credits=bonus,
-			selected_price_id=price.id,
-			payment_method="checkout_session",
-			payment_method_type=session_data.payment_method_types[0] if session_data.payment_method_types else None,
-			status="succeeded",
-			completed_at=now,
-			# Reconciliation links
-			credit_event_id=credit_event_id,
-			credited_to_session_id=credit_session_id,
-			credited_at=now,
-			payment_metadata={"pack_id": pack_id},
-		))
-
-		# Emit credit/earn event (global credits, references payment)
-		# Use Core INSERT to bypass MappedAsDataclass FK/relationship sync issues
-		await db_service.session.execute(
-			insert(defs.BoxSessionEvent).values(
-				id=credit_event_id,
-				session_id=credit_session_id,
-				type="credit/earn",
-				timestamp=now,
-				payload={
-					"amount": credits + bonus,
-					"source": "stripe_payment",
-					"global": True,  # Spendable at any location
-					"stripe_payment_intent_id": str(payment_intent_id),
-					"box_id": str(box_id),  # Where purchased (for bookkeeping)
-				}
-			)
-		)
-
-		# Mark webhook as processed
-		await db_service.session.execute(
-			update(defs.StripeWebhookEvent)
-			.where(defs.StripeWebhookEvent.id == webhook_event_id)
-			.values(processed=True, processed_at=now, payment_intent_id=payment_intent_id)
-		)
-
-		# Commit all changes
-		await db_service.session.commit()
 
 		elapsed_ms = (perf_counter() - start_time) * 1000
-		logger.info(
-			"payment_completed",
-			player_id=str(player_id),
-			session_id=str(credit_session_id),
-			credits=credits + bonus,
-			amount_cents=session_data.amount_total,
-			payment_intent_id=str(payment_intent_id),
-			elapsed_ms=round(elapsed_ms, 2),
-		)
-		return {"status": "success", "credits_added": credits + bonus}
+		logger.info("webhook_completed", elapsed_ms=round(elapsed_ms, 2))
+		return result
 
 	except Exception as e:
-		# Mark webhook as failed (allows investigation/retry)
-		# CRITICAL: Wrap in try-catch to ensure original exception is always logged
-		# even if the error recording itself fails
 		logger.error("webhook_processing_failed", event_id=event.id, error=str(e), error_type=type(e).__name__)
-		try:
-			await db_service.session.rollback()
-			await db_service.session.execute(
-				update(defs.StripeWebhookEvent)
-				.where(defs.StripeWebhookEvent.id == webhook_event_id)
-				.values(processing_error=str(e))
-			)
-			await db_service.session.commit()
-		except Exception as recording_error:
-			# Log both errors - original error is more important
-			logger.error(
-				"webhook_error_recording_failed",
-				event_id=event.id,
-				original_error=str(e),
-				recording_error=str(recording_error),
-			)
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
 			detail="Processing failed",

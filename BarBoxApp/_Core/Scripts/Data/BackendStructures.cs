@@ -82,10 +82,10 @@ public record BoxCreateRequest
 
 /// <summary>
 /// Response for box registration and verification
-/// Fields are nullable because backend returns different responses:
-/// - First registration: All fields populated (id, name, tag, api_key, warning)
-/// - Verification: Only id field populated
-/// WARNING: API key is only returned once on first registration - must be saved immediately!
+/// API key is always returned (deterministically derived from box_id).
+/// Use the Warning field to detect first-time registration vs re-registration:
+/// - First registration: Warning starts with "Save this API key..."
+/// - Re-registration: Warning is "Box already registered" or contains "different name/tag"
 /// </summary>
 public record BoxDetailResponse
 {
@@ -93,27 +93,30 @@ public record BoxDetailResponse
 	public string Id { get; init; } = "";
 
 	/// <summary>
-	/// Box name - only present on first-time registration
+	/// Box name - returns existing name (not updated on re-registration)
 	/// </summary>
 	[JsonPropertyName("name")]
 	public string? Name { get; init; }
 
 	/// <summary>
-	/// Box tag - only present on first-time registration
+	/// Box tag - returns existing tag (not updated on re-registration)
 	/// </summary>
 	[JsonPropertyName("tag")]
 	public string? Tag { get; init; }
 
 	/// <summary>
 	/// API key for authenticating box requests
-	/// Only returned on first-time registration - save immediately!
-	/// Will be null on subsequent verification calls
+	/// Always returned - key is deterministically derived from box_id
+	/// Safe to call multiple times for recovery/re-deployment scenarios
 	/// </summary>
 	[JsonPropertyName("api_key")]
 	public string? ApiKey { get; init; }
 
 	/// <summary>
-	/// Warning message about saving API key - only present on first registration
+	/// Warning message indicating registration status:
+	/// - "Save this API key..." = first-time registration
+	/// - "Box already registered" = re-registration (same name/tag)
+	/// - "Box exists with different name/tag..." = re-registration with mismatch
 	/// </summary>
 	[JsonPropertyName("warning")]
 	public string? Warning { get; init; }

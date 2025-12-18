@@ -156,6 +156,11 @@ async def register_box(
     - Subsequent calls: Returns the same API key (idempotent)
     - Reinstalls: Just call this endpoint again to get the key
 
+    **Name/Tag Handling**:
+    - Name and tag are set on first registration and cannot be updated
+    - If called with different name/tag for existing box, returns existing values
+    - Warning field indicates if name/tag mismatch was detected
+
     Args:
         box_id: Box ID from path parameter
         box_data: Box creation data (id, name, tag)
@@ -163,7 +168,7 @@ async def register_box(
         now: Current timestamp
 
     Returns:
-        200: BoxDetailWithAPIKey with deterministic API key
+        200: BoxDetailWithAPIKey with deterministic API key and warning if applicable
         400: Box ID in path does not match request body
         500: Internal server error
     """
@@ -196,7 +201,24 @@ async def register_box(
     existing_box = existing_box_result.scalar_one_or_none()
 
     if existing_box is not None:
-        # Box already exists - return it with API key (idempotent)
+        # Box already exists - return with api_key for recovery/re-deployment scenarios
+        # Check if client provided different name/tag and warn
+        if existing_box.name != box_data.name or existing_box.tag != box_data.tag:
+            logger.warning(
+                "box_registration_mismatch",
+                box_id=str(box_id),
+                existing_name=existing_box.name,
+                provided_name=box_data.name,
+                existing_tag=existing_box.tag,
+                provided_tag=box_data.tag,
+            )
+            warning = (
+                f"Box exists with different name/tag. "
+                f"Returning existing: name='{existing_box.name}', tag='{existing_box.tag}'"
+            )
+        else:
+            warning = "Box already registered"
+
         logger.info(
             "box_already_registered",
             box_id=str(box_id),
@@ -206,7 +228,8 @@ async def register_box(
             id=existing_box.id,
             name=existing_box.name,
             tag=existing_box.tag,
-            api_key=api_key,
+            api_key=api_key,  # Always return key for recovery/re-deployment
+            warning=warning,
         )
 
     # Box doesn't exist - create it

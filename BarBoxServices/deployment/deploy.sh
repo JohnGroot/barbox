@@ -458,6 +458,25 @@ ssh "$TARGET" bash << ENV_EOF
 			sed -i.bak "s/^JWT_SECRET_KEY=.*/JWT_SECRET_KEY=\$JWT_SECRET/" "\$BACKEND_ENV"
 			echo "[INFO] JWT secret regenerated"
 		fi
+
+		# Ensure Stripe keys are present
+		if ! grep -q "^STRIPE_SECRET_KEY=" "\$BACKEND_ENV" 2>/dev/null; then
+			echo "[INFO] Adding Stripe configuration to existing .env..."
+			cat >> "\$BACKEND_ENV" << STRIPE_EOF
+
+# Stripe Configuration (test keys)
+STRIPE_SECRET_KEY=sk_test_51ScGlGBaj7zkZdiEAYSKSeAaGemZWVEoFdoR1qmhL5sKDOeTnEi1Wm0T11u68ld7JdH74tSSMzBVLdPsF5lTG9G300PJWFV96n
+STRIPE_WEBHOOK_SECRET=whsec_48c36914c27a21970b15fd70cfecf1e0bfa8509fda0aa822de7e39ca89f53840
+STRIPE_PRICE_5_CREDITS=price_1ScHbzBaj7zkZdiEtqOc99Hq
+STRIPE_PRICE_10_CREDITS=price_1ScHcPBaj7zkZdiEmu6KQynb
+STRIPE_PRICE_25_CREDITS=price_1ScHcYBaj7zkZdiEiU0fkea1
+STRIPE_PRICE_50_CREDITS=price_1ScHcfBaj7zkZdiERTcU7ye5
+STRIPE_PRICE_100_CREDITS=price_1ScHckBaj7zkZdiEqAhFumo0
+STRIPE_EOF
+			echo "[INFO] Stripe configuration added"
+		else
+			echo "[INFO] Stripe configuration already present"
+		fi
 	else
 		echo "[INFO] Creating backend .env..."
 		JWT_SECRET=\$(openssl rand -base64 64 | tr -d '\n')
@@ -472,6 +491,15 @@ JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_HOURS=2
 SQLITE_PATH=app.db
 BCRYPT_ROUNDS=12
+
+# Stripe Configuration (test keys)
+STRIPE_SECRET_KEY=sk_test_51ScGlGBaj7zkZdiEAYSKSeAaGemZWVEoFdoR1qmhL5sKDOeTnEi1Wm0T11u68ld7JdH74tSSMzBVLdPsF5lTG9G300PJWFV96n
+STRIPE_WEBHOOK_SECRET=whsec_48c36914c27a21970b15fd70cfecf1e0bfa8509fda0aa822de7e39ca89f53840
+STRIPE_PRICE_5_CREDITS=price_1ScHbzBaj7zkZdiEtqOc99Hq
+STRIPE_PRICE_10_CREDITS=price_1ScHcPBaj7zkZdiEmu6KQynb
+STRIPE_PRICE_25_CREDITS=price_1ScHcYBaj7zkZdiEiU0fkea1
+STRIPE_PRICE_50_CREDITS=price_1ScHcfBaj7zkZdiERTcU7ye5
+STRIPE_PRICE_100_CREDITS=price_1ScHckBaj7zkZdiEqAhFumo0
 EOF
 
 		chmod 600 "\$BACKEND_ENV"
