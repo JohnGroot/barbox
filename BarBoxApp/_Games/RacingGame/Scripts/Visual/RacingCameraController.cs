@@ -47,9 +47,6 @@ namespace BarBox.Games.Racing
 	// INITIALIZATION
 	// ================================================================
 
-	/// <summary>
-	/// Setup the camera system
-	/// </summary>
 	public void Initialize()
 	{
 		_trackCamera = new Camera2D();
@@ -67,19 +64,11 @@ namespace BarBox.Games.Racing
 		}
 	}
 
-	/// <summary>
-	/// Initialize camera controller with track definition
-	/// </summary>
-	/// <param name="trackDefinition">Track definition for positioning</param>
 	public void SetTrackDefinition(IRacingTrackDefinition trackDefinition)
 	{
 		_trackDefinition = trackDefinition;
 	}
 
-	/// <summary>
-	/// Update settings from external configuration
-	/// </summary>
-	/// <param name="screenEdgeColliderThickness">Thickness of screen edge colliders</param>
 	public void UpdateSettings(float screenEdgeColliderThickness)
 	{
 		ScreenEdgeColliderThickness = screenEdgeColliderThickness;
@@ -89,12 +78,9 @@ namespace BarBox.Games.Racing
 	// CAMERA POSITIONING
 	// ================================================================
 
-	/// <summary>
-	/// Position camera over track and zoom to fit (restored original logic)
-	/// </summary>
 	public void PositionCameraOverTrack()
 	{
-		if (_trackDefinition == null || _trackCamera == null) return;
+		if (_trackDefinition == null) return;
 
 		Vector2 trackCenter = _trackDefinition.GetStartLinePosition(); // Use start line as reference
 		Rect2 trackBounds = GetTrackBounds();
@@ -135,10 +121,6 @@ namespace BarBox.Games.Racing
 		}
 	}
 
-	/// <summary>
-	/// Get track bounds from track definition
-	/// </summary>
-	/// <returns>Track bounds rectangle</returns>
 	private Rect2 GetTrackBounds()
 	{
 		if (_trackDefinition is RacingTrackDefinition trackDef)

@@ -223,9 +223,6 @@ public partial class RacingZoneManager : Node
 		return modifier;
 	}
 
-	/// <summary>
-	/// Get combined acceleration modifier for all zones the body is in
-	/// </summary>
 	public float GetCombinedAccelerationModifier(Node2D body)
 	{
 		if (!_bodyZones.TryGetValue(body, out var zones) || zones.Count == 0)
@@ -239,9 +236,6 @@ public partial class RacingZoneManager : Node
 		return modifier;
 	}
 
-	/// <summary>
-	/// Get combined turn modifier for all zones the body is in
-	/// </summary>
 	public float GetCombinedTurnModifier(Node2D body)
 	{
 		if (!_bodyZones.TryGetValue(body, out var zones) || zones.Count == 0)
@@ -255,9 +249,6 @@ public partial class RacingZoneManager : Node
 		return modifier;
 	}
 
-	/// <summary>
-	/// Check if any zone the body is in blocks input
-	/// </summary>
 	public bool IsInputBlocked(Node2D body)
 	{
 		// First check if in active frictionless state (with duration)

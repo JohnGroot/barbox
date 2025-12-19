@@ -63,19 +63,12 @@ namespace BarBox.Games.Racing
 	// INITIALIZATION
 	// ================================================================
 
-	/// <summary>
-	/// Initialize the visual feedback renderer with car controller dependency
-	/// </summary>
-	/// <param name="carController">Car controller for position and state data</param>
 	public void Initialize(RacingCar carController)
 	{
 		_carController = carController;
 		ResetVisualState();
 	}
 
-	/// <summary>
-	/// Update visual feedback settings from external configuration
-	/// </summary>
 	public void UpdateSettings(
 		Color inputLineActiveColor,
 		Color inputLineInactiveColor,
@@ -102,9 +95,6 @@ namespace BarBox.Games.Racing
 		TrailLifetime = trailLifetime;
 	}
 
-	/// <summary>
-	/// Reset all visual state (trails, positions, etc.)
-	/// </summary>
 	public void ResetVisualState()
 	{
 		_leftTireTrail.Clear();
@@ -127,10 +117,6 @@ namespace BarBox.Games.Racing
 	// UPDATE METHODS
 	// ================================================================
 
-	/// <summary>
-	/// Update visual feedback state and animations
-	/// </summary>
-	/// <param name="delta">Frame delta time</param>
 	public void UpdateVisualFeedback(float delta)
 	{
 		if (_carController?.IsInitialized != true) return;
@@ -280,7 +266,7 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void DrawInputLine()
 	{
-		if (_carController?.IsInitialized == false) return;
+		if (_carController?.IsInitialized != true) return;
 		
 		var targetPosition = _carController.GetTargetPosition();
 		var hasInput = _carController.HasInput();
@@ -303,7 +289,7 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void DrawMouseIndicators()
 	{
-		if (_carController?.IsInitialized == false) return;
+		if (_carController?.IsInitialized != true) return;
 		
 		var targetPosition = _carController.GetTargetPosition();
 		var hasInput = _carController.HasInput();
@@ -428,7 +414,7 @@ namespace BarBox.Games.Racing
 	{
 		if (_cachedValuesValid) return;
 		
-		if (!(_carController?.IsInitialized == true)) return;
+		if (_carController?.IsInitialized != true) return;
 		
 		var carBody = _carController.GetCarBody();
 		if (carBody == null) return;

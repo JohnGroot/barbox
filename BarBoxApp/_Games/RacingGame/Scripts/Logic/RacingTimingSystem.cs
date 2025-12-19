@@ -140,9 +140,7 @@ namespace BarBox.Games.Racing
 		_playerCurrentLap[playerId]++;
 		_playerCurrentLapTime[playerId] = 0.0f;
 		_playerGapTime[playerId] = 0.0f;
-
-		if (!_playerLapTimes.ContainsKey(playerId))
-			_playerLapTimes[playerId] = new List<float>();
+		_playerLapTimes.TryAdd(playerId, []);
 	}
 
 	public void CompletePlayerLap(string playerId, float lapTime)
@@ -150,9 +148,7 @@ namespace BarBox.Games.Racing
 		if (!_playerCurrentLap.TryGetValue(playerId, out int lapNumber))
 			return;
 
-		// Ensure lap times list exists before adding
-		if (!_playerLapTimes.ContainsKey(playerId))
-			_playerLapTimes[playerId] = [];
+		_playerLapTimes.TryAdd(playerId, []);
 		_playerLapTimes[playerId].Add(lapTime);
 
 		// Update best lap time
@@ -203,9 +199,7 @@ namespace BarBox.Games.Racing
 		float totalTime = GetPlayerTotalTime(playerId);
 
 		// Store checkpoint time data
-		if (!_playerCheckpointTimes.ContainsKey(playerId))
-			_playerCheckpointTimes[playerId] = new List<CheckpointTime>();
-
+		_playerCheckpointTimes.TryAdd(playerId, []);
 		var checkpointTime = new CheckpointTime(checkpointIndex, totalTime, gapTime);
 		_playerCheckpointTimes[playerId].Add(checkpointTime);
 		_playerLastCheckpointTime[playerId] = totalTime;
@@ -344,9 +338,6 @@ namespace BarBox.Games.Racing
 		return lapTimes.Sum() + currentLapTime;
 	}
 
-	/// <summary>
-	/// Calculate player score based on game mode
-	/// </summary>
 	public float CalculatePlayerScore(string playerId, RacingMode gameMode)
 	{
 		if (gameMode == RacingMode.Practice)

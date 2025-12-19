@@ -298,8 +298,6 @@ namespace BarBox.Games.Racing
 
 		protected virtual void UpdateCarPhysics(float delta)
 		{
-			if (_carBody == null) return;
-
 			// Check for frictionless state first - maintains locked velocity and ignores all input
 			if (_isInFrictionlessState)
 			{
@@ -399,9 +397,6 @@ namespace BarBox.Games.Racing
 
 		private void CheckFrictionlessZoneEntry()
 		{
-			if (_trackValidationSystem == null || _carBody == null)
-				return;
-
 			var zoneManager = _trackValidationSystem.GetZoneManager();
 			if (zoneManager == null)
 				return;
@@ -432,16 +427,11 @@ namespace BarBox.Games.Racing
 			_lockedRotation = rotation;
 
 			// Ensure the car body has the locked rotation
-			if (_carBody != null)
-			{
-				_carBody.Rotation = rotation;
-			}
+			_carBody.Rotation = rotation;
 		}
 
 		private void UpdateFrictionlessState(float delta)
 		{
-			if (_carBody == null) return;
-
 			_frictionlessTimeRemaining -= delta;
 
 			// Check if effect has expired
@@ -474,14 +464,7 @@ namespace BarBox.Games.Racing
 			// Keep current velocity and rotation, just resume normal physics
 		}
 
-		/// <summary>
-		/// Check if car is currently in frictionless state
-		/// </summary>
 		public bool IsInFrictionlessState => _isInFrictionlessState;
-
-		/// <summary>
-		/// Get remaining time in frictionless state
-		/// </summary>
 		public float FrictionlessTimeRemaining => _frictionlessTimeRemaining;
 
 		// ================================================================
@@ -490,7 +473,7 @@ namespace BarBox.Games.Racing
 
 		private void UpdateTurnPenalty(float delta)
 		{
-			if (_carBody == null || delta <= 0) return;
+			if (delta <= 0) return;
 
 			// Calculate angular velocity (rad/s)
 			float rotationDelta = Mathf.AngleDifference(_previousRotation, _carBody.Rotation);

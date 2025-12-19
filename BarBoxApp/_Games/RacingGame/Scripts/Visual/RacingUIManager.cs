@@ -147,21 +147,15 @@ namespace BarBox.Games.Racing
 	// PUBLIC PROPERTIES
 	// ================================================================
 
-	public bool IsPauseOverlayVisible => _pauseOverlay?.Visible ?? false;
-	public bool IsGameOverOverlayVisible => _raceCompleteOverlay?.IsVisible ?? false; // Now uses race complete overlay
-	public bool IsRaceCompleteOverlayVisible => _raceCompleteOverlay?.IsVisible ?? false;
-	public bool IsCountdownOverlayVisible => _countdownOverlay?.Visible ?? false;
+	public bool IsPauseOverlayVisible => _pauseOverlay.Visible;
+	public bool IsGameOverOverlayVisible => _raceCompleteOverlay.IsVisible;
+	public bool IsRaceCompleteOverlayVisible => _raceCompleteOverlay.IsVisible;
+	public bool IsCountdownOverlayVisible => _countdownOverlay.Visible;
 
 	// ================================================================
 	// INITIALIZATION
 	// ================================================================
 
-	/// <summary>
-	/// Initialize the UI manager
-	/// </summary>
-	/// <param name="trackScenes">Available track scenes for selection</param>
-	/// <param name="currentTrackIndex">Currently selected track index</param>
-	/// <param name="timeTrialCreditCost">Credit cost for time trial mode</param>
 	public void Initialize(List<PackedScene> trackScenes = null, int currentTrackIndex = 0, int timeTrialCreditCost = 1)
 	{
 		_trackScenes = trackScenes;
@@ -176,18 +170,12 @@ namespace BarBox.Games.Racing
 		SetupOverlays();
 	}
 
-	/// <summary>
-	/// Setup the main UI layer
-	/// </summary>
 	private void SetupUILayer()
 	{
 		_uiLayer = new CanvasLayer();
 		AddChild(_uiLayer);
 	}
 
-	/// <summary>
-	/// Setup the main game UI
-	/// </summary>
 	private void SetupMainUI()
 	{
 		var mainUI = new Control();
@@ -645,30 +633,13 @@ namespace BarBox.Games.Racing
 	// OVERLAY CONTROL
 	// ================================================================
 
-	/// <summary>
-	/// Show/hide pause overlay
-	/// </summary>
-	/// <param name="visible">Whether to show the overlay</param>
 	public void SetPauseOverlayVisible(bool visible)
 	{
-		if (_pauseOverlay != null)
-		{
-			_pauseOverlay.Visible = visible;
-		}
+		_pauseOverlay.Visible = visible;
 	}
 
-	/// <summary>
-	/// Show/hide race complete overlay with comprehensive results display
-	/// </summary>
-	/// <param name="visible">Whether to show the overlay</param>
-	/// <param name="finalTime">Final race time to display</param>
-	/// <param name="canAffordReplay">Whether player can afford to race again</param>
-	/// <param name="currentTrackId">Current track ID for loading high scores</param>
-	/// <param name="creditCost">Credit cost for racing again</param>
 	public void SetRaceCompleteOverlayVisible(bool visible, float finalTime = 0f, bool canAffordReplay = true, string currentTrackId = "", int creditCost = 1)
 	{
-		if (_raceCompleteOverlay == null)
-			return;
 
 		if (visible && !_raceCompleteOverlayWasVisible)
 		{
@@ -691,11 +662,6 @@ namespace BarBox.Games.Racing
 		_raceCompleteOverlayWasVisible = visible;
 	}
 
-	/// <summary>
-	/// Show/hide game over overlay with final time (legacy support)
-	/// </summary>
-	/// <param name="visible">Whether to show the overlay</param>
-	/// <param name="finalTime">Final race time to display</param>
 	public void SetGameOverOverlayVisible(bool visible, float finalTime, bool canAffordReplay)
 	{
 		// Legacy method - now delegates to race complete overlay for time trials
@@ -710,17 +676,10 @@ namespace BarBox.Games.Racing
 		}
 	}
 
-	/// <summary>
-	/// Show/hide countdown overlay (traditional) and update arc renderer
-	/// </summary>
-	/// <param name="visible">Whether to show the overlay</param>
 	public void SetCountdownOverlayVisible(bool visible)
 	{
-		if (_countdownOverlay != null)
-		{
-			// Hide traditional overlay completely - arc renderer handles countdown
-			_countdownOverlay.Visible = false;
-		}
+		// Hide traditional overlay completely - arc renderer handles countdown
+		_countdownOverlay.Visible = false;
 
 		// Arc renderer handles the primary countdown display
 		if (_hudArcRenderer != null && IsInstanceValid(_hudArcRenderer))
@@ -732,16 +691,9 @@ namespace BarBox.Games.Racing
 		}
 	}
 
-	/// <summary>
-	/// Update countdown text (traditional) and arc animation
-	/// </summary>
-	/// <param name="text">Text to display</param>
 	public void UpdateCountdownText(string text)
 	{
-		if (_countdownLabel != null)
-		{
-			_countdownLabel.Text = text;
-		}
+		_countdownLabel.Text = text;
 	}
 
 	/// <summary>
@@ -776,16 +728,8 @@ namespace BarBox.Games.Racing
 		}
 	}
 
-	/// <summary>
-	/// Update timer display visibility and value
-	/// </summary>
-	/// <param name="isTimeTrial">Whether in time trial mode</param>
-	/// <param name="currentTime">Current lap time in seconds</param>
 	private void UpdateTimerDisplay(bool isTimeTrial, float currentTime)
 	{
-		if (_timerDisplayContainer == null || _timerLabel == null)
-			return;
-
 		// Show timer only during time trial mode
 		_timerDisplayContainer.Visible = isTimeTrial;
 
@@ -796,14 +740,8 @@ namespace BarBox.Games.Racing
 		}
 	}
 
-	/// <summary>
-	/// Load race complete data asynchronously with high scores and player position calculation
-	/// </summary>
 	private async void LoadRaceCompleteDataAsync(string trackId, float finalTime)
 	{
-		if (_raceCompleteOverlay == null)
-			return;
-
 		// Concurrency guard - prevent overlapping requests
 		if (_isLoadingRaceComplete)
 			return;
@@ -955,20 +893,12 @@ namespace BarBox.Games.Racing
 	// TRACK MANAGEMENT
 	// ================================================================
 
-	/// <summary>
-	/// Update current track index
-	/// </summary>
-	/// <param name="trackIndex">New track index</param>
 	public void SetCurrentTrackIndex(int trackIndex)
 	{
 		_currentTrackIndex = trackIndex;
 		UpdateTracksLeaderboardButton(false, false);
 	}
 
-	/// <summary>
-	/// Update track scenes list
-	/// </summary>
-	/// <param name="trackScenes">New track scenes list</param>
 	public void UpdateTrackScenes(List<PackedScene> trackScenes)
 	{
 		_trackScenes = trackScenes;
@@ -1029,16 +959,9 @@ namespace BarBox.Games.Racing
 	// UTILITY METHODS
 	// ================================================================
 
-	/// <summary>
-	/// Reset user idle timer through SessionManager
-	/// </summary>
 	private void ResetUserIdleTimer()
 	{
-		var sessionManager = SessionManager.GetInstance();
-		if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
-		{
-			sessionManager.ResetAllIdleTimers();
-		}
+		SessionManager.GetInstance()?.ResetAllIdleTimers();
 	}
 
 	// ================================================================
@@ -1068,9 +991,6 @@ namespace BarBox.Games.Racing
 		PopulateTrackList(currentTrackId);
 	}
 
-	/// <summary>
-	/// Show the tracks & leaderboard overlay
-	/// </summary>
 	public void ShowTracksLeaderboard()
 	{
 		if (_tracksLeaderboardOverlay == null)
@@ -1083,9 +1003,6 @@ namespace BarBox.Games.Racing
 		EmitSignal(SignalName.TracksLeaderboardRequested);
 	}
 
-	/// <summary>
-	/// Hide the tracks & leaderboard overlay
-	/// </summary>
 	public void HideTracksLeaderboard()
 	{
 		_tracksLeaderboardOverlay?.HideOverlay();
@@ -1110,9 +1027,6 @@ namespace BarBox.Games.Racing
 		}
 	}
 
-	/// <summary>
-	/// Populate track list in the overlay
-	/// </summary>
 	private void PopulateTrackList(string currentTrackId)
 	{
 		if (_tracksLeaderboardOverlay == null)
@@ -1145,9 +1059,6 @@ namespace BarBox.Games.Racing
 		}
 	}
 
-	/// <summary>
-	/// Handle track selection in overlay
-	/// </summary>
 	private void OnTrackSelected(string trackId)
 	{
 		if (!_trackMetadataCache.TryGetValue(trackId, out var track))
@@ -1158,9 +1069,6 @@ namespace BarBox.Games.Racing
 		UpdateLeaderboardForTrack(trackId);
 	}
 
-	/// <summary>
-	/// Handle load track request from overlay
-	/// </summary>
 	private void OnLoadTrackFromOverlay()
 	{
 		if (_tracksLeaderboardOverlay == null || string.IsNullOrEmpty(_tracksLeaderboardOverlay.SelectedTrackId))
@@ -1171,9 +1079,6 @@ namespace BarBox.Games.Racing
 		HideTracksLeaderboard();
 	}
 
-	/// <summary>
-	/// Update leaderboard display for a specific track with DataStore integration
-	/// </summary>
 	private void UpdateLeaderboardForTrack(string trackId)
 	{
 		if (_tracksLeaderboardOverlay == null || !_trackMetadataCache.TryGetValue(trackId, out var track))

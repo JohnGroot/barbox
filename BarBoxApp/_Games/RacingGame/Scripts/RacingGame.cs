@@ -505,12 +505,9 @@ public partial class RacingGame : GameController
 		}
 	}
 
-	/// <summary>
-	/// Check if input should be enabled based on current racing state
-	/// </summary>
 	public bool IsInputEnabled()
 	{
-		return _timingSystem?.IsInputEnabled() ?? true;
+		return _timingSystem.IsInputEnabled();
 	}
 
 	// ================================================================
@@ -522,18 +519,18 @@ public partial class RacingGame : GameController
 		// Handle direct input for arc positioning fix
 		HandleDirectInput();
 
-		if (_timingSystem != null && _timingSystem.IsInCountdown)
+		if (_timingSystem.IsInCountdown)
 		{
 			HandleCountdown((float)delta);
 		}
-		else if (IsRaceActive() && !IsRacePaused() && _timingSystem != null)
+		else if (IsRaceActive() && !IsRacePaused())
 		{
 			_timingSystem.UpdateRacingTimers((float)delta, _playerMgmt.GetPlayers());
 		}
 
 		// Update racing-specific systems (guaranteed valid after Phase 2 initialization)
 		_trackValidationSystem.UpdateOffTrackPenalties(_racingCar.GetCarPosition(), _racingCar.GetCarBody().Rotation, _racingCar.CarSize, (float)delta);
-		_zoneManager?.UpdateFrictionlessEffects((float)delta);
+		_zoneManager.UpdateFrictionlessEffects((float)delta);
 		_visualRenderer.UpdateVisualFeedback((float)delta);
 		_visualRenderer.UpdateTireTrails();
 
@@ -832,12 +829,12 @@ public partial class RacingGame : GameController
 		if (TimeTrialCreditCost > 0 && !isDevelopmentMode)
 		{
 			// Set state to waiting for credits during async check
-			_timingSystem?.SetWaitingForCredits();
+			_timingSystem.SetWaitingForCredits();
 
 			if (_sessionManager == null || !IsInstanceValid(_sessionManager))
 			{
 				GD.PrintErr("Time trial cancelled - session system not available");
-				_timingSystem?.StopRacing(); // Reset to idle state
+				_timingSystem.StopRacing();
 				return;
 			}
 
@@ -845,10 +842,10 @@ public partial class RacingGame : GameController
 			if (currentSession == null)
 			{
 				GD.PrintErr("Time trial cancelled - no active user session");
-				_timingSystem?.StopRacing(); // Reset to idle state
+				_timingSystem.StopRacing();
 				return;
 			}
-			
+
 			// Fetch credits from CreditService (single source of truth)
 			int currentCredits = 0;
 			if (_creditService != null)
@@ -933,9 +930,6 @@ public partial class RacingGame : GameController
 		}
 	}
 
-	/// <summary>
-	/// Start practice mode (no countdown, continuous play)
-	/// </summary>
 	public virtual void StartPractice()
 	{
 		// Invalidate UI state cache on mode transition
@@ -943,7 +937,7 @@ public partial class RacingGame : GameController
 
 		SetRacingMode(RacingMode.Practice);
 		ResetForNewRace(); // Complete reset including car physics state
-		_timingSystem?.StartPracticeMode(); // Set appropriate state
+		_timingSystem.StartPracticeMode();
 		StartRace();
 
 		// In practice mode, immediately start first "lap" for timing
@@ -960,18 +954,12 @@ public partial class RacingGame : GameController
 	// RACING MECHANICS - COUNTDOWN SYSTEM
 	// ================================================================
 
-	/// <summary>
-	/// Start countdown sequence for time trials
-	/// </summary>
 	protected virtual void StartCountdown()
 	{
 		_timingSystem.StartCountdown(CountdownDuration);
 		OnCountdownStarted();
 	}
 
-	/// <summary>
-	/// Handle countdown timer and progression
-	/// </summary>
 	protected virtual void HandleCountdown(float delta)
 	{
 		bool countdownChanged = _timingSystem.UpdateCountdown(delta, CountdownDuration);
@@ -995,9 +983,6 @@ public partial class RacingGame : GameController
 		}
 	}
 
-	/// <summary>
-	/// End countdown and start the actual race
-	/// </summary>
 	protected virtual void EndCountdown()
 	{
 		_timingSystem.EndCountdown();
@@ -1040,17 +1025,11 @@ public partial class RacingGame : GameController
 	// RACING MECHANICS - LAP MANAGEMENT
 	// ================================================================
 
-	/// <summary>
-	/// Start a new lap for a player - delegates to timing system
-	/// </summary>
 	public virtual void StartPlayerLap(string playerId)
 	{
 		_timingSystem.StartPlayerLap(playerId);
 	}
 
-	/// <summary>
-	/// Complete a lap for a player - delegates to timing system
-	/// </summary>
 	public virtual void CompletePlayerLap(string playerId, float lapTime)
 	{
 		_timingSystem.CompletePlayerLap(playerId, lapTime);
@@ -1062,7 +1041,7 @@ public partial class RacingGame : GameController
 		{
 			// Always start next lap in practice mode
 			_timingSystem.StartPlayerLap(playerId);
-			_timingSystem?.StartPracticeMode();
+			_timingSystem.StartPracticeMode();
 		}
 		else if (currentLap >= TargetLaps)
 		{
@@ -1073,17 +1052,14 @@ public partial class RacingGame : GameController
 		{
 			// Start next lap in time trial
 			_timingSystem.StartPlayerLap(playerId);
-			_timingSystem?.StartRacing();
+			_timingSystem.StartRacing();
 		}
 	}
 
-	/// <summary>
-	/// Complete the race for a player - delegates to timing system
-	/// </summary>
 	protected virtual void CompletePlayerRace(string playerId)
 	{
 		_timingSystem.CompletePlayerRace(playerId, _playerMgmt.GetPlayers());
-			
+
 		// Check if race state changed to finished
 		if (_timingSystem.CurrentRacingState == RacingTimingSystem.RacingState.Finished)
 		{
@@ -1091,17 +1067,11 @@ public partial class RacingGame : GameController
 		}
 	}
 
-	/// <summary>
-	/// Player crossed a checkpoint - delegates to timing system
-	/// </summary>
 	public virtual void OnPlayerCheckpointCrossed(string playerId, int checkpointIndex)
 	{
 		_timingSystem.OnPlayerCheckpointCrossed(playerId, checkpointIndex);
 	}
 
-	/// <summary>
-	/// Reset all racing-specific data - delegates to timing system
-	/// </summary>
 	protected virtual void ResetRacingData()
 	{
 		_timingSystem.ResetRacingData();
@@ -1123,9 +1093,6 @@ public partial class RacingGame : GameController
 	// CAR MANAGEMENT
 	// ================================================================
 
-	/// <summary>
-	/// Handle car movement events for visual feedback
-	/// </summary>
 	private void OnCarMoved(Vector2 position, Vector2 velocity)
 	{
 		QueueRedraw(); // Trigger visual updates
@@ -1557,7 +1524,7 @@ public partial class RacingGame : GameController
 		string playerId = GetCurrentGamePlayerId();
 
 		// Set processing state during finish line handling
-		_timingSystem?.SetCrossingFinish();
+		_timingSystem.SetCrossingFinish();
 
 		if (GetRacingMode() == RacingMode.TimeTrial)
 		{
@@ -1573,7 +1540,7 @@ public partial class RacingGame : GameController
 			OnPlayerCheckpointCrossed(playerId, -1);
 			ResetCheckpoints();
 			// Restore practice state
-			_timingSystem?.StartPracticeMode();
+			_timingSystem.StartPracticeMode();
 		}
 	}
 
@@ -1700,7 +1667,7 @@ public partial class RacingGame : GameController
 		}
 
 		// Set track loading state to disable input
-		_timingSystem?.SetTrackLoading();
+		_timingSystem.SetTrackLoading();
 
 		// End current race/practice session
 		if (IsRaceActive())
@@ -1710,7 +1677,7 @@ public partial class RacingGame : GameController
 
 		_currentTrackIndex = trackIndex;
 		LoadTrack(trackIndex);
-		_uiManager?.SetCurrentTrackIndex(trackIndex);
+		_uiManager.SetCurrentTrackIndex(trackIndex);
 
 		// Invalidate caches on track switch
 		_cachedUIState = null;
@@ -1720,9 +1687,6 @@ public partial class RacingGame : GameController
 		StartPractice();
 	}
 
-	/// <summary>
-	/// Handle main menu request from UI manager
-	/// </summary>
 	private void HandleMainMenuRequest()
 	{
 		// Use base class method which includes confirmation dialog
@@ -1732,7 +1696,7 @@ public partial class RacingGame : GameController
 	private void OnEndToPracticeModeRequested()
 	{
 		// Reset state and start practice
-		_timingSystem?.StopRacing(); // Reset to idle
+		_timingSystem.StopRacing();
 		StartPractice();
 	}
 
@@ -1760,12 +1724,12 @@ public partial class RacingGame : GameController
 		if (TimeTrialCreditCost > 0 && !isDevelopmentMode)
 		{
 			// Set state to waiting for credits during async check
-			_timingSystem?.SetWaitingForCredits();
+			_timingSystem.SetWaitingForCredits();
 
 			if (_sessionManager == null || !IsInstanceValid(_sessionManager))
 			{
 				GD.PrintErr("Race again cancelled - session system not available");
-				_timingSystem?.StopRacing(); // Reset to idle state
+				_timingSystem.StopRacing();
 				return;
 			}
 
@@ -1773,7 +1737,7 @@ public partial class RacingGame : GameController
 			if (currentSession == null)
 			{
 				GD.PrintErr("Race again cancelled - no active user session");
-				_timingSystem?.StopRacing(); // Reset to idle state
+				_timingSystem.StopRacing();
 				return;
 			}
 
@@ -1909,13 +1873,10 @@ public partial class RacingGame : GameController
 		_uiManager.InitializeTracksLeaderboard(trackMetadata, _currentTrackId);
 	}
 
-	/// <summary>
-	/// Show high score display (NEW PATTERN: Global high scores)
-	/// </summary>
 	public void ShowHighScores()
 	{
-		_timingSystem?.SetHighScoreDisplay();
-		
+		_timingSystem.SetHighScoreDisplay();
+
 		// Show global high scores from SessionManager
 		ShowGlobalHighScores();
 	}
@@ -2002,15 +1963,12 @@ public partial class RacingGame : GameController
 		});
 	}
 
-	/// <summary>
-	/// Hide high score display and return to appropriate state
-	/// </summary>
 	public void HideHighScores()
 	{
 		if (GetRacingMode() == RacingMode.Practice)
-			_timingSystem?.StartPracticeMode();
+			_timingSystem.StartPracticeMode();
 		else
-			_timingSystem?.StopRacing(); // Return to idle
+			_timingSystem.StopRacing();
 	}
 
 	/// <summary>
@@ -2045,22 +2003,15 @@ public partial class RacingGame : GameController
 		       state != RacingTimingSystem.RacingState.GameOverDeciding;
 	}
 
-	/// <summary>
-	/// Check if the race is currently paused
-	/// </summary>
 	public bool IsRacePaused()
 	{
-		return _timingSystem != null &&
-		       _timingSystem.CurrentRacingState == RacingTimingSystem.RacingState.RacePaused;
+		return _timingSystem.CurrentRacingState == RacingTimingSystem.RacingState.RacePaused;
 	}
 
 	// ================================================================
 	// DOMAIN-SPECIFIC LIFECYCLE - Race management
 	// ================================================================
 
-	/// <summary>
-	/// Start a new race
-	/// </summary>
 	public void StartRace()
 	{
 		// Notify platform that game session started
@@ -2070,9 +2021,6 @@ public partial class RacingGame : GameController
 		GD.Print("[RacingGame] Race started");
 	}
 
-	/// <summary>
-	/// End the current race
-	/// </summary>
 	public void EndRace()
 	{
 		// Invalidate UI state cache on race end
@@ -2082,11 +2030,11 @@ public partial class RacingGame : GameController
 		if (GetRacingMode() == RacingMode.TimeTrial)
 		{
 			// Set game over state to disable input
-			_timingSystem?.SetGameOverDeciding();
+			_timingSystem.SetGameOverDeciding();
 
 			// Update UI - GatherCurrentState will detect GameOverDeciding state and show overlay
 			var state = GatherCurrentState();
-			_uiManager?.UpdateFromState(state);
+			_uiManager.UpdateFromState(state);
 
 			_racingCar.SetActive(false);
 		}
@@ -2098,12 +2046,9 @@ public partial class RacingGame : GameController
 		GD.Print("[RacingGame] Race ended");
 	}
 
-	/// <summary>
-	/// Override pause logic to pause the timing system and notify GameHost
-	/// </summary>
 	protected override void OnPause()
 	{
-		_timingSystem?.SetPaused(true);
+		_timingSystem.SetPaused(true);
 
 		// Notify platform that game session paused
 		_gameHost?.NotifyGamePaused();
@@ -2112,12 +2057,9 @@ public partial class RacingGame : GameController
 		GD.Print("[RacingGame] Race paused");
 	}
 
-	/// <summary>
-	/// Override resume logic to resume the timing system and notify GameHost
-	/// </summary>
 	protected override void OnResume()
 	{
-		_timingSystem?.SetPaused(false);
+		_timingSystem.SetPaused(false);
 
 		// Notify platform that game session resumed
 		_gameHost?.NotifyGameResumed();
@@ -2210,16 +2152,13 @@ public partial class RacingGame : GameController
 		return 3; // Default laps
 	}
 
-	/// <summary>
-	/// Gather current game state for UI updates
-	/// </summary>
 	private RacingUIState GatherCurrentState()
 	{
 		// Use consistent player ID throughout - phone number when logged in
 		var playerId = GetCurrentGamePlayerId();
 		var gameMode = GetRacingMode();
 		var loggedIn = _sessionManager?.GetPrimarySession() != null;
-		var currentRacingState = _timingSystem?.CurrentRacingState ?? RacingTimingSystem.RacingState.Idle;
+		var currentRacingState = _timingSystem.CurrentRacingState;
 		
 		// Determine if a formal time trial is in progress (vs practice mode)
 		bool isTimeTrialInProgress = gameMode == RacingMode.TimeTrial && 

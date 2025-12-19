@@ -155,29 +155,23 @@ public class RacingRaceCompleteUI
 
 	public void UpdateRaceResults(float finalTime, string trackName, int position, bool isNewHighScore)
 	{
-		if (FinalTimeLabel != null)
-		{
-			FinalTimeLabel.Text = $"Final Time: {finalTime:F2}s";
-		}
+		FinalTimeLabel.Text = $"Final Time: {finalTime:F2}s";
 
-		if (PositionLabel != null)
+		if (position > 0)
 		{
-			if (position > 0)
-			{
-				var positionSuffix = GetPositionSuffix(position);
-				PositionLabel.Text = $"Position: {position}{positionSuffix}";
+			var positionSuffix = GetPositionSuffix(position);
+			PositionLabel.Text = $"Position: {position}{positionSuffix}";
 
-				if (isNewHighScore)
-				{
-					PositionLabel.Text += " NEW HIGH SCORE!";
-					PositionLabel.AddThemeColorOverride("font_color", Colors.Gold);
-				}
-			}
-			else
+			if (isNewHighScore)
 			{
-				PositionLabel.Text = "Position: First recorded time!";
+				PositionLabel.Text += " NEW HIGH SCORE!";
 				PositionLabel.AddThemeColorOverride("font_color", Colors.Gold);
 			}
+		}
+		else
+		{
+			PositionLabel.Text = "Position: First recorded time!";
+			PositionLabel.AddThemeColorOverride("font_color", Colors.Gold);
 		}
 
 		var highScoresTitle = ContentContainer.GetChild(3) as Label;
@@ -200,7 +194,7 @@ public class RacingRaceCompleteUI
 
 	public void UpdateHighScores(List<RacingUIManager.LeaderboardEntry> highScores, string currentPlayerPhoneNumber)
 	{
-		if (HighScoresTable == null || highScores == null)
+		if (highScores == null)
 			return;
 
 		for (int i = 0; i < highScores.Count; i++)
@@ -220,29 +214,24 @@ public class RacingRaceCompleteUI
 
 	public void UpdateButtonStates(bool canAffordTryAgain, int creditCost)
 	{
-		if (TryAgainButton != null)
+		TryAgainButton.Disabled = !canAffordTryAgain;
+		if (creditCost > 0)
 		{
-			TryAgainButton.Disabled = !canAffordTryAgain;
-			if (creditCost > 0)
-			{
-				TryAgainButton.Text = $"Try Again - {creditCost} Credit{(creditCost != 1 ? "s" : "")}";
-			}
-			else
-			{
-				TryAgainButton.Text = "Try Again";
-			}
+			TryAgainButton.Text = $"Try Again - {creditCost} Credit{(creditCost != 1 ? "s" : "")}";
+		}
+		else
+		{
+			TryAgainButton.Text = "Try Again";
 		}
 	}
 
 	public void ShowOverlay()
 	{
-		if (OverlayRoot != null)
-			OverlayRoot.Visible = true;
+		OverlayRoot.Visible = true;
 	}
 
 	public void HideOverlay()
 	{
-		if (OverlayRoot != null)
-			OverlayRoot.Visible = false;
+		OverlayRoot.Visible = false;
 	}
 }
