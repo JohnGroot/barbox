@@ -216,11 +216,8 @@ public partial class MiningGame : GameController
 
 	public void EndMiningSession()
 	{
-		if (IsInstanceValid(_engine))
-			_engine.StopMining();
-
-		if (IsInstanceValid(_ui))
-			_ui.SetEnabled(false);
+		_engine.StopMining();
+		_ui.SetEnabled(false);
 
 		// Notify platform that game session ended
 		_gameHost?.NotifyGameEnded();
@@ -237,56 +234,15 @@ public partial class MiningGame : GameController
 	{
 		try
 		{
-			if (_eventService != null && !string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
-			{
-				var locationManager = _locationManager;
-				if (locationManager != null && IsInstanceValid(locationManager))
-				{
-					var boxId = locationManager.BoxId;
-					var phoneNumber = GetCurrentUserPhoneNumber();
-					if (!string.IsNullOrEmpty(phoneNumber))
-					{
-						var sessionManager = SessionManager.GetInstance();
-						var currentSession = sessionManager?.GetPrimarySession();
+			// Create backend activity session if we have a valid player
+			await TryCreateBackendSession();
 
-						if (currentSession?.PlayerId != null && currentSession.PlayerId != Guid.Empty)
-						{
-							var playerId = currentSession.PlayerId;
-
-							GD.Print($"[MiningGame] Creating backend session for player {playerId} at box {boxId}");
-
-							var sessionResult = await _eventService.CreateActivitySessionAsync(
-								boxId: boxId,
-								playerId: playerId,
-								gameTag: "mining",
-								playerIds: null
-							);
-							if (sessionResult.IsFailure(out var error))
-							{
-								GD.PrintErr($"[MiningGame] WARNING: Failed to create backend session: {error.Message}");
-								GD.PrintErr($"[MiningGame] Game will continue but persistence may not work");
-							}
-							else if (sessionResult.IsSuccess(out var sessionId))
-							{
-								_activitySessionId = sessionId;
-								GD.Print($"[MiningGame] Backend session created successfully: {_activitySessionId}");
-							}
-						}
-						else
-						{
-							GD.PrintErr("[MiningGame] WARNING: Cannot create backend session - no valid player ID");
-						}
-					}
-				}
-			}
-
+			// Load user data if logged in
 			if (!string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 			{
 				await _state.LoadUserDataAsync();
 
-				if (!IsInstanceValid(this) || !IsInstanceValid(_engine) || !IsInstanceValid(_state))
-					return;
-
+				// Check if user logged out during async operation
 				if (string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 				{
 					GD.PrintErr("[MiningGame] User logged out during data load");
@@ -296,31 +252,56 @@ public partial class MiningGame : GameController
 
 			_engine.StartMining();
 
-			if (IsInstanceValid(_ui))
-			{
-				if (!string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
-				{
-					_ui.SetEnabled(true);
-					_ui.UpdateAllUI();
-				}
-				else
-				{
-					_ui.SetEnabled(false);
-				}
-			}
+			// Update UI based on login state
+			bool isLoggedIn = !string.IsNullOrEmpty(GetCurrentUserPhoneNumber());
+			_ui.SetEnabled(isLoggedIn);
+			if (isLoggedIn)
+				_ui.UpdateAllUI();
 
-			// Notify platform that game session started - only after full initialization
+			// Notify platform that game session started
 			_gameHost?.NotifyGameStarted();
 		}
 		catch (Exception ex)
 		{
 			GD.PrintErr($"[MiningGame] Error during session initialization: {ex.Message}");
+			_ui.SetEnabled(false);
+			_ui.UpdateAllUI();
+		}
+	}
 
-			if (IsInstanceValid(_ui))
-			{
-				_ui.SetEnabled(false);
-				_ui.UpdateAllUI();
-			}
+	private async Task TryCreateBackendSession()
+	{
+		if (string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
+			return;
+
+		var currentSession = _sessionManager?.GetPrimarySession();
+		if (currentSession?.PlayerId == null || currentSession.PlayerId == Guid.Empty)
+		{
+			GD.PrintErr("[MiningGame] Cannot create backend session - no valid player ID");
+			return;
+		}
+
+		var playerId = currentSession.PlayerId;
+		var boxId = _locationManager?.BoxId ?? Guid.Empty;
+
+		GD.Print($"[MiningGame] Creating backend session for player {playerId} at box {boxId}");
+
+		var sessionResult = await _eventService.CreateActivitySessionAsync(
+			boxId: boxId,
+			playerId: playerId,
+			gameTag: "mining",
+			playerIds: null
+		);
+
+		if (sessionResult.IsFailure(out var error))
+		{
+			GD.PrintErr($"[MiningGame] WARNING: Failed to create backend session: {error.Message}");
+			GD.PrintErr("[MiningGame] Game will continue but persistence may not work");
+		}
+		else if (sessionResult.IsSuccess(out var sessionId))
+		{
+			_activitySessionId = sessionId;
+			GD.Print($"[MiningGame] Backend session created successfully: {_activitySessionId}");
 		}
 	}
 
@@ -521,7 +502,7 @@ public partial class MiningGame : GameController
 
 	public void ExtractGems()
 	{
-		if (!IsInstanceValid(_state) || _locationConfig == null)
+		if (_locationConfig == null)
 			return;
 
 		if (!CanExtractGems()) return;
@@ -531,8 +512,7 @@ public partial class MiningGame : GameController
 
 		if (_state.ExtractGems())
 		{
-			if (IsInstanceValid(_ui))
-				_ui.UpdateAllUI();
+			_ui.UpdateAllUI();
 			EmitSignal(SignalName.GemsExtracted, amount, (int)gemType);
 			GD.Print($"[MiningGame] Extracted {amount} {gemType} gems");
 		}
@@ -540,10 +520,9 @@ public partial class MiningGame : GameController
 		
 	public void PurchaseCredit()
 	{
-		if (IsInstanceValid(_state) && _state.PurchaseCredit())
+		if (_state.PurchaseCredit())
 		{
-			if (IsInstanceValid(_ui))
-				_ui.UpdateAllUI();
+			_ui.UpdateAllUI();
 			EmitSignal(SignalName.CreditPurchased);
 			GD.Print("[MiningGame] Credit purchased");
 		}
@@ -551,15 +530,11 @@ public partial class MiningGame : GameController
 		
 	public void PurchaseUpgrade(UpgradeType upgradeType)
 	{
-		if (!IsInstanceValid(_state))
-			return;
-
 		var currentLevel = _state.GetUpgradeLevel(upgradeType);
 
 		if (_state.PurchaseUpgrade(upgradeType))
 		{
-			if (IsInstanceValid(_ui))
-				_ui.UpdateAllUI();
+			_ui.UpdateAllUI();
 			EmitSignal(SignalName.UpgradePurchased, (int)upgradeType, currentLevel + 1);
 			GD.Print($"[MiningGame] {upgradeType} upgraded to level {currentLevel + 1}");
 		}
@@ -567,46 +542,12 @@ public partial class MiningGame : GameController
 		
 	public void UpdateUI()
 	{
-		if (IsInstanceValid(_ui))
-			_ui.UpdateAllUI();
-	}
-
-	private void LogDebug(string message)
-	{
-		if (EnableDebugMode)
-			GD.Print($"[MiningGame] {message}");
-	}
-
-	private void LogError(string message)
-	{
-		GD.PrintErr($"[MiningGame] {message}");
-	}
-
-	private void LogAsyncError(string message)
-	{
-		GD.PrintErr($"[MiningGame] {message}");
+		_ui.UpdateAllUI();
 	}
 
 	internal string GetCurrentUserPhoneNumber()
 	{
-		try
-		{
-			var sessionManager = SessionManager.GetInstance();
-			if (sessionManager != null && IsInstanceValid(sessionManager))
-			{
-				var currentSession = sessionManager.GetPrimarySession();
-				if (currentSession != null)
-				{
-					return currentSession.PhoneNumber;
-				}
-			}
-		}
-		catch (Exception ex)
-		{
-			GD.PrintErr($"[MiningGame] Error getting current user phone number: {ex.Message}");
-		}
-
-		return null;
+		return _sessionManager?.GetPrimarySession()?.PhoneNumber;
 	}
 		
 	// ================================================================
@@ -625,13 +566,10 @@ public partial class MiningGame : GameController
 
 		try
 		{
-			if (IsInstanceValid(_state))
-				_state.ClearAllState();
+			_state.ClearAllState();
 
 			if (IsPlayerLoggedIn())
-			{
 				EndMiningSession();
-			}
 
 			StartMiningSession();
 
@@ -661,14 +599,10 @@ public partial class MiningGame : GameController
 		{
 			EndMiningSession();
 
-			if (IsInstanceValid(_state))
-				_state.ClearAllState();
+			_state.ClearAllState();
 
-			if (IsInstanceValid(_ui))
-			{
-				_ui.SetEnabled(false);
-				_ui.UpdateAllUI();
-			}
+			_ui.SetEnabled(false);
+			_ui.UpdateAllUI();
 
 			GD.Print("[MiningGame] User logged out and state cleared");
 		}

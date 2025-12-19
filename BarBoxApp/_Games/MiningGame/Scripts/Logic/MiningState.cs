@@ -422,28 +422,21 @@ public partial class MiningState : Node
 		// Update local state
 		_globalData.SpendGems(cost);
 
-		// Actually add credit to user account
+		// Add credit to user account if we have a valid session
 		var phoneNumber = _game.GetCurrentUserPhoneNumber();
-		if (!string.IsNullOrEmpty(phoneNumber))
+		var session = !string.IsNullOrEmpty(phoneNumber)
+			? _game.GetSessionManager()?.GetSessionByPhone(phoneNumber)
+			: null;
+		var creditService = CreditService.GetInstance();
+
+		if (session != null && creditService != null)
 		{
-			var sessionManager = _game.GetSessionManager();
-			if (sessionManager != null)
-			{
-				var session = sessionManager.GetSessionByPhone(phoneNumber);
-				var creditService = CreditService.GetInstance();
-				if (session != null && creditService != null)
-				{
-					_ = creditService.AddAsync(session.PlayerId, CREDITS_PER_PURCHASE, "Mining game credit purchase");
-				}
-			}
+			_ = creditService.AddAsync(session.PlayerId, CREDITS_PER_PURCHASE, "Mining game credit purchase");
 		}
 
 		// Emit event to backend
 		var eventService = _game.GetEventService();
-		if (eventService != null)
-		{
-			_ = eventService.EmitCreditDepositAsync(primaryGemType, _game.GetConfig().CreditCost, CREDITS_PER_PURCHASE);
-		}
+		_ = eventService.EmitCreditDepositAsync(primaryGemType, _game.GetConfig().CreditCost, CREDITS_PER_PURCHASE);
 
 		return true;
 	}

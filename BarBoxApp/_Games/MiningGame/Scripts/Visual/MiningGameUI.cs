@@ -399,25 +399,18 @@ public partial class MiningGameUI : Control
 		UpdateGlobalInventory();
 	}
 
-	public void UpdateMiningProgress()
+	public void UpdateMiningProgress(bool incrementalOnly = false)
 	{
-		if (_game == null)
+		float progress = _game.GetMiningProgress();
+
+		// For incremental updates, only update progress bar if value changed significantly
+		if (!incrementalOnly || Math.Abs(progress - _lastProgress) > PROGRESS_UPDATE_THRESHOLD)
 		{
-			// Show disabled state when no data available
-			if (!_isEnabled)
-			{
-				_miningProgressBar.Value = 0;
-				_progressLabel.Text = "Please log in to start mining";
-				_gemsReadyLabel.Text = "Gems ready: Login required";
-				_capacityLabel.Text = "Capacity: Login required";
-			}
-			return;
+			_miningProgressBar.Value = progress * 100;
+			_lastProgress = progress;
 		}
 
-		// Update progress bar
-		float progress = _game.GetMiningProgress();
-		_miningProgressBar.Value = progress * 100;
-
+		// Always update time display as it changes continuously
 		float timeRemaining = _game.GetTimeUntilNextTick();
 		UpdateTimeDisplay(timeRemaining);
 
@@ -425,19 +418,22 @@ public partial class MiningGameUI : Control
 		int pendingGems = _game.GetPendingGems();
 		int maxCapacity = _game.GetMaxCapacity();
 
-		_gemsReadyLabel.Text = $"Gems ready: {pendingGems}";
-		_capacityLabel.Text = $"Capacity: {pendingGems}/{maxCapacity}";
+		bool gemsChanged = pendingGems != _lastPendingGems || maxCapacity != _lastMaxCapacity;
 
-		// Color code based on capacity
-		if (pendingGems >= maxCapacity)
+		// For incremental updates, only update gems if changed; full updates always update
+		if (!incrementalOnly || gemsChanged)
 		{
-			_gemsReadyLabel.AddThemeColorOverride("font_color", Colors.Yellow);
-			_capacityLabel.AddThemeColorOverride("font_color", Colors.Yellow);
-		}
-		else
-		{
-			_gemsReadyLabel.AddThemeColorOverride("font_color", GetTextColor());
-			_capacityLabel.AddThemeColorOverride("font_color", GetTextColor());
+			_gemsReadyLabel.Text = $"Gems ready: {pendingGems}";
+			_capacityLabel.Text = $"Capacity: {pendingGems}/{maxCapacity}";
+
+			// Color code based on capacity
+			bool atCapacity = pendingGems >= maxCapacity;
+			var textColor = atCapacity ? Colors.Yellow : GetTextColor();
+			_gemsReadyLabel.AddThemeColorOverride("font_color", textColor);
+			_capacityLabel.AddThemeColorOverride("font_color", textColor);
+
+			_lastPendingGems = pendingGems;
+			_lastMaxCapacity = maxCapacity;
 		}
 	}
 
@@ -458,8 +454,8 @@ public partial class MiningGameUI : Control
 
 	public void UpdateActionsButtons()
 	{
-		bool canExtract = _game?.CanExtractGems() ?? false;
-		bool canPurchaseCredit = _game?.CanPurchaseCredit() ?? false;
+		bool canExtract = _game.CanExtractGems();
+		bool canPurchaseCredit = _game.CanPurchaseCredit();
 
 		_extractButton.Disabled = !canExtract;
 		_purchaseCreditButton.Disabled = !canPurchaseCredit;
@@ -468,15 +464,8 @@ public partial class MiningGameUI : Control
 		UIBuilder.UpdateButtonState(_purchaseCreditButton, canPurchaseCredit);
 
 		// Update extract button text based on gems available
-		if (_game != null)
-		{
-			int pendingGems = _game.GetPendingGems();
-			_extractButton.Text = pendingGems > 0 ? $"Extract {pendingGems} Gems" : "Extract Gems";
-		}
-		else
-		{
-			_extractButton.Text = "Extract Gems";
-		}
+		int pendingGems = _game.GetPendingGems();
+		_extractButton.Text = pendingGems > 0 ? $"Extract {pendingGems} Gems" : "Extract Gems";
 	}
 
 	public void UpdateUpgrades()
@@ -489,28 +478,23 @@ public partial class MiningGameUI : Control
 
 	public void UpdateGlobalInventory()
 	{
-		var globalData = _game?.GetGlobalData();
-		if (globalData == null)
-		{
-			// Show disabled state when no data available
-			if (!_isEnabled)
-			{
-				foreach (var label in _gemLabels.Values)
-				{
-					label.Text = "Login required";
-				}
-			}
-			return;
-		}
+		var globalData = _game.GetGlobalData();
 
 		// Update gem inventory - populate each grid cell
 		foreach (GemType gemType in Enum.GetValues<GemType>())
 		{
 			if (_gemLabels.TryGetValue(gemType, out var label))
 			{
-				int amount = globalData.GetGems(gemType);
-				var gemEmoji = GemTheme.GetGemEmoji(gemType);
-				label.Text = $"{gemEmoji} {gemType}: {amount}";
+				if (globalData == null)
+				{
+					label.Text = "Login required";
+				}
+				else
+				{
+					int amount = globalData.GetGems(gemType);
+					var gemEmoji = GemTheme.GetGemEmoji(gemType);
+					label.Text = $"{gemEmoji} {gemType}: {amount}";
+				}
 			}
 		}
 	}
@@ -602,48 +586,8 @@ public partial class MiningGameUI : Control
 		if (!_isEnabled)
 			return;
 
-		// Only update real-time mining progress
-		UpdateMiningProgressOnly();
-	}
-
-	private void UpdateMiningProgressOnly()
-	{
-		if (_game == null) return;
-
-		float progress = _game.GetMiningProgress();
-
-		// Only update progress bar if value changed significantly
-		if (Math.Abs(progress - _lastProgress) > PROGRESS_UPDATE_THRESHOLD)
-		{
-			_miningProgressBar.Value = progress * 100;
-			_lastProgress = progress;
-		}
-
-		// Always update time display as it changes continuously
-		float timeRemaining = _game.GetTimeUntilNextTick();
-		UpdateTimeDisplay(timeRemaining);
-
-		// Update gems display only when values change
-		int pendingGems = _game.GetPendingGems();
-		int maxCapacity = _game.GetMaxCapacity();
-
-		bool gemsChanged = pendingGems != _lastPendingGems;
-		bool capacityChanged = maxCapacity != _lastMaxCapacity;
-
-		if (gemsChanged || capacityChanged)
-		{
-			_gemsReadyLabel.Text = $"Gems ready: {pendingGems}";
-			_capacityLabel.Text = $"Capacity: {pendingGems}/{maxCapacity}";
-
-			// Update colors
-			bool atCapacity = pendingGems >= maxCapacity;
-			var textColor = atCapacity ? Colors.Yellow : GetTextColor();
-			_gemsReadyLabel.AddThemeColorOverride("font_color", textColor);
-			_capacityLabel.AddThemeColorOverride("font_color", textColor);
-
-			_lastPendingGems = pendingGems;
-			_lastMaxCapacity = maxCapacity;
-		}
+		// Incremental update for real-time mining progress
+		UpdateMiningProgress(incrementalOnly: true);
 	}
 
 	public partial class UpgradeUIGroup : VBoxContainer
@@ -737,8 +681,6 @@ public partial class MiningGameUI : Control
 
 		public void UpdateUI()
 		{
-			if (_game == null) return;
-
 			int currentLevel = _game.GetUpgradeLevel(_upgradeType);
 			int maxLevel = _game.Config.MaxUpgradeLevel;
 
@@ -801,8 +743,7 @@ public partial class MiningGameUI : Control
 			if (!enabled)
 			{
 				// Disable the purchase button when UI is disabled
-				if (_purchaseButton != null)
-					_purchaseButton.Disabled = true;
+				_purchaseButton.Disabled = true;
 			}
 			else
 			{
@@ -815,40 +756,34 @@ public partial class MiningGameUI : Control
 		public void RefreshTheme()
 		{
 			// Update label colors
-			if (_titleLabel != null)
-				_titleLabel.AddThemeColorOverride("font_color", GetHeaderColor());
-			if (_ticksLabel != null)
-				_ticksLabel.AddThemeColorOverride("font_color", GetSecondaryAccent());
-			if (_costLabel != null)
-				_costLabel.AddThemeColorOverride("font_color", GetTextColor());
+			_titleLabel.AddThemeColorOverride("font_color", GetHeaderColor());
+			_ticksLabel.AddThemeColorOverride("font_color", GetSecondaryAccent());
+			_costLabel.AddThemeColorOverride("font_color", GetTextColor());
 
 			// Refresh button styles
-			if (_purchaseButton != null)
-			{
-				var normalStyle = new StyleBoxFlat();
-				normalStyle.BgColor = _parentUI.GetButtonEnabledColor();
-				normalStyle.SetCornerRadiusAll(4);
-				normalStyle.SetContentMarginAll(8);
-				_purchaseButton.AddThemeStyleboxOverride("normal", normalStyle);
+			var normalStyle = new StyleBoxFlat();
+			normalStyle.BgColor = _parentUI.GetButtonEnabledColor();
+			normalStyle.SetCornerRadiusAll(4);
+			normalStyle.SetContentMarginAll(8);
+			_purchaseButton.AddThemeStyleboxOverride("normal", normalStyle);
 
-				var hoverStyle = new StyleBoxFlat();
-				hoverStyle.BgColor = _parentUI.GetButtonEnabledColor() * 1.2f;
-				hoverStyle.SetCornerRadiusAll(4);
-				hoverStyle.SetContentMarginAll(8);
-				_purchaseButton.AddThemeStyleboxOverride("hover", hoverStyle);
+			var hoverStyle = new StyleBoxFlat();
+			hoverStyle.BgColor = _parentUI.GetButtonEnabledColor() * 1.2f;
+			hoverStyle.SetCornerRadiusAll(4);
+			hoverStyle.SetContentMarginAll(8);
+			_purchaseButton.AddThemeStyleboxOverride("hover", hoverStyle);
 
-				var pressedStyle = new StyleBoxFlat();
-				pressedStyle.BgColor = _parentUI.GetButtonEnabledColor() * 0.8f;
-				pressedStyle.SetCornerRadiusAll(4);
-				pressedStyle.SetContentMarginAll(8);
-				_purchaseButton.AddThemeStyleboxOverride("pressed", pressedStyle);
+			var pressedStyle = new StyleBoxFlat();
+			pressedStyle.BgColor = _parentUI.GetButtonEnabledColor() * 0.8f;
+			pressedStyle.SetCornerRadiusAll(4);
+			pressedStyle.SetContentMarginAll(8);
+			_purchaseButton.AddThemeStyleboxOverride("pressed", pressedStyle);
 
-				var disabledStyle = new StyleBoxFlat();
-				disabledStyle.BgColor = _parentUI.GetButtonDisabledColor();
-				disabledStyle.SetCornerRadiusAll(4);
-				disabledStyle.SetContentMarginAll(8);
-				_purchaseButton.AddThemeStyleboxOverride("disabled", disabledStyle);
-			}
+			var disabledStyle = new StyleBoxFlat();
+			disabledStyle.BgColor = _parentUI.GetButtonDisabledColor();
+			disabledStyle.SetCornerRadiusAll(4);
+			disabledStyle.SetContentMarginAll(8);
+			_purchaseButton.AddThemeStyleboxOverride("disabled", disabledStyle);
 		}
 	}
 
