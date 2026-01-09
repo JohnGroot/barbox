@@ -1,6 +1,10 @@
 # BarBox Platform
 
-The Touchtunes of Modern Arcade Games  
+The Touchtunes of Modern Arcade Games
+
+## New Developer?
+
+See **[GETTING_STARTED.md](./GETTING_STARTED.md)** for setup instructions.
 
 ## Overview
 

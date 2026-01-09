@@ -79,9 +79,11 @@ claude.md
 **/CLAUDE.md
 **/claude.md
 .claude/
+.claud/
 .claude/settings.local.json
 */.claude
-GodotDocs_4_4_1
+*/.claud
+GodotDocs_4_4_1/
 
 # python stuff
 __pycache__/
