@@ -242,23 +242,13 @@ public partial class RacingGame : GameController
 	// INITIALIZATION
 	// ================================================================
 
-	public override void _Ready()
-	{
-		// Initial game setup (before any phase)
-		SetRacingMode(RacingMode.Practice); // Start in practice mode
-
-		// Execute phased initialization
-		base._Ready(); // Calls all 4 phases in order
-	}
-
 	/// <summary>
 	/// PHASE 1: Service Discovery
 	/// Discovers platform services and loads game metadata.
+	/// Platform property is already populated when this is called.
 	/// </summary>
-	protected override void DiscoverServices()
+	protected override void OnDiscoverServices()
 	{
-		base.DiscoverServices(); // Discovers _gameMetadata and _gameHost
-
 		// Service discovery only - no component creation
 		_eventService = EventService.GetInstance();
 		_sessionManager = SessionManager.GetInstance();
@@ -269,8 +259,11 @@ public partial class RacingGame : GameController
 	/// PHASE 2: Component Initialization
 	/// Creates all game components and systems.
 	/// </summary>
-	protected override void InitializeComponents()
+	protected override void OnInitializeComponents()
 	{
+		// Initial game setup
+		SetRacingMode(RacingMode.Practice); // Start in practice mode
+
 		// Create optional GameController components
 		_playerMgmt = new PlayerManagementComponent();
 		AddChild(_playerMgmt);
@@ -290,42 +283,21 @@ public partial class RacingGame : GameController
 		// Initialize track system
 		InitializeTrackSystem();
 
+		// Initialize tracks & leaderboard system
+		InitializeTracksLeaderboardSystem();
+
+		// Initial UI update
+		UpdateUI();
+
 		// All components now fully created and ready
 	}
 
 	/// <summary>
-	/// PHASE 3: Game Setup
-	/// Connects external event handlers for authentication and leaderboard systems.
+	/// Game-specific cleanup on exit.
+	/// Called during _ExitTree after UI cleanup and user signal disconnection.
 	/// </summary>
-	public override void OnGameSetup()
+	protected override void OnGameTeardown()
 	{
-		// Connect SessionManager signals for authentication state
-		if (_sessionManager != null && IsInstanceValid(_sessionManager))
-		{
-			_sessionManager.UserLoggedIn += OnUserLoggedIn;
-			_sessionManager.UserLoggedOut += OnUserLoggedOut;
-		}
-
-		// Initialize tracks & leaderboard system (no longer deferred)
-		InitializeTracksLeaderboardSystem();
-
-		// Initial UI update (no longer deferred)
-		UpdateUI();
-	}
-
-	/// <summary>
-	/// PHASE 3 Cleanup: Game Teardown
-	/// Disconnects external event handlers when game ends.
-	/// </summary>
-	public override void OnGameTeardown()
-	{
-		// Disconnect SessionManager signals
-		if (_sessionManager != null && IsInstanceValid(_sessionManager))
-		{
-			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
-			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
-		}
-
 		// Save partial race data when exiting (fire-and-forget)
 		if (IsRaceActive() && GetRacingMode() == RacingMode.TimeTrial)
 		{
@@ -335,13 +307,41 @@ public partial class RacingGame : GameController
 				_ = SavePartialRaceData(playerId, "menu_exit");
 			}
 		}
+
+		// Emit race abandoned event if time trial was in progress
+		if (IsRaceActive() && GetRacingMode() == RacingMode.TimeTrial)
+		{
+			_ = SavePartialRaceData(GetCurrentGamePlayerId(), "app_exit");
+		}
+
+		// Close activity session if active
+		if (_activitySessionId != Guid.Empty && _eventService != null)
+		{
+			_ = _eventService.CloseActivitySessionAsync(_activitySessionId);
+		}
+
+		// Clean up signals and references
+		DisconnectTrackSignals();
+
+		if (IsInstanceValid(_racingCar))
+		{
+			_racingCar.CarMoved -= OnCarMoved;
+		}
+
+		// Disconnect timing system signals
+		if (IsInstanceValid(_timingSystem))
+		{
+			_timingSystem.LapCompleted -= OnTimingSystemLapCompleted;
+			_timingSystem.RaceCompleted -= OnTimingSystemRaceCompleted;
+			_timingSystem.CheckpointCrossed -= OnTimingSystemCheckpointCrossed;
+		}
 	}
 
 	/// <summary>
-	/// PHASE 4: Activation Decision
-	/// Determines if game should auto-start or wait for user input.
+	/// Start gameplay or show initial state.
+	/// Called after all initialization (including async) is complete.
 	/// </summary>
-	protected override void ActivateGame()
+	protected override void OnActivateGame()
 	{
 		// Auto-start practice mode for immediate testing
 		StartPractice();
@@ -783,18 +783,20 @@ public partial class RacingGame : GameController
 	}
 
 	/// <summary>
-	/// Handle user login - refresh UI to enable time trial button
+	/// Handle user login - refresh UI to enable time trial button.
+	/// Auto-connected to SessionManager.UserLoggedIn signal by base class.
 	/// </summary>
-	private void OnUserLoggedIn(string phoneNumber)
+	protected override void OnUserLoggedIn(UserSession session)
 	{
 		// Just update UI - no cache manipulation needed
 		UpdateUI();
 	}
 
 	/// <summary>
-	/// Handle user logout - refresh UI to disable time trial button
+	/// Handle user logout - refresh UI to disable time trial button.
+	/// Auto-connected to SessionManager.UserLoggedOut signal by base class.
 	/// </summary>
-	private void OnUserLoggedOut(string phoneNumber)
+	protected override void OnUserLoggedOut(string phoneNumber)
 	{
 		// Just update UI - no cache manipulation needed
 		UpdateUI();
@@ -2015,7 +2017,7 @@ public partial class RacingGame : GameController
 	public void StartRace()
 	{
 		// Notify platform that game session started
-		_gameHost?.NotifyGameStarted();
+		Platform.Host?.NotifyGameStarted();
 
 		EmitSignal(SignalName.RaceStarted);
 		GD.Print("[RacingGame] Race started");
@@ -2040,7 +2042,7 @@ public partial class RacingGame : GameController
 		}
 
 		// Notify platform that game session ended
-		_gameHost?.NotifyGameEnded();
+		Platform.Host?.NotifyGameEnded();
 
 		EmitSignal(SignalName.RaceEnded);
 		GD.Print("[RacingGame] Race ended");
@@ -2051,7 +2053,7 @@ public partial class RacingGame : GameController
 		_timingSystem.SetPaused(true);
 
 		// Notify platform that game session paused
-		_gameHost?.NotifyGamePaused();
+		Platform.Host?.NotifyGamePaused();
 
 		EmitSignal(SignalName.RacePaused);
 		GD.Print("[RacingGame] Race paused");
@@ -2062,7 +2064,7 @@ public partial class RacingGame : GameController
 		_timingSystem.SetPaused(false);
 
 		// Notify platform that game session resumed
-		_gameHost?.NotifyGameResumed();
+		Platform.Host?.NotifyGameResumed();
 
 		EmitSignal(SignalName.RaceResumed);
 		GD.Print("[RacingGame] Race resumed");
@@ -2351,41 +2353,6 @@ public partial class RacingGame : GameController
 			return "Racing Game - Time Trial";
 		}
 		return "Racing Game";
-	}
-
-	public override void _ExitTree()
-	{
-		base._ExitTree(); // This calls CleanupUI() which calls OnUIContextTeardown()
-
-		// Emit race abandoned event if time trial was in progress
-		if (IsRaceActive() && GetRacingMode() == RacingMode.TimeTrial)
-		{
-			_ = SavePartialRaceData(GetCurrentGamePlayerId(), "app_exit");
-		}
-
-		// Close activity session if active
-		if (_activitySessionId != Guid.Empty && _eventService != null)
-		{
-			_ = _eventService.CloseActivitySessionAsync(_activitySessionId);
-		}
-
-		// Clean up signals and references
-		DisconnectTrackSignals();
-
-		if (IsInstanceValid(_racingCar))
-		{
-			_racingCar.CarMoved -= OnCarMoved;
-		}
-
-		// Disconnect timing system signals
-		if (IsInstanceValid(_timingSystem))
-		{
-			_timingSystem.LapCompleted -= OnTimingSystemLapCompleted;
-			_timingSystem.RaceCompleted -= OnTimingSystemRaceCompleted;
-			_timingSystem.CheckpointCrossed -= OnTimingSystemCheckpointCrossed;
-		}
-
-		// SessionManager signal disconnection handled in OnGameTeardown()
 	}
 
 	/// <summary>

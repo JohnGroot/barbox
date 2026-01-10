@@ -59,21 +59,6 @@ public partial class NinesGame : GameController
 
 	#region Lifecycle
 
-	public override void _Ready()
-	{
-		LoadConfig();
-		base._Ready(); // Triggers GameController pipeline: DiscoverServices -> InitializeComponents -> SetupGameContext
-	}
-
-	public override void _Notification(int what)
-	{
-		if (what == NotificationExitTree)
-		{
-			CleanupSessionManager();
-			AutoLogoutOnExit();
-		}
-	}
-
 	private void LoadConfig()
 	{
 		if (Config == null)
@@ -87,9 +72,9 @@ public partial class NinesGame : GameController
 		}
 	}
 
-	protected override void InitializeComponents()
+	protected override void OnInitializeComponents()
 	{
-		base.InitializeComponents();
+		LoadConfig();
 
 		_engine = new NinesEngine(this);
 		_state = new NinesState(this);
@@ -186,21 +171,14 @@ public partial class NinesGame : GameController
 			return;
 		}
 
-		// Connect to session signals
-		_sessionManager.UserLoggedIn += OnUserLoggedIn;
-		_sessionManager.UserLoggedOut += OnUserLoggedOut;
-
-		// Sync existing sessions
+		// User login/logout signals are auto-connected by base GameController
+		// Just sync existing sessions
 		SyncExistingSessions();
 	}
 
-	private void CleanupSessionManager()
+	protected override void OnGameTeardown()
 	{
-		if (_sessionManager != null && GodotObject.IsInstanceValid(_sessionManager))
-		{
-			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
-			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
-		}
+		AutoLogoutOnExit();
 	}
 
 	private void SyncExistingSessions()
@@ -367,14 +345,12 @@ public partial class NinesGame : GameController
 
 	#region Player Management
 
-	private void OnUserLoggedIn(string phoneNumber)
+	protected override void OnUserLoggedIn(UserSession session)
 	{
-		if (_sessionManager == null)
-			return;
-
-		var session = _sessionManager.GetSessionByPhone(phoneNumber);
 		if (session == null)
 			return;
+
+		var phoneNumber = session.PhoneNumber;
 
 		// Check if already in players list
 		if (_state.Players.Any(p => p.PhoneNumber == phoneNumber))
@@ -394,7 +370,7 @@ public partial class NinesGame : GameController
 		_ui?.RefreshJackpotButtonState();
 	}
 
-	private void OnUserLoggedOut(string phoneNumber)
+	protected override void OnUserLoggedOut(string phoneNumber)
 	{
 		// Block logout during active game
 		if (_state.CurrentPhase != GamePhase.Idle && _state.CurrentPhase != GamePhase.GameOver)
