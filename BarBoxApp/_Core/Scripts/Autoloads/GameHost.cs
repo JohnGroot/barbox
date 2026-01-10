@@ -1,3 +1,4 @@
+using BarBox.Core.Gameplay;
 using Godot;
 using System;
 using System.Collections.Generic;
@@ -107,26 +108,33 @@ public partial class GameHost : AutoloadBase
 
 	public async void StopCurrentGame()
 	{
-		if (_currentGame != null)
+		try
 		{
-			// Games are responsible for calling NotifyGameEnded() when they end
-			// We just emit the platform signal and clean up
-			EmitSignal(SignalName.GameEnded, _currentGameId);
-			_currentGame.QueueFree();
-			_currentGame = null;
-		}
+			if (_currentGame != null)
+			{
+				// Games are responsible for calling NotifyGameEnded() when they end
+				// We just emit the platform signal and clean up
+				EmitSignal(SignalName.GameEnded, _currentGameId);
+				_currentGame.QueueFree();
+				_currentGame = null;
+			}
 
-		// Log out all non-primary users when exiting game
-		if (_sessionManager != null)
+			// Log out all non-primary users when exiting game
+			if (_sessionManager != null)
+			{
+				await _sessionManager.LogoutNonPrimaryUsersAsync();
+			}
+
+			// Show main menu UI when returning from game
+			_mainController?.ShowMainUI();
+			_mainController = null;
+
+			_currentGameId = string.Empty;
+		}
+		catch (Exception ex)
 		{
-			await _sessionManager.LogoutNonPrimaryUsersAsync();
+			LogError($"Error stopping game: {ex.Message}");
 		}
-
-		// Show main menu UI when returning from game
-		_mainController?.ShowMainUI();
-		_mainController = null;
-
-		_currentGameId = string.Empty;
 	}
 
 	/// <summary>
@@ -286,39 +294,28 @@ public partial class GameHost : AutoloadBase
 
 	// ============================================================================
 	// Build Context Detection Utilities
+	// Delegates to BuildContext for cached values
 	// ============================================================================
 
 	/// <summary>
 	/// Includes both editor play mode and debug builds launched from editor
 	/// </summary>
-	public static bool IsLaunchedFromEditor()
-	{
-		return OS.HasFeature(FEATURE_EDITOR);
-	}
+	public static bool IsLaunchedFromEditor() => BuildContext.IsLaunchedFromEditor;
 
 	/// <summary>
 	/// True for all exported builds (debug or release)
 	/// </summary>
-	public static bool IsExportedBuild()
-	{
-		return OS.HasFeature(FEATURE_STANDALONE);
-	}
+	public static bool IsExportedBuild() => BuildContext.IsExportedBuild;
 
 	/// <summary>
 	/// True during editor tool execution, @tool scripts, editor extensions
 	/// </summary>
-	public static bool IsEditorToolContext()
-	{
-		return Engine.IsEditorHint();
-	}
+	public static bool IsEditorToolContext() => BuildContext.IsEditorToolContext;
 
 	/// <summary>
 	/// Includes both editor play mode and tool script contexts
 	/// </summary>
-	public static bool IsDevelopmentContext()
-	{
-		return IsLaunchedFromEditor() || IsEditorToolContext();
-	}
+	public static bool IsDevelopmentContext() => BuildContext.IsDevelopment;
 
 	// ============================================================================
 	// Production/Development Context Detection
@@ -327,38 +324,17 @@ public partial class GameHost : AutoloadBase
 	/// <summary>
 	/// Production context = exported standalone build
 	/// </summary>
-	public static bool IsProductionContext()
-	{
-		return IsExportedBuild();
-	}
+	public static bool IsProductionContext() => BuildContext.IsProduction;
 
 	/// <summary>
 	/// Credits are bypassed in any development context (editor play or tool scripts)
 	/// </summary>
-	public static bool ShouldBypassCredits()
-	{
-		return IsDevelopmentContext();
-	}
+	public static bool ShouldBypassCredits() => BuildContext.ShouldBypassCredits;
 
-	public static string GetContextDescription()
-	{
-		if (IsEditorToolContext())
-		{
-			return "Development: Editor tool script context";
-		}
-
-		if (IsLaunchedFromEditor())
-		{
-			return "Development: Launched from Godot editor";
-		}
-
-		if (IsExportedBuild())
-		{
-			return "Production: Exported standalone build";
-		}
-
-		return "Unknown: Unable to determine build context";
-	}
+	/// <summary>
+	/// Get a human-readable description of the current build context
+	/// </summary>
+	public static string GetContextDescription() => BuildContext.GetContextDescription();
 
 	protected override void OnServiceDestroyed()
 	{
