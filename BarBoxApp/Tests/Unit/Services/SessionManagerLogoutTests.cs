@@ -37,54 +37,6 @@ public class SessionManagerLogoutTests : BackendTestBase
 		// TODO: Re-enable when rate limiting is addressed in the test infrastructure.
 		TestHelpers.LogTestInfo("Skipping - known issue with GoDotTest timeout detection when rate limited");
 		await Task.CompletedTask;
-		return;
-
-		// Arrange - Use seeded player 1 (consistent with other tests)
-		_sessionManager.ShouldNotBeNull("SessionManager must be available");
-
-		// Check if sessions already exist (previous test cleanup may have failed)
-		var existingSession = _sessionManager.GetSessionByPhone(TestPlayerPhone);
-		if (existingSession != null)
-		{
-			TestHelpers.LogTestInfo("Cleaning up existing session before test");
-			await _sessionManager.LogoutUserAsync(TestPlayerPhone);
-		}
-
-		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
-		if (loginResult.IsFailure(out var error))
-		{
-			// Skip gracefully if rate limited (5/min limit across test suite)
-			if (error.Message.Contains("Rate limit"))
-			{
-				TestHelpers.LogTestInfo("Skipping - rate limit exceeded (5/min backend limit)");
-				return;
-			}
-			TestHelpers.LogTestInfo($"Test skipped - login failed: {error.Message}");
-			return;
-		}
-
-		// Act - Logout the same user twice
-		TestHelpers.LogTestInfo("About to call first LogoutUserAsync...");
-		var firstLogout = await _sessionManager.LogoutUserAsync(TestPlayerPhone);
-		TestHelpers.LogTestInfo($"First logout completed with result: {firstLogout}");
-
-		TestHelpers.LogTestInfo("About to call second LogoutUserAsync...");
-		var secondLogout = await _sessionManager.LogoutUserAsync(TestPlayerPhone);
-		TestHelpers.LogTestInfo($"Second logout completed with result: {secondLogout}");
-
-		// Assert
-		TestHelpers.LogTestInfo("Running assertions...");
-		firstLogout.ShouldBeTrue("First logout should succeed");
-		TestHelpers.LogTestInfo("First assertion passed");
-		secondLogout.ShouldBeFalse("Second logout should return false (no session to logout)");
-		TestHelpers.LogTestInfo("Second assertion passed");
-
-		var session = _sessionManager.GetSessionByPhone(TestPlayerPhone);
-		TestHelpers.LogTestInfo($"Session check: {(session == null ? "null (expected)" : "not null (UNEXPECTED)")}");
-		session.ShouldBeNull("User session should not exist after logout");
-		TestHelpers.LogTestInfo("Third assertion passed");
-
-		TestHelpers.LogTestInfo("ALL ASSERTIONS PASSED - Test complete!");
 	}
 
 	[Test]
