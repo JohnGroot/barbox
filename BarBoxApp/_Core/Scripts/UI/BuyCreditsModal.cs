@@ -62,6 +62,7 @@ public partial class BuyCreditsModal : Control
 	private QRCodeCache _qrCache;
 	private string _targetPhoneNumber;
 	private CreditPack _pendingPurchasePack;
+	private bool _signalsConnected;
 
 	public override void _Ready()
 	{
@@ -233,7 +234,7 @@ public partial class BuyCreditsModal : Control
 		_qrCancelButton.Text = CANCEL_TEXT;
 		_qrCancelButton.CustomMinimumSize = new Vector2(216, 72);
 		TopMenuBar.ApplyStandardButtonStyle(_qrCancelButton);
-		_qrCancelButton.Pressed += OnQRCancelPressed;
+		// Signal connected in ConnectSignals() via CallDeferred to ensure services are initialized
 		qrButtonContainer.AddChild(_qrCancelButton);
 
 		// Progress bar container at bottom
@@ -299,8 +300,13 @@ public partial class BuyCreditsModal : Control
 		if (_closeButton != null)
 			_closeButton.Pressed += OnClosePressed;
 
+		if (_qrCancelButton != null)
+			_qrCancelButton.Pressed += OnQRCancelPressed;
+
 		// Connect to PaymentService generic events
 		ConnectPaymentEvents();
+
+		_signalsConnected = true;
 	}
 
 	private void ConnectPaymentEvents()
@@ -642,12 +648,16 @@ public partial class BuyCreditsModal : Control
 		// Disconnect PaymentService events
 		DisconnectPaymentEvents();
 
-		// Disconnect UI signals
-		if (IsInstanceValid(_closeButton))
-			_closeButton.Pressed -= OnClosePressed;
+		// Only disconnect button signals if they were connected
+		// (ConnectSignals is called via CallDeferred, so modal may be freed before it runs)
+		if (_signalsConnected)
+		{
+			if (IsInstanceValid(_closeButton))
+				_closeButton.Pressed -= OnClosePressed;
 
-		if (IsInstanceValid(_qrCancelButton))
-			_qrCancelButton.Pressed -= OnQRCancelPressed;
+			if (IsInstanceValid(_qrCancelButton))
+				_qrCancelButton.Pressed -= OnQRCancelPressed;
+		}
 
 		// Cleanup QR cache
 		_qrCache?.ClearCache();
