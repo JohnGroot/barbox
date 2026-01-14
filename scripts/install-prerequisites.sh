@@ -13,6 +13,35 @@ get_brew_prefix() {
 	fi
 }
 
+# Get the user's shell config file
+get_shell_config() {
+	if [[ -n "$ZSH_VERSION" ]] || [[ "$SHELL" == *"zsh"* ]]; then
+		echo "$HOME/.zshrc"
+	else
+		echo "$HOME/.bashrc"
+	fi
+}
+
+# Add a line to shell config if it doesn't already exist
+add_to_shell_config() {
+	local line="$1"
+	local config_file
+	config_file=$(get_shell_config)
+
+	# Create config file if it doesn't exist
+	if [[ ! -f "$config_file" ]]; then
+		touch "$config_file"
+	fi
+
+	# Add line if not already present
+	if ! grep -qF "$line" "$config_file" 2>/dev/null; then
+		echo "" >> "$config_file"
+		echo "# Added by BarBox install-prerequisites.sh" >> "$config_file"
+		echo "$line" >> "$config_file"
+		echo "  Added to $config_file: $line"
+	fi
+}
+
 BREW_PREFIX=$(get_brew_prefix)
 
 # 1. Check/install Homebrew (needed for other tools)
@@ -21,6 +50,8 @@ if ! command -v brew &> /dev/null; then
 	/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 	# Source Homebrew environment for current session
 	eval "$("$BREW_PREFIX/bin/brew" shellenv)"
+	# Make Homebrew PATH permanent
+	add_to_shell_config "eval \"\$($BREW_PREFIX/bin/brew shellenv)\""
 else
 	echo "[1/7] Homebrew: already installed"
 fi
@@ -36,6 +67,8 @@ if ! dotnet --version 2>/dev/null | grep -q "^9\."; then
 	brew install dotnet@9
 	# Add newly installed dotnet to PATH for current session
 	export PATH="$BREW_PREFIX/opt/dotnet@9/bin:$PATH"
+	# Make dotnet PATH permanent
+	add_to_shell_config "export PATH=\"$BREW_PREFIX/opt/dotnet@9/bin:\$PATH\""
 else
 	echo "[2/7] .NET 9 SDK: already installed ($(dotnet --version))"
 fi
@@ -47,6 +80,8 @@ export PATH="$HOME/.dotnet/tools:$PATH"
 if ! command -v godotenv &> /dev/null; then
 	echo "[3/7] Installing GodotEnv..."
 	dotnet tool install --global Chickensoft.GodotEnv
+	# Make dotnet tools PATH permanent
+	add_to_shell_config 'export PATH="$HOME/.dotnet/tools:$PATH"'
 else
 	echo "[3/7] GodotEnv: already installed"
 fi
@@ -79,6 +114,8 @@ else
 	else
 		export PATH="$HOME/.local/bin:$PATH"
 	fi
+	# Make uv PATH permanent (uv installer may already do this, but ensure it)
+	add_to_shell_config 'export PATH="$HOME/.local/bin:$PATH"'
 fi
 
 # 7. Install hurl (for backend integration tests)
@@ -112,5 +149,5 @@ else
 fi
 
 echo ""
-echo "Note: If running this script via 'bash scripts/install-prerequisites.sh',"
-echo "you may need to restart your terminal for PATH changes to persist."
+echo "Note: PATH changes have been added to $(get_shell_config)."
+echo "Run 'source $(get_shell_config)' or restart your terminal to use them."
