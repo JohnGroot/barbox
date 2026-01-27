@@ -1,106 +1,142 @@
+using BarBox.Core.Autoloads;
+using BarBox.Core.Gameplay;
 using Godot;
-using System.Collections.Generic;
+using System;
+using System.Threading.Tasks;
 
 [GlobalClass]
 public abstract partial class GameController : Node2D
 {
-	/// <summary>
-	/// Returns the game ID for registry lookup. Must match an entry in GameRegistry.
-	/// </summary>
-	protected abstract string GetGameId();
+	// ==========================================================================
+	// PLATFORM ACCESS
+	// ==========================================================================
 
 	/// <summary>
-	/// Public accessor for game ID (for external callers like GameHost)
+	/// Access to platform services. Available after _Ready() begins.
+	/// Provides Session, Events, Credits, Location, Host, UI, Input, Registry.
+	/// </summary>
+	protected GameContext Platform { get; private set; }
+
+	/// <summary>
+	/// Game metadata from GameRegistry.
+	/// </summary>
+	protected GameMetadata _gameMetadata;
+
+	/// <summary>
+	/// Public accessor for game ID (for external callers like GameHost).
 	/// </summary>
 	public string GameId => GetGameId();
 
 	/// <summary>
 	/// Whether players can logout during active gameplay.
-	/// Override this in your game to allow logout during play (default: false).
-	/// Games should check their domain-specific state (IsRaceActive, IsPlayerLoggedIn, etc.)
+	/// Override this in your game to control logout behavior (default: true).
 	/// </summary>
 	public virtual bool CanLogout => true;
 
-	protected GameMetadata _gameMetadata;
-	protected GameHost _gameHost;
+	/// <summary>
+	/// Indicates whether the game is currently paused.
+	/// </summary>
+	public bool IsPaused { get; protected set; }
+
+	// ==========================================================================
+	// SEALED ORCHESTRATION - Ensures proper initialization flow
+	// ==========================================================================
 
 	/// <summary>
-	/// Godot lifecycle method - orchestrates all initialization phases synchronously.
-	/// Games can override this but should call base._Ready() first.
+	/// Sealed - orchestrates all initialization phases. Cannot be overridden.
+	/// Override the individual On* phase methods instead.
 	/// </summary>
-	public override void _Ready()
+	public sealed override void _Ready()
 	{
-		// Phase 1: Service Discovery
-		DiscoverServices();
+		// Phase 0: Create platform context (services always available)
+		Platform = GameContext.CreateFromAutoloads();
 
-		// Phase 2: Core Setup
-		SetupCore();
+		// Phase 1: Load game metadata and register with GameHost
+		_gameMetadata = Platform.Registry?.GetGameData(GameId);
+		Platform.Host?.RegisterCurrentGame(this);
 
-		// Phase 3: Game Context Setup
+		// Phase 2: Game-specific service discovery (for additional services)
+		OnDiscoverServices();
+
+		// Phase 3: Component initialization
+		OnInitializeComponents();
+
+		// Phase 4: UI/Context setup (sealed internal)
 		SetupGameContext();
 
-		// Phase 4: Activation Decision
-		ActivateGame();
+		// Phase 5: Async init then activate
+		StartAsyncInitialization();
 	}
 
 	/// <summary>
-	/// PHASE 1: Service Discovery
-	/// Discovers platform services and loads game metadata.
-	/// Override to discover additional game-specific services.
-	/// Called first in initialization sequence - no components are created yet.
-	///
-	/// POST-GUARANTEES:
-	/// - _gameMetadata is not null (throws if missing)
-	/// - _gameHost is not null in production context
-	/// - All autoloads are guaranteed available (initialized in _EnterTree)
+	/// Sealed - ensures proper cleanup flow. Cannot be overridden.
+	/// Override OnGameTeardown() for game-specific cleanup.
 	/// </summary>
-	protected virtual void DiscoverServices()
+	public sealed override void _ExitTree()
 	{
-		// Services guaranteed available - autoloads initialized in _EnterTree
-		_gameMetadata = GameRegistry.GetAutoload().GetGameData(GameId);
-		_gameHost = GameHost.GetInstance();
-
-		// Register with GameHost for direct scene loading support
-		_gameHost?.RegisterCurrentGame(this);
+		CleanupGameContext();
+		DisconnectUserSignals();
+		OnGameTeardown();
+		base._ExitTree();
 	}
 
-	/// <summary>
-	/// PHASE 2: Core Setup
-	/// Initializes game components.
-	/// Override InitializeComponents() rather than this method.
-	/// </summary>
-	private void SetupCore()
-	{
-		InitializeComponents();
-	}
+	// ==========================================================================
+	// VIRTUAL OVERRIDE POINTS - Games implement these
+	// ==========================================================================
 
 	/// <summary>
-	/// PHASE 2 Extension Point: Component Initialization
-	/// Override this to create game-specific components (engine, state, UI).
-	/// Called after service discovery but before UI integration.
-	///
-	/// POST-GUARANTEES:
-	/// - All game components exist and are valid
-	/// - Configuration loaded and validated
-	/// - Components ready for gameplay
+	/// REQUIRED: Returns the game ID for registry lookup. Must match an entry in GameRegistry.
 	/// </summary>
-	protected virtual void InitializeComponents() { }
+	protected abstract string GetGameId();
 
 	/// <summary>
-	/// PHASE 4: Activation Decision
-	/// Determines if game should auto-start or wait for user input.
-	/// Override to implement game-specific activation logic.
-	/// All components are guaranteed to exist when this is called.
-	///
-	/// Note: Games are responsible for their own lifecycle management.
-	/// Implement domain-specific state checks (IsRaceActive, IsPlayerLoggedIn, etc.)
-	/// and lifecycle methods (StartRace, EndRace, StartMiningSession, etc.)
+	/// Override to discover additional game-specific services beyond Platform.
+	/// Platform property is already populated when this is called.
 	/// </summary>
-	protected virtual void ActivateGame() { }
+	protected virtual void OnDiscoverServices() { }
 
 	/// <summary>
-	/// Override this method to provide help content for your game
-	/// This content will be displayed in the help menu overlay
+	/// Override to create game components (engine, state, UI).
+	/// Called after service discovery, before UI integration.
+	/// </summary>
+	protected virtual void OnInitializeComponents() { }
+
+	/// <summary>
+	/// Override for async initialization (backend calls, data loading).
+	/// Called after components initialized, before OnActivateGame.
+	/// </summary>
+	protected virtual Task OnInitializeAsync() => Task.CompletedTask;
+
+	/// <summary>
+	/// Override to start gameplay or show initial state.
+	/// Called after all initialization (including async) is complete.
+	/// </summary>
+	protected virtual void OnActivateGame() { }
+
+	/// <summary>
+	/// Override to handle user login. Auto-connected to SessionManager.UserLoggedIn signal.
+	/// </summary>
+	protected virtual void OnUserLoggedIn(UserSession session) { }
+
+	/// <summary>
+	/// Override to handle user logout. Auto-connected to SessionManager.UserLoggedOut signal.
+	/// </summary>
+	protected virtual void OnUserLoggedOut(string phoneNumber) { }
+
+	/// <summary>
+	/// Override for game-specific cleanup on exit.
+	/// Called during _ExitTree after UI cleanup and signal disconnection.
+	/// </summary>
+	protected virtual void OnGameTeardown() { }
+
+	/// <summary>
+	/// Override to handle async initialization failure.
+	/// </summary>
+	protected virtual void OnInitializationFailed(Exception ex) { }
+
+	/// <summary>
+	/// Override this method to provide help content for your game.
+	/// This content will be displayed in the help menu overlay.
 	/// </summary>
 	protected virtual HelpContentData GetHelpContent()
 	{
@@ -109,9 +145,33 @@ public abstract partial class GameController : Node2D
 	}
 
 	/// <summary>
-	/// Indicates whether the game is currently paused.
+	/// Gets the display title for the game in the top menu bar.
+	/// Override this to provide a custom title, defaults to game metadata display name.
 	/// </summary>
-	public bool IsPaused { get; protected set; }
+	public virtual string GetGameTitle()
+	{
+		return _gameMetadata?.DisplayName ?? GameId;
+	}
+
+	/// <summary>
+	/// Gets the context buttons this game wants to display in the top menu bar.
+	/// Override this to provide custom buttons for your game (e.g., pause/resume based on domain state).
+	/// </summary>
+	public virtual ContextButtonData[] GetContextButtons()
+	{
+		ContextButtonData[] buttons = [
+			GameContextButton.CreateReturnToMenuButton(() => {
+				Platform.Session?.ResetAllIdleTimers();
+				ReturnToMainMenu();
+			})
+		];
+
+		return buttons;
+	}
+
+	// ==========================================================================
+	// PAUSE/RESUME LIFECYCLE
+	// ==========================================================================
 
 	/// <summary>
 	/// Pauses the game. Sets IsPaused to true and calls OnPause() for derived classes.
@@ -119,7 +179,7 @@ public abstract partial class GameController : Node2D
 	/// </summary>
 	public void Pause()
 	{
-		if (IsPaused) 
+		if (IsPaused)
 			return;
 
 		IsPaused = true;
@@ -141,119 +201,38 @@ public abstract partial class GameController : Node2D
 
 	/// <summary>
 	/// Override this method to implement game-specific pause logic.
-	/// Base implementation does nothing.
 	/// </summary>
 	protected virtual void OnPause() { }
 
 	/// <summary>
 	/// Override this method to implement game-specific resume logic.
-	/// Base implementation does nothing.
 	/// </summary>
 	protected virtual void OnResume() { }
 
-	/// <summary>
-	/// PHASE 3: Game Context Setup
-	/// Integrates game with platform UI and triggers game-specific setup lifecycle.
-	/// Override OnGameSetup() to connect event handlers (SessionManager signals, etc.).
-	/// Do NOT call StartGame() in OnGameSetup() - use ActivateGame() instead.
-	///
-	/// POST-GUARANTEES:
-	/// - Top menu context set with game title and buttons
-	/// - Help content registered
-	/// - UI integration complete
-	/// - OnGameSetup() lifecycle called
-	/// </summary>
-	private void SetupGameContext()
-	{
-		var contextButtons = GetContextButtons();
-		_gameHost.SetTopMenuContext(GetGameTitle(), contextButtons);
-
-		// Set up help content through GameHost (when available)
-		SetupGameHelp();
-
-		// Call game-specific setup after UI integration is complete
-		OnGameSetup();
-	}
+	// ==========================================================================
+	// UI STATE MANAGEMENT
+	// ==========================================================================
 
 	/// <summary>
-	/// Clean up game context when the game ends
-	/// </summary>
-	private void CleanupGameContext()
-	{
-		_gameHost?.ClearTopMenuContext();
-
-		// Clean up help content
-		CleanupGameHelp();
-	}
-
-	public override void _ExitTree()
-	{
-		CleanupGameContext();
-
-		OnGameTeardown();
-
-		base._ExitTree();
-	}
-
-	/// <summary>
-	/// Gets the display title for the game in the top menu bar
-	/// Override this to provide a custom title, defaults to game metadata display name
-	/// </summary>
-	public virtual string GetGameTitle()
-	{
-		return _gameMetadata?.DisplayName ?? GameId;
-	}
-
-	/// <summary>
-	/// Gets the context buttons this game wants to display in the top menu bar
-	/// Override this to provide custom buttons for your game (e.g., pause/resume based on domain state)
-	/// </summary>
-	public virtual ContextButtonData[] GetContextButtons()
-	{
-		ContextButtonData[] buttons = [
-			GameContextButton.CreateReturnToMenuButton(() => {
-				var sessionManager = SessionManager.GetInstance();
-				sessionManager?.ResetAllIdleTimers();
-				ReturnToMainMenu();
-			})
-		];
-
-		return buttons;
-	}
-
-	/// <summary>
-	/// Called when the game is being set up
-	/// Override this to connect external event handlers and perform initialization
-	/// </summary>
-	public virtual void OnGameSetup() { }
-
-	/// <summary>
-	/// Called when the game is being torn down
-	/// Override this to disconnect external event handlers and perform cleanup
-	/// </summary>
-	public virtual void OnGameTeardown() { }
-
-	/// <summary>
-	/// Called to update the game's UI state (e.g., button enabled/disabled states)
-	/// Override this to customize UI state updates
+	/// Called to update the game's UI state (e.g., button enabled/disabled states).
+	/// Override this to customize UI state updates.
 	/// </summary>
 	public virtual void UpdateUIState()
 	{
-		// Refresh the context buttons with updated state
 		RefreshUI();
 	}
 
 	/// <summary>
-	/// Refresh the UI context with current game state
+	/// Refresh the UI context with current game state.
 	/// Call this when game state changes that affect UI (pause/resume, etc.)
 	/// </summary>
 	protected void RefreshUI()
 	{
-		if (_gameHost == null)
+		if (Platform.Host == null)
 			return;
 
 		var contextButtons = GetContextButtons();
-		_gameHost.SetTopMenuContext(GetGameTitle(), contextButtons);
+		Platform.Host.SetTopMenuContext(GetGameTitle(), contextButtons);
 	}
 
 	/// <summary>
@@ -264,46 +243,83 @@ public abstract partial class GameController : Node2D
 	{
 		try
 		{
-			// Get UIManager for confirmation dialog
-			var uiManager = UIManager.GetInstance();
-
-			// Show confirmation dialog
-			bool confirmed = await uiManager.ShowConfirmationAsync(
-				"Return to Menu",
-				"Are you sure you want to return to the main menu?\n\nAny unsaved progress will be lost.",
-				"Return to Menu",
-				"Cancel"
-			);
-
-			if (!confirmed)
+			if (Platform.UI != null)
 			{
-				return; // User cancelled
+				bool confirmed = await Platform.UI.ShowConfirmationAsync(
+					"Return to Menu",
+					"Are you sure you want to return to the main menu?\n\nAny unsaved progress will be lost.",
+					"Return to Menu",
+					"Cancel"
+				);
+
+				if (!confirmed)
+					return;
 			}
 
-			// User confirmed or no UIManager available - proceed with return to menu
-			_gameHost.ReturnToMainMenu();
+			Platform.Host?.ReturnToMainMenu();
 		}
-		catch (System.Exception ex)
+		catch (Exception ex)
 		{
-			GD.PrintErr($"[GameController] Failed to return to menu: {ex.Message}");
+			GD.PrintErr($"[{GameId}] Failed to return to menu: {ex.Message}");
 		}
 	}
 
-	/// <summary>
-	/// Sets up help content through the GameHost/UIManager system
-	/// </summary>
-	private void SetupGameHelp()
+	// ==========================================================================
+	// INTERNAL ORCHESTRATION
+	// ==========================================================================
+
+	private async void StartAsyncInitialization()
 	{
-		var helpContent = GetHelpContent();
-		_gameHost.SetGameHelpContent(helpContent);
-		_gameHost.ShowGameHelp(true);
+		try
+		{
+			await OnInitializeAsync();
+			OnActivateGame();
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"[{GameId}] Async initialization failed: {ex.Message}");
+			OnInitializationFailed(ex);
+		}
 	}
 
-	/// <summary>
-	/// Cleans up help content when game ends
-	/// </summary>
-	private void CleanupGameHelp()
+	private void SetupGameContext()
 	{
-		_gameHost.ShowGameHelp(false);
+		// Connect user signals (Session may be null in dev)
+		if (Platform.Session != null)
+		{
+			Platform.Session.UserLoggedIn += HandleUserLoggedIn;
+			Platform.Session.UserLoggedOut += HandleUserLoggedOut;
+		}
+
+		// Set up top menu context (Host may be null in dev)
+		Platform.Host?.SetTopMenuContext(GetGameTitle(), GetContextButtons());
+
+		// Set up help content
+		var helpContent = GetHelpContent();
+		Platform.Host?.SetGameHelpContent(helpContent);
+		Platform.Host?.ShowGameHelp(true);
 	}
+
+	private void CleanupGameContext()
+	{
+		Platform.Host?.ClearTopMenuContext();
+		Platform.Host?.ShowGameHelp(false);
+	}
+
+	private void DisconnectUserSignals()
+	{
+		if (Platform.Session != null && GodotObject.IsInstanceValid(Platform.Session))
+		{
+			Platform.Session.UserLoggedIn -= HandleUserLoggedIn;
+			Platform.Session.UserLoggedOut -= HandleUserLoggedOut;
+		}
+	}
+
+	private void HandleUserLoggedIn(string phoneNumber)
+	{
+		var session = Platform.Session?.GetSessionByPhone(phoneNumber);
+		OnUserLoggedIn(session);
+	}
+
+	private void HandleUserLoggedOut(string phoneNumber) => OnUserLoggedOut(phoneNumber);
 }

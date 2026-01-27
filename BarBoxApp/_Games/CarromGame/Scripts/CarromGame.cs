@@ -111,18 +111,6 @@ public partial class CarromGame : GameController
 	// INITIALIZATION
 	// ================================================================
 
-	public override void _Ready()
-	{
-		// Initialize physics config early (needed for exports)
-		if (PhysicsConfig == null)
-		{
-			PhysicsConfig = new CarromPhysicsConfig();
-		}
-
-		// Call base which orchestrates all initialization phases
-		base._Ready();
-	}
-
 	/// <summary>
 	/// Handle debug input commands
 	/// </summary>
@@ -151,10 +139,8 @@ public partial class CarromGame : GameController
 	/// PHASE 1: Service Discovery
 	/// Discovers platform services and detects production vs development context
 	/// </summary>
-	protected override void DiscoverServices()
+	protected override void OnDiscoverServices()
 	{
-		base.DiscoverServices();
-
 		// Initialize event service
 		_eventService = EventService.GetInstance();
 	}
@@ -163,9 +149,13 @@ public partial class CarromGame : GameController
 	/// PHASE 2: Component Initialization
 	/// Creates and configures all game components (board, camera, input, managers, UI)
 	/// </summary>
-	protected override void InitializeComponents()
+	protected override void OnInitializeComponents()
 	{
-		base.InitializeComponents();
+		// Initialize physics config early (needed for exports)
+		if (PhysicsConfig == null)
+		{
+			PhysicsConfig = new CarromPhysicsConfig();
+		}
 
 		// Create minimal GameController components for compatibility
 		_playerMgmt = new PlayerManagementComponent();
@@ -190,15 +180,6 @@ public partial class CarromGame : GameController
 
 		// Initialize UI components
 		InitializeScoreDisplay();
-	}
-
-	/// <summary>
-	/// PHASE 3: Game Setup
-	/// Loads user data after UI integration is complete
-	/// </summary>
-	public override void OnGameSetup()
-	{
-		base.OnGameSetup();
 
 		// Setup player integration (components now guaranteed to exist)
 		SetupPlayerIntegration();
@@ -211,10 +192,8 @@ public partial class CarromGame : GameController
 	/// PHASE 4: Activation Decision
 	/// Automatically starts practice mode after all initialization is complete
 	/// </summary>
-	protected override void ActivateGame()
+	protected override void OnActivateGame()
 	{
-		base.ActivateGame();
-
 		// Start practice mode
 		StartPracticeMode();
 	}
@@ -625,7 +604,7 @@ public partial class CarromGame : GameController
 		_gameStateManager?.TransitionToPhase(GameStateManager.GamePhase.Ready);
 
 		// Notify platform that game session started
-		_gameHost?.NotifyGameStarted();
+		Platform.Host?.NotifyGameStarted();
 
 		EmitSignal(SignalName.RoundStarted);
 		GD.Print("[CarromGame] Round started");
@@ -639,7 +618,7 @@ public partial class CarromGame : GameController
 		// Game state is managed by state machine - no need to manually transition
 
 		// Notify platform that game session ended
-		_gameHost?.NotifyGameEnded();
+		Platform.Host?.NotifyGameEnded();
 
 		EmitSignal(SignalName.RoundEnded);
 		GD.Print("[CarromGame] Round ended");
@@ -2427,10 +2406,12 @@ public partial class CarromGame : GameController
 		StartPracticeMode();
 	}
 
-	public override void _ExitTree()
+	/// <summary>
+	/// Game-specific cleanup on exit.
+	/// Called by base class during _ExitTree after UI cleanup and signal disconnection.
+	/// </summary>
+	protected override void OnGameTeardown()
 	{
-		base._ExitTree();
-
 		// Close activity session if active
 		if (_activitySessionId != Guid.Empty && _eventService != null)
 		{
@@ -2464,7 +2445,17 @@ public partial class CarromGame : GameController
 		// Clean up penalty tween signal
 		PenaltyPiecesTweenCompleted -= OnPenaltyPiecesTweenCompleted;
 
-		// GameStateManager signals cleaned up internally
+		// Disconnect GameStateManager signals
+		if (_gameStateManager != null && GodotObject.IsInstanceValid(_gameStateManager))
+		{
+			_gameStateManager.PhaseChanged -= OnPhaseChanged;
+			_gameStateManager.SettlementCompleted -= OnSettlementCompleted;
+			_gameStateManager.TurnChanged -= OnTurnChangedFromStateManager;
+			_gameStateManager.TurnReadyForPass -= OnTurnReadyForPass;
+			_gameStateManager.ContinueTurnRequested -= OnContinueTurnRequested;
+			_gameStateManager.PlayerWon -= OnPlayerWon;
+			_gameStateManager.FoulCommitted -= OnFoulCommitted;
+		}
 
 		// Clean up score display signals
 		if (_scoreDisplay != null && GodotObject.IsInstanceValid(_scoreDisplay))
@@ -2491,33 +2482,6 @@ public partial class CarromGame : GameController
 
 		// Clean up manager signals
 		DisconnectManagerSignals();
-	}
-
-	/// <summary>
-	/// Cleanup on node exit - disconnect all signals
-	/// </summary>
-	public override void _Notification(int what)
-	{
-		if (what == NotificationExitTree)
-		{
-			// Disconnect GameStateManager signals
-			if (_gameStateManager != null && GodotObject.IsInstanceValid(_gameStateManager))
-			{
-				_gameStateManager.PhaseChanged -= OnPhaseChanged;
-				_gameStateManager.SettlementCompleted -= OnSettlementCompleted;
-				_gameStateManager.TurnChanged -= OnTurnChangedFromStateManager;
-				_gameStateManager.TurnReadyForPass -= OnTurnReadyForPass;
-				_gameStateManager.ContinueTurnRequested -= OnContinueTurnRequested;
-				_gameStateManager.PlayerWon -= OnPlayerWon;
-				_gameStateManager.FoulCommitted -= OnFoulCommitted;
-			}
-
-			// Disconnect PenaltyPiecesTweenCompleted signal
-			PenaltyPiecesTweenCompleted -= OnPenaltyPiecesTweenCompleted;
-
-			// Mode managers handle their own cleanup
-			// Input controller handles its own cleanup
-		}
 	}
 
 }

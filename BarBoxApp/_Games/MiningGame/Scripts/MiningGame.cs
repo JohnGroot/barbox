@@ -65,7 +65,7 @@ public partial class MiningGame : GameController
 	private Guid _activitySessionId;
 	private MiningEventService _miningEventService;
 
-	// Platform services (Note: _gameHost inherited from GameController)
+	// Platform services
 	private SessionManager _sessionManager;
 	private LocationManager _locationManager;
 
@@ -85,12 +85,10 @@ public partial class MiningGame : GameController
 	/// POST-CONDITION GUARANTEES:
 	/// - _eventService exists and is valid (REQUIRED)
 	/// - _miningEventService exists (REQUIRED)
-	/// - _userManager, _locationManager, _gameHost exist in production (REQUIRED)
+	/// - _sessionManager, _locationManager exist in production (REQUIRED)
 	/// </summary>
-	protected override void DiscoverServices()
+	protected override void OnDiscoverServices()
 	{
-		base.DiscoverServices();
-
 		// Initialize REQUIRED event services
 		_eventService = EventService.GetInstance();
 		if (_eventService == null)
@@ -100,14 +98,12 @@ public partial class MiningGame : GameController
 
 		_miningEventService = new MiningEventService(_eventService);
 
-		// Discover platform services
-		_gameHost = GameHost.GetInstance();
-		_sessionManager = SessionManager.GetInstance();
-		_locationManager = LocationManager.GetAutoload();
+		// Cache platform services for convenience (Platform property provides these too)
+		_sessionManager = Platform.Session;
+		_locationManager = Platform.Location;
 
 		// Context detection and validation
-		bool isProductionContext = GameHost.IsProductionContext();
-		if (isProductionContext)
+		if (Platform.IsProduction)
 		{
 			// Production: Validate all required services exist
 			if (_sessionManager == null)
@@ -120,7 +116,7 @@ public partial class MiningGame : GameController
 				throw new InvalidOperationException("LocationManager is required in production but not available");
 			}
 
-			if (_gameHost == null)
+			if (Platform.Host == null)
 			{
 				throw new InvalidOperationException("GameHost is required in production but not available");
 			}
@@ -159,17 +155,15 @@ public partial class MiningGame : GameController
 	/// <summary>
 	/// PHASE 2: Component Initialization
 	/// Creates game components (_engine, _state, _ui)
-	/// NOTE: Location config obtained asynchronously in ActivateGame()
+	/// NOTE: Location config obtained asynchronously in OnActivateGame()
 	/// POST-CONDITION GUARANTEES:
 	/// - _engine exists and is valid
 	/// - _state exists and is valid
 	/// - _ui exists and is valid
 	/// - Config is not null
 	/// </summary>
-	protected override void InitializeComponents()
+	protected override void OnInitializeComponents()
 	{
-		base.InitializeComponents();
-
 		Config ??= new MiningGameConfig();
 
 		_engine = new MiningEngine(this);
@@ -220,7 +214,7 @@ public partial class MiningGame : GameController
 		_ui.SetEnabled(false);
 
 		// Notify platform that game session ended
-		_gameHost?.NotifyGameEnded();
+		Platform.Host?.NotifyGameEnded();
 
 		EmitSignal(SignalName.MiningSessionEnded);
 		GD.Print("[MiningGame] Mining session ended");
@@ -259,7 +253,7 @@ public partial class MiningGame : GameController
 				_ui.UpdateAllUI();
 
 			// Notify platform that game session started
-			_gameHost?.NotifyGameStarted();
+			Platform.Host?.NotifyGameStarted();
 		}
 		catch (Exception ex)
 		{
@@ -309,10 +303,8 @@ public partial class MiningGame : GameController
 	/// PHASE 4: Activation Decision
 	/// Registers location with backend, then starts mining session if user logged in
 	/// </summary>
-	protected override void ActivateGame()
+	protected override void OnActivateGame()
 	{
-		base.ActivateGame();
-
 		// Start async location registration
 		RegisterLocationAndActivateAsync();
 	}
@@ -343,7 +335,7 @@ public partial class MiningGame : GameController
 				GD.PrintErr($"[MiningGame] Location registration failed: {error.Message}");
 
 				// Use dev fallback in non-production
-				if (!GameHost.IsProductionContext())
+				if (Platform.IsDevelopment)
 				{
 					GD.Print("[MiningGame] Using dev fallback config");
 					_locationConfig = MiningLocationConfig.CreateDevDefault();
@@ -385,7 +377,7 @@ public partial class MiningGame : GameController
 			if (!IsInstanceValid(this))
 				return;
 
-			if (!GameHost.IsProductionContext())
+			if (Platform.IsDevelopment)
 			{
 				_locationConfig = MiningLocationConfig.CreateDevDefault();
 				if (IsInstanceValid(_ui))
@@ -415,26 +407,9 @@ public partial class MiningGame : GameController
 		}
 	}
 
-	public override void OnGameSetup()
+	protected override void OnGameTeardown()
 	{
-		base.OnGameSetup();
-
-		if (_sessionManager != null)
-		{
-			_sessionManager.UserLoggedIn += OnUserLoggedIn;
-			_sessionManager.UserLoggedOut += OnUserLoggedOut;
-		}
-	}
-
-	public override void OnGameTeardown()
-	{
-		base.OnGameTeardown();
-
-		if (_sessionManager != null && IsInstanceValid(_sessionManager))
-		{
-			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
-			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
-		}
+		// Note: User signal disconnection is handled automatically by base class
 	}
 
 	protected override HelpContentData GetHelpContent()
@@ -554,7 +529,7 @@ public partial class MiningGame : GameController
 	// EVENT HANDLERS
 	// ================================================================
 		
-	private void OnUserLoggedIn(string phoneNumber)
+	protected override void OnUserLoggedIn(UserSession session)
 	{
 		if (_isProcessingUserChange)
 		{
@@ -573,8 +548,7 @@ public partial class MiningGame : GameController
 
 			StartMiningSession();
 
-			// Fetch username from session for logging
-			var session = _sessionManager?.GetSessionByPhone(phoneNumber);
+			var phoneNumber = session?.PhoneNumber ?? string.Empty;
 			var userName = session?.UserName ?? string.Empty;
 
 			GD.Print($"[MiningGame] User logged in: {userName} ({phoneNumber})");
@@ -585,7 +559,7 @@ public partial class MiningGame : GameController
 		}
 	}
 
-	private void OnUserLoggedOut(string phoneNumber)
+	protected override void OnUserLoggedOut(string phoneNumber)
 	{
 		if (_isProcessingUserChange)
 		{
@@ -634,12 +608,7 @@ public partial class MiningGame : GameController
 				_state.ClearAllState();
 			}
 
-			// Disconnect event handlers
-			if (_sessionManager != null && IsInstanceValid(_sessionManager))
-			{
-				_sessionManager.UserLoggedIn -= OnUserLoggedIn;
-				_sessionManager.UserLoggedOut -= OnUserLoggedOut;
-			}
+			// Note: User signal disconnection is handled automatically by base class
 		}
 	}
 }
