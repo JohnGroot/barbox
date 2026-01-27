@@ -86,12 +86,12 @@ else
 	echo "[3/8] GodotEnv: already installed"
 fi
 
-# 4. Install Godot 4.4.1 with .NET support via GodotEnv
-if godotenv godot list 2>/dev/null | grep -q "4.4.1"; then
-	echo "[4/8] Godot 4.4.1: already installed"
+# 4. Install Godot 4.6 with .NET support via GodotEnv
+if godotenv godot list 2>/dev/null | grep -q "4.6"; then
+	echo "[4/8] Godot 4.6: already installed"
 else
-	echo "[4/8] Installing Godot 4.4.1 (with .NET support)..."
-	godotenv godot install 4.4.1
+	echo "[4/8] Installing Godot 4.6 (with .NET support)..."
+	godotenv godot install 4.6.0
 fi
 
 # 5. Install Python 3.13 (for backend)

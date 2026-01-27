@@ -241,7 +241,7 @@ rsync -avz --progress \
 	--exclude='*.dmp' \
 	--exclude='claude_code_temp' \
 	--exclude='claude_code_cache' \
-	--exclude='GodotDocs_4_4_1' \
+	--exclude='GodotDocs_4_6' \
 	"$PROJECT_ROOT/BarBoxServices/" \
 	"$TARGET:$TARGET_PATH/BarBoxServices/"
 
@@ -367,19 +367,19 @@ if [ "$SKIP_DEPS" = false ]; then
 			echo "[INFO] GodotEnv already installed"
 		fi
 
-		# Check for Godot 4.5.1
+		# Check for Godot 4.6.0
 		CURRENT_VERSION=$(godot --version 2>&1 | head -n1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -n1 || echo "")
-		if [ "$CURRENT_VERSION" != "4.5.1" ]; then
-			echo "[INFO] Installing Godot 4.5.1 with Mono support..."
-			godotenv install 4.5.1 --mono
-			godotenv use 4.5.1
+		if [ "$CURRENT_VERSION" != "4.6.0" ]; then
+			echo "[INFO] Installing Godot 4.6.0 with Mono support..."
+			godotenv godot install 4.6.0
+			godotenv godot use 4.6.0
 
 			# Add godot bin directory to .bashrc for persistent PATH
 			if [[ ":$PATH:" != *":$HOME/.config/godotenv/godot/bin:"* ]]; then
 				echo 'export PATH="$HOME/.config/godotenv/godot/bin:$PATH"' >> ~/.bashrc
 			fi
 		else
-			echo "[INFO] Godot 4.5.1 already installed"
+			echo "[INFO] Godot 4.6.0 already installed"
 		fi
 
 		# Check for uv

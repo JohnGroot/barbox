@@ -74,7 +74,7 @@ rsync -avz --delete --progress \
 	--exclude='*.dmp' \
 	--exclude='claude_code_temp' \
 	--exclude='claude_code_cache' \
-	--exclude='GodotDocs_4_4_1' \
+	--exclude='GodotDocs_4_6' \
 	"$PROJECT_ROOT/BarBoxServices/" \
 	"$TARGET_USER@$TARGET_IP:$TARGET_PATH/BarBoxServices/"
 
@@ -112,7 +112,7 @@ rsync -avz --delete --progress \
 	--exclude='*.dmp' \
 	--exclude='claude_code_temp' \
 	--exclude='claude_code_cache' \
-	--exclude='GodotDocs_4_4_1' \
+	--exclude='GodotDocs_4_6' \
 	"$PROJECT_ROOT/BarBoxApp/" \
 	"$TARGET_USER@$TARGET_IP:$TARGET_PATH/BarBoxApp/"
 
