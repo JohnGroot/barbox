@@ -33,6 +33,10 @@ public partial class CarromPocket : Area2D
 	// Simple piece presence tracking
 	private System.Collections.Generic.HashSet<CarromPiece> _piecesInPocket = new();
 
+	// GC OPTIMIZATION: Pre-allocated removal lists to avoid per-frame allocations
+	private readonly List<CarromPiece> _piecesToRemoveCache = new(16);
+	private readonly List<CarromPiece> _invalidPiecesCache = new(16);
+
 	// Particle effect components
 	private GpuParticles2D _pocketParticles;
 	private float _particleTimer = 0.0f;
@@ -245,25 +249,25 @@ public partial class CarromPocket : Area2D
 
 	/// <summary>
 	/// Update zone tracking - simplified to check capture opportunities with optimized calculations
+	/// GC OPTIMIZATION: Iterate HashSet directly and reuse cached removal list
 	/// </summary>
 	private void UpdatePieceZones()
 	{
-		List<CarromPiece> piecesToRemove = [];
-		
-		var piecesArray = _piecesInPocket.ToArray();
-		
-		foreach (var piece in piecesArray)
+		_piecesToRemoveCache.Clear();
+
+		// GC OPTIMIZATION: Iterate HashSet directly instead of ToArray()
+		foreach (var piece in _piecesInPocket)
 		{
 			if (!IsInstanceValid(piece))
 			{
-				piecesToRemove.Add(piece);
+				_piecesToRemoveCache.Add(piece);
 				continue;
 			}
-			
+
 			// PERFORMANCE: Use squared distance to avoid expensive sqrt() operation
 			Vector2 offsetVector = piece.GlobalPosition - GlobalPosition;
 			float distanceSquared = offsetVector.LengthSquared();
-			
+
 			// Check if piece is in hole zone using pre-calculated squared radius
 			if (distanceSquared > _holeZoneRadiusSquared)
 				continue;
@@ -286,14 +290,14 @@ public partial class CarromPocket : Area2D
 
 			// FIXED: Use deferred signal emission to prevent race conditions
 			CallDeferred(MethodName._EmitPiecePocketed, piece);
-			piecesToRemove.Add(piece);
+			_piecesToRemoveCache.Add(piece);
 
 			// Trigger particle effect with piece color
 			TriggerPocketParticles(piece.PieceColor);
 		}
-		
-		// Clean up removed pieces
-		foreach (var piece in piecesToRemove)
+
+		// Clean up removed pieces using cached list
+		foreach (var piece in _piecesToRemoveCache)
 		{
 			_piecesInPocket.Remove(piece);
 		}
@@ -324,18 +328,21 @@ public partial class CarromPocket : Area2D
 
 
 
+	/// <summary>
+	/// GC OPTIMIZATION: Reuse cached list instead of allocating new one each frame
+	/// </summary>
 	private void CleanupInvalidPieces()
 	{
-		List<CarromPiece> keysToRemove = [];
+		_invalidPiecesCache.Clear();
 		foreach (var piece in _piecesInPocket)
 		{
 			if (!IsInstanceValid(piece))
 			{
-				keysToRemove.Add(piece);
+				_invalidPiecesCache.Add(piece);
 			}
 		}
-		
-		foreach (var piece in keysToRemove)
+
+		foreach (var piece in _invalidPiecesCache)
 		{
 			_piecesInPocket.Remove(piece);
 		}

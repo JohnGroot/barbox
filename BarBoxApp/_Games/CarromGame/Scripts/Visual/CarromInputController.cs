@@ -113,6 +113,9 @@ public partial class CarromInputController : Node2D
 	private int _hitPieceTrajectoryCount = 0;
 	private bool _trajectoryCacheValid = false;
 
+	// GC OPTIMIZATION: Pre-allocated ray exclusion array to avoid per-raycast allocation
+	private readonly Godot.Collections.Array<Rid> _rayExcludeBuffer = new();
+
 	// Input modes
 	private enum InputMode
 	{
@@ -877,41 +880,57 @@ public partial class CarromInputController : Node2D
 			// Calculate power level
 			float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
 			float power = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
-			
-			// Get trajectory prediction
+
+			// Get trajectory prediction - populates class-level buffers
 			var trajectory = CalculateTrajectoryPoints(strikerPos, aimDirection, power);
-			
-			// Draw main trajectory
-			DrawTrajectoryPath(trajectory.trajectoryPoints, TrajectoryColor);
-			
+
+			// GC OPTIMIZATION: Draw directly from class-level buffers using counts
+			DrawTrajectoryPath(_trajectoryPointsBuffer, trajectory.trajectoryCount, TrajectoryColor);
+
 			// Draw collision marker if there's a collision
 			if (trajectory.collisionPoint.HasValue)
 			{
 				DrawCollisionMarker(trajectory.collisionPoint.Value);
 			}
-			
+
 			// Draw post-collision trajectory
-			if (trajectory.postCollisionPoints.Length > 0)
+			if (trajectory.postCollisionCount > 0)
 			{
-				DrawTrajectoryPath(trajectory.postCollisionPoints, PostCollisionTrajectoryColor);
+				DrawTrajectoryPath(_postCollisionBuffer, trajectory.postCollisionCount, PostCollisionTrajectoryColor);
 			}
-			
+
 			// Draw hit piece trajectory if available
-			if (ShowHitPieceTrajectory && trajectory.hitPieceTrajectory.Length > 0)
+			if (ShowHitPieceTrajectory && trajectory.hitPieceCount > 0)
 			{
-				DrawHitPieceTrajectory(trajectory.hitPieceTrajectory, HitPieceTrajectoryColor);
+				DrawHitPieceTrajectory(_hitPieceTrajectoryBuffer, trajectory.hitPieceCount, HitPieceTrajectoryColor);
 			}
 		}
 	}
 	
 	/// <summary>
 	/// Draw trajectory path as connected line segments
+	/// GC OPTIMIZATION: Overload that accepts buffer + count to avoid array allocation
+	/// </summary>
+	private void DrawTrajectoryPath(Vector2[] buffer, int count, Color color)
+	{
+		if (count < 2)
+			return;
+
+		// Draw individual lines from buffer to avoid creating a new array for DrawPolyline
+		for (int i = 0; i < count - 1; i++)
+		{
+			DrawLine(buffer[i], buffer[i + 1], color, AimingLineWidth, true);
+		}
+	}
+
+	/// <summary>
+	/// Draw trajectory path as connected line segments (legacy overload)
 	/// </summary>
 	private void DrawTrajectoryPath(Vector2[] points, Color color)
 	{
-		if (points.Length < 2) 
+		if (points.Length < 2)
 			return;
-		
+
 		// Draw as solid polyline for main trajectory
 		DrawPolyline(points, color, AimingLineWidth, true);
 	}
@@ -1031,30 +1050,31 @@ public partial class CarromInputController : Node2D
 	
 	/// <summary>
 	/// Draw hit piece trajectory as dotted line with fading
+	/// GC OPTIMIZATION: Overload that accepts buffer + count to avoid array allocation
 	/// </summary>
-	private void DrawHitPieceTrajectory(Vector2[] points, Color color)
+	private void DrawHitPieceTrajectory(Vector2[] buffer, int count, Color color)
 	{
-		if (points.Length < 2) 
+		if (count < 2)
 			return;
-		
+
 		// Define consistent dash pattern for hit piece
 		float dashLength = 5.0f;
 		float gapLength = 3.0f;
 		float totalPattern = dashLength + gapLength;
-		
+
 		// Draw trajectory segments with fading alpha
-		for (int i = 0; i < points.Length - 1; i++)
+		for (int i = 0; i < count - 1; i++)
 		{
-			Vector2 segmentStart = points[i];
-			Vector2 segmentEnd = points[i + 1];
+			Vector2 segmentStart = buffer[i];
+			Vector2 segmentEnd = buffer[i + 1];
 			Vector2 direction = (segmentEnd - segmentStart).Normalized();
 			float segmentLength = segmentStart.DistanceTo(segmentEnd);
-			
+
 			// Add transparency fade based on distance from collision
 			float fadeAlpha = 1.0f - (i * 0.1f); // Gradually fade trajectory
 			fadeAlpha = Mathf.Max(fadeAlpha, 0.2f); // Keep minimum visibility
 			Color fadedColor = new Color(color.R, color.G, color.B, color.A * fadeAlpha);
-			
+
 			// Draw dashes with consistent sizing
 			int dashCount = Mathf.FloorToInt(segmentLength / totalPattern);
 			for (int j = 0; j < dashCount; j++)
@@ -1063,7 +1083,7 @@ public partial class CarromInputController : Node2D
 				Vector2 dashEnd = dashStart + direction * dashLength;
 				DrawLine(dashStart, dashEnd, fadedColor, AimingLineWidth * 0.8f, true);
 			}
-			
+
 			// Draw final partial dash if needed
 			float remaining = segmentLength - (dashCount * totalPattern);
 			if (remaining > 0)
@@ -1073,6 +1093,14 @@ public partial class CarromInputController : Node2D
 				DrawLine(finalDashStart, finalDashEnd, fadedColor, AimingLineWidth * 0.8f, true);
 			}
 		}
+	}
+
+	/// <summary>
+	/// Draw hit piece trajectory as dotted line with fading (legacy overload)
+	/// </summary>
+	private void DrawHitPieceTrajectory(Vector2[] points, Color color)
+	{
+		DrawHitPieceTrajectory(points, points.Length, color);
 	}
 	
 	/// <summary>
@@ -1274,29 +1302,26 @@ public partial class CarromInputController : Node2D
 	
 	/// <summary>
 	/// Calculate trajectory points with collision detection (constant distance)
+	/// GC OPTIMIZATION: Populates class-level buffers and returns counts instead of allocating new arrays
+	/// Use class-level buffers (_trajectoryPointsBuffer, _postCollisionBuffer, _hitPieceTrajectoryBuffer)
+	/// and counts (_trajectoryPointCount, _postCollisionCount, _hitPieceTrajectoryCount) after calling
 	/// </summary>
-	private (Vector2[] trajectoryPoints, Vector2? collisionPoint, Vector2[] postCollisionPoints, Vector2[] hitPieceTrajectory) CalculateTrajectoryPoints(Vector2 startPos, Vector2 direction, float power)
+	private (int trajectoryCount, Vector2? collisionPoint, int postCollisionCount, int hitPieceCount) CalculateTrajectoryPoints(Vector2 startPos, Vector2 direction, float power)
 	{
 		if (_physicsConfig == null || _striker == null)
 		{
-			return ([], null, [], []);
+			_trajectoryPointCount = 0;
+			_postCollisionCount = 0;
+			_hitPieceTrajectoryCount = 0;
+			return (0, null, 0, 0);
 		}
 
 		if (_trajectoryCacheValid &&
 			_lastTrajectoryDirection.DistanceSquaredTo(direction) < TRAJECTORY_CACHE_DIRECTION_TOLERANCE_SQUARED &&
 			Mathf.Abs(_lastTrajectoryPower - power) < TRAJECTORY_CACHE_POWER_TOLERANCE)
 		{
-			// Return cached results using Array.Copy from buffers
-			var cachedTrajectory = new Vector2[_trajectoryPointCount];
-			Array.Copy(_trajectoryPointsBuffer, cachedTrajectory, _trajectoryPointCount);
-
-			var cachedPostCollision = new Vector2[_postCollisionCount];
-			Array.Copy(_postCollisionBuffer, cachedPostCollision, _postCollisionCount);
-
-			var cachedHitPiece = new Vector2[_hitPieceTrajectoryCount];
-			Array.Copy(_hitPieceTrajectoryBuffer, cachedHitPiece, _hitPieceTrajectoryCount);
-
-			return (cachedTrajectory, _cachedCollisionPoint, cachedPostCollision, cachedHitPiece);
+			// GC OPTIMIZATION: Return cached counts - buffers already populated
+			return (_trajectoryPointCount, _cachedCollisionPoint, _postCollisionCount, _hitPieceTrajectoryCount);
 		}
 
 		// OPTIMIZATION: Use constant distance trajectory with pooled buffers
@@ -1308,17 +1333,8 @@ public partial class CarromInputController : Node2D
 		_cachedHitPiece = result.hitPiece;
 		_trajectoryCacheValid = true;
 
-		// Create arrays from buffer counts for return
-		var trajectoryPoints = new Vector2[result.trajectoryCount];
-		Array.Copy(_trajectoryPointsBuffer, trajectoryPoints, result.trajectoryCount);
-
-		var postCollisionPoints = new Vector2[result.postCollisionCount];
-		Array.Copy(_postCollisionBuffer, postCollisionPoints, result.postCollisionCount);
-
-		var hitPieceTrajectory = new Vector2[result.hitPieceCount];
-		Array.Copy(_hitPieceTrajectoryBuffer, hitPieceTrajectory, result.hitPieceCount);
-
-		return (trajectoryPoints, result.collisionPoint, postCollisionPoints, hitPieceTrajectory);
+		// GC OPTIMIZATION: Return counts - buffers are populated by SimulateConstantTrajectoryPath
+		return (result.trajectoryCount, result.collisionPoint, result.postCollisionCount, result.hitPieceCount);
 	}
 	
 	/// <summary>
@@ -1353,14 +1369,10 @@ public partial class CarromInputController : Node2D
 				hitPiece = collision.hitPiece;
 				_trajectoryPointsBuffer[_trajectoryPointCount++] = collision.point;
 
+				// GC OPTIMIZATION: Simulation methods now write directly to class-level buffers
 				// Calculate post-collision trajectory with simple reflection
 				Vector2 reflectedDirection = direction.Bounce(collision.normal);
-				var postCollisionResult = SimulateConstantPostCollisionPath(collision.point, reflectedDirection);
-				foreach (var point in postCollisionResult)
-				{
-					if (_postCollisionCount < _postCollisionBuffer.Length)
-						_postCollisionBuffer[_postCollisionCount++] = point;
-				}
+				SimulateConstantPostCollisionPath(collision.point, reflectedDirection);
 
 				// Calculate hit piece trajectory if we hit a piece
 				if (hitPiece != null)
@@ -1371,12 +1383,7 @@ public partial class CarromInputController : Node2D
 					float hitPieceRadius = _physicsConfig.GetRadiusForPieceType(hitPiece.Type);
 					Vector2 trajectoryStartPos = hitPiece.GlobalPosition + hitPieceDirection * hitPieceRadius;
 
-					var hitPieceResult = SimulateHitPieceTrajectory(trajectoryStartPos, hitPieceDirection);
-					foreach (var point in hitPieceResult)
-					{
-						if (_hitPieceTrajectoryCount < _hitPieceTrajectoryBuffer.Length)
-							_hitPieceTrajectoryBuffer[_hitPieceTrajectoryCount++] = point;
-					}
+					SimulateHitPieceTrajectory(trajectoryStartPos, hitPieceDirection);
 				}
 				break;
 			}
@@ -1414,7 +1421,11 @@ public partial class CarromInputController : Node2D
 		{
 			var query = PhysicsRayQueryParameters2D.Create(from, to);
 			query.CollisionMask = 1; // Collision layer for pieces
-			query.Exclude = new Godot.Collections.Array<Rid> { _striker.GetRid() };
+
+			// GC OPTIMIZATION: Reuse pre-allocated exclusion array
+			_rayExcludeBuffer.Clear();
+			_rayExcludeBuffer.Add(_striker.GetRid());
+			query.Exclude = _rayExcludeBuffer;
 			
 			var result = spaceState.IntersectRay(query);
 			if (result.Count > 0)
@@ -1498,23 +1509,21 @@ public partial class CarromInputController : Node2D
 	
 	/// <summary>
 	/// Simulate simple post-collision trajectory path (constant distance)
+	/// GC OPTIMIZATION: Writes directly to class-level buffer instead of allocating List + ToArray
 	/// </summary>
-	private Vector2[] SimulateConstantPostCollisionPath(Vector2 startPos, Vector2 direction)
+	private void SimulateConstantPostCollisionPath(Vector2 startPos, Vector2 direction)
 	{
-		List<Vector2> points = [];
-		
+		_postCollisionCount = 0;
 		Vector2 position = startPos;
 		float distanceTraveled = 0.0f;
-		
+
 		// Step along the reflected direction for the post-collision distance
-		while (distanceTraveled < _trajectoryPostCollisionDistance)
+		while (distanceTraveled < _trajectoryPostCollisionDistance && _postCollisionCount < _postCollisionBuffer.Length)
 		{
 			position += direction * _trajectoryStepSize;
 			distanceTraveled += _trajectoryStepSize;
-			points.Add(position);
+			_postCollisionBuffer[_postCollisionCount++] = position;
 		}
-		
-		return points.ToArray();
 	}
 	
 	/// <summary>
@@ -1540,26 +1549,24 @@ public partial class CarromInputController : Node2D
 	
 	/// <summary>
 	/// Simulate hit piece trajectory after being struck
+	/// GC OPTIMIZATION: Writes directly to class-level buffer instead of allocating List + ToArray
 	/// </summary>
-	private Vector2[] SimulateHitPieceTrajectory(Vector2 startPos, Vector2 direction)
+	private void SimulateHitPieceTrajectory(Vector2 startPos, Vector2 direction)
 	{
-		List<Vector2> points = [];
-		
+		_hitPieceTrajectoryCount = 0;
 		Vector2 position = startPos;
 		float distanceTraveled = 0.0f;
-		
+
 		// Simulate hit piece movement for configured distance
-		while (distanceTraveled < HitPieceTrajectoryDistance)
+		while (distanceTraveled < HitPieceTrajectoryDistance && _hitPieceTrajectoryCount < _hitPieceTrajectoryBuffer.Length)
 		{
 			position += direction * _trajectoryStepSize;
 			distanceTraveled += _trajectoryStepSize;
-			points.Add(position);
-			
+			_hitPieceTrajectoryBuffer[_hitPieceTrajectoryCount++] = position;
+
 			// Could add collision detection here for more accurate prediction
 			// For now, just show the initial trajectory
 		}
-		
-		return points.ToArray();
 	}
 
 	/// <summary>
