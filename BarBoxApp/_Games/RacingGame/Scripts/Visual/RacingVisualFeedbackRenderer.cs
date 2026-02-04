@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 
 namespace BarBox.Games.Racing
@@ -39,13 +40,24 @@ namespace BarBox.Games.Racing
 	private Vector2 _lastMousePosition = Vector2.Zero;
 	private float _mouseStationaryTime = 0.0f;
 	private float _arcRotation = 0.0f;
-	
+
 	// Cached values for performance (restored from original implementation)
 	private Vector2 _cachedDirectionToTarget = Vector2.Zero;
 	private float _cachedMovementArcRotation = 0.0f;
 	private float _cachedArcSweepAngle = 0.0f;
 	private float _cachedCurrentSpeed = 0.0f;
 	private bool _cachedValuesValid = false;
+
+	// Pre-allocated buffers for trail rendering (eliminates per-frame GC allocations)
+	private Vector2[] _trailPointsBuffer;
+	private Color[] _trailColorsBuffer;
+	private int _trailBufferCapacity = 0;
+
+	// Zone color caching (reduces zone iteration overhead)
+	private Color _cachedLeftTireZoneColor;
+	private Color _cachedRightTireZoneColor;
+	private Vector2 _lastZoneCheckPosition = Vector2.Zero;
+	private const float ZONE_CHECK_DISTANCE_SQ = 400f; // 20 pixels squared
 
 	// Dependencies
 	private RacingCar _carController;
@@ -104,13 +116,18 @@ namespace BarBox.Games.Racing
 		_lastMousePosition = Vector2.Zero;
 		_mouseStationaryTime = 0.0f;
 		_arcRotation = 0.0f;
-		
+
 		// Reset cached values
 		_cachedDirectionToTarget = Vector2.Zero;
 		_cachedMovementArcRotation = 0.0f;
 		_cachedArcSweepAngle = 0.0f;
 		_cachedCurrentSpeed = 0.0f;
 		_cachedValuesValid = false;
+
+		// Reset zone color cache
+		_cachedLeftTireZoneColor = TireTrailColor;
+		_cachedRightTireZoneColor = TireTrailColor;
+		_lastZoneCheckPosition = Vector2.Zero;
 	}
 
 	// ================================================================
@@ -169,11 +186,11 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public void UpdateTireTrails()
 	{
-		if (_carController?.IsInitialized != true) 
+		if (_carController?.IsInitialized != true)
 			return;
 
 		var currentTime = Time.GetTicksMsec();
-		
+
 		// Clean up expired trail points
 		CleanupExpiredTrailPoints(_leftTireTrail, currentTime);
 		CleanupExpiredTrailPoints(_rightTireTrail, currentTime);
@@ -183,9 +200,9 @@ namespace BarBox.Games.Racing
 
 		var carBody = _carController.GetCarBody();
 		if (carBody == null) return;
-		
+
 		var carPosition = carBody.GlobalPosition;
-		
+
 		// Check if car has moved enough to add new trail points
 		if (_lastTrailPosition.DistanceTo(carPosition) < TrailUpdateDistance) return;
 
@@ -195,13 +212,17 @@ namespace BarBox.Games.Racing
 		var leftTirePosition = _carController.LeftTirePosition;
 		var rightTirePosition = _carController.RightTirePosition;
 
-		// Get zone colors at each tire position
-		var leftZoneColor = GetBlendedZoneColor(leftTirePosition);
-		var rightZoneColor = GetBlendedZoneColor(rightTirePosition);
+		// Update zone colors only when car moves significantly (reduces zone iteration overhead)
+		if (carPosition.DistanceSquaredTo(_lastZoneCheckPosition) >= ZONE_CHECK_DISTANCE_SQ)
+		{
+			_cachedLeftTireZoneColor = GetBlendedZoneColor(leftTirePosition);
+			_cachedRightTireZoneColor = GetBlendedZoneColor(rightTirePosition);
+			_lastZoneCheckPosition = carPosition;
+		}
 
-		// Add trail points for both tires with zone colors
-		AddTrailPoint(_leftTireTrail, leftTirePosition, currentTime, leftZoneColor);
-		AddTrailPoint(_rightTireTrail, rightTirePosition, currentTime, rightZoneColor);
+		// Add trail points for both tires with cached zone colors
+		AddTrailPoint(_leftTireTrail, leftTirePosition, currentTime, _cachedLeftTireZoneColor);
+		AddTrailPoint(_rightTireTrail, rightTirePosition, currentTime, _cachedRightTireZoneColor);
 
 		_lastTrailPosition = carPosition;
 	}
@@ -345,8 +366,8 @@ namespace BarBox.Games.Racing
 	/// <summary>
 	/// Draw a single trail line with fading effect.
 	/// Optimized to use DrawPolylineColors for batched rendering instead of individual DrawLine calls.
+	/// Uses pre-allocated buffers to eliminate per-frame GC allocations.
 	/// </summary>
-	/// <param name="trail">Trail points to draw</param>
 	private void DrawTrailLine(List<(Vector2 position, ulong timestamp, Color zoneColor)> trail)
 	{
 		if (trail.Count < 2) return;
@@ -354,21 +375,35 @@ namespace BarBox.Games.Racing
 		var currentTime = Time.GetTicksMsec();
 		var trailCount = trail.Count;
 
-		// Build arrays for batched drawing - much faster than individual DrawLine calls
-		var points = new Vector2[trailCount];
-		var colors = new Color[trailCount];
+		// Ensure buffer is large enough (rarely allocates after warmup)
+		EnsureTrailBufferCapacity(trailCount);
 
+		// Reuse pre-allocated arrays instead of allocating new ones every frame
 		for (int i = 0; i < trailCount; i++)
 		{
-			points[i] = trail[i].position;
+			_trailPointsBuffer[i] = trail[i].position;
 			var age = currentTime - trail[i].timestamp;
 			var normalizedAge = Mathf.Clamp(age / TrailLifetime, 0.0f, 1.0f);
 			var alpha = 1.0f - normalizedAge;
-			colors[i] = trail[i].zoneColor * new Color(1, 1, 1, alpha * 0.8f);
+			_trailColorsBuffer[i] = trail[i].zoneColor * new Color(1, 1, 1, alpha * 0.8f);
 		}
 
-		// Single batched draw call instead of (trailCount-1) individual DrawLine calls
-		DrawPolylineColors(points, colors, TireTrailWidth);
+		// Use array slice to pass only the populated portion
+		DrawPolylineColors(_trailPointsBuffer[..trailCount], _trailColorsBuffer[..trailCount], TireTrailWidth);
+	}
+
+	/// <summary>
+	/// Ensure trail rendering buffers have sufficient capacity.
+	/// Allocates with headroom to avoid frequent resizing.
+	/// </summary>
+	private void EnsureTrailBufferCapacity(int requiredCapacity)
+	{
+		if (_trailBufferCapacity >= requiredCapacity) return;
+
+		// Allocate with headroom to avoid frequent resizing
+		_trailBufferCapacity = Math.Max(requiredCapacity, MaxTrailPoints);
+		_trailPointsBuffer = new Vector2[_trailBufferCapacity];
+		_trailColorsBuffer = new Color[_trailBufferCapacity];
 	}
 
 	/// <summary>
