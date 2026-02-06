@@ -162,20 +162,24 @@ if [ "$TEST_MODE" != "backend" ]; then
 
 	cd "$APP_ROOT"
 
-	# Check if godot command exists, fallback to macOS application path
-	GODOT_CMD="godot"
-	if ! command -v godot &> /dev/null; then
-		if [ -f "/Applications/Godot.app/Contents/MacOS/Godot" ]; then
-			GODOT_CMD="/Applications/Godot.app/Contents/MacOS/Godot"
-			print_info "Using Godot from: $GODOT_CMD"
-		else
-			print_error "Godot command not found in PATH or /Applications/Godot.app"
-			print_info "Make sure Godot is installed"
-			cd "$SERVICES_ROOT"
-			sh scripts/test-backend.sh stop
-			exit 1
-		fi
+	# Resolve Godot binary: env override > PATH > GodotEnv (macOS) > GodotEnv (Linux)
+	GODOT_CMD=""
+	if [[ -n "$GODOT_BIN" ]]; then
+		GODOT_CMD="$GODOT_BIN"
+	elif command -v godot &> /dev/null; then
+		GODOT_CMD="$(command -v godot)"
+	elif [[ -x "$HOME/Library/Application Support/godotenv/godot/bin/godot" ]]; then
+		GODOT_CMD="$HOME/Library/Application Support/godotenv/godot/bin/godot"
+	elif [[ -x "$HOME/.config/godotenv/godot/bin/godot" ]]; then
+		GODOT_CMD="$HOME/.config/godotenv/godot/bin/godot"
+	else
+		print_error "Godot not found. Install via GodotEnv: godotenv godot install 4.6.0"
+		print_info "Or set GODOT_BIN environment variable"
+		cd "$SERVICES_ROOT"
+		sh scripts/test-backend.sh stop
+		exit 1
 	fi
+	print_info "Using Godot from: $GODOT_CMD"
 
 	print_info "Running GoDotTest via Godot headless mode..."
 
@@ -192,7 +196,7 @@ if [ "$TEST_MODE" != "backend" ]; then
 	print_info "  BARBOX_BACKEND_URL=$BARBOX_BACKEND_URL"
 
 	# Run tests with godot
-	if $GODOT_CMD --path . --headless --run-tests --quit-on-finish; then
+	if "$GODOT_CMD" --path . --headless --run-tests --quit-on-finish; then
 		print_success "Godot C# tests passed"
 	else
 		print_error "Godot C# tests failed"

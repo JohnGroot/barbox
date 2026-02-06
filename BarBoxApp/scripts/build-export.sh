@@ -5,16 +5,27 @@ set -e  # Exit on error
 
 VERSION=${1:-$(date +%Y.%m.%d-%H%M)}
 BUILD_DIR="../builds/releases/$VERSION"
-GODOT_BIN="/Applications/Godot.app/Contents/MacOS/Godot"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Resolve Godot binary: env override > PATH > GodotEnv (macOS) > GodotEnv (Linux)
+if [[ -z "$GODOT_BIN" ]]; then
+	if command -v godot &> /dev/null; then
+		GODOT_BIN="$(command -v godot)"
+	elif [[ -x "$HOME/Library/Application Support/godotenv/godot/bin/godot" ]]; then
+		GODOT_BIN="$HOME/Library/Application Support/godotenv/godot/bin/godot"
+	elif [[ -x "$HOME/.config/godotenv/godot/bin/godot" ]]; then
+		GODOT_BIN="$HOME/.config/godotenv/godot/bin/godot"
+	fi
+fi
 
 echo "Building BarBox v$VERSION..."
 
 # Verify Godot binary exists
 if [[ ! -x "$GODOT_BIN" ]]; then
-	echo "ERROR: Godot binary not found at $GODOT_BIN"
-	echo "Please update GODOT_BIN path in this script"
+	echo "ERROR: Godot binary not found"
+	echo "Install via GodotEnv: godotenv godot install 4.6.0"
+	echo "Or set GODOT_BIN environment variable"
 	exit 1
 fi
 
@@ -34,7 +45,7 @@ fi
 
 # Export with Godot
 echo "Exporting with Godot..."
-$GODOT_BIN --headless --path "$PROJECT_DIR" \
+"$GODOT_BIN" --headless --path "$PROJECT_DIR" \
 	--export-release "Linux/X11" \
 	"$BUILD_DIR/BarBox.x86_64"
 
