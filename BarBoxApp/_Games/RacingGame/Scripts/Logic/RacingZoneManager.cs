@@ -28,6 +28,13 @@ public partial class RacingZoneManager : Node
 	private readonly Dictionary<Node2D, HashSet<RacingZone>> _bodyZones = new();
 	private readonly Dictionary<Node2D, FrictionlessState> _frictionlessStates = new();
 
+	// Cached collision shape references (GC optimization: avoids string-based scene tree traversal per zone check)
+	private readonly Dictionary<RacingZone, CollisionPolygon2D> _zoneCollisionPolygons = new();
+	private readonly Dictionary<RacingZone, CollisionShape2D> _zoneCollisionShapes = new();
+
+	// Reusable list for frictionless effect cleanup (GC optimization: avoids per-frame allocation)
+	private readonly List<Node2D> _expiredBodies = [];
+
 	// ================================================================
 	// FRICTIONLESS STATE
 	// ================================================================
@@ -52,6 +59,21 @@ public partial class RacingZoneManager : Node
 
 		_allZones.Add(zone);
 
+		// Cache collision shape references (avoids per-frame scene tree traversal)
+		var collisionPolygon = zone.GetNodeOrNull<CollisionPolygon2D>("CollisionPolygon2D");
+		if (collisionPolygon != null)
+		{
+			_zoneCollisionPolygons[zone] = collisionPolygon;
+		}
+		else
+		{
+			var collisionShape = zone.GetNodeOrNull<CollisionShape2D>("CollisionShape2D");
+			if (collisionShape != null)
+			{
+				_zoneCollisionShapes[zone] = collisionShape;
+			}
+		}
+
 		// Connect zone signals
 		zone.BodyEntered += body => OnZoneBodyEntered(body, zone);
 		zone.BodyExited += body => OnZoneBodyExited(body, zone);
@@ -63,6 +85,8 @@ public partial class RacingZoneManager : Node
 			return;
 
 		_allZones.Remove(zone);
+		_zoneCollisionPolygons.Remove(zone);
+		_zoneCollisionShapes.Remove(zone);
 
 		// Remove this zone from all body tracking
 		foreach (var bodyZones in _bodyZones.Values)
@@ -76,6 +100,8 @@ public partial class RacingZoneManager : Node
 		_allZones.Clear();
 		_bodyZones.Clear();
 		_frictionlessStates.Clear();
+		_zoneCollisionPolygons.Clear();
+		_zoneCollisionShapes.Clear();
 	}
 
 	// ================================================================
@@ -151,7 +177,7 @@ public partial class RacingZoneManager : Node
 
 	public void UpdateFrictionlessEffects(float delta)
 	{
-		var expiredBodies = new List<Node2D>();
+		_expiredBodies.Clear();
 
 		foreach (var kvp in _frictionlessStates)
 		{
@@ -164,7 +190,7 @@ public partial class RacingZoneManager : Node
 			// Check if body is still valid
 			if (!GodotObject.IsInstanceValid(body))
 			{
-				expiredBodies.Add(body);
+				_expiredBodies.Add(body);
 				continue;
 			}
 
@@ -173,12 +199,12 @@ public partial class RacingZoneManager : Node
 			// Check if effect has expired
 			if (state.TimeRemaining <= 0)
 			{
-				expiredBodies.Add(body);
+				_expiredBodies.Add(body);
 			}
 		}
 
 		// Clean up expired effects
-		foreach (var body in expiredBodies)
+		foreach (var body in _expiredBodies)
 		{
 			_frictionlessStates.Remove(body);
 			if (GodotObject.IsInstanceValid(body))
@@ -259,7 +285,12 @@ public partial class RacingZoneManager : Node
 		if (!_bodyZones.TryGetValue(body, out var zones))
 			return false;
 
-		return zones.Any(z => z.BlocksInput);
+		foreach (var zone in zones)
+		{
+			if (zone.BlocksInput)
+				return true;
+		}
+		return false;
 	}
 
 	// ================================================================
@@ -310,25 +341,26 @@ public partial class RacingZoneManager : Node
 		// Convert global position to zone's local space
 		var localPosition = zone.ToLocal(globalPosition);
 
-		// Check against the collision polygon
-		var collisionShape = zone.GetNodeOrNull<CollisionPolygon2D>("CollisionPolygon2D");
-		if (collisionShape != null)
+		// Use cached collision polygon reference (avoids string-based scene tree traversal)
+		if (_zoneCollisionPolygons.TryGetValue(zone, out var collisionPolygon))
 		{
-			return Geometry2D.IsPointInPolygon(localPosition, collisionShape.Polygon);
+			return Geometry2D.IsPointInPolygon(localPosition, collisionPolygon.Polygon);
 		}
 
-		// Fallback: check against CollisionShape2D if using rectangle/circle
-		var collisionShape2D = zone.GetNodeOrNull<CollisionShape2D>("CollisionShape2D");
-		if (collisionShape2D?.Shape is RectangleShape2D rectShape)
+		// Use cached CollisionShape2D reference
+		if (_zoneCollisionShapes.TryGetValue(zone, out var collisionShape2D))
 		{
-			var halfSize = rectShape.Size / 2;
-			return Mathf.Abs(localPosition.X) <= halfSize.X &&
-				   Mathf.Abs(localPosition.Y) <= halfSize.Y;
-		}
+			if (collisionShape2D.Shape is RectangleShape2D rectShape)
+			{
+				var halfSize = rectShape.Size / 2;
+				return Mathf.Abs(localPosition.X) <= halfSize.X &&
+					   Mathf.Abs(localPosition.Y) <= halfSize.Y;
+			}
 
-		if (collisionShape2D?.Shape is CircleShape2D circleShape)
-		{
-			return localPosition.Length() <= circleShape.Radius;
+			if (collisionShape2D.Shape is CircleShape2D circleShape)
+			{
+				return localPosition.Length() <= circleShape.Radius;
+			}
 		}
 
 		return false;
@@ -366,7 +398,12 @@ public partial class RacingZoneManager : Node
 		if (!_bodyZones.TryGetValue(body, out var zones))
 			return false;
 
-		return zones.Any(z => z.Type == type);
+		foreach (var zone in zones)
+		{
+			if (zone.Type == type)
+				return true;
+		}
+		return false;
 	}
 
 	/// <summary>
