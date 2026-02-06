@@ -46,14 +46,14 @@ BREW_PREFIX=$(get_brew_prefix)
 
 # 1. Check/install Homebrew (needed for other tools)
 if ! command -v brew &> /dev/null; then
-	echo "[1/8] Installing Homebrew..."
+	echo "[1/9] Installing Homebrew..."
 	/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 	# Source Homebrew environment for current session
 	eval "$("$BREW_PREFIX/bin/brew" shellenv)"
 	# Make Homebrew PATH permanent
 	add_to_shell_config "eval \"\$($BREW_PREFIX/bin/brew shellenv)\""
 else
-	echo "[1/8] Homebrew: already installed"
+	echo "[1/9] Homebrew: already installed"
 fi
 
 # 2. Install .NET 9 SDK
@@ -63,14 +63,14 @@ if [[ -d "$BREW_PREFIX/opt/dotnet@9/bin" ]]; then
 fi
 
 if ! dotnet --version 2>/dev/null | grep -q "^9\."; then
-	echo "[2/8] Installing .NET 9 SDK..."
+	echo "[2/9] Installing .NET 9 SDK..."
 	brew install dotnet@9
 	# Add newly installed dotnet to PATH for current session
 	export PATH="$BREW_PREFIX/opt/dotnet@9/bin:$PATH"
 	# Make dotnet PATH permanent
 	add_to_shell_config "export PATH=\"$BREW_PREFIX/opt/dotnet@9/bin:\$PATH\""
 else
-	echo "[2/8] .NET 9 SDK: already installed ($(dotnet --version))"
+	echo "[2/9] .NET 9 SDK: already installed ($(dotnet --version))"
 fi
 
 # 3. Install GodotEnv (Chickensoft tool for Godot version management)
@@ -78,35 +78,58 @@ fi
 export PATH="$HOME/.dotnet/tools:$PATH"
 
 if ! command -v godotenv &> /dev/null; then
-	echo "[3/8] Installing GodotEnv..."
+	echo "[3/9] Installing GodotEnv..."
 	dotnet tool install --global Chickensoft.GodotEnv
 	# Make dotnet tools PATH permanent
 	add_to_shell_config 'export PATH="$HOME/.dotnet/tools:$PATH"'
 else
-	echo "[3/8] GodotEnv: already installed"
+	echo "[3/9] GodotEnv: already installed"
 fi
 
 # 4. Install Godot 4.6 with .NET support via GodotEnv
 if godotenv godot list 2>/dev/null | grep -q "4.6"; then
-	echo "[4/8] Godot 4.6: already installed"
+	echo "[4/9] Godot 4.6: already installed"
 else
-	echo "[4/8] Installing Godot 4.6 (with .NET support)..."
+	echo "[4/9] Installing Godot 4.6 (with .NET support)..."
 	godotenv godot install 4.6.0
 fi
 
-# 5. Install Python 3.13 (for backend)
-if python3 --version 2>/dev/null | grep -q "3\.13"; then
-	echo "[5/8] Python 3.13: already installed ($(python3 --version))"
+# 5. Install Godot 4.6 export templates (not included with GodotEnv)
+GODOT_VERSION="4.6"
+TEMPLATE_VERSION="4.6.stable.mono"
+if [[ "$(uname)" == "Darwin" ]]; then
+	TEMPLATE_DIR="$HOME/Library/Application Support/Godot/export_templates/$TEMPLATE_VERSION"
 else
-	echo "[5/8] Installing Python 3.13..."
+	TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/$TEMPLATE_VERSION"
+fi
+
+if [[ -d "$TEMPLATE_DIR" ]]; then
+	echo "[5/9] Godot export templates: already installed"
+else
+	echo "[5/9] Installing Godot $GODOT_VERSION export templates (~1.2 GB download)..."
+	TEMPLATE_URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_mono_export_templates.tpz"
+	TEMPLATE_TMP="/tmp/godot_export_templates.tpz"
+	curl -L -o "$TEMPLATE_TMP" "$TEMPLATE_URL"
+	mkdir -p "$TEMPLATE_DIR"
+	unzip -o "$TEMPLATE_TMP" -d /tmp/godot_templates_extract
+	mv /tmp/godot_templates_extract/templates/* "$TEMPLATE_DIR/"
+	rm -rf "$TEMPLATE_TMP" /tmp/godot_templates_extract
+	echo "  Export templates installed to: $TEMPLATE_DIR"
+fi
+
+# 6. Install Python 3.13 (for backend)
+if python3 --version 2>/dev/null | grep -q "3\.13"; then
+	echo "[6/9] Python 3.13: already installed ($(python3 --version))"
+else
+	echo "[6/9] Installing Python 3.13..."
 	brew install python@3.13
 fi
 
-# 6. Install uv (Python package manager)
+# 7. Install uv (Python package manager)
 if command -v uv &> /dev/null; then
-	echo "[6/8] uv: already installed"
+	echo "[7/9] uv: already installed"
 else
-	echo "[6/8] Installing uv..."
+	echo "[7/9] Installing uv..."
 	curl -LsSf https://astral.sh/uv/install.sh | sh
 	# Source uv environment for current session
 	if [[ -f "$HOME/.local/bin/env" ]]; then
@@ -118,15 +141,15 @@ else
 	add_to_shell_config 'export PATH="$HOME/.local/bin:$PATH"'
 fi
 
-# 7. Install hurl (for backend integration tests)
+# 8. Install hurl (for backend integration tests)
 if command -v hurl &> /dev/null; then
-	echo "[7/8] hurl: already installed"
+	echo "[8/9] hurl: already installed"
 else
-	echo "[7/8] Installing hurl..."
+	echo "[8/9] Installing hurl..."
 	brew install hurl
 fi
 
-# 8. Set up Backend Python Environment
+# 9. Set up Backend Python Environment
 echo ""
 echo "Setting up BarBoxServices backend..."
 
@@ -137,9 +160,9 @@ BACKEND_VENV="$BACKEND_DIR/.venv"
 BACKEND_ENV="$BACKEND_DIR/.env"
 
 if [[ -d "$BACKEND_VENV" ]]; then
-	echo "[8/8] Backend venv: already exists"
+	echo "[9/9] Backend venv: already exists"
 else
-	echo "[8/8] Creating backend virtual environment..."
+	echo "[9/9] Creating backend virtual environment..."
 	python3 -m venv "$BACKEND_VENV"
 fi
 
