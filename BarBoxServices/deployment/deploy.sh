@@ -325,6 +325,8 @@ rsync -avz --progress \
 	"$SCRIPT_DIR/stop_all.sh" \
 	"$SCRIPT_DIR/barbox-backend.service" \
 	"$SCRIPT_DIR/barbox-frontend.service" \
+	"$SCRIPT_DIR/set_gpu_performance.sh" \
+	"$SCRIPT_DIR/barbox-gpu-performance.service" \
 	"$TARGET:$TARGET_PATH/"
 
 # Make scripts executable
@@ -380,6 +382,22 @@ if [ "$SKIP_DEPS" = false ]; then
 			fi
 		else
 			echo "[INFO] Godot 4.6.0 already installed"
+		fi
+
+		# Check for Godot export templates (needed for builds)
+		TEMPLATE_VERSION="4.6.stable.mono"
+		TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/$TEMPLATE_VERSION"
+		if [ -d "$TEMPLATE_DIR" ]; then
+			echo "[INFO] Godot export templates already installed"
+		else
+			echo "[INFO] Installing Godot 4.6 export templates (~1.2 GB download)..."
+			TEMPLATE_URL="https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_mono_export_templates.tpz"
+			curl -L -o /tmp/godot_export_templates.tpz "$TEMPLATE_URL"
+			mkdir -p "$TEMPLATE_DIR"
+			unzip -o /tmp/godot_export_templates.tpz -d /tmp/godot_templates_extract
+			mv /tmp/godot_templates_extract/templates/* "$TEMPLATE_DIR/"
+			rm -rf /tmp/godot_export_templates.tpz /tmp/godot_templates_extract
+			echo "[INFO] Export templates installed"
 		fi
 
 		# Check for uv
@@ -705,4 +723,9 @@ echo "  cd $TARGET_PATH && ./start_all.sh"
 echo ""
 echo "To check status:"
 echo "  ssh $TARGET 'ps aux | grep -E \"(fastapi|Godot)\"'"
+echo ""
+echo "GPU performance service (one-time setup, requires sudo):"
+echo "  sudo cp $TARGET_PATH/barbox-gpu-performance.service /etc/systemd/system/"
+echo "  sudo systemctl daemon-reload"
+echo "  sudo systemctl enable --now barbox-gpu-performance"
 echo ""
