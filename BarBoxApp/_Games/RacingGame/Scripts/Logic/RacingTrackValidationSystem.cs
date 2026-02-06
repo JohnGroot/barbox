@@ -48,6 +48,14 @@ namespace BarBox.Games.Racing
 		private const float POSITION_CACHE_THRESHOLD_SQ = 25.0f; // 5 pixels squared
 		private const float ROTATION_CACHE_THRESHOLD = 0.1f; // radians (~5.7 degrees)
 
+		// Static unit offsets for car bounds sampling (GC optimization: avoids per-frame Vector2[8] allocation)
+		private static readonly Vector2[] _sampleUnitOffsets =
+		{
+			new(-1, -1), new(1, -1), new(1, 1), new(-1, 1),  // corners
+			new(0, -1), new(1, 0), new(0, 1), new(-1, 0),    // midpoints
+		};
+		private readonly Vector2[] _scaledSampleBuffer = new Vector2[8];
+
 		// ================================================================
 		// PUBLIC PROPERTIES
 		// ================================================================
@@ -137,25 +145,19 @@ namespace BarBox.Games.Racing
 	{
 		var halfSize = carSize / 2.0f;
 
-		// Check 4 corners + 4 edge midpoints = 8 sample points
-		Vector2[] sampleOffsets =
+		// Scale unit offsets into reusable buffer (no heap allocation)
+		for (int i = 0; i < _sampleUnitOffsets.Length; i++)
 		{
-			// 4 corners
-			new Vector2(-halfSize.X, -halfSize.Y),
-			new Vector2(halfSize.X, -halfSize.Y),
-			new Vector2(halfSize.X, halfSize.Y),
-			new Vector2(-halfSize.X, halfSize.Y),
-			// 4 edge midpoints
-			new Vector2(0, -halfSize.Y),
-			new Vector2(halfSize.X, 0),
-			new Vector2(0, halfSize.Y),
-			new Vector2(-halfSize.X, 0),
-		};
+			_scaledSampleBuffer[i] = new Vector2(
+				_sampleUnitOffsets[i].X * halfSize.X,
+				_sampleUnitOffsets[i].Y * halfSize.Y
+			);
+		}
 
 		// If ANY point is on track, car is not completely off
-		foreach (var offset in sampleOffsets)
+		for (int i = 0; i < _scaledSampleBuffer.Length; i++)
 		{
-			var rotatedOffset = RotatePoint(offset, carRotation);
+			var rotatedOffset = RotatePoint(_scaledSampleBuffer[i], carRotation);
 			var worldPoint = carCenter + rotatedOffset;
 
 			if (IsOnTrack(worldPoint))
