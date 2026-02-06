@@ -37,11 +37,27 @@ public static class LineUtils
 		if (line == null || line.GetPointCount() < 2)
 			return false;
 
-		var closestPoint = GetClosestPointOnLine2D(point, line);
-		var distance = point.DistanceTo(closestPoint);
-		
-		// Use half the line width as the radius (Line2D width is full width, we want radius)
-		return distance <= line.Width / 2.0f;
+		var halfWidth = line.Width / 2.0f;
+		var halfWidthSq = halfWidth * halfWidth;
+
+		// Inline segment iteration with early exit (avoids full O(N) scan when on track)
+		for (int i = 0; i < line.GetPointCount() - 1; i++)
+		{
+			var closest = GetClosestPointOnSegment(point,
+				line.GetPointPosition(i), line.GetPointPosition(i + 1));
+			if (point.DistanceSquaredTo(closest) <= halfWidthSq)
+				return true;
+		}
+
+		if (line.Closed && line.GetPointCount() >= 3)
+		{
+			var closest = GetClosestPointOnSegment(point,
+				line.GetPointPosition(line.GetPointCount() - 1), line.GetPointPosition(0));
+			if (point.DistanceSquaredTo(closest) <= halfWidthSq)
+				return true;
+		}
+
+		return false;
 	}
 
 	/// <summary>
@@ -100,7 +116,7 @@ public static class LineUtils
 	/// <param name="segmentStart">Start of the line segment</param>
 	/// <param name="segmentEnd">End of the line segment</param>
 	/// <returns>The closest point on the segment</returns>
-	private static Vector2 GetClosestPointOnSegment(Vector2 point, Vector2 segmentStart, Vector2 segmentEnd)
+	internal static Vector2 GetClosestPointOnSegment(Vector2 point, Vector2 segmentStart, Vector2 segmentEnd)
 	{
 		var segmentVector = segmentEnd - segmentStart;
 		var pointVector = point - segmentStart;
