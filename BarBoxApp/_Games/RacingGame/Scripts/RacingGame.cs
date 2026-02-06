@@ -213,8 +213,15 @@ public partial class RacingGame : GameController
 	// Cached track metadata to avoid scene instantiation every frame
 	private Dictionary<string, RacingUIManager.TrackMetadata> _cachedTrackMetadata;
 
-	// Cached UI state to avoid allocation when state unchanged (GC optimization)
-	private RacingUIState _cachedUIState;
+	// Double-buffered UI state (GC optimization: avoids per-frame RacingUIState allocation)
+	private RacingUIState _uiStateA = new();
+	private RacingUIState _uiStateB = new();
+	private bool _useStateA = true;
+	private bool _forceNextUIUpdate = true;
+
+	// UI update throttle (GC optimization: skip UI gathering on most frames)
+	private int _uiFrameCounter = 0;
+	private const int UI_UPDATE_INTERVAL = 3;
 
 	// ================================================================
 	// PRIVATE Fields - UI SYSTEM
@@ -529,12 +536,20 @@ public partial class RacingGame : GameController
 		}
 
 		// Update racing-specific systems (guaranteed valid after Phase 2 initialization)
-		_trackValidationSystem.UpdateOffTrackPenalties(_racingCar.GetCarPosition(), _racingCar.GetCarBody().Rotation, _racingCar.CarSize, (float)delta);
+		if (IsRaceActive() && !IsRacePaused())
+		{
+			_trackValidationSystem.UpdateOffTrackPenalties(_racingCar.GetCarPosition(), _racingCar.GetCarBody().Rotation, _racingCar.CarSize, (float)delta);
+		}
 		_zoneManager.UpdateFrictionlessEffects((float)delta);
 		_visualRenderer.UpdateVisualFeedback((float)delta);
 		_visualRenderer.UpdateTireTrails();
 
-		UpdateUI();
+		// Throttle UI updates to every 3rd frame (GC optimization)
+		if (++_uiFrameCounter >= UI_UPDATE_INTERVAL)
+		{
+			_uiFrameCounter = 0;
+			UpdateUI();
+		}
 	}
 
 	public override void _Draw()
@@ -907,7 +922,7 @@ public partial class RacingGame : GameController
 		}
 
 		// Invalidate UI state cache on mode transition
-		_cachedUIState = null;
+		_forceNextUIUpdate = true;
 
 		SetRacingMode(RacingMode.TimeTrial);
 		ResetForNewRace(); // Complete reset including car physics state
@@ -935,7 +950,7 @@ public partial class RacingGame : GameController
 	public virtual void StartPractice()
 	{
 		// Invalidate UI state cache on mode transition
-		_cachedUIState = null;
+		_forceNextUIUpdate = true;
 
 		SetRacingMode(RacingMode.Practice);
 		ResetForNewRace(); // Complete reset including car physics state
@@ -1682,7 +1697,7 @@ public partial class RacingGame : GameController
 		_uiManager.SetCurrentTrackIndex(trackIndex);
 
 		// Invalidate caches on track switch
-		_cachedUIState = null;
+		_forceNextUIUpdate = true;
 		UpdateCachedTrackMetadata();
 
 		// Restart practice mode with new track
@@ -2026,7 +2041,7 @@ public partial class RacingGame : GameController
 	public void EndRace()
 	{
 		// Invalidate UI state cache on race end
-		_cachedUIState = null;
+		_forceNextUIUpdate = true;
 
 		// Show game over overlay for time trials by updating UI state
 		if (GetRacingMode() == RacingMode.TimeTrial)
@@ -2034,9 +2049,11 @@ public partial class RacingGame : GameController
 			// Set game over state to disable input
 			_timingSystem.SetGameOverDeciding();
 
-			// Update UI - GatherCurrentState will detect GameOverDeciding state and show overlay
-			var state = GatherCurrentState();
-			_uiManager.UpdateFromState(state);
+			// Update UI - PopulateState will detect GameOverDeciding state and show overlay
+			var current = _useStateA ? _uiStateA : _uiStateB;
+			PopulateState(current);
+			_uiManager.UpdateFromState(current);
+			_useStateA = !_useStateA;
 
 			_racingCar.SetActive(false);
 		}
@@ -2075,18 +2092,18 @@ public partial class RacingGame : GameController
 		if (!IsInstanceValid(_uiManager))
 			return;
 
-		// Gather current state (OPTIMIZED: uses cached track metadata)
-		var state = GatherCurrentState();
+		// Double-buffer: populate current buffer, compare against previous
+		var current = _useStateA ? _uiStateA : _uiStateB;
+		var previous = _useStateA ? _uiStateB : _uiStateA;
+		PopulateState(current);
 
-		// OPTIMIZATION: Skip UI update if state hasn't changed (reduces GC pressure)
-		if (_cachedUIState != null && state.StateEquals(_cachedUIState))
-		{
-			return; // State unchanged, skip redundant UI update
-		}
+		// Skip UI update if state hasn't changed (unless forced by mode transition)
+		if (!_forceNextUIUpdate && current.StateEquals(previous))
+			return;
 
-		// State changed - update UI and cache new state
-		_uiManager.UpdateFromState(state);
-		_cachedUIState = state;
+		_forceNextUIUpdate = false;
+		_uiManager.UpdateFromState(current);
+		_useStateA = !_useStateA;
 	}
 
 	/// <summary>
@@ -2154,22 +2171,22 @@ public partial class RacingGame : GameController
 		return 3; // Default laps
 	}
 
-	private RacingUIState GatherCurrentState()
+	private void PopulateState(RacingUIState target)
 	{
 		// Use consistent player ID throughout - phone number when logged in
 		var playerId = GetCurrentGamePlayerId();
 		var gameMode = GetRacingMode();
 		var loggedIn = _sessionManager?.GetPrimarySession() != null;
 		var currentRacingState = _timingSystem.CurrentRacingState;
-		
+
 		// Determine if a formal time trial is in progress (vs practice mode)
-		bool isTimeTrialInProgress = gameMode == RacingMode.TimeTrial && 
+		bool isTimeTrialInProgress = gameMode == RacingMode.TimeTrial &&
 			currentRacingState != RacingTimingSystem.RacingState.Idle &&
 			currentRacingState != RacingTimingSystem.RacingState.PracticeMode;
-		
+
 		// Check if user can start time trial based on state and affordability
-		bool canStartTimeTrial = loggedIn && 
-			!isTimeTrialInProgress && 
+		bool canStartTimeTrial = loggedIn &&
+			!isTimeTrialInProgress &&
 			currentRacingState != RacingTimingSystem.RacingState.WaitingForCredits &&
 			currentRacingState != RacingTimingSystem.RacingState.TrackLoading &&
 			currentRacingState != RacingTimingSystem.RacingState.GameOverDeciding &&
@@ -2177,52 +2194,42 @@ public partial class RacingGame : GameController
 
 		// Enable replay button if user is logged in - actual credit check happens in OnRaceAgainRequested
 		bool canAffordReplay = loggedIn;
-		
+
 		// Check if tracks & leaderboard can be shown (not during races or countdown)
 		bool canShowTracksLeaderboard = !isTimeTrialInProgress &&
 			currentRacingState != RacingTimingSystem.RacingState.WaitingForCredits &&
 			currentRacingState != RacingTimingSystem.RacingState.TrackLoading &&
 			currentRacingState != RacingTimingSystem.RacingState.GameOverDeciding &&
 			!IsInCountdown();
-		
-		// Calculate lap progress for arc display
-		float lapProgress = CalculateLapProgress(playerId);
 
-		// Get countdown state for arc animation
-		int countdownNumber = GetCountdownNumber();
-		float countdownProgress = CalculateCountdownProgress();
+		target.IsGamePaused = IsRacePaused();
+		target.IsInCountdown = IsInCountdown();
+		target.IsTimeTrialInProgress = isTimeTrialInProgress;
+		target.CanStartTimeTrial = canStartTimeTrial;
+		target.GameMode = gameMode;
+		target.CarSpeed = _racingCar?.GetCarSpeed() ?? 0f;
+		target.CurrentLap = GetPlayerCurrentLap(playerId);
+		target.TargetLaps = TargetLaps;
+		target.TimeDisplay = gameMode == RacingMode.Practice ?
+			GetPlayerGapTime(playerId) : GetPlayerCurrentLapTime(playerId);
+		target.TimeLabel = gameMode == RacingMode.Practice ? "Gap" : "Time";
 
-		return new RacingUIState
-		{
-			IsGamePaused = IsRacePaused(),
-			IsInCountdown = IsInCountdown(),
-			IsTimeTrialInProgress = isTimeTrialInProgress,
-			CanStartTimeTrial = canStartTimeTrial,
-			GameMode = gameMode,
-			CarSpeed = _racingCar?.GetCarSpeed() ?? 0f,
-			CurrentLap = GetPlayerCurrentLap(playerId),
-			TargetLaps = TargetLaps,
-			TimeDisplay = gameMode == RacingMode.Practice ?
-				GetPlayerGapTime(playerId) : GetPlayerCurrentLapTime(playerId),
-			TimeLabel = gameMode == RacingMode.Practice ? "Gap" : "Time",
+		// Arc HUD specific data
+		target.MaxSpeed = _racingCar?.MaxSpeed ?? 1800.0f;
+		target.LapProgress = CalculateLapProgress(playerId);
+		target.CountdownNumber = GetCountdownNumber();
+		target.CountdownProgress = CalculateCountdownProgress();
 
-			// Arc HUD specific data
-			MaxSpeed = _racingCar?.MaxSpeed ?? 1800.0f,
-			LapProgress = lapProgress,
-			CountdownNumber = countdownNumber,
-			CountdownProgress = countdownProgress,
+		target.IsUserLoggedIn = loggedIn;
+		target.ShowGameOverOverlay = currentRacingState == RacingTimingSystem.RacingState.GameOverDeciding;
+		target.FinalTime = !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerTotalTime(playerId) : 0.0f;
+		target.CanAffordReplay = canAffordReplay;
 
-			IsUserLoggedIn = loggedIn,
-			ShowGameOverOverlay = currentRacingState == RacingTimingSystem.RacingState.GameOverDeciding,
-			FinalTime = IsInstanceValid(_timingSystem) && !string.IsNullOrEmpty(playerId) ? _timingSystem.GetPlayerTotalTime(playerId) : 0.0f,
-			CanAffordReplay = canAffordReplay,
-
-			// Tracks & Leaderboard overlay state
-			ShowTracksLeaderboardOverlay = _uiManager?.IsTracksLeaderboardVisible ?? false,
-			CanShowTracksLeaderboard = canShowTracksLeaderboard,
-			TrackMetadata = GatherTrackMetadata(),
-			CurrentTrackId = _currentTrackId
-		};
+		// Tracks & Leaderboard overlay state
+		target.ShowTracksLeaderboardOverlay = _uiManager?.IsTracksLeaderboardVisible ?? false;
+		target.CanShowTracksLeaderboard = canShowTracksLeaderboard;
+		target.TrackMetadata = GatherTrackMetadata();
+		target.CurrentTrackId = _currentTrackId;
 	}
 
 	// ================================================================
