@@ -147,6 +147,36 @@ fi
 # Set LD_LIBRARY_PATH for .NET runtime libraries
 export LD_LIBRARY_PATH="$BARBOX_ROOT/current/data_BarBox_linuxbsd_x86_64:$LD_LIBRARY_PATH"
 
+# --- Performance optimizations (profiling session 2026-02-05) ---
+
+# Rendering driver: default to OpenGL 3 to avoid Vulkan shader stutter.
+# Override via BARBOX_RENDERING_DRIVER in .env.local (e.g. "vulkan").
+RENDERING_DRIVER="${BARBOX_RENDERING_DRIVER:-opengl3}"
+RENDERING_ARGS="--rendering-driver $RENDERING_DRIVER"
+log_info "Rendering driver: $RENDERING_DRIVER"
+
+# .NET Server GC: use all cores, low-latency mode for real-time gameplay
+export DOTNET_gcServer=1
+export DOTNET_GCLatencyLevel=2
+log_info "GC: Server mode, low-latency"
+
+# Compositor bypass: disable redirect on Cinnamon to reduce input latency
+if [ "${XDG_CURRENT_DESKTOP:-}" = "X-Cinnamon" ]; then
+	if command -v gsettings >/dev/null 2>&1; then
+		gsettings set org.cinnamon.muffin unredirect-fullscreen-windows true 2>/dev/null && \
+			log_info "Compositor: fullscreen unredirect enabled" || true
+	fi
+fi
+
+# Diagnostic mode: set BARBOX_DIAG=1 in .env.local to enable GPU HUD + GC logging
+if [ "${BARBOX_DIAG:-0}" = "1" ]; then
+	export GALLIUM_HUD="fps+frametime+GPU-load"
+	export DOTNET_gcLog=1
+	log_warn "Diagnostic mode ON: GALLIUM_HUD + GC logging enabled"
+fi
+
+# --- End performance optimizations ---
+
 # Verify assemblies directory exists before launch
 if [[ ! -d "$BARBOX_ROOT/current/data_BarBox_linuxbsd_x86_64" ]]; then
 	log_error ".NET assemblies directory missing: $BARBOX_ROOT/current/data_BarBox_linuxbsd_x86_64"
@@ -163,7 +193,7 @@ if [[ $ASSEMBLY_COUNT -lt 50 ]]; then
 fi
 
 # Start export binary (no nohup - script stays running for signal handling)
-"$FRONTEND_EXEC" >> "$LOG_FILE" 2>&1 &
+"$FRONTEND_EXEC" $RENDERING_ARGS >> "$LOG_FILE" 2>&1 &
 FRONTEND_PID=$!
 
 # Write PID atomically (still useful for manual stop_all.sh operations)

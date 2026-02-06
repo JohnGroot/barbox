@@ -1,0 +1,11 @@
+[Unit]
+Description=BarBox GPU Performance Mode
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/barbox/Desktop/barbox/set_gpu_performance.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

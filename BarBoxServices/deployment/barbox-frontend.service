@@ -19,8 +19,9 @@ StandardOutput=journal
 StandardError=journal
 
 # Resource limits
-MemoryLimit=2G
-CPUQuota=150%%
+MemoryMax=4G
+CPUQuota=400%%
+Nice=-10
 
 # Need access to display and audio
 NoNewPrivileges=true
