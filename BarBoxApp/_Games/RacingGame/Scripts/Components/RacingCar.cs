@@ -90,6 +90,7 @@ namespace BarBox.Games.Racing
 		protected Vector2 _velocity = Vector2.Zero;
 		protected float _currentSpeed = 0.0f;
 		protected bool _hasInput = false;
+		private int _activeFingerId = -1;
 
 		// ================================================================
 		// FRICTIONLESS ZONE STATE
@@ -269,6 +270,7 @@ namespace BarBox.Games.Racing
 			{
 				// Clear any existing input when state doesn't allow it
 				_hasInput = false;
+				_activeFingerId = -1;
 			}
 
 			float deltaF = (float)delta;
@@ -278,7 +280,7 @@ namespace BarBox.Games.Racing
 			{
 				if (_inputManager.IsTouchActive())
 				{
-					Vector2 screenPosition = _inputManager.GetTouchPosition();
+					Vector2 screenPosition = _inputManager.GetTouchPosition(_activeFingerId);
 					Vector2 worldPosition = TransformScreenToWorldPosition(screenPosition);
 					_targetPosition = worldPosition;
 					_lastTargetPosition = worldPosition;
@@ -597,34 +599,36 @@ namespace BarBox.Games.Racing
 
 		protected virtual void OnTouchStarted(Vector2 position, int fingerId)
 		{
-			if (!IsActive() || !IsRacingInputEnabled()) 
+			if (!IsActive() || !IsRacingInputEnabled())
 				return;
 
-			_hasInput = true;
+			if (_activeFingerId == -1)
+			{
+				_activeFingerId = fingerId;
+				_hasInput = true;
+			}
 		}
 
 		protected virtual void OnTouchEnded(Vector2 position, int fingerId)
 		{
-			if (!IsActive() || !IsRacingInputEnabled()) 
+			if (!IsActive() || !IsRacingInputEnabled())
 				return;
 
-			_hasInput = false;
+			if (fingerId == _activeFingerId)
+			{
+				_activeFingerId = -1;
+				_hasInput = false;
+			}
 		}
 
 		protected virtual void OnClickStarted(Vector2 position)
 		{
-			if (!IsActive() || !IsRacingInputEnabled())
-				return;
-
-			_hasInput = true;
+			OnTouchStarted(position, 0);
 		}
 
 		protected virtual void OnClickEnded(Vector2 position)
 		{
-			if (!IsActive() || !IsRacingInputEnabled()) 
-				return;
-
-			_hasInput = false;
+			OnTouchEnded(position, 0);
 		}
 
 		// ================================================================
@@ -666,6 +670,7 @@ namespace BarBox.Games.Racing
 			_targetPosition = Vector2.Zero;
 			_lastTargetPosition = Vector2.Zero;
 			_hasInput = false;
+			_activeFingerId = -1;
 
 			// Reset frictionless state
 			_isInFrictionlessState = false;
