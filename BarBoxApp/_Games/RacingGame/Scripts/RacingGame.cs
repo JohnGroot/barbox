@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BarBox.Core.Autoloads;
+using BarBox.Core.Debug;
 using BarBox.Core.Utils;
 
 namespace BarBox.Games.Racing;
@@ -223,6 +224,10 @@ public partial class RacingGame : GameController
 	private int _uiFrameCounter = 0;
 	private const int UI_UPDATE_INTERVAL = 3;
 
+	// Debug performance timing (only allocated in debug builds)
+	private System.Diagnostics.Stopwatch _debugValidationStopwatch;
+	private static readonly bool _isDebugBuild = OS.IsDebugBuild();
+
 	// ================================================================
 	// PRIVATE Fields - UI SYSTEM
 	// ================================================================
@@ -342,6 +347,8 @@ public partial class RacingGame : GameController
 			_timingSystem.RaceCompleted -= OnTimingSystemRaceCompleted;
 			_timingSystem.CheckpointCrossed -= OnTimingSystemCheckpointCrossed;
 		}
+
+		DebugPerformanceMonitor.Instance?.ClearGameMetrics();
 	}
 
 	/// <summary>
@@ -538,7 +545,25 @@ public partial class RacingGame : GameController
 		// Update racing-specific systems (guaranteed valid after Phase 2 initialization)
 		if (IsRaceActive() && !IsRacePaused())
 		{
+			if (_isDebugBuild)
+			{
+				_debugValidationStopwatch ??= new System.Diagnostics.Stopwatch();
+				_debugValidationStopwatch.Restart();
+			}
+
 			_trackValidationSystem.UpdateOffTrackPenalties(_racingCar.GetCarPosition(), _racingCar.GetCarBody().Rotation, _racingCar.CarSize, (float)delta);
+
+			if (_isDebugBuild)
+			{
+				_debugValidationStopwatch.Stop();
+				var monitor = DebugPerformanceMonitor.Instance;
+				if (monitor != null)
+				{
+					monitor.SetMetric("Validation", $"{_debugValidationStopwatch.Elapsed.TotalMilliseconds:F2}ms");
+					monitor.SetMetric("Off-track", _trackValidationSystem.IsCurrentlyOffTrack ? "YES" : "no");
+					monitor.SetMetric("Zones", $"{_zoneManager.ZoneCount}");
+				}
+			}
 		}
 		_zoneManager.UpdateFrictionlessEffects((float)delta);
 		_visualRenderer.UpdateVisualFeedback((float)delta);

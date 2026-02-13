@@ -419,4 +419,155 @@ public class RacingTrackValidationSystemTests : TestClass
 		// Reset
 		_validationSystem.OffTrackSpeedPenalty = 0.3f;
 	}
+
+	// ================================================================
+	// LINE2D GEOMETRY REGRESSION TESTS
+	// ================================================================
+
+	private RacingTrackDefinition CreateTrackWithLine(Vector2[] points, float width, bool closed = false)
+	{
+		var trackDef = new RacingTrackDefinition();
+		TestScene.AddChild(trackDef);
+
+		var line = new Line2D();
+		line.Width = width;
+		line.Closed = closed;
+		foreach (var p in points)
+			line.AddPoint(p);
+		trackDef.AddChild(line);
+		trackDef.TrackLine = line;
+
+		// Need start/finish lines for SetupTrack to work
+		var startLine = new RacingLineTrigger();
+		trackDef.AddChild(startLine);
+		trackDef.StartLinePath = trackDef.GetPathTo(startLine);
+
+		trackDef.SetupTrack();
+		return trackDef;
+	}
+
+	[Test]
+	public void IsValidTrackPoint_ReturnsTrue_ForPointOnStraightTrack()
+	{
+		// Horizontal track from (0,0) to (200,0), width 40
+		var points = new[] { new Vector2(0, 0), new Vector2(200, 0) };
+		var trackDef = CreateTrackWithLine(points, 40f);
+
+		// Center of track
+		trackDef.IsValidTrackPoint(new Vector2(100, 0)).ShouldBeTrue();
+		// Near edge but within half-width (20)
+		trackDef.IsValidTrackPoint(new Vector2(100, 19)).ShouldBeTrue();
+		trackDef.IsValidTrackPoint(new Vector2(100, -19)).ShouldBeTrue();
+
+		trackDef.QueueFree();
+	}
+
+	[Test]
+	public void IsValidTrackPoint_ReturnsFalse_ForPointOffStraightTrack()
+	{
+		var points = new[] { new Vector2(0, 0), new Vector2(200, 0) };
+		var trackDef = CreateTrackWithLine(points, 40f);
+
+		// Outside half-width (20) + margin
+		trackDef.IsValidTrackPoint(new Vector2(100, 25)).ShouldBeFalse();
+		trackDef.IsValidTrackPoint(new Vector2(100, -25)).ShouldBeFalse();
+		// Way off track
+		trackDef.IsValidTrackPoint(new Vector2(100, 100)).ShouldBeFalse();
+
+		trackDef.QueueFree();
+	}
+
+	[Test]
+	public void IsValidTrackPoint_WorksOnMultiSegmentTrack()
+	{
+		// L-shaped track
+		var points = new[] {
+			new Vector2(0, 0),
+			new Vector2(100, 0),
+			new Vector2(100, 100)
+		};
+		var trackDef = CreateTrackWithLine(points, 30f);
+
+		// On horizontal segment
+		trackDef.IsValidTrackPoint(new Vector2(50, 0)).ShouldBeTrue();
+		// On vertical segment
+		trackDef.IsValidTrackPoint(new Vector2(100, 50)).ShouldBeTrue();
+		// Off both segments
+		trackDef.IsValidTrackPoint(new Vector2(0, 100)).ShouldBeFalse();
+
+		trackDef.QueueFree();
+	}
+
+	[Test]
+	public void IsValidTrackPoint_WorksOnClosedLoop()
+	{
+		// Triangle loop
+		var points = new[] {
+			new Vector2(0, 0),
+			new Vector2(200, 0),
+			new Vector2(100, 173)
+		};
+		var trackDef = CreateTrackWithLine(points, 30f, closed: true);
+
+		// On bottom edge
+		trackDef.IsValidTrackPoint(new Vector2(100, 0)).ShouldBeTrue();
+		// On closing segment (last point to first point)
+		// Midpoint of closing segment: (50, 86.5)
+		trackDef.IsValidTrackPoint(new Vector2(50, 86)).ShouldBeTrue();
+		// Center of triangle (should be off-track for narrow width)
+		trackDef.IsValidTrackPoint(new Vector2(100, 57)).ShouldBeFalse();
+
+		trackDef.QueueFree();
+	}
+
+	[Test]
+	public void IsOnTrack_WithRealTrack_ReturnsTrueForOnTrackPoints()
+	{
+		var points = new[] { new Vector2(0, 0), new Vector2(300, 0) };
+		var trackDef = CreateTrackWithLine(points, 50f);
+
+		var curve = trackDef.GetTrackCurve();
+		_validationSystem.Initialize(trackDef, curve);
+
+		// On track
+		_validationSystem.IsOnTrack(new Vector2(150, 0)).ShouldBeTrue();
+		// Off track
+		_validationSystem.IsOnTrack(new Vector2(150, 50)).ShouldBeFalse();
+
+		trackDef.QueueFree();
+	}
+
+	[Test]
+	public void IsCarCompletelyOffTrack_ReturnsFalse_WhenCarOnTrack()
+	{
+		var points = new[] { new Vector2(0, 0), new Vector2(300, 0) };
+		var trackDef = CreateTrackWithLine(points, 80f);
+
+		var curve = trackDef.GetTrackCurve();
+		_validationSystem.Initialize(trackDef, curve);
+
+		// Car centered on track
+		var result = _validationSystem.IsCarCompletelyOffTrack(
+			new Vector2(150, 0), 0f, new Vector2(40, 20));
+		result.ShouldBeFalse();
+
+		trackDef.QueueFree();
+	}
+
+	[Test]
+	public void IsCarCompletelyOffTrack_ReturnsTrue_WhenCarFarOffTrack()
+	{
+		var points = new[] { new Vector2(0, 0), new Vector2(300, 0) };
+		var trackDef = CreateTrackWithLine(points, 50f);
+
+		var curve = trackDef.GetTrackCurve();
+		_validationSystem.Initialize(trackDef, curve);
+
+		// Car far off track
+		var result = _validationSystem.IsCarCompletelyOffTrack(
+			new Vector2(150, 200), 0f, new Vector2(40, 20));
+		result.ShouldBeTrue();
+
+		trackDef.QueueFree();
+	}
 }
