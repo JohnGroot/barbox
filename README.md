@@ -40,7 +40,7 @@ First time only, set up the backend dependencies:
 cd BarBoxServices
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+uv pip install -e .
 ```
 
 ### Manual Backend Control (Optional)
@@ -135,12 +135,12 @@ See [Session Architecture Guide](docs/architecture/sessions.md) for detailed pat
 ### Backend Endpoints
 ```
 GET  /alive                          # Health check
-POST /account/create                 # Create account
-GET  /account/{player_id}/credits    # Get credit balance
-POST /account/{player_id}/credits    # Add/spend credits
-PUT  /box/{box_id}/session/{id}?game_tag={tag}  # Create game session
-POST /box/session/{id}/close         # Close game session
-POST /events                         # Emit gameplay event
+POST /player/                        # Create player account
+POST /player/validate                # Pre-flight validation
+POST /box/                           # Register box
+PUT  /box/{box_id}/session/{id}      # Create game session
+POST /box/session/{id}               # Add session event
+GET  /game/{tag}/leaderboard         # Game leaderboard
 ```
 
 ### Frontend Services
