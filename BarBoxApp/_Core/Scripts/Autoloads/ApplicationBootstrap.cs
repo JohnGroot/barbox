@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using BarBox.Core.Debug;
 
 namespace BarBox.Core.Autoloads;
 
@@ -174,6 +175,12 @@ public partial class ApplicationBootstrap : AutoloadBase
 
 			_servicesInitialized = true;
 			LogInfo("All services initialized successfully");
+
+			if (OS.IsDebugBuild())
+			{
+				var monitor = new DebugPerformanceMonitor();
+				GetTree().Root.AddChild(monitor);
+			}
 		}
 		catch (Exception ex)
 		{
