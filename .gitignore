@@ -73,14 +73,9 @@ artifacts/
 # Godot Mono NuGet packages
 .nu
 
-# Claude files
-CLAUDE.md
-claude.md
-**/CLAUDE.md
-**/claude.md
+# Claude Code local files
 .claude/
 .claud/
-.claude/settings.local.json
 */.claude
 */.claud
 GodotDocs_4_6/
