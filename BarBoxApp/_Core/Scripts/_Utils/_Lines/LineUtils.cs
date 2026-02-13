@@ -61,6 +61,32 @@ public static class LineUtils
 	}
 
 	/// <summary>
+	/// Check if a point is within half-width distance of a line defined by cached points.
+	/// Same algorithm as IsPointNearLine2D but avoids C#-to-native interop calls.
+	/// </summary>
+	public static bool IsPointNearCachedLine(Vector2 point, Vector2[] points, float halfWidthSq, bool closed)
+	{
+		if (points == null || points.Length < 2)
+			return false;
+
+		for (int i = 0; i < points.Length - 1; i++)
+		{
+			var closest = GetClosestPointOnSegment(point, points[i], points[i + 1]);
+			if (point.DistanceSquaredTo(closest) <= halfWidthSq)
+				return true;
+		}
+
+		if (closed && points.Length >= 3)
+		{
+			var closest = GetClosestPointOnSegment(point, points[points.Length - 1], points[0]);
+			if (point.DistanceSquaredTo(closest) <= halfWidthSq)
+				return true;
+		}
+
+		return false;
+	}
+
+	/// <summary>
 	/// Find the closest point on a Line2D to a given point
 	/// </summary>
 	/// <param name="point">The point to find the closest position to</param>

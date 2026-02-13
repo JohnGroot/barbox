@@ -23,6 +23,11 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 
 	private Curve2D _cachedCurve;
 
+	// Pre-cached Line2D data to avoid per-frame C#-to-native interop calls
+	private Vector2[] _cachedPoints;
+	private float _cachedHalfWidthSq;
+	private bool _cachedClosed;
+
 	// Cached references to avoid repeated GetNode calls
 	private RacingLineTrigger _startLineCache;
 	private RacingLineTrigger _finishLineCache;
@@ -73,12 +78,21 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		}
 
 		_cachedCurve = LineUtils.Line2DToCurve2D(TrackLine);
-		
+
 		if (_cachedCurve == null)
 		{
 			GD.PrintErr($"RacingTrackDefinition '{TrackName}': Failed to convert Line2D to Curve2D");
 			return;
 		}
+
+		// Pre-cache Line2D points to avoid per-frame C#-to-native interop calls
+		int pointCount = TrackLine.GetPointCount();
+		_cachedPoints = new Vector2[pointCount];
+		for (int i = 0; i < pointCount; i++)
+			_cachedPoints[i] = TrackLine.GetPointPosition(i);
+		var halfWidth = TrackLine.Width / 2f;
+		_cachedHalfWidthSq = halfWidth * halfWidth;
+		_cachedClosed = TrackLine.Closed;
 
 		// Clear cached references to ensure fresh node lookups
 		ClearCache();
@@ -117,14 +131,13 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 
 	public bool IsValidTrackPoint(Vector2 point)
 	{
-		if (TrackLine == null)
+		if (_cachedPoints == null || TrackLine == null)
 			return false;
 
 		// Convert global point directly to TrackLine's local coordinate space
-		// This handles position, rotation, and scale correctly
 		var trackLineLocalPoint = TrackLine.ToLocal(point);
 
-		return LineUtils.IsPointNearLine2D(trackLineLocalPoint, TrackLine);
+		return LineUtils.IsPointNearCachedLine(trackLineLocalPoint, _cachedPoints, _cachedHalfWidthSq, _cachedClosed);
 	}
 
 	public Vector2 GetStartLinePosition()
