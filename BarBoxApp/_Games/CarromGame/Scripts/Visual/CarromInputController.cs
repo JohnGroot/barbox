@@ -75,6 +75,7 @@ public partial class CarromInputController : Node2D
 
 	// Input state
 	private CarromPiece _striker;
+	private int _activeFingerId = -1;
 	private bool _isAiming = false;
 	private Vector2 _aimStartPosition;
 	private Vector2 _currentAimPosition;
@@ -399,14 +400,19 @@ public partial class CarromInputController : Node2D
 		{
 			if (touch.Pressed)
 			{
-				StartInput(touch.Position);
+				if (_activeFingerId == -1)
+				{
+					_activeFingerId = touch.Index;
+					StartInput(touch.Position);
+				}
 			}
-			else
+			else if (touch.Index == _activeFingerId)
 			{
+				_activeFingerId = -1;
 				EndInput();
 			}
 		}
-		else if (@event is InputEventScreenDrag drag && _isAiming)
+		else if (@event is InputEventScreenDrag drag && _isAiming && drag.Index == _activeFingerId)
 		{
 			UpdateInput(drag.Position);
 		}
@@ -629,6 +635,7 @@ public partial class CarromInputController : Node2D
 
 		// Clear all input and movement states
 		_isAiming = false;
+		_activeFingerId = -1;
 		_currentInputMode = InputMode.None;
 		
 		// Stop any ongoing kinematic movement
