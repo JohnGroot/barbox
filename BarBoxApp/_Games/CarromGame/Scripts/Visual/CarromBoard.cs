@@ -46,14 +46,17 @@ public partial class CarromBoard : Node2D
 		public float Radius;
 		public CarromPiece ExcludePiece;
 		public bool IsObstructed;
-		public CarromPiece[] PiecesInRadius;
 		public float CacheTime;
 		public bool IsValid;
 	}
 	
 	private PhysicsQueryCache _obstructionCache;
-	private PhysicsQueryCache _radiusCache;
 	private const float CACHE_DURATION = 0.1f; // OPTIMIZATION: Cache for 100ms (~6 frames at 60fps)
+
+	// GC OPTIMIZATION: Cached physics query objects for IsPositionObstructed
+	private CircleShape2D _queryCircleShape;
+	private PhysicsShapeQueryParameters2D _queryParams;
+	private readonly Godot.Collections.Array<Rid> _queryExcludeBuffer = new();
 	
 	// Debug collision visualization
 	private struct CollisionDebugInfo
@@ -1054,23 +1057,23 @@ public partial class CarromBoard : Node2D
 			return false;
 		}
 		
-		// Create shape query for circular area
-		var circleShape = new CircleShape2D();
-		circleShape.Radius = radius;
-		
-		var query = new PhysicsShapeQueryParameters2D();
-		query.Shape = circleShape;
-		query.Transform = new Transform2D(0, position);
-		query.CollisionMask = 1; // Collision layer for pieces
-		
-		// Exclude specific piece if provided
+		// GC OPTIMIZATION: Reuse cached query objects instead of allocating per call
+		_queryCircleShape ??= new CircleShape2D();
+		_queryCircleShape.Radius = radius;
+
+		_queryParams ??= new PhysicsShapeQueryParameters2D();
+		_queryParams.Shape = _queryCircleShape;
+		_queryParams.Transform = new Transform2D(0, position);
+		_queryParams.CollisionMask = 1; // Collision layer for pieces
+
+		// CRITICAL: Always clear before conditionally adding to prevent stale exclusions
+		_queryExcludeBuffer.Clear();
 		if (excludePiece != null && IsInstanceValid(excludePiece))
-		{
-			query.Exclude = [excludePiece.GetRid()];
-		}
-		
+			_queryExcludeBuffer.Add(excludePiece.GetRid());
+		_queryParams.Exclude = _queryExcludeBuffer;
+
 		// Check for collisions
-		var results = spaceState.IntersectShape(query);
+		var results = spaceState.IntersectShape(_queryParams);
 		bool isObstructed = results.Count > 0;
 		
 		_obstructionCache = new PhysicsQueryCache
@@ -1084,84 +1087,6 @@ public partial class CarromBoard : Node2D
 		};
 		
 		return isObstructed;
-	}
-	
-	/// <summary>
-	/// Get all pieces within a circular radius of a position
-	/// </summary>
-	/// <param name="position">Center position to search from</param>
-	/// <param name="radius">Search radius</param>
-	/// <returns>Array of CarromPieces within the radius</returns>
-	public CarromPiece[] GetPiecesInRadius(Vector2 position, float radius)
-	{
-		float currentTime = (float)Time.GetUnixTimeFromSystem();
-		bool cacheValid = _radiusCache.IsValid &&
-		                  (currentTime - _radiusCache.CacheTime) < CACHE_DURATION &&
-		                  _radiusCache.Position.DistanceSquaredTo(position) < 0.01f &&
-		                  Mathf.Abs(_radiusCache.Radius - radius) < 0.01f;
-		
-		if (cacheValid && _radiusCache.PiecesInRadius != null)
-		{
-			// Validate cached pieces are still valid
-			bool allPiecesValid = true;
-			foreach (var piece in _radiusCache.PiecesInRadius)
-			{
-				if (piece == null || !GodotObject.IsInstanceValid(piece))
-				{
-					allPiecesValid = false;
-					break;
-				}
-			}
-			
-			if (allPiecesValid)
-			{
-				return (CarromPiece[])_radiusCache.PiecesInRadius.Clone();
-			}
-		}
-		
-		List<CarromPiece> piecesInRadius = [];
-		
-		// Use physics space state for accurate detection
-		var spaceState = GetWorld2D()?.DirectSpaceState;
-		if (spaceState == null)
-		{
-			return piecesInRadius.ToArray();
-		}
-		
-		// Create shape query for circular area
-		var circleShape = new CircleShape2D();
-		circleShape.Radius = radius;
-		
-		var query = new PhysicsShapeQueryParameters2D();
-		query.Shape = circleShape;
-		query.Transform = new Transform2D(0, position);
-		query.CollisionMask = 1; // Collision layer for pieces
-		
-		// Get all collision results
-		var results = spaceState.IntersectShape(query);
-		
-		// Convert results to CarromPiece array
-		foreach (var result in results)
-		{
-			var body = result["collider"].AsGodotObject();
-			if (body is CarromPiece piece)
-			{
-				piecesInRadius.Add(piece);
-			}
-		}
-		
-		var piecesArray = piecesInRadius.ToArray();
-		
-		_radiusCache = new PhysicsQueryCache
-		{
-			Position = position,
-			Radius = radius,
-			PiecesInRadius = piecesArray,
-			CacheTime = currentTime,
-			IsValid = true
-		};
-		
-		return piecesArray;
 	}
 	
 	/// <summary>

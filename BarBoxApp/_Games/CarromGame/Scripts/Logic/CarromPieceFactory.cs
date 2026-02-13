@@ -1,6 +1,5 @@
 using Godot;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace BarBox.Games.Carrom;
 
@@ -204,14 +203,20 @@ public partial class CarromPieceFactory : Node2D
 		}
 	}
 
-	public List<CarromPiece> GetAllPieces()
+	public IReadOnlyList<CarromPiece> GetAllPieces()
 	{
-		return [.._allPieces];
+		return _allPieces;
 	}
 
 	public List<CarromPiece> GetPiecesOfType(PieceType type)
 	{
-		return _allPieces.Where(p => GodotObject.IsInstanceValid(p) && p.Type == type).ToList();
+		var result = new List<CarromPiece>();
+		foreach (var p in _allPieces)
+		{
+			if (GodotObject.IsInstanceValid(p) && p.Type == type)
+				result.Add(p);
+		}
+		return result;
 	}
 
 

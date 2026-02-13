@@ -37,11 +37,17 @@ public partial class InputManager : AutoloadBase
 		}
 		else if (@event is InputEventMouseButton mouseButtonEvent)
 		{
-			HandleMouseButton(mouseButtonEvent);
+			// Skip emulated mouse events when touches are active to avoid duplicates.
+			// With emulate_mouse_from_touch=true, the primary touch generates both
+			// InputEventScreenTouch AND InputEventMouseButton. We handle the touch
+			// event above; the mouse event is left unconsumed for Control nodes (buttons).
+			if (_activeTouches.Count == 0)
+				HandleMouseButton(mouseButtonEvent);
 		}
 		else if (@event is InputEventMouseMotion mouseMotionEvent)
 		{
-			HandleMouseMotion(mouseMotionEvent);
+			if (_activeTouches.Count == 0)
+				HandleMouseMotion(mouseMotionEvent);
 		}
 	}
 

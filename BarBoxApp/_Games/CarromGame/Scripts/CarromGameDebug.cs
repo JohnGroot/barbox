@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using BarBox.Core.Debug;
 using Godot;
 
 namespace BarBox.Games.Carrom;
@@ -472,6 +473,25 @@ public partial class CarromGame : GameController
 	public void DEBUG_TestCameraRotation(int playerIndex = 1, float duration = 1.0f)
 	{
 		_cameraController?.RotateToPlayer(playerIndex, duration);
+	}
+
+	// ================================================================
+	// DEBUG PERFORMANCE MONITOR
+	// ================================================================
+
+	private void PushDebugMetrics()
+	{
+		var monitor = DebugPerformanceMonitor.Instance;
+		if (monitor == null) return;
+
+		monitor.SetMetric("Pieces", $"{_pieceFactory?.GetAllPieces().Count ?? 0}");
+		monitor.SetMetric("Phase", _gameStateManager?.GetCurrentStateName() ?? "N/A");
+		monitor.SetMetric("Mode", _carromGameMode.ToString());
+	}
+
+	private void ClearDebugMetrics()
+	{
+		DebugPerformanceMonitor.Instance?.ClearGameMetrics();
 	}
 
 }

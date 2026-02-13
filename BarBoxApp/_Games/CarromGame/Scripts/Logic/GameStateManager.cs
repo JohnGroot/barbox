@@ -602,7 +602,7 @@ public partial class GameStateManager : Node, ICarromGameState
 			Players = _players.ToDictionary(
 				kvp => kvp.Key,
 				kvp => PlayerSnapshot.FromPlayerState(kvp.Value)),
-			Pieces = (_pieceFactory?.GetAllPieces() ?? new List<CarromPiece>())
+			Pieces = (_pieceFactory?.GetAllPieces() ?? (IReadOnlyList<CarromPiece>)Array.Empty<CarromPiece>())
 				.Where(p => GodotObject.IsInstanceValid(p))
 				.Select(p => PieceSnapshot.FromPiece(p))
 				.Where(s => s != null)
@@ -756,7 +756,7 @@ public partial class GameStateManager : Node, ICarromGameState
 	/// <summary>
 	/// Get all active piece nodes for physics monitoring
 	/// </summary>
-	public List<CarromPiece> GetActivePieces() => _pieceFactory?.GetAllPieces() ?? new List<CarromPiece>();
+	public IReadOnlyList<CarromPiece> GetActivePieces() => _pieceFactory?.GetAllPieces() ?? (IReadOnlyList<CarromPiece>)Array.Empty<CarromPiece>();
 
 	/// <summary>
 	/// Trigger settlement from external systems (for compatibility)

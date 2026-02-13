@@ -1,6 +1,5 @@
 using Godot;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace BarBox.Games.Carrom;
 
@@ -33,9 +32,8 @@ public partial class CarromPocket : Area2D
 	// Simple piece presence tracking
 	private System.Collections.Generic.HashSet<CarromPiece> _piecesInPocket = new();
 
-	// GC OPTIMIZATION: Pre-allocated removal lists to avoid per-frame allocations
+	// GC OPTIMIZATION: Pre-allocated removal list to avoid per-frame allocations
 	private readonly List<CarromPiece> _piecesToRemoveCache = new(16);
-	private readonly List<CarromPiece> _invalidPiecesCache = new(16);
 
 	// Particle effect components
 	private GpuParticles2D _pocketParticles;
@@ -146,12 +144,9 @@ public partial class CarromPocket : Area2D
 	{
 		// Update zone tracking only for pieces that have moved
 		UpdatePieceZones();
-		
+
 		// Update particle timer
 		UpdateParticleTimer((float)delta);
-		
-		// Clean up invalid pieces
-		CleanupInvalidPieces();
 	}
 
 	private void OnBodyEntered(Node2D body)
@@ -176,19 +171,6 @@ public partial class CarromPocket : Area2D
 	public bool ContainsPiece(CarromPiece piece)
 	{
 		return _piecesInPocket.Contains(piece);
-	}
-
-	public CarromPiece[] GetPiecesInPocket()
-	{
-		List<CarromPiece> pieces = [];
-		foreach (var piece in _piecesInPocket)
-		{
-			if (GodotObject.IsInstanceValid(piece))
-			{
-				pieces.Add(piece);
-			}
-		}
-		return pieces.ToArray();
 	}
 
 	public int GetPieceCount()
@@ -327,26 +309,6 @@ public partial class CarromPocket : Area2D
 
 
 
-
-	/// <summary>
-	/// GC OPTIMIZATION: Reuse cached list instead of allocating new one each frame
-	/// </summary>
-	private void CleanupInvalidPieces()
-	{
-		_invalidPiecesCache.Clear();
-		foreach (var piece in _piecesInPocket)
-		{
-			if (!IsInstanceValid(piece))
-			{
-				_invalidPiecesCache.Add(piece);
-			}
-		}
-
-		foreach (var piece in _invalidPiecesCache)
-		{
-			_piecesInPocket.Remove(piece);
-		}
-	}
 
 	private void TriggerPocketParticles(Color pieceColor)
 	{

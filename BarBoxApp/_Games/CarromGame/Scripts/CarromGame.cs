@@ -1892,8 +1892,13 @@ public partial class CarromGame : GameController
 	/// <summary>
 	/// Handle phase changes from GameStateManager
 	/// </summary>
+	private static readonly bool _isDebugBuild = OS.IsDebugBuild();
+
 	private void OnPhaseChanged(string oldPhase, string newPhase)
 	{
+		if (_isDebugBuild)
+			PushDebugMetrics();
+
 		// Update score display with current state
 		if (_scoreDisplay != null)
 		{
@@ -2412,6 +2417,9 @@ public partial class CarromGame : GameController
 	/// </summary>
 	protected override void OnGameTeardown()
 	{
+		if (_isDebugBuild)
+			ClearDebugMetrics();
+
 		// Close activity session if active
 		if (_activitySessionId != Guid.Empty && _eventService != null)
 		{

@@ -115,28 +115,24 @@ public partial class CarromPhysicsMonitor : Node
 			return false;
 		}
 
-		// OPTIMIZATION: Pass 1 - Fast rejection using LengthSquared for early exit
-		// If ANY piece is moving significantly (> 2x threshold), skip detailed checks
-		const float FAST_THRESHOLD_MULTIPLIER = 2.0f;
-		float fastThresholdSquared = StoppedVelocityThreshold * FAST_THRESHOLD_MULTIPLIER *
-		                              StoppedVelocityThreshold * FAST_THRESHOLD_MULTIPLIER;
+		// OPTIMIZATION: Single-pass check using LengthSquared for fast rejection
+		float thresholdSq = StoppedVelocityThreshold * StoppedVelocityThreshold;
+		const float FAST_MULTIPLIER = 2.0f;
+		float fastThresholdSq = thresholdSq * FAST_MULTIPLIER * FAST_MULTIPLIER;
 
 		foreach (var piece in allPieces)
 		{
 			if (!GodotObject.IsInstanceValid(piece))
 				continue;
 
-			if (piece.LinearVelocity.LengthSquared() > fastThresholdSquared)
+			float velSq = piece.LinearVelocity.LengthSquared();
+
+			// Fast rejection: clearly still moving
+			if (velSq > fastThresholdSq)
 				return false;
-		}
 
-		// OPTIMIZATION: Pass 2 - Detailed validation only when pieces are slowing down
-		foreach (var piece in allPieces)
-		{
-			if (!GodotObject.IsInstanceValid(piece))
-				continue;
-
-			if (piece.LinearVelocity.Length() > StoppedVelocityThreshold)
+			// Borderline: precise check needed
+			if (velSq > thresholdSq && piece.LinearVelocity.Length() > StoppedVelocityThreshold)
 				return false;
 
 			if (Mathf.Abs(piece.AngularVelocity) > StoppedVelocityThreshold)
