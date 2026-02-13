@@ -25,6 +25,7 @@ public partial class RacingZoneManager : Node
 	// ================================================================
 
 	private readonly List<RacingZone> _allZones = [];
+	private readonly List<RacingZone> _kerbZones = [];
 	private readonly Dictionary<Node2D, HashSet<RacingZone>> _bodyZones = new();
 	private readonly Dictionary<Node2D, FrictionlessState> _frictionlessStates = new();
 
@@ -32,8 +33,14 @@ public partial class RacingZoneManager : Node
 	private readonly Dictionary<RacingZone, CollisionPolygon2D> _zoneCollisionPolygons = new();
 	private readonly Dictionary<RacingZone, CollisionShape2D> _zoneCollisionShapes = new();
 
+	// AABB cache for cheap pre-filter before expensive polygon checks
+	private readonly Dictionary<RacingZone, Rect2> _zoneAABBs = new();
+
 	// Reusable list for frictionless effect cleanup (GC optimization: avoids per-frame allocation)
 	private readonly List<Node2D> _expiredBodies = [];
+
+	// Reusable list for position queries (GC optimization: avoids per-call allocation)
+	private readonly List<RacingZone> _positionQueryResult = [];
 
 	// ================================================================
 	// FRICTIONLESS STATE
@@ -59,11 +66,15 @@ public partial class RacingZoneManager : Node
 
 		_allZones.Add(zone);
 
+		if (zone.Type == ZoneType.Kerb)
+			_kerbZones.Add(zone);
+
 		// Cache collision shape references (avoids per-frame scene tree traversal)
 		var collisionPolygon = zone.GetNodeOrNull<CollisionPolygon2D>("CollisionPolygon2D");
 		if (collisionPolygon != null)
 		{
 			_zoneCollisionPolygons[zone] = collisionPolygon;
+			CacheAABBFromPolygon(zone, collisionPolygon.Polygon);
 		}
 		else
 		{
@@ -71,6 +82,7 @@ public partial class RacingZoneManager : Node
 			if (collisionShape != null)
 			{
 				_zoneCollisionShapes[zone] = collisionShape;
+				CacheAABBFromShape(zone, collisionShape);
 			}
 		}
 
@@ -85,8 +97,10 @@ public partial class RacingZoneManager : Node
 			return;
 
 		_allZones.Remove(zone);
+		_kerbZones.Remove(zone);
 		_zoneCollisionPolygons.Remove(zone);
 		_zoneCollisionShapes.Remove(zone);
+		_zoneAABBs.Remove(zone);
 
 		// Remove this zone from all body tracking
 		foreach (var bodyZones in _bodyZones.Values)
@@ -98,10 +112,12 @@ public partial class RacingZoneManager : Node
 	public void ClearAllZones()
 	{
 		_allZones.Clear();
+		_kerbZones.Clear();
 		_bodyZones.Clear();
 		_frictionlessStates.Clear();
 		_zoneCollisionPolygons.Clear();
 		_zoneCollisionShapes.Clear();
+		_zoneAABBs.Clear();
 	}
 
 	// ================================================================
@@ -303,11 +319,8 @@ public partial class RacingZoneManager : Node
 	/// </summary>
 	public bool IsInKerbZone(Vector2 position)
 	{
-		foreach (var zone in _allZones)
+		foreach (var zone in _kerbZones)
 		{
-			if (zone.Type != ZoneType.Kerb)
-				continue;
-
 			if (!GodotObject.IsInstanceValid(zone))
 				continue;
 
@@ -322,7 +335,7 @@ public partial class RacingZoneManager : Node
 	/// </summary>
 	public List<RacingZone> GetZonesAtPosition(Vector2 position)
 	{
-		var result = new List<RacingZone>();
+		_positionQueryResult.Clear();
 
 		foreach (var zone in _allZones)
 		{
@@ -330,16 +343,20 @@ public partial class RacingZoneManager : Node
 				continue;
 
 			if (IsPointInZone(position, zone))
-				result.Add(zone);
+				_positionQueryResult.Add(zone);
 		}
 
-		return result;
+		return _positionQueryResult;
 	}
 
 	private bool IsPointInZone(Vector2 globalPosition, RacingZone zone)
 	{
 		// Convert global position to zone's local space
 		var localPosition = zone.ToLocal(globalPosition);
+
+		// AABB pre-filter: cheap rejection before expensive polygon check
+		if (_zoneAABBs.TryGetValue(zone, out var aabb) && !aabb.HasPoint(localPosition))
+			return false;
 
 		// Use cached collision polygon reference (avoids string-based scene tree traversal)
 		if (_zoneCollisionPolygons.TryGetValue(zone, out var collisionPolygon))
@@ -364,6 +381,41 @@ public partial class RacingZoneManager : Node
 		}
 
 		return false;
+	}
+
+	// ================================================================
+	// AABB CACHING
+	// ================================================================
+
+	private void CacheAABBFromPolygon(RacingZone zone, Vector2[] polygon)
+	{
+		if (polygon == null || polygon.Length == 0)
+			return;
+
+		var min = polygon[0];
+		var max = polygon[0];
+		for (int i = 1; i < polygon.Length; i++)
+		{
+			if (polygon[i].X < min.X) min.X = polygon[i].X;
+			if (polygon[i].Y < min.Y) min.Y = polygon[i].Y;
+			if (polygon[i].X > max.X) max.X = polygon[i].X;
+			if (polygon[i].Y > max.Y) max.Y = polygon[i].Y;
+		}
+		_zoneAABBs[zone] = new Rect2(min, max - min);
+	}
+
+	private void CacheAABBFromShape(RacingZone zone, CollisionShape2D shape)
+	{
+		if (shape.Shape is RectangleShape2D rectShape)
+		{
+			var halfSize = rectShape.Size / 2;
+			_zoneAABBs[zone] = new Rect2(-halfSize, rectShape.Size);
+		}
+		else if (shape.Shape is CircleShape2D circleShape)
+		{
+			var r = circleShape.Radius;
+			_zoneAABBs[zone] = new Rect2(new Vector2(-r, -r), new Vector2(r * 2, r * 2));
+		}
 	}
 
 	// ================================================================

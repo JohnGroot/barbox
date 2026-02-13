@@ -143,6 +143,11 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public bool IsCarCompletelyOffTrack(Vector2 carCenter, float carRotation, Vector2 carSize)
 	{
+		// Fast path: center point check (most frames the car is on track)
+		if (IsOnTrack(carCenter))
+			return false;
+
+		// Slow path: check 8 boundary points only when center is off track
 		var halfSize = carSize / 2.0f;
 
 		// Scale unit offsets into reusable buffer (no heap allocation)
