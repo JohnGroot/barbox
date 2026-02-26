@@ -25,7 +25,7 @@ BarBoxApp uses environment variables for configuration, loaded from `.env.local`
 |----------|-------------|---------|
 | `BARBOX_BACKEND_URL` | Full URL to backend server | `https://barbox-backend.fly.dev` |
 | `BARBOX_BOX_ID` | Unique UUID for this box | `12345678-1234-1234-1234-123456789012` |
-| `BARBOX_API_KEY` | Authentication key from registration | `ndE63953HvBEqNP...` |
+| `BARBOX_API_KEY` | Authentication key from registration | `<your-box-api-key>` |
 
 ### Optional Variables
 
@@ -89,7 +89,7 @@ BARBOX_BACKEND_URL=http://localhost:8000
 
 # Test box credentials (auto-seeded by backend in dev mode)
 BARBOX_BOX_ID=00000000-0000-0000-0000-000000000001
-BARBOX_API_KEY=ndE63953HvBEqNP5XKPFe3vN4Ei9bDF-g9p13KoOmKs
+BARBOX_API_KEY=YOUR_DEV_BOX_API_KEY_HERE
 
 # Display names
 BARBOX_BOX_NAME=dev_box
@@ -232,7 +232,7 @@ cp .env.local.remote .env.local
 ```bash
 BARBOX_BACKEND_URL=http://localhost:8000
 BARBOX_BOX_ID=00000000-0000-0000-0000-000000000001
-BARBOX_API_KEY=ndE63953HvBEqNP5XKPFe3vN4Ei9bDF-g9p13KoOmKs
+BARBOX_API_KEY=YOUR_DEV_BOX_API_KEY_HERE
 BARBOX_BOX_NAME=dev_box
 BARBOX_VENUE_NAME=dev_local
 ```
