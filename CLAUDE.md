@@ -6,7 +6,7 @@ Guidance for Claude Code agents working on the BarBox project.
 
 **BarBox** is a physical game terminal platform for bars and venues. Location-based, touchscreen-focused arcade games with user persistence and transactions.
 
-- **BarBoxApp** (`BarBoxApp/`) - Godot 4.6 C# game client
+- **BarBoxApp** (`BarBoxApp/`) - Godot 4.7 C# game client
 - **BarBoxServices** (`BarBoxServices/`) - Python FastAPI backend API
 
 ## Build & Test

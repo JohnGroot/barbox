@@ -29,7 +29,7 @@ Scripts for deploying the BarBox arcade platform to remote Linux machines via Ta
 ### Prerequisites
 
 **Development Machine (for creating exports):**
-- Godot 4.6 with Mono support
+- Godot 4.7 with Mono support
 - .NET SDK 9.0
 - BarBoxApp project checked out
 - Build scripts: `BarBoxApp/scripts/build-export.sh`
@@ -69,7 +69,7 @@ cd ../BarBoxServices/deployment
 
 **What this deployment does:**
 1. Transfers export binary and PCK to target machine
-2. Installs system dependencies (.NET SDK 9.0, Godot 4.6, Python/uv, jq)
+2. Installs system dependencies (.NET SDK 9.0, Godot 4.7, Python/uv, jq)
 3. Sets up Python virtual environment for backend
 4. Generates secure configuration files (`.env`, `.env.local`)
 5. Registers the box with backend and obtains API key
@@ -304,7 +304,7 @@ This tells the .NET runtime where to find `libcoreclr.so` and other runtime libr
 
 ### Typical Assembly Count
 
-A complete Godot 4.6 .NET export contains approximately:
+A complete Godot 4.7 .NET export contains approximately:
 - **202 files** in `data_BarBox_linuxbsd_x86_64/` directory
 - **~85MB total size**
 - Includes .NET 9.0 runtime libraries, Godot assemblies, and game DLLs
@@ -420,7 +420,7 @@ These scripts run from your development machine to deploy to remote targets.
 
 **Phase 2: Install Dependencies** (unless `--skip-deps`)
 - .NET SDK 9.0
-- GodotEnv → Godot 4.6 with Mono support
+- GodotEnv → Godot 4.7 with Mono support
 - uv (Python package manager)
 - jq (JSON processing)
 
@@ -766,7 +766,7 @@ Rollback takes seconds (just symlink + restart).
 
 **Phase 2: Install Dependencies** (skip with `--skip-deps`)
 - .NET SDK 9.0
-- Godot 4.6 + Mono via GodotEnv
+- Godot 4.7 + Mono via GodotEnv
 - Python uv package manager
 - jq JSON processor
 

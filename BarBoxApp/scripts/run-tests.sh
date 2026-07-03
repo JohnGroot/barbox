@@ -173,7 +173,7 @@ if [ "$TEST_MODE" != "backend" ]; then
 	elif [[ -x "$HOME/.config/godotenv/godot/bin/godot" ]]; then
 		GODOT_CMD="$HOME/.config/godotenv/godot/bin/godot"
 	else
-		print_error "Godot not found. Install via GodotEnv: godotenv godot install 4.6.0"
+		print_error "Godot not found. Install via GodotEnv: godotenv godot install 4.7.0"
 		print_info "Or set GODOT_BIN environment variable"
 		cd "$SERVICES_ROOT"
 		sh scripts/test-backend.sh stop

@@ -1,6 +1,6 @@
 # BarBoxApp
 
-Godot 4.6 game platform using C# with autoload-based service architecture and context-aware game development.
+Godot 4.7 game platform using C# with autoload-based service architecture and context-aware game development.
 
 ## Project Structure
 

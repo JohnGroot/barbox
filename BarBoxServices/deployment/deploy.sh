@@ -369,29 +369,29 @@ if [ "$SKIP_DEPS" = false ]; then
 			echo "[INFO] GodotEnv already installed"
 		fi
 
-		# Check for Godot 4.6.0
+		# Check for Godot 4.7.0
 		CURRENT_VERSION=$(godot --version 2>&1 | head -n1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -n1 || echo "")
-		if [ "$CURRENT_VERSION" != "4.6.0" ]; then
-			echo "[INFO] Installing Godot 4.6.0 with Mono support..."
-			godotenv godot install 4.6.0
-			godotenv godot use 4.6.0
+		if [ "$CURRENT_VERSION" != "4.7.0" ]; then
+			echo "[INFO] Installing Godot 4.7.0 with Mono support..."
+			godotenv godot install 4.7.0
+			godotenv godot use 4.7.0
 
 			# Add godot bin directory to .bashrc for persistent PATH
 			if [[ ":$PATH:" != *":$HOME/.config/godotenv/godot/bin:"* ]]; then
 				echo 'export PATH="$HOME/.config/godotenv/godot/bin:$PATH"' >> ~/.bashrc
 			fi
 		else
-			echo "[INFO] Godot 4.6.0 already installed"
+			echo "[INFO] Godot 4.7.0 already installed"
 		fi
 
 		# Check for Godot export templates (needed for builds)
-		TEMPLATE_VERSION="4.6.stable.mono"
+		TEMPLATE_VERSION="4.7.stable.mono"
 		TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/$TEMPLATE_VERSION"
 		if [ -d "$TEMPLATE_DIR" ]; then
 			echo "[INFO] Godot export templates already installed"
 		else
-			echo "[INFO] Installing Godot 4.6 export templates (~1.2 GB download)..."
-			TEMPLATE_URL="https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_mono_export_templates.tpz"
+			echo "[INFO] Installing Godot 4.7 export templates (~1.2 GB download)..."
+			TEMPLATE_URL="https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_mono_export_templates.tpz"
 			curl -L -o /tmp/godot_export_templates.tpz "$TEMPLATE_URL"
 			mkdir -p "$TEMPLATE_DIR"
 			unzip -o /tmp/godot_export_templates.tpz -d /tmp/godot_templates_extract

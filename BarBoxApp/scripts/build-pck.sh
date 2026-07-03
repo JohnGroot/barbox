@@ -24,7 +24,7 @@ echo "Building PCK update v$VERSION..."
 # Verify Godot binary exists
 if [[ ! -x "$GODOT_BIN" ]]; then
 	echo "ERROR: Godot binary not found"
-	echo "Install via GodotEnv: godotenv godot install 4.6.0"
+	echo "Install via GodotEnv: godotenv godot install 4.7.0"
 	echo "Or set GODOT_BIN environment variable"
 	exit 1
 fi

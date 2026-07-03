@@ -83,7 +83,7 @@ build-frontend:
   steps:
     - Checkout code
     - Set up .NET 9.0 SDK
-    - Install Godot 4.6 headless
+    - Install Godot 4.7 headless
     - Build C# project (dotnet build BarBox.csproj -c Release)
     - Export Godot project (Linux x86_64)
     - Create VERSION file with git commit hash
@@ -893,15 +893,15 @@ jobs:
 
       - name: Install Godot
         run: |
-          wget https://github.com/godotengine/godot/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip
-          unzip Godot_v4.6-stable_linux.x86_64.zip
-          chmod +x Godot_v4.6-stable_linux.x86_64
+          wget https://github.com/godotengine/godot/releases/download/4.7-stable/Godot_v4.7-stable_linux.x86_64.zip
+          unzip Godot_v4.7-stable_linux.x86_64.zip
+          chmod +x Godot_v4.7-stable_linux.x86_64
 
       - name: Build Godot export
         run: |
           cd BarBoxApp
           dotnet build BarBox.csproj -c Release
-          ../Godot_v4.6-stable_linux.x86_64 --headless --export-release "Linux/X11" builds/BarBox.x86_64
+          ../Godot_v4.7-stable_linux.x86_64 --headless --export-release "Linux/X11" builds/BarBox.x86_64
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

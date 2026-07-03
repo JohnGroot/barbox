@@ -86,17 +86,17 @@ else
 	echo "[3/9] GodotEnv: already installed"
 fi
 
-# 4. Install Godot 4.6 with .NET support via GodotEnv
-if godotenv godot list 2>/dev/null | grep -q "4.6"; then
-	echo "[4/9] Godot 4.6: already installed"
+# 4. Install Godot 4.7 with .NET support via GodotEnv
+if godotenv godot list 2>/dev/null | grep -q "4.7"; then
+	echo "[4/9] Godot 4.7: already installed"
 else
-	echo "[4/9] Installing Godot 4.6 (with .NET support)..."
-	godotenv godot install 4.6.0
+	echo "[4/9] Installing Godot 4.7 (with .NET support)..."
+	godotenv godot install 4.7.0
 fi
 
-# 5. Install Godot 4.6 export templates (not included with GodotEnv)
-GODOT_VERSION="4.6"
-TEMPLATE_VERSION="4.6.stable.mono"
+# 5. Install Godot 4.7 export templates (not included with GodotEnv)
+GODOT_VERSION="4.7"
+TEMPLATE_VERSION="4.7.stable.mono"
 if [[ "$(uname)" == "Darwin" ]]; then
 	TEMPLATE_DIR="$HOME/Library/Application Support/Godot/export_templates/$TEMPLATE_VERSION"
 else

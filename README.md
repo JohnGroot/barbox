@@ -14,7 +14,7 @@ BoxTeam is building the infrastructure for user persistence, transactions and ga
 ## Architecture
 
 ### Frontend (BarBoxApp/)
-- **Engine**: Godot 4.6 with C#10 (.NET)
+- **Engine**: Godot 4.7 with C#10 (.NET)
 
 ### Backend (BarBoxServices/)
 - **Framework**: FastAPI (Python)
@@ -99,7 +99,7 @@ barbox/
 ## Key Technologies
 
 ### Frontend
-- **Godot 4.6** - Game engine with C# support
+- **Godot 4.7** - Game engine with C# support
 - **GoDotTest** - Testing framework for Godot by Chickensoft
 
 ### Backend
