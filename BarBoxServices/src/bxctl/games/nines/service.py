@@ -35,6 +35,10 @@ async def get_jackpot_state(
         p.tag as winner_name
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
+    -- Nines stores the winner's phone number (not a UUID) in payload.player_id,
+    -- unlike carrom/racing which use the player UUID. Join on phone_number
+    -- accordingly; this only matches if the client's PhoneNumber string is
+    -- stored in the same E.164 form as player.phone_number.
     LEFT JOIN player p ON json_extract(bse.payload, '$.player_id') = p.phone_number
     WHERE bse.type = 'nines/jackpot_won'
     AND json_extract(bse.payload, '$.venue_name') = :venue_name
@@ -56,8 +60,9 @@ async def get_jackpot_state(
         else:
             last_win_timestamp = None
 
-        # Winner name - prefer player tag, fallback to player_id from payload
-        winner_name = row[3] if row[3] else (row[1] if row[1] else "Unknown")
+        # Winner name - prefer player tag; fall back to "Unknown" rather than
+        # exposing the raw phone number stored in payload.player_id.
+        winner_name = row[3] if row[3] else "Unknown"
         jackpot_amount = row[2] if row[2] else 0
 
         return schemas.NinesJackpotResponse(

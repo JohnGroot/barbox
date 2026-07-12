@@ -244,7 +244,7 @@ public partial class NinesGame : GameController
 			// Query backend for last jackpot win timestamp
 			var queryParams = new Dictionary<string, string> { { "venue_name", venueName } };
 			var queryResult = await _eventService.QueryAsync<NinesJackpotResponse>(
-				$"/nines/jackpot/{venueName}",
+				$"/game/nines/jackpot/{venueName}",
 				queryParams);
 
 			if (queryResult.IsSuccess(out var response) && response != null)

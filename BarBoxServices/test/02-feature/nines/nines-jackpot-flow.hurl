@@ -67,8 +67,8 @@ HTTP 200
 jsonpath "$.venue_name" == "test_venue_nines"
 jsonpath "$.last_win_timestamp" exists
 jsonpath "$.last_jackpot_amount" == 7500
-# Winner name will be player tag if found, or phone number if not
-jsonpath "$.last_winner_name" exists
+# Winner name resolves to the player's tag via the phone_number join
+jsonpath "$.last_winner_name" == "nines_player"
 
 # Test 3: Different venue should still have no wins
 GET http://127.0.0.1:8000/game/nines/jackpot/other_venue
