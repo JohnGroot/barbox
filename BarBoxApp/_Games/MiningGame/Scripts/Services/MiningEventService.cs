@@ -174,41 +174,9 @@ public class MiningEventService : GameEventServiceBase
 		if (string.IsNullOrEmpty(venueName))
 			return Result.Failure<MiningLocationConfig>(ValidationMessages.Required("Venue name"));
 
-		var queryParams = new Dictionary<string, string> { ["venue_name"] = venueName };
-		return await QueryBackendAsync(
-			"/game/mining/location/register",
-			queryParams,
-			ParseLocationConfig
-		);
-	}
-
-	private Result<MiningLocationConfig> ParseLocationConfig(Godot.Collections.Dictionary jsonDict)
-	{
-		var venueNameResult = JsonParsingHelpers.ParseString(jsonDict, "venue_name");
-		var gemTypeResult = JsonParsingHelpers.ParseString(jsonDict, "gem_type");
-		var displayNameResult = JsonParsingHelpers.ParseString(jsonDict, "display_name");
-
-		if (venueNameResult.IsFailure(out var venueNameError))
-			return Result.Failure<MiningLocationConfig>(venueNameError.Message);
-		if (!venueNameResult.IsSuccess(out var venueName))
-			return Result.Failure<MiningLocationConfig>("Failed to extract venue_name");
-
-		if (gemTypeResult.IsFailure(out var gemTypeError))
-			return Result.Failure<MiningLocationConfig>(gemTypeError.Message);
-		if (!gemTypeResult.IsSuccess(out var gemType))
-			return Result.Failure<MiningLocationConfig>("Failed to extract gem_type");
-
-		if (displayNameResult.IsFailure(out var displayNameError))
-			return Result.Failure<MiningLocationConfig>(displayNameError.Message);
-		if (!displayNameResult.IsSuccess(out var displayName))
-			return Result.Failure<MiningLocationConfig>("Failed to extract display_name");
-
-		return Result.Success(new MiningLocationConfig
-		{
-			VenueName = venueName,
-			GemTypeString = gemType,
-			DisplayName = displayName
-		});
+		var endpoint = $"/game/mining/location/register?venue_name={Uri.EscapeDataString(venueName)}";
+		var result = await _eventService.PostAsync<object, MiningLocationConfig>(endpoint, new { }, expectedStatusCode: 200);
+		return MapBackendError(result);
 	}
 
 	/// <summary>

@@ -147,7 +147,7 @@ async def reset_player_mining_state(
 # ============= LOCATION REGISTRATION =============
 
 
-@router.get("/location/register")
+@router.post("/location/register")
 async def register_location(
     venue_name: str,
     db_service: dependencies.Database,
