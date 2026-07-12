@@ -108,3 +108,31 @@ jsonpath "$.inventory.sapphire" == 2
 jsonpath "$.upgrades.capacity" == 2
 jsonpath "$.metadata.has_received_bonus_at_location" exists
 jsonpath "$.last_extraction_time" exists
+
+# Player deposits gems for credits - valid payload
+POST http://127.0.0.1:8000/box/session/{{session-id}}
+X-Box-API-Key: {{box-api-key}}
+{
+  "type": "mining/credit_deposit",
+  "timestamp": "{{newDate}}",
+  "payload": {
+    "gem_type": "ruby",
+    "gems_spent": 2,
+    "credits_earned": 10,
+    "location_id": "mining_box"
+  }
+}
+HTTP 201
+
+# Invalid credit_deposit payload (missing required fields) must be rejected now that
+# mining/credit_deposit is wired into EVENT_PAYLOAD_MODELS
+POST http://127.0.0.1:8000/box/session/{{session-id}}
+X-Box-API-Key: {{box-api-key}}
+{
+  "type": "mining/credit_deposit",
+  "timestamp": "{{newDate}}",
+  "payload": {
+    "gem_type": "ruby"
+  }
+}
+HTTP 422
