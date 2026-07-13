@@ -31,7 +31,7 @@ public class StripePaymentService : IPaymentService, IDisposable
 	// See: https://docs.stripe.com/payments/checkout/how-checkout-works
 	private const string STRIPE_CHECKOUT_DOMAIN = "https://checkout.stripe.com/";
 
-	private EventService _eventService;
+	private BackendClient _backend;
 	private CancellationTokenSource _pollCancellation;
 	private bool _isProcessingPurchase;
 
@@ -52,8 +52,8 @@ public class StripePaymentService : IPaymentService, IDisposable
 		bool initiationSucceeded = false;
 		try
 		{
-			_eventService = EventService.GetInstance();
-			if (!IsEventServiceValid())
+			_backend = BackendClient.GetInstance();
+			if (!IsBackendClientValid())
 			{
 				return Result.Failure<PaymentCheckout>("Payment service not available");
 			}
@@ -66,7 +66,7 @@ public class StripePaymentService : IPaymentService, IDisposable
 			GD.Print($"[StripePaymentService] Starting purchase: {creditPack.DisplayName}");
 
 			// Create checkout session
-			var sessionResult = await _eventService.CreateCheckoutSessionAsync(creditPack.PackId, playerId);
+			var sessionResult = await CreateCheckoutSessionAsync(creditPack.PackId, playerId);
 			if (sessionResult.IsFailure(out var sessionError))
 			{
 				return Result.Failure<PaymentCheckout>($"Failed to create checkout session: {sessionError.Message}");
@@ -146,15 +146,15 @@ public class StripePaymentService : IPaymentService, IDisposable
 				// Notify caller of progress
 				onProgressUpdate?.Invoke(remainingSeconds);
 
-				// Validate EventService is still available
-				if (!IsEventServiceValid())
+				// Validate BackendClient is still available
+				if (!IsBackendClientValid())
 				{
-					GD.PrintErr("[StripePaymentService] EventService became unavailable during polling");
+					GD.PrintErr("[StripePaymentService] BackendClient became unavailable during polling");
 					return PaymentResult.Failure("Payment service lost connection. Please try again.");
 				}
 
 				// Check payment status directly (more efficient than balance polling)
-				var statusResult = await _eventService.GetCheckoutStatusAsync(checkout.SessionId);
+				var statusResult = await GetCheckoutStatusAsync(checkout.SessionId);
 				if (statusResult.IsSuccess(out var status))
 				{
 					consecutiveFailures = 0; // Reset on success
@@ -189,9 +189,9 @@ public class StripePaymentService : IPaymentService, IDisposable
 				if (linkedCts.Token.IsCancellationRequested)
 					break;
 
-				if (!IsEventServiceValid())
+				if (!IsBackendClientValid())
 				{
-					GD.PrintErr("[StripePaymentService] EventService invalidated during delay");
+					GD.PrintErr("[StripePaymentService] BackendClient invalidated during delay");
 					return PaymentResult.Failure("Payment service connection lost. Please try again.");
 				}
 
@@ -217,9 +217,9 @@ public class StripePaymentService : IPaymentService, IDisposable
 
 	public async Task<bool> IsServiceAvailableAsync()
 	{
-		_eventService = EventService.GetInstance();
+		_backend = BackendClient.GetInstance();
 		await Task.CompletedTask;
-		return IsEventServiceValid();
+		return IsBackendClientValid();
 	}
 
 	public string GetProviderName()
@@ -230,13 +230,71 @@ public class StripePaymentService : IPaymentService, IDisposable
 	public bool RequiresUserActionForPayments => true;
 
 	/// <summary>
-	/// Check if EventService is valid and ready for requests
+	/// Check if BackendClient is valid and ready for requests
 	/// </summary>
-	private bool IsEventServiceValid()
+	private bool IsBackendClientValid()
 	{
-		return _eventService != null &&
-		       GodotObject.IsInstanceValid(_eventService) &&
-		       _eventService.IsReady;
+		return _backend != null &&
+		       GodotObject.IsInstanceValid(_backend) &&
+		       _backend.IsReady;
+	}
+
+	/// <summary>
+	/// Create a Stripe Checkout Session for credit purchase
+	/// Returns session URL for QR code display
+	/// </summary>
+	private async Task<Result<CheckoutSessionResponse>> CreateCheckoutSessionAsync(string packId, Guid playerId)
+	{
+		var request = new CheckoutSessionRequest { PackId = packId };
+
+		var result = await _backend.PostAsync<CheckoutSessionRequest, CheckoutSessionResponse>(
+			"/payments/checkout/create",
+			request,
+			201,
+			playerId: playerId
+		);
+
+		if (result.IsSuccess(out var response))
+		{
+			var validation = response.ValidateRequired();
+			if (validation.IsFailure(out var validationError))
+			{
+				return Result.Failure<CheckoutSessionResponse>(validationError.Message);
+			}
+
+			GD.Print($"[StripePaymentService] Checkout session created: {response.SessionId}");
+			return Result.Success(response);
+		}
+
+		if (result.IsFailure(out var error))
+		{
+			GD.PrintErr($"[StripePaymentService] Failed to create checkout session: {error.Message}");
+			return Result.Failure<CheckoutSessionResponse>(error.Message);
+		}
+
+		return Result.Failure<CheckoutSessionResponse>("Unknown error creating checkout session");
+	}
+
+	/// <summary>
+	/// Check payment completion status by Stripe session ID.
+	/// More efficient than polling credit balance (single indexed lookup vs full aggregation).
+	/// </summary>
+	private async Task<Result<CheckoutStatusResponse>> GetCheckoutStatusAsync(string sessionId)
+	{
+		var result = await _backend.QueryAsync<CheckoutStatusResponse>($"/payments/checkout/{sessionId}/status");
+
+		if (result.IsSuccess(out var response))
+		{
+			return Result.Success(response);
+		}
+
+		if (result.IsFailure(out var error))
+		{
+			GD.PrintErr($"[StripePaymentService] Failed to get checkout status: {error.Message}");
+			return Result.Failure<CheckoutStatusResponse>(error.Message);
+		}
+
+		return Result.Failure<CheckoutStatusResponse>("Unknown error getting checkout status");
 	}
 
 	private static async Task DelayAsync(float seconds)

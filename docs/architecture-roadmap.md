@@ -103,7 +103,7 @@ roadmap):
 | # | Workstream | Depends on | Risk | Status |
 |---|-----------|------------|------|--------|
 | WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
-| WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | Increments ①② DONE (2026-07-13) — see §3 note; ③–⑤ not started |
+| WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | Increments ①②③ DONE (2026-07-13) — see §3 note; ④–⑤ not started |
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | Not started |
 | WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | Not started |
 | WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
@@ -196,6 +196,17 @@ Hurl green — required updating several backend integration tests
 (`CarromMachineCreditsIntegrationTests`, `PlayerRegistrationTests`,
 `CreditPurchaseFlowTests`, `EventServiceTests`) that called the now-removed
 `EventService` credit methods directly; all now go through `CreditService`.
+
+**2026-07-13 — Increment ③ DONE.** `CreateCheckoutSessionAsync`/
+`GetCheckoutStatusAsync` moved from `EventService` into `StripePaymentService`
+(private methods there now, since it's the sole caller — not part of any
+shared domain API). `StripePaymentService` now holds a `BackendClient`
+reference instead of `EventService`, calling `_backend.PostAsync`/`QueryAsync`
+directly; its `IsEventServiceValid`/`_eventService` renamed to
+`IsBackendClientValid`/`_backend` throughout. No other caller existed (grep
+confirmed) and no test referenced these two methods directly, so no test
+updates were needed this increment. Build + full C# suite (291/291) + Hurl
+green.
 
 ### WS2 — New-game developer experience
 

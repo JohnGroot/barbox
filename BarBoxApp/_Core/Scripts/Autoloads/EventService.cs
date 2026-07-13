@@ -657,68 +657,6 @@ public partial class EventService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Create a Stripe Checkout Session for credit purchase
-	/// Returns session URL for QR code display
-	/// </summary>
-	/// <param name="packId">Credit pack identifier (e.g., "pack_25")</param>
-	/// <param name="playerId">Player making the purchase (requires JWT authentication)</param>
-	public async Task<Result<CheckoutSessionResponse>> CreateCheckoutSessionAsync(string packId, Guid playerId)
-	{
-		var request = new CheckoutSessionRequest { PackId = packId };
-
-		var result = await PostAsync<CheckoutSessionRequest, CheckoutSessionResponse>(
-			"/payments/checkout/create",
-			request,
-			201,
-			playerId: playerId
-		);
-
-		if (result.IsSuccess(out var response))
-		{
-			var validation = response.ValidateRequired();
-			if (validation.IsFailure(out var validationError))
-			{
-				return Result.Failure<CheckoutSessionResponse>(validationError.Message);
-			}
-
-			LogInfo($"Checkout session created: {response.SessionId}");
-			return Result.Success(response);
-		}
-
-		if (result.IsFailure(out var error))
-		{
-			LogError($"Failed to create checkout session: {error.Message}");
-			return Result.Failure<CheckoutSessionResponse>(error.Message);
-		}
-
-		return Result.Failure<CheckoutSessionResponse>("Unknown error creating checkout session");
-	}
-
-	/// <summary>
-	/// Check payment completion status by Stripe session ID.
-	/// More efficient than polling credit balance (single indexed lookup vs full aggregation).
-	/// </summary>
-	/// <param name="sessionId">Stripe Checkout Session ID</param>
-	/// <returns>Status response with "pending", "completed", or "failed" status</returns>
-	public async Task<Result<CheckoutStatusResponse>> GetCheckoutStatusAsync(string sessionId)
-	{
-		var result = await QueryAsync<CheckoutStatusResponse>($"/payments/checkout/{sessionId}/status");
-
-		if (result.IsSuccess(out var response))
-		{
-			return Result.Success(response);
-		}
-
-		if (result.IsFailure(out var error))
-		{
-			LogError($"Failed to get checkout status: {error.Message}");
-			return Result.Failure<CheckoutStatusResponse>(error.Message);
-		}
-
-		return Result.Failure<CheckoutStatusResponse>("Unknown error getting checkout status");
-	}
-
-	/// <summary>
 	/// Get player ID from phone number by looking up active session
 	/// This is a compatibility helper for the phone-based auth system
 	/// </summary>
