@@ -105,7 +105,7 @@ roadmap):
 | WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
 | WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | **DONE (2026-07-13)** — all 5 increments, see §3 notes |
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | **DONE (2026-07-13)** — all 5 items, see §3 notes |
-| WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | In progress (items 1-2 done 2026-07-13; see §3 notes) |
+| WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | **DONE (2026-07-13)** — all 4 items, see §3 notes |
 | WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
 | WS5 | Backend infra: machine-credits TOCTOU fix, Alembic, dead deps, formatting | none; TOCTOU fix may be pulled forward anytime | Low/Med | Not started |
 | WS6 | Deferred until a second consumer appears: leaderboard widget, countdown, lobby, `_Games/_Template` | trigger-based | — | Intentionally deferred |
@@ -395,21 +395,53 @@ Priority order within the workstream. Money first.
      display (`ShowGlobalHighScores`) was found to only ever `GD.Print` to
      the console on both success and failure paths — a separate, larger,
      pre-existing gap, left out of this item's scope.
-3. **PlayerRoster.** Four independent roster implementations with
-   inconsistent identity keying: Nines (`NinesGame.cs:339-455`, phone-keyed),
-   Carrom (`CarromGame.cs:1458-1475` + the setup menu, phone-as-PlayerId),
-   Mining (`MiningGame.cs:537-567`, single primary user), Racing (stateless).
-   Extract a `_Core` roster component: **UUID-keyed, phone number as an
-   attribute**. ⚠️ Preserve the Nines emit convention: `nines/jackpot_won`
-   sends the winner's **phone number** as `player_id` and the backend
-   leaderboard join depends on it (`games/nines/service.py` joins
-   `p.phone_number`) — keep that mapping at the emit boundary; do not "fix"
-   it to a UUID.
-4. **GameTestFixture.** The four `*GameTests` files each rebuild
-   session-setup/teardown boilerplate over `BackendTestBase`. Extract a
-   shared fixture so a new game's first flow test is ~20 lines. (This is why
-   Mining has 8 tests and Nines 4, vs Racing's 113 — testability should come
-   with the SDK, not require bespoke scaffolding.)
+3. ~~**PlayerRoster.**~~ **DONE for Nines (2026-07-13)**, Carrom/Mining/Racing
+   found not to need the same migration:
+   - Added `_Core/Scripts/Gameplay/PlayerRoster.cs` —
+     `PlayerRosterEntry` (abstract base: `PlayerId` (Guid, the key),
+     `PhoneNumber`, `DisplayName`, `SlotIndex`, `IsLoggedIn`) and
+     `PlayerRoster<T>` (Add/Remove/Find-by-id/Find-by-phone). UUID-keyed,
+     phone number is an attribute, not the key.
+   - Nines migrated: `NinesPlayer` now extends `PlayerRosterEntry` (keeping
+     only its own `Credits`/prediction-analytics fields); `NinesState.Players`
+     is backed by a `PlayerRoster<NinesPlayer>`. Identity checks
+     (`OnUserLoggedIn`) now key on `session.PlayerId` instead of phone number.
+     ⚠️ Preserved: `nines/jackpot_won` still sends the winner's **phone
+     number** as `player_id` (`RecordJackpotWinAsync` reads `.PhoneNumber`,
+     untouched) — the backend leaderboard join depends on it
+     (`games/nines/service.py` joins `p.phone_number`).
+   - **Carrom found NOT to fit this shape**: its competitive-mode "roster"
+     (`CarromCompetitiveModeManager.GetPlayers()`) keys players by fixed
+     `"player1"`/`"player2"` turn-display labels, not phone/UUID — session
+     identity is resolved separately, only at credit-spend time, via
+     `SessionManager.GetSessionByPhone`. The `CarromGame.cs:1458-1465`
+     `_playerMgmt`/`CarromPlayer` roster cited in the original spec turned out
+     to be vestigial — a single dev-mode "default" player, unused everywhere
+     else (`_players` field is dead code, never read). Migrating Carrom's
+     *actual* multiplayer identity model onto `PlayerRoster<T>` would mean
+     rewriting how competitive mode assigns identity to turns/scoring/UI
+     display across `CarromCompetitiveModeManager.cs`, `CarromScoreDisplay.cs`,
+     and `CarromPlayerSetupMenu.cs` — a much larger, higher-risk refactor of
+     already well-tested gameplay logic, not a drop-in roster swap. Deferred;
+     worth its own scoped pass if picked up later.
+   - **Mining has no roster to extract** — genuinely single-primary-user,
+     reads `SessionManager.GetPrimarySession()` directly wherever needed
+     (`MiningGame.cs:537-540`). Confirmed via code read, no action needed.
+   - **Racing confirmed stateless** per the original spec — `_playerMgmt`
+     is the already-shared `_Core.PlayerManagementComponent`, but it tracks
+     physical in-race car/player entities (string-keyed `BasePlayer`), not
+     login/credit identity. Different concept from the roster this item
+     targets; nothing to migrate.
+4. ~~**GameTestFixture.**~~ **DONE (2026-07-13)**: Mining/Nines/Racing's
+   `*GameTests` files didn't even extend `BackendTestBase` — each hand-rolled
+   an identical `[SetupAll]`/`[CleanupAll]` (health check, get
+   `SessionEventService`, create an activity session against the seeded test
+   box/player, close it after the suite). Added
+   `Tests/Fixtures/GameSessionTestBase.cs` (`: BackendTestBase`) to own that
+   once; each of the three now just overrides `GameTag` — no
+   `[SetupAll]`/`[CleanupAll]` of its own. Carrom's session is multiplayer and
+   created per-test (not once upfront), so it doesn't fit this shape and
+   stays on `BackendTestBase` directly, unchanged.
 
 ### WS4 — Backend dedup
 
