@@ -102,7 +102,7 @@ roadmap):
 
 | # | Workstream | Depends on | Risk | Status |
 |---|-----------|------------|------|--------|
-| WS0 | Security remediation (operational, out-of-band) | — | urgent | OPEN — see Appendix B |
+| WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
 | WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | Spec ready, not started |
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | Not started |
 | WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | Not started |
@@ -563,25 +563,47 @@ auth cycle broken.
 
 ---
 
-## Appendix B — ⚠️ SECURITY (out-of-band, urgent, still open)
+## Appendix B — ⚠️ SECURITY (out-of-band; keys rotated, code items remain)
 
-> Carried verbatim from the prior audit doc. Operational, not code-cleanup;
-> recorded here so it is not lost. **Not part of any coding workstream.**
+> Carried from the prior audit doc. Operational, not code-cleanup; recorded
+> here so it is not lost. **Not part of any coding workstream.**
 
-- **Secrets persist in git history** despite commit `83b728c`. Stripe test
-  `sk_test_…` / `whsec_…` and a box API key remain in prior revisions of the
-  `.env.example` files / `deployment/deploy.sh`.
-- The leaked **box API key stays valid until the server's `JWT_SECRET_KEY` is
-  rotated** — box keys are `HMAC(JWT_SECRET_KEY, box_id)` (`web/auth.py:33-52`),
-  and `JWT_SECRET_KEY` defaults to `"dev-secret-UNSAFE-change-in-production"`
-  (`env.py:45`). The rotation commit did not rotate the server secret.
+**✅ Rotation verified (2026-07-13)** — checked against git history by hash
+comparison (no secret values exposed):
+
+- **Stripe secret key**: current config value differs from the leaked
+  `sk_test_…`; `STRIPE_SECRET_KEY` is set as a deployed Fly secret.
+- **Stripe webhook secret (production)**: the Fly value differs from the
+  leaked `whsec_…`. The leaked value survives only as the **local dev
+  Stripe-CLI listener secret** (`BarBoxServices/.env:33`, untracked) —
+  test-mode, local-only, low risk; regenerate via `stripe listen` when
+  convenient.
+- **Leaked box API key**: dead **by design** — it's 43 chars non-hex,
+  predating the current scheme where keys are 64-hex
+  `HMAC(JWT_SECRET_KEY, box_id)` verified by exact derivation
+  (`web/auth.py:33-52`). It cannot authenticate regardless of the secret.
+- **`JWT_SECRET_KEY`**: set as a deployed Fly secret (rotated per operator;
+  the value can't be compared from digests — and no historical revision ever
+  contained a real production JWT secret, only the public default).
+
+Net: the secrets in git history are dead credentials; history scrubbing is
+optional hygiene, not urgent.
+
+**Still open (code-level):**
+
 - `POST /box/` and `PUT /box/{box_id}` are **unauthenticated and return the
-  derived api_key** (`web/box.py:20,96-101,139,254-259`).
-- `.env.example:66-71` still advises "test keys are safe to commit."
-
-**Action:** rotate `JWT_SECRET_KEY` + Stripe keys, purge/scrub history or
-rotate everything derivable from it, add auth to box registration, remove the
-"safe to commit" guidance.
+  derived api_key** (`web/box.py:21,75-100`; PUT recovery path `:195-258`
+  deliberately "always returns key for recovery/re-deployment"). Anyone who
+  can reach the API can mint a valid box key — **this is now the main
+  exposure**. Add auth (or at minimum a registration secret) to box
+  registration — small, code-level; can ride along with WS4.
+- `.env.example:66` still advises test keys are "safe to commit" — remove the
+  guidance (that advice is how the keys got into history in the first place).
+- The `JWT_SECRET_KEY` default remains
+  `"dev-secret-UNSAFE-change-in-production"` (`env.py:45`) — an environment
+  missing the env var silently falls back to a public value, which would also
+  make box keys publicly derivable. Consider making production boot fail on
+  the default.
 
 ---
 
