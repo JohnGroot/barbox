@@ -574,10 +574,11 @@ comparison (no secret values exposed):
 - **Stripe secret key**: current config value differs from the leaked
   `sk_test_…`; `STRIPE_SECRET_KEY` is set as a deployed Fly secret.
 - **Stripe webhook secret (production)**: the Fly value differs from the
-  leaked `whsec_…`. The leaked value survives only as the **local dev
-  Stripe-CLI listener secret** (`BarBoxServices/.env:33`, untracked) —
-  test-mode, local-only, low risk; regenerate via `stripe listen` when
-  convenient.
+  leaked `whsec_…`. The local dev Stripe-CLI listener secret
+  (`BarBoxServices/.env:33`, untracked) briefly still held the leaked value;
+  the CLI secret had already rolled over and the file was synced to the new
+  value on 2026-07-13 — the leaked webhook secret is no longer in use
+  anywhere.
 - **Leaked box API key**: dead **by design** — it's 43 chars non-hex,
   predating the current scheme where keys are 64-hex
   `HMAC(JWT_SECRET_KEY, box_id)` verified by exact derivation
@@ -597,8 +598,8 @@ optional hygiene, not urgent.
   can reach the API can mint a valid box key — **this is now the main
   exposure**. Add auth (or at minimum a registration secret) to box
   registration — small, code-level; can ride along with WS4.
-- `.env.example:66` still advises test keys are "safe to commit" — remove the
-  guidance (that advice is how the keys got into history in the first place).
+- ~~`.env.example` "test keys are safe to commit" guidance~~ — **removed
+  2026-07-13** (commit `a386ab5`).
 - The `JWT_SECRET_KEY` default remains
   `"dev-secret-UNSAFE-change-in-production"` (`env.py:45`) — an environment
   missing the env var silently falls back to a public value, which would also
