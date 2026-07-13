@@ -173,9 +173,6 @@ public partial class CreditService : AutoloadBase
 	/// dialog, then spend on confirm. One entry point so games stop hand-rolling
 	/// balance -> confirm -> spend. Does NOT cover multi-player rollback (Nines)
 	/// or spend-then-deposit (Carrom) shapes.
-	///
-	/// NOTE: CreditConfirmationHelper.ShowCreditConfirmationAsync is currently a
-	/// stub that always confirms - the confirmation gate is not yet enforced.
 	/// </summary>
 	public async Task<Result<int>> SpendWithConfirmationAsync(Guid playerId, string phoneNumber, int amount, string reason)
 	{
