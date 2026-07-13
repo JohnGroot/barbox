@@ -103,7 +103,7 @@ roadmap):
 | # | Workstream | Depends on | Risk | Status |
 |---|-----------|------------|------|--------|
 | WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
-| WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | Increments ①②③ DONE (2026-07-13) — see §3 note; ④–⑤ not started |
+| WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | Increments ①②③④ DONE (2026-07-13) — see §3 note; ⑤ (rename) not started |
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | Not started |
 | WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | Not started |
 | WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
@@ -207,6 +207,30 @@ directly; its `IsEventServiceValid`/`_eventService` renamed to
 confirmed) and no test referenced these two methods directly, so no test
 updates were needed this increment. Build + full C# suite (291/291) + Hurl
 green.
+
+**2026-07-13 — Increment ④ DONE.** `IsUsernameAvailableAsync`/
+`ValidatePlayerCreationAsync`/`CreatePlayerAsync` moved into `SessionManager`
+(as private `QueryUsernameAvailableAsync`/`ValidatePlayerCreationBackendAsync`/
+`CreatePlayerBackendAsync` over a new `_backend` field, called from
+`SessionManager`'s existing same-named public wrappers — those wrappers'
+validation/cleaning logic and signatures are unchanged). `RegisterBoxWithDetailAsync`/
+`RegisterBoxAsync` moved into `LocationManager` (its only caller,
+`VerifyBoxRegistrationDeferred`, updated to check `BackendClient` readiness
+instead of `EventService`). `GetPlayerIdFromPhone` moved to a genuine static
+method on `SessionManager` (it already just delegated to
+`SessionManager.GetSessionByPhone` before this) — all 22 call sites across
+the app and test suite renamed from `EventService.GetPlayerIdFromPhone` to
+`SessionManager.GetPlayerIdFromPhone`. `EventService.PostAsync`/`QueryAsync`
+pass-throughs (session/emit domain, login/logout) are unaffected — they
+weren't in this increment's move list. Build + full C# suite (291/291,
+unchanged pass count — no test called the six moved methods' `EventService`
+form directly) + Hurl green.
+
+**WS1 status:** increments ①–④ complete. Increment ⑤ (rename
+`EventService` → `SessionEventService`) remains — see Appendix A for the
+churn list (autoload node name, ~7 test node-paths, `GetInstance()` callers,
+`GameEventServiceBase._eventService` field type). Optional per the roadmap's
+own analysis; not yet scheduled.
 
 ### WS2 — New-game developer experience
 

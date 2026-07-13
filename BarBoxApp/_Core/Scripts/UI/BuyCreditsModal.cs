@@ -565,7 +565,7 @@ public partial class BuyCreditsModal : Control
 
 		try
 		{
-			var playerId = EventService.GetPlayerIdFromPhone(_targetPhoneNumber);
+			var playerId = SessionManager.GetPlayerIdFromPhone(_targetPhoneNumber);
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 			// Hide QR view (if showing) before showing result

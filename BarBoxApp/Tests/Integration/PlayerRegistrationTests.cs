@@ -91,7 +91,7 @@ public class PlayerRegistrationTests : BackendTestBase
 		session.LobbySessionId.ShouldNotBe(Guid.Empty,
 			"Lobby session MUST be created during login (session creation 404 bug check!)");
 
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+		var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 		TestHelpers.LogTestInfo($"Player logged in with ID: {playerId}");
 
 		// Verify player is registered in backend by attempting credit operation
@@ -165,7 +165,7 @@ public class PlayerRegistrationTests : BackendTestBase
 		login2.IsSuccess(out var _).ShouldBeTrue("Second login should succeed (idempotent registration)");
 
 		// Assert - All logins should produce same player ID
-		var playerId = EventService.GetPlayerIdFromPhone(phone2);
+		var playerId = SessionManager.GetPlayerIdFromPhone(phone2);
 		TestHelpers.LogTestInfo($"Player ID consistent across logins: {playerId}");
 
 		// Verify credit operations still work
@@ -221,7 +221,7 @@ public class PlayerRegistrationTests : BackendTestBase
 		loginResult.IsSuccess(out var session).ShouldBeTrue("Login should succeed");
 		session.LobbySessionId.ShouldNotBe(Guid.Empty, "Lobby session required for credit operations");
 
-		var playerId = EventService.GetPlayerIdFromPhone(phone3);
+		var playerId = SessionManager.GetPlayerIdFromPhone(phone3);
 		TestHelpers.LogTestInfo($"Player registered: {playerId}");
 
 		// Get initial balance

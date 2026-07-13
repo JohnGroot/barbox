@@ -53,7 +53,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		}
 
 		var creditPack = CreditPack.CreateForTest(25, 25.00m);
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+		var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 
 		// Get initial credits from CreditService (single source of truth)
 		var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
@@ -118,7 +118,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		TestHelpers.LogTestInfo($"EventService ready: {isEventServiceReady}");
 
 		// Act
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+		var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 		var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 		// Assert
@@ -186,7 +186,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		}
 
 		var smallPack = CreditPack.CreateForTest(5, 5.00m);
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+		var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 
 		// Get initial credits from CreditService (single source of truth)
 		var initialCreditsResult = await _creditService.GetBalanceAsync(playerId);
@@ -254,7 +254,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		if (loginResult.IsSuccess(out var _))
 		{
 			var creditPack = CreditPack.CreateForTest(10, 10.00m);
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+			var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 			TestHelpers.LogTestInfo($"Purchase with ready services: {(result.IsSuccess ? "Success" : $"Failed - {result.ErrorMessage}")}");
@@ -285,7 +285,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 			return;
 		}
 
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+		var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 		var creditPack = CreditPack.CreateForTest(25, 25.00m);
 
 		// Get initial balance with forced refresh to ensure we have accurate starting point

@@ -159,7 +159,7 @@ public class PaymentServiceTests : BackendTestBase
 			TestHelpers.LogTestInfo("EventService forced to NOT READY state - simulating backend failure");
 
 			// Act - attempt purchase with backend unavailable
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+			var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 			// Assert - purchase MUST fail
@@ -216,7 +216,7 @@ public class PaymentServiceTests : BackendTestBase
 		var fakePhoneNumber = "9999999999"; // Phone number with no session
 
 		// Act
-		var playerId = EventService.GetPlayerIdFromPhone(fakePhoneNumber);
+		var playerId = SessionManager.GetPlayerIdFromPhone(fakePhoneNumber);
 		var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 		// Assert

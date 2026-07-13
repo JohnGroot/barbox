@@ -3,6 +3,7 @@ using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -43,6 +44,7 @@ public partial class SessionManager : AutoloadBase
 	[Signal] public delegate void UserLoggedOutEventHandler(string phoneNumber);
 
 	private EventService _eventService;
+	private BackendClient _backend;
 	private Dictionary<string, UserSession> _activeSessions = new();
 	private Dictionary<Guid, UserSession> _sessionsByPlayerId = new(); // Secondary index for O(1) lookup by PlayerId
 	private Godot.Timer _idleTimer;
@@ -68,6 +70,12 @@ public partial class SessionManager : AutoloadBase
 		if (_eventService == null)
 		{
 			LogWarning("EventService not found - user events will not be persisted to backend");
+		}
+
+		_backend = BackendClient.GetInstance();
+		if (_backend == null)
+		{
+			LogWarning("BackendClient not found - auth operations will be unavailable");
 		}
 
 		SetupIdleTimer();
@@ -324,9 +332,9 @@ public partial class SessionManager : AutoloadBase
 		if (!InputValidator.IsValidUsername(cleanedUsername))
 			return Result.Failure<string>("Username must be 1-7 characters, alphanumeric and underscore only");
 
-		if (_eventService == null)
+		if (_backend == null)
 		{
-			LogError("EventService not available for account creation");
+			LogError("BackendClient not available for account creation");
 			return Result.Failure<string>("Backend service unavailable - please try again later");
 		}
 
@@ -347,7 +355,7 @@ public partial class SessionManager : AutoloadBase
 
 			var boxId = locationManager.BoxId;
 			// Create player account via direct REST call to backend
-			var result = await _eventService.CreatePlayerAsync(playerId, cleanedUsername, cleanedPhone, cleanedPin, boxId);
+			var result = await CreatePlayerBackendAsync(playerId, cleanedUsername, cleanedPhone, cleanedPin, boxId);
 			if (result.IsSuccess(out _))
 			{
 				LogInfo($"Account created successfully for {cleanedUsername} ({cleanedPhone})");
@@ -394,9 +402,9 @@ public partial class SessionManager : AutoloadBase
 		if (!InputValidator.IsValidUsername(cleanedUsername))
 			return Result.Failure<PlayerValidationResponse>("Username must be 1-7 characters, alphanumeric and underscore only");
 
-		if (_eventService == null)
+		if (_backend == null)
 		{
-			LogError("EventService not available for validation");
+			LogError("BackendClient not available for validation");
 			return Result.Failure<PlayerValidationResponse>("Backend service unavailable - please try again later");
 		}
 
@@ -417,7 +425,7 @@ public partial class SessionManager : AutoloadBase
 			var boxId = locationManager.BoxId;
 
 			// Validate via backend
-			var result = await _eventService.ValidatePlayerCreationAsync(playerId, cleanedUsername, cleanedPhone, cleanedPin, boxId);
+			var result = await ValidatePlayerCreationBackendAsync(playerId, cleanedUsername, cleanedPhone, cleanedPin, boxId);
 			if (result.IsSuccess(out var validationResponse))
 			{
 				LogInfo($"Validation result for {cleanedUsername}: Valid={validationResponse.Valid}, ErrorCount={validationResponse.Errors?.Length ?? 0}");
@@ -449,14 +457,14 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			if (_eventService == null)
+			if (_backend == null)
 			{
 				// Fallback to optimistic validation if backend unavailable
-				LogWarning("EventService not available, optimistically allowing username");
+				LogWarning("BackendClient not available, optimistically allowing username");
 				return Result.Success(true);
 			}
 
-			var result = await _eventService.IsUsernameAvailableAsync(cleanedUsername);
+			var result = await QueryUsernameAvailableAsync(cleanedUsername);
 			if (result.IsSuccess(out var isAvailable))
 			{
 				LogInfo($"Username '{cleanedUsername}' availability: {isAvailable}");
@@ -768,6 +776,98 @@ public partial class SessionManager : AutoloadBase
 
 	// Private helper methods
 
+	/// <summary>
+	/// Check if username is available for registration
+	/// </summary>
+	private async Task<Result<bool>> QueryUsernameAvailableAsync(string username)
+	{
+		var result = await _backend.QueryAsync<UsernameAvailabilityResponse>(
+			$"/player/username/{Uri.EscapeDataString(username)}/available",
+			null
+		);
+
+		if (result.IsSuccess(out var response))
+			return Result.Success(response.IsAvailable);
+
+		if (result.IsFailure(out var error))
+			return Result.Failure<bool>(error.Message);
+
+		return Result.Failure<bool>("Unknown error");
+	}
+
+	/// <summary>
+	/// Validate player creation without actually creating the player (pre-flight check)
+	/// Performs all validation checks: box exists, username available, player ID unique
+	/// </summary>
+	private async Task<Result<PlayerValidationResponse>> ValidatePlayerCreationBackendAsync(Guid playerId, string username, string phoneNumber, string pin, Guid originBoxId)
+	{
+		var request = new PlayerCreateRequest
+		{
+			Id = playerId.ToString(),
+			Tag = username,
+			PhoneNumber = phoneNumber,
+			Pin = pin,
+			OriginId = originBoxId.ToString()
+		};
+
+		var result = await _backend.PostAsync<PlayerCreateRequest, PlayerValidationResponse>("/player/validate", request, 200);
+
+		if (result.IsSuccess(out var response))
+		{
+			if (!response.Valid)
+			{
+				// Validation failed - construct error message from validation errors
+				var errorMessages = new StringBuilder();
+				errorMessages.AppendLine("Validation failed:");
+				foreach (var validationError in response.Errors)
+				{
+					errorMessages.AppendLine($"  - {validationError.Field}: {validationError.Message}");
+				}
+				LogWarning($"Player validation failed: {errorMessages}");
+			}
+			return Result.Success(response);
+		}
+
+		if (result.IsFailure(out var error))
+		{
+			LogError($"Failed to validate player creation: {error.Message}");
+			return Result.Failure<PlayerValidationResponse>(error.Message);
+		}
+
+		return Result.Failure<PlayerValidationResponse>("Unknown error");
+	}
+
+	/// <summary>
+	/// Create a new player account via backend API
+	/// </summary>
+	private async Task<Result<Guid>> CreatePlayerBackendAsync(Guid playerId, string username, string phoneNumber, string pin, Guid originBoxId)
+	{
+		var request = new PlayerCreateRequest
+		{
+			Id = playerId.ToString(),
+			Tag = username,
+			PhoneNumber = phoneNumber,
+			Pin = pin,
+			OriginId = originBoxId.ToString()
+		};
+
+		var result = await _backend.PostAsync<PlayerCreateRequest, PlayerDetailResponse>("/player/", request, 201);
+
+		if (result.IsSuccess(out var _))
+		{
+			LogInfo($"Player created successfully: {username} ({playerId})");
+			return Result.Success(playerId);
+		}
+
+		if (result.IsFailure(out var error))
+		{
+			LogError($"Failed to create player: {error.Message}");
+			return Result.Failure<Guid>(error.Message);
+		}
+
+		return Result.Failure<Guid>("Unknown error");
+	}
+
 	private void SetupIdleTimer()
 	{
 		_idleTimer = new Godot.Timer();
@@ -798,6 +898,29 @@ public partial class SessionManager : AutoloadBase
 	public static SessionManager GetInstance()
 	{
 		return GetAutoload<SessionManager>();
+	}
+
+	/// <summary>
+	/// Get player ID from phone number by looking up active session
+	/// This is a compatibility helper for the phone-based auth system
+	/// </summary>
+	public static Guid GetPlayerIdFromPhone(string phoneNumber)
+	{
+		var sessionManager = GetInstance();
+		if (sessionManager == null)
+		{
+			GD.PrintErr("[SessionManager] SessionManager not available - cannot get player ID from phone");
+			return Guid.Empty;
+		}
+
+		var session = sessionManager.GetSessionByPhone(phoneNumber);
+		if (session == null)
+		{
+			GD.PrintErr($"[SessionManager] No active session found for phone: {phoneNumber}");
+			return Guid.Empty;
+		}
+
+		return session.PlayerId;
 	}
 
 	protected override void OnServiceDestroyed()

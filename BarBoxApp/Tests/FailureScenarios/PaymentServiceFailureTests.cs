@@ -59,7 +59,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			IsEventServiceNotReady().ShouldBeTrue("Test infrastructure error: EventService should be simulated as not ready");
 
 			// Act - attempt purchase (simulates exact production scenario)
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+			var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 			// Assert - MUST fail
@@ -104,7 +104,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			return;
 		}
 
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+		var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 		var creditPack = CreditPack.CreateForTest(25, 25.00m);
 
 		// Get initial credits from CreditService (single source of truth)
@@ -170,7 +170,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			// Phase 1: Backend failure
 			SimulateEventServiceNotReady();
 
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+			var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 			var failureResult = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 			failureResult.IsSuccess.ShouldBeFalse("Purchase must fail during backend failure");
 			TestHelpers.LogTestInfo($"Phase 1: Purchase correctly failed during outage");
@@ -212,7 +212,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			SimulateEventServiceNotReady();
 
 			// Act
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+			var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, CreditPack.CreateForTest(5, 5.00m));
 
 			// Assert - Error message must contain diagnostic info
@@ -269,7 +269,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			return;
 		}
 
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+		var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 		var creditPack = CreditPack.CreateForTest(10, 10.00m);
 
 		// Get initial credits from CreditService (single source of truth)

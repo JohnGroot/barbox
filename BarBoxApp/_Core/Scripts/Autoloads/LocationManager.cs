@@ -1,4 +1,5 @@
 using Godot;
+using LightResults;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -293,17 +294,17 @@ public partial class LocationManager : AutoloadBase
 	{
 		try
 		{
-			// Wait for EventService to be ready
+			// Wait for BackendClient to be ready
 			await AutoloadBase.StaticDelayAsync(1.0f); // Frame-aware timing
 
-			var eventService = EventService.GetInstance();
-			if (eventService == null || !eventService.IsReady)
+			var backend = BackendClient.GetInstance();
+			if (backend == null || !backend.IsReady)
 			{
-				LogWarning("EventService not ready - skipping box verification");
+				LogWarning("BackendClient not ready - skipping box verification");
 				return;
 			}
 
-			var result = await eventService.RegisterBoxWithDetailAsync(_boxId, _venueName);
+			var result = await RegisterBoxWithDetailAsync(_boxId, _venueName);
 
 			if (result.IsSuccess(out var response))
 			{
@@ -358,6 +359,87 @@ public partial class LocationManager : AutoloadBase
 		{
 			LogWarning($"Box verification exception: {ex.Message}");
 		}
+	}
+
+	/// <summary>
+	/// Register or verify box with backend, returning full response including API key on first registration
+	/// Idempotent - safe to call multiple times
+	/// Returns BoxDetailResponse with ApiKey field populated ONLY on first-time registration
+	/// </summary>
+	public async Task<Result<BoxDetailResponse>> RegisterBoxWithDetailAsync(Guid boxId, string locationName)
+	{
+		var backend = BackendClient.GetInstance();
+		if (backend == null)
+			return Result.Failure<BoxDetailResponse>("BackendClient not available");
+
+		var request = new BoxCreateRequest
+		{
+			Id = boxId.ToString(),
+			Name = locationName,
+			Tag = locationName
+		};
+
+		// Use PUT for idempotent box registration
+		var result = await backend.PutAsync<BoxCreateRequest, BoxDetailResponse>(
+			$"/box/{boxId}",
+			request,
+			200
+		);
+
+		if (result.IsSuccess(out var response))
+		{
+			// API key is always returned now - mask it for logging
+			var maskedKey = !string.IsNullOrEmpty(response.ApiKey) && response.ApiKey.Length > 12
+				? $"{response.ApiKey[..8]}...{response.ApiKey[^4..]}"
+				: "***";
+
+			// Detect first-time registration vs re-registration via warning message
+			var isFirstRegistration = !string.IsNullOrEmpty(response.Warning)
+				&& response.Warning.StartsWith("Save", StringComparison.OrdinalIgnoreCase);
+
+			if (isFirstRegistration)
+			{
+				LogInfo($"Box registered (first time): {locationName} ({boxId}), key: {maskedKey}");
+			}
+			else
+			{
+				LogInfo($"Box verified: {locationName} ({boxId}), key: {maskedKey}");
+
+				// Log warning if name/tag mismatch was detected
+				if (!string.IsNullOrEmpty(response.Warning) && response.Warning.Contains("different"))
+				{
+					LogWarning($"Box registration note: {response.Warning}");
+				}
+			}
+
+			return Result.Success(response);
+		}
+
+		if (result.IsFailure(out var error))
+		{
+			LogError($"Box registration failed: {error.Message}");
+			return Result.Failure<BoxDetailResponse>(error.Message);
+		}
+
+		return Result.Failure<BoxDetailResponse>("Unknown error registering box");
+	}
+
+	/// <summary>
+	/// Register box (physical terminal) with backend
+	/// Idempotent - safe to call multiple times
+	/// Backward compatibility wrapper - use RegisterBoxWithDetailAsync for full response
+	/// </summary>
+	public async Task<Result<Guid>> RegisterBoxAsync(Guid boxId, string locationName)
+	{
+		var result = await RegisterBoxWithDetailAsync(boxId, locationName);
+
+		if (result.IsSuccess(out var detail))
+			return Result.Success(Guid.Parse(detail.Id));
+
+		if (result.IsFailure(out var error))
+			return Result.Failure<Guid>(error.Message);
+
+		return Result.Failure<Guid>("Unknown error");
 	}
 
 	protected override void OnServiceDestroyed()

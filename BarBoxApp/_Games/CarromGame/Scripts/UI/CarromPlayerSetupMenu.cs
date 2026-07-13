@@ -653,7 +653,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				if (session != null)
 				{
 					// Generate player ID from phone number (deterministic UUID)
-					var playerId = EventService.GetPlayerIdFromPhone(phoneNumber);
+					var playerId = SessionManager.GetPlayerIdFromPhone(phoneNumber);
 					playerIds.Add(playerId);
 				}
 			}
@@ -1231,7 +1231,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		foreach (var kvp in _slotToPhoneNumber)
 		{
 			var slotPhoneNumber = kvp.Value;
-			var slotPlayerId = EventService.GetPlayerIdFromPhone(slotPhoneNumber);
+			var slotPlayerId = SessionManager.GetPlayerIdFromPhone(slotPhoneNumber);
 			if (slotPlayerId == playerGuid)
 			{
 				UpdatePlayerSlotCreditsAsync(kvp.Key, newBalance);
@@ -1259,7 +1259,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 					break;
 
 				// Fetch credits from CreditService (single source of truth)
-				var playerId = EventService.GetPlayerIdFromPhone(phoneNumber);
+				var playerId = SessionManager.GetPlayerIdFromPhone(phoneNumber);
 				if (_creditService != null)
 				{
 					var balanceResult = await _creditService.GetBalanceAsync(playerId);

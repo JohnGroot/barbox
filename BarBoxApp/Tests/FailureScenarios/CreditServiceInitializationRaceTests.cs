@@ -70,7 +70,7 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 
 		try
 		{
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+			var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 
 			// Verify EventService is actually ready (matches production logs)
 			_eventService.ShouldNotBeNull("EventService should exist");
@@ -152,7 +152,7 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 			return;
 		}
 
-		var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+		var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 		var creditPack = CreditPack.CreateForTest(25, 25.00m);
 
 		// Get initial credits from CreditService (single source of truth)
@@ -242,7 +242,7 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 
 		try
 		{
-			var playerId = EventService.GetPlayerIdFromPhone(TestPlayerPhone);
+			var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 
 			// Verify EventService is ready
 			var eventService = EventService.GetInstance();
