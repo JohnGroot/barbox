@@ -434,9 +434,8 @@ public partial class CarromGame : GameController
 		// Setup state machine for competitive mode
 		SetupStateMachineForCurrentMode();
 
-		// Show score display and notification system
+		// Show score display
 		_scoreDisplay?.SetVisible(true);
-		_notificationSystem?.Show();
 
 		GD.Print($"[DEBUG] Competitive mode activated with {playerCount} players");
 	}

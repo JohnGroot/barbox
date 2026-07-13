@@ -93,7 +93,6 @@ public partial class CarromGame : GameController
 	
 	// UI Components
 	private CarromScoreDisplay _scoreDisplay;
-	private CarromNotificationSystem _notificationSystem;
 	private CarromPlayerSetupMenu _playerSetupMenu;
 	private int _pendingPlayerCount = 2; // Track player count for menu → game transition
 	
@@ -420,11 +419,6 @@ public partial class CarromGame : GameController
 		// Connect to Pass Turn signal for manual turn advancement
 		_scoreDisplay.PassTurnRequested += OnPassTurnRequested;
 
-		// Initialize notification system (positioned below top menu bar)
-		_notificationSystem = new CarromNotificationSystem();
-		AddChild(_notificationSystem);
-		_notificationSystem.Hide(); // Hidden by default, shown in competitive mode
-
 		// Initialize player setup menu
 		_playerSetupMenu = new CarromPlayerSetupMenu();
 		AddChild(_playerSetupMenu);
@@ -637,9 +631,9 @@ public partial class CarromGame : GameController
 		// Clean up competitive mode before switching
 		_competitiveModeManager?.CleanupMode();
 
-		// Hide score display and notification system
+		// Hide score display and notifications
 		_scoreDisplay?.SetVisible(false);
-		_notificationSystem?.Hide();
+		Platform.Notifications.ClearAll();
 
 		// Reset camera to default rotation (player 0 position)
 		_cameraController?.ResetRotation();
@@ -799,7 +793,7 @@ public partial class CarromGame : GameController
 		StopAllPieceHighlights();
 
 		// Clear any sticky notifications when striker is hit
-		_notificationSystem?.ClearStickyNotification();
+		Platform.Notifications.ClearSticky();
 
 		// Get striker from current mode manager
 		var striker = _currentModeManager?.GetStriker();
@@ -1216,7 +1210,7 @@ public partial class CarromGame : GameController
 			StartPieceHighlightsForPlayer(playerIndex);
 
 			// Show turn notification at same time as highlights for visual consistency
-			if (_notificationSystem != null && _competitiveModeManager != null && _carromGameMode == CarromGameMode.Competitive)
+			if (_competitiveModeManager != null && _carromGameMode == CarromGameMode.Competitive)
 			{
 				var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
 				if (currentPlayer != null)
@@ -1226,7 +1220,7 @@ public partial class CarromGame : GameController
 					int turnNumber = _competitiveModeManager.GetPlayers().Count > 0 ?
 						(_competitiveModeManager.GetPlayers().IndexOf(currentPlayer) + 1) : 1;
 					string message = $"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN {pieceIcon}";
-					_notificationSystem.ShowNotification(NotificationType.TurnStart, message);
+					ShowCarromNotification(NotificationType.TurnStart, message);
 				}
 			}
 
@@ -2178,8 +2172,8 @@ public partial class CarromGame : GameController
 		// Handle win condition
 		EndRound();
 
-		// Hide notification system on round end
-		_notificationSystem?.Hide();
+		// Clear notifications on round end
+		Platform.Notifications.ClearAll();
 
 		// Show comprehensive game over screen
 		ShowGameOverScreen(playerId);
@@ -2195,10 +2189,7 @@ public partial class CarromGame : GameController
 		EmitSignal(SignalName.StrikerFoul, playerId);
 
 		// Show foul notification (timed)
-		if (_notificationSystem != null)
-		{
-			_notificationSystem.ShowNotification(NotificationType.Foul, $"⚠️ Foul by {playerId.ToUpper()}!");
-		}
+		ShowCarromNotification(NotificationType.Foul, $"⚠️ Foul by {playerId.ToUpper()}!");
 
 		// Also show floating text above player's score for emphasis
 		if (_scoreDisplay != null)
@@ -2212,10 +2203,17 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void OnNotificationRequested(int notificationType, string message)
 	{
-		if (_notificationSystem != null)
-		{
-			_notificationSystem.ShowNotification((NotificationType)notificationType, message);
-		}
+		ShowCarromNotification((NotificationType)notificationType, message);
+	}
+
+	/// <summary>
+	/// Show a notification styled per Carrom's notification taxonomy
+	/// (<see cref="CarromNotificationStyle"/>) via the shared platform overlay.
+	/// </summary>
+	private void ShowCarromNotification(NotificationType type, string message, float? durationOverride = null)
+	{
+		var style = CarromNotificationStyle.For(type);
+		Platform.Notifications.Show(message, color: style.Color, sticky: style.Sticky, duration: durationOverride ?? style.Duration);
 	}
 
 	/// <summary>
@@ -2247,16 +2245,15 @@ public partial class CarromGame : GameController
 			}
 		}
 
-		// Show notification system with initial turn notification
-		if (_notificationSystem != null && _competitiveModeManager != null)
+		// Show initial turn notification
+		if (_competitiveModeManager != null)
 		{
 			var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
 			if (currentPlayer != null)
 			{
 				string pieceIcon = currentPlayer.AssignedPieceType == PieceType.White ? "⚪" : "⚫";
 				string message = $"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN {pieceIcon} - Turn 1";
-				_notificationSystem.Show();
-				_notificationSystem.ShowNotification(NotificationType.TurnStart, message);
+				ShowCarromNotification(NotificationType.TurnStart, message);
 			}
 		}
 
@@ -2351,7 +2348,7 @@ public partial class CarromGame : GameController
 				var sessionResult = await StartBackendSessionAsync(boxId, playerIds[0], playerIdStrings);
 
 				// Validate objects still exist after async boundary
-				if (!IsInstanceValid(_eventService) || !IsInstanceValid(_notificationSystem))
+				if (!IsInstanceValid(_eventService))
 				{
 					GD.PrintErr("[CarromGame] Services became invalid during async operation");
 					return;
@@ -2362,11 +2359,7 @@ public partial class CarromGame : GameController
 					GD.PrintErr($"[CarromGame] Failed to create multiplayer session: {sessionError.Message}");
 
 					// Show error notification
-					_notificationSystem?.ShowNotification(
-						NotificationType.Foul,
-						$"Session creation failed: {sessionError.Message}",
-						duration: 3.0f
-					);
+					ShowCarromNotification(NotificationType.Foul, $"Session creation failed: {sessionError.Message}");
 
 					// Return to player setup menu
 					return;
@@ -2453,11 +2446,8 @@ public partial class CarromGame : GameController
 			_scoreDisplay.PassTurnRequested -= OnPassTurnRequested;
 		}
 
-		// Clean up notification system
-		if (_notificationSystem != null && GodotObject.IsInstanceValid(_notificationSystem))
-		{
-			_notificationSystem.QueueFree();
-		}
+		// Clear any lingering notifications from this game
+		Platform.Notifications.ClearAll();
 
 		// Clean up player setup menu signals
 		if (_playerSetupMenu != null && GodotObject.IsInstanceValid(_playerSetupMenu))
