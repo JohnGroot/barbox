@@ -55,7 +55,7 @@ public class RacingEventService : GameEventServiceBase
 			checkpoints = checkpointArray
 		};
 
-		return await EmitEventSafeAsync("racing/lap_complete", payload);
+		return await SubmitResultAsync("racing/lap_complete", payload);
 	}
 
 	/// <summary>
@@ -142,7 +142,7 @@ public class RacingEventService : GameEventServiceBase
 			checkpoints = checkpointArray
 		};
 
-		return await EmitEventSafeAsync("racing/race_finish", payload);
+		return await SubmitResultAsync("racing/race_finish", payload);
 	}
 
 	/// <summary>
@@ -219,7 +219,7 @@ public class RacingEventService : GameEventServiceBase
 			reason = reason ?? "unknown"
 		};
 
-		return await EmitEventSafeAsync("racing/race_abandoned", payload);
+		return await SubmitResultAsync("racing/race_abandoned", payload);
 	}
 
 	/// <summary>

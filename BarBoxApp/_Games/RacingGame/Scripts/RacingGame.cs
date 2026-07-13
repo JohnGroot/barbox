@@ -95,6 +95,9 @@ public partial class RacingGame : GameController
 {
 	protected override string GetGameId() => "racing_game";
 
+	// Backend activity sessions use the tag "racing" (not the registry id "racing_game").
+	protected override string GetGameTag() => "racing";
+
 	// ================================================================
 	// SIGNALS
 	// ================================================================
@@ -193,7 +196,6 @@ public partial class RacingGame : GameController
 	// Event service
 	private RacingEventService _racingEventService;
 	private EventService _eventService;
-	private Guid _activitySessionId;
 
 	// ================================================================
 	// PRIVATE FIELDS - TRACK AND WORLD SYSTEMS
@@ -326,11 +328,7 @@ public partial class RacingGame : GameController
 			_ = SavePartialRaceData(GetCurrentGamePlayerId(), "app_exit");
 		}
 
-		// Close activity session if active
-		if (_activitySessionId != Guid.Empty && _eventService != null)
-		{
-			_ = _eventService.CloseActivitySessionAsync(_activitySessionId);
-		}
+		// Backend session close is handled automatically by the base class.
 
 		// Clean up signals and references
 		DisconnectTrackSignals();
@@ -874,20 +872,9 @@ public partial class RacingGame : GameController
 				return;
 			}
 
-			// Fetch credits from CreditService (single source of truth)
-			int currentCredits = 0;
-			if (_creditService != null)
-			{
-				var balanceResult = await _creditService.GetBalanceAsync(currentSession.PlayerId);
-				if (balanceResult.IsSuccess(out var balance))
-				{
-					currentCredits = balance;
-				}
-			}
-
-			// Show confirmation and spend credits via CreditService
-			bool confirmed = await CreditConfirmationHelper.ShowCreditConfirmationAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Time Trial Race", currentCredits);
-			bool creditsSpent = confirmed && _creditService != null && (await _creditService.SpendAsync(currentSession.PlayerId, TimeTrialCreditCost, "Time Trial Race")).IsSuccess(out var _);
+			// Confirm and spend entry credits via the shared single-spend primitive
+			bool creditsSpent = _creditService != null
+				&& (await _creditService.SpendWithConfirmationAsync(currentSession.PlayerId, currentSession.PhoneNumber, TimeTrialCreditCost, "Time Trial Race")).IsSuccess(out var _);
 			if (!creditsSpent)
 			{
 				// Credits not spent - don't start the race
@@ -911,12 +898,8 @@ public partial class RacingGame : GameController
 
 					GD.Print($"[RacingGame] Creating backend session for player {playerId} at box {boxId}");
 
-					var sessionResult = await _eventService.CreateActivitySessionAsync(
-						boxId: boxId,
-						playerId: playerId,
-						gameTag: "racing",
-						playerIds: null  // Single-player game
-					);
+					// Session create/close is owned by GameController (auto-closed on teardown).
+					var sessionResult = await StartBackendSessionAsync(boxId, playerId);
 
 					if (sessionResult.IsFailure(out var error))
 					{
@@ -925,8 +908,7 @@ public partial class RacingGame : GameController
 					}
 					else if (sessionResult.IsSuccess(out var sessionId))
 					{
-						_activitySessionId = sessionId;
-						GD.Print($"[RacingGame] Backend session created successfully: {_activitySessionId}");
+						GD.Print($"[RacingGame] Backend session created successfully: {sessionId}");
 					}
 				}
 			}
@@ -1760,20 +1742,9 @@ public partial class RacingGame : GameController
 				return;
 			}
 
-			// Fetch credits from CreditService (single source of truth)
-			int currentCredits = 0;
-			if (_creditService != null)
-			{
-				var balanceResult = await _creditService.GetBalanceAsync(currentSession.PlayerId);
-				if (balanceResult.IsSuccess(out var balance))
-				{
-					currentCredits = balance;
-				}
-			}
-
-			// Show confirmation and spend credits via CreditService
-			bool confirmed = await CreditConfirmationHelper.ShowCreditConfirmationAsync(currentSession.PhoneNumber, TimeTrialCreditCost, "Race Again", currentCredits);
-			bool creditsSpent = confirmed && _creditService != null && (await _creditService.SpendAsync(currentSession.PlayerId, TimeTrialCreditCost, "Race Again")).IsSuccess(out var _);
+			// Confirm and spend entry credits via the shared single-spend primitive
+			bool creditsSpent = _creditService != null
+				&& (await _creditService.SpendWithConfirmationAsync(currentSession.PlayerId, currentSession.PhoneNumber, TimeTrialCreditCost, "Race Again")).IsSuccess(out var _);
 			if (!creditsSpent)
 			{
 				// Credits not spent - don't start the race
