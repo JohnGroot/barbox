@@ -281,7 +281,7 @@ public partial class MiningGameUI : Control
 		var creditsPerPurchase = _game?.GetCreditsPerPurchase() ?? 1000;
 		_purchaseCreditButton = UIBuilder.CreateActionButton($"Buy {creditsPerPurchase:N0} Credits ({GemTheme.GetGemEmoji(_gemType)} {_config.CreditCost})", this);
 		_purchaseCreditButton.CustomMinimumSize = new Vector2(200, 40);
-		_purchaseCreditButton.Pressed += () => _game?.PurchaseCredit();
+		_purchaseCreditButton.Pressed += () => _ = _game?.PurchaseCreditAsync();
 		buttonsHBox.AddChild(_purchaseCreditButton);
 
 		actionsGroup.AddChild(buttonsHBox);

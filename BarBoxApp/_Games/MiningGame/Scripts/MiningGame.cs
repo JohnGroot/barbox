@@ -495,13 +495,22 @@ public partial class MiningGame : GameController
 		}
 	}
 		
-	public void PurchaseCredit()
+	public async Task PurchaseCreditAsync()
 	{
-		if (_state.PurchaseCredit())
+		var result = await _state.PurchaseCreditAsync();
+		switch (result)
 		{
-			_ui.UpdateAllUI();
-			EmitSignal(SignalName.CreditPurchased);
-			GD.Print("[MiningGame] Credit purchased");
+			case MiningState.CreditPurchaseResult.Success:
+				_ui.UpdateAllUI();
+				EmitSignal(SignalName.CreditPurchased);
+				GD.Print("[MiningGame] Credit purchased");
+				break;
+			case MiningState.CreditPurchaseResult.DepositFailed:
+				_ui.UpdateAllUI();
+				_ui.ShowError("Purchase Failed", "Could not add credits - gems were refunded.");
+				break;
+			case MiningState.CreditPurchaseResult.NotEligible:
+				break;
 		}
 	}
 		

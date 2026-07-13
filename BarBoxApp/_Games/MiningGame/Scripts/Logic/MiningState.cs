@@ -408,15 +408,18 @@ public partial class MiningState : Node
 		return true;
 	}
 		
-	public bool PurchaseCredit()
+	public enum CreditPurchaseResult { NotEligible, Success, DepositFailed }
+
+	public async Task<CreditPurchaseResult> PurchaseCreditAsync()
 	{
 		if (!CanPurchaseCredit())
-			return false;
+			return CreditPurchaseResult.NotEligible;
 
 		var primaryGemType = _game.GetPrimaryGemType();
+		var creditCost = _game.GetConfig().CreditCost;
 		var cost = new Dictionary<GemType, int>
 		{
-			{ primaryGemType, _game.GetConfig().CreditCost }
+			{ primaryGemType, creditCost }
 		};
 
 		// Update local state
@@ -431,14 +434,21 @@ public partial class MiningState : Node
 
 		if (session != null && creditService != null)
 		{
-			_ = creditService.AddAsync(session.PlayerId, CREDITS_PER_PURCHASE, "Mining game credit purchase");
+			var addResult = await creditService.AddAsync(session.PlayerId, CREDITS_PER_PURCHASE, "Mining game credit purchase");
+			if (addResult.IsFailure(out var error))
+			{
+				// Deposit failed - refund the gems since nothing was actually purchased
+				_globalData.AddGems(primaryGemType, creditCost);
+				GD.PrintErr($"[GameState] Credit purchase failed: {error.Message}");
+				return CreditPurchaseResult.DepositFailed;
+			}
 		}
 
 		// Emit event to backend
 		var eventService = _game.GetEventService();
-		_ = eventService.EmitCreditDepositAsync(primaryGemType, _game.GetConfig().CreditCost, CREDITS_PER_PURCHASE);
+		_ = eventService.EmitCreditDepositAsync(primaryGemType, creditCost, CREDITS_PER_PURCHASE);
 
-		return true;
+		return CreditPurchaseResult.Success;
 	}
 		
 	public bool PurchaseUpgrade(UpgradeType upgradeType)
