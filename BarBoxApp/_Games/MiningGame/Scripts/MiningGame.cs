@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using BarBox.Core.Autoloads;
 using BarBox.Games.MiningGame.Logic;
 using Godot;
 
@@ -449,6 +450,8 @@ public partial class MiningGame : GameController
 	internal LocationManager GetLocationManager() => _locationManager;
 	internal MiningGameUI GetUI() => _ui;
 	internal MiningGameConfig GetConfig() => Config;
+	internal void ShowNotification(string message, NotificationSeverity severity) =>
+		Platform.Notifications?.Show(message, severity);
 	internal SessionManager GetSessionManager() => _sessionManager;
 	internal bool IsDebugMode() => EnableDebugMode;
 	internal MiningState GetState() => _state;
