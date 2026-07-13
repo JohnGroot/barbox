@@ -765,7 +765,11 @@ public partial class RacingGame : GameController
 	}
 	
 	// Thread-safe logging methods for CallDeferred usage from async contexts
-	private void LogHighScoreError(string error) => GD.PrintErr($"[RacingGame] Failed to save race data: {error}");
+	private void LogHighScoreError(string error)
+	{
+		GD.PrintErr($"[RacingGame] Failed to save race data: {error}");
+		Platform.Notifications?.Show("Your race time could not be saved.", NotificationSeverity.Error);
+	}
 	private void LogRaceSaved(float totalTime, string trackId) => GD.Print($"[RacingGame] Race completed - Time: {totalTime:F3}s, Track: {trackId}");
 	private void LogPotentialBestLap(float lapTime, string trackId) => GD.Print($"[RacingGame] Potential best lap: {lapTime:F3}s, Track: {trackId}");
 	private void LogAsyncError(string message) => GD.PrintErr($"[RacingGame] {message}");
@@ -857,6 +861,7 @@ public partial class RacingGame : GameController
 			if (_sessionManager == null || !IsInstanceValid(_sessionManager))
 			{
 				GD.PrintErr("Time trial cancelled - session system not available");
+				Platform.Notifications?.Show("Time trial cancelled - session system unavailable.", NotificationSeverity.Error);
 				_timingSystem.StopRacing();
 				return;
 			}
@@ -865,6 +870,7 @@ public partial class RacingGame : GameController
 			if (currentSession == null)
 			{
 				GD.PrintErr("Time trial cancelled - no active user session");
+				Platform.Notifications?.Show("Time trial cancelled - please log in first.", NotificationSeverity.Warning);
 				_timingSystem.StopRacing();
 				return;
 			}
@@ -1704,6 +1710,7 @@ public partial class RacingGame : GameController
 		if (_sessionManager == null || !IsInstanceValid(_sessionManager))
 		{
 			GD.PrintErr("Race again cancelled - user management system not available");
+			Platform.Notifications?.Show("Race again cancelled - session system unavailable.", NotificationSeverity.Error);
 			return;
 		}
 
@@ -1711,6 +1718,7 @@ public partial class RacingGame : GameController
 		if (!isLoggedIn)
 		{
 			GD.PrintErr("Race again cancelled - user must be logged in");
+			Platform.Notifications?.Show("Race again cancelled - please log in first.", NotificationSeverity.Warning);
 			return;
 		}
 
@@ -1727,6 +1735,7 @@ public partial class RacingGame : GameController
 			if (_sessionManager == null || !IsInstanceValid(_sessionManager))
 			{
 				GD.PrintErr("Race again cancelled - session system not available");
+				Platform.Notifications?.Show("Race again cancelled - session system unavailable.", NotificationSeverity.Error);
 				_timingSystem.StopRacing();
 				return;
 			}
@@ -1735,6 +1744,7 @@ public partial class RacingGame : GameController
 			if (currentSession == null)
 			{
 				GD.PrintErr("Race again cancelled - no active user session");
+				Platform.Notifications?.Show("Race again cancelled - please log in first.", NotificationSeverity.Warning);
 				_timingSystem.StopRacing();
 				return;
 			}
@@ -1746,6 +1756,7 @@ public partial class RacingGame : GameController
 			{
 				// Credits not spent - don't start the race
 				GD.PrintErr("Race again cancelled - insufficient credits");
+				Platform.Notifications?.Show("Race again cancelled - insufficient credits.", NotificationSeverity.Warning);
 				_timingSystem?.StopRacing(); // Reset to idle state
 				return;
 			}
@@ -1789,6 +1800,7 @@ public partial class RacingGame : GameController
 		if (currentSession == null)
 		{
 			GD.PrintErr("[RacingGame] No active user session for credit purchase");
+			Platform.Notifications?.Show("Please log in to buy credits.", NotificationSeverity.Warning);
 			return;
 		}
 
@@ -1801,6 +1813,7 @@ public partial class RacingGame : GameController
 		else
 		{
 			GD.PrintErr("[RacingGame] UIManager not available for credit purchase");
+			Platform.Notifications?.Show("Credit purchase is unavailable right now.", NotificationSeverity.Error);
 		}
 	}
 
