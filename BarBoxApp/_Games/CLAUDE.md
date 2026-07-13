@@ -74,7 +74,8 @@ protected override void OnActivateGame()
 Games access platform services exclusively through `Platform` (the
 `GameContext` populated once in `GameController._Ready()`) —
 `Platform.Session`, `Platform.Events`, `Platform.Credits`, `Platform.Host`,
-`Platform.UI`, `Platform.Input`, `Platform.Location`, `Platform.Registry`.
+`Platform.UI`, `Platform.Input`, `Platform.Location`, `Platform.Registry`,
+`Platform.Notifications`.
 Never call `GetInstance()`/`GetAutoload()` or reference a raw `/root/` node
 path directly in `_Games/` — those go through `Platform.X` only.
 

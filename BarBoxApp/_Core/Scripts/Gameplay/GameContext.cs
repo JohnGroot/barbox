@@ -21,6 +21,7 @@ public class GameContext
 	public UIManager UI { get; private init; }
 	public InputManager Input { get; private init; }
 	public GameRegistry Registry { get; private init; }
+	public NotificationService Notifications { get; private init; }
 
 	// Context Information (cached via BuildContext)
 	public bool IsProduction => BuildContext.IsProduction;
@@ -53,7 +54,8 @@ public class GameContext
 			Host = AutoloadBase.GetAutoload<GameHost>(),
 			UI = AutoloadBase.GetAutoload<UIManager>(),
 			Input = AutoloadBase.GetAutoload<InputManager>(),
-			Registry = AutoloadBase.GetAutoload<GameRegistry>()
+			Registry = AutoloadBase.GetAutoload<GameRegistry>(),
+			Notifications = AutoloadBase.GetAutoload<NotificationService>()
 		};
 	}
 }

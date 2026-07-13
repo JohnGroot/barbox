@@ -257,6 +257,7 @@ public partial class ApplicationBootstrap : AutoloadBase
 		LogInfo("Phase 5: Input and UI services");
 		await InitializeServiceAsync("InputManager", GetAutoload<InputManager>(), ServiceCriticality.Optional, cancellationToken);
 		await InitializeServiceAsync("UIManager", UIManager.GetInstance(), ServiceCriticality.Optional, cancellationToken);
+		await InitializeServiceAsync("NotificationService", NotificationService.GetInstance(), ServiceCriticality.Optional, cancellationToken);
 	}
 
 	private async Task<bool> InitializeServiceAsync(string serviceName, AutoloadBase service, ServiceCriticality criticality, CancellationToken cancellationToken)

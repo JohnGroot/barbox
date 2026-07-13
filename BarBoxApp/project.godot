@@ -29,6 +29,7 @@ SessionEventService="*res://_Core/Scripts/Autoloads/SessionEventService.cs"
 GameHost="*res://_Core/Scripts/Autoloads/GameHost.cs"
 InputManager="*res://_Core/Scripts/Autoloads/InputManager.cs"
 UIManager="*res://_Core/Scripts/Autoloads/UIManager.cs"
+NotificationService="*res://_Core/Scripts/Autoloads/NotificationService.cs"
 PaymentService="*res://_Core/Scripts/Autoloads/PaymentService.cs"
 
 [display]
