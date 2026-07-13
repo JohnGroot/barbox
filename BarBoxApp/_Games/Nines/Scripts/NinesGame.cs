@@ -542,58 +542,28 @@ public partial class NinesGame : GameController
 			return Result.Failure<bool>("Credit service not available");
 		}
 
-		var creditsPerPlayer = Config.EntryCost;
-		var successfulDeductions = new List<(Guid PlayerId, int Amount)>();
-		var reason = "Nines Entry";
-
-		// Attempt to deduct from each logged-in player
+		var players = new List<(Guid PlayerId, string Label)>();
 		foreach (var player in _state.Players.Where(p => p.IsLoggedIn))
 		{
 			var session = _sessionManager?.GetSessionByPhone(player.PhoneNumber);
 			if (session == null)
 			{
 				GD.PrintErr($"[Nines] No session for player: {player.DisplayName}");
-				await RollbackCreditsAsync(successfulDeductions, reason + " Rollback");
 				return Result.Failure<bool>($"No session for player: {player.DisplayName}");
 			}
 
-			var playerId = session.PlayerId;
-			var spendResult = await _creditService.SpendAsync(playerId, creditsPerPlayer, reason);
-
-			if (spendResult.IsFailure(out var spendError))
-			{
-				GD.PrintErr($"[Nines] Failed to deduct credits for {player.DisplayName}: {spendError.Message}");
-				await RollbackCreditsAsync(successfulDeductions, reason + " Rollback");
-				return Result.Failure<bool>($"Insufficient credits for {player.DisplayName}");
-			}
-
-			successfulDeductions.Add((playerId, creditsPerPlayer));
-			GD.Print($"[Nines] Deducted {creditsPerPlayer} credits from {player.DisplayName}");
+			players.Add((session.PlayerId, player.DisplayName));
 		}
 
-		GD.Print($"[Nines] All entry fees collected ({successfulDeductions.Count} players x {creditsPerPlayer} credits)");
-		return Result.Success(true);
-	}
-
-	private async Task RollbackCreditsAsync(List<(Guid PlayerId, int Amount)> deductions, string reason)
-	{
-		if (_creditService == null)
-			return;
-
-		GD.Print($"[Nines] Rolling back {deductions.Count} credit deductions");
-
-		foreach (var (playerId, amount) in deductions)
+		var result = await _creditService.SpendManyWithRollbackAsync(players, Config.EntryCost, "Nines Entry");
+		if (result.IsFailure(out var error))
 		{
-			var addResult = await _creditService.AddAsync(playerId, amount, reason);
-			if (addResult.IsFailure(out var error))
-			{
-				GD.PrintErr($"[Nines] CRITICAL: Failed to rollback credits for {playerId}: {error.Message}");
-			}
-			else
-			{
-				GD.Print($"[Nines] Rolled back {amount} credits for {playerId}");
-			}
+			GD.PrintErr($"[Nines] {error.Message}");
+			return Result.Failure<bool>(error.Message);
 		}
+
+		GD.Print($"[Nines] All entry fees collected ({players.Count} players x {Config.EntryCost} credits)");
+		return Result.Success(true);
 	}
 
 	private void StartGame()

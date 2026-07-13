@@ -169,6 +169,41 @@ public partial class CreditService : AutoloadBase
 	}
 
 	/// <summary>
+	/// Deduct <paramref name="amount"/> credits from each player, rolling back
+	/// any deductions already made in this batch if one player's spend fails
+	/// partway through. <paramref name="players"/>' labels are used only for
+	/// the failure message (e.g. a display name), not for identity.
+	/// </summary>
+	public async Task<Result<bool>> SpendManyWithRollbackAsync(IReadOnlyList<(Guid PlayerId, string Label)> players, int amount, string reason)
+	{
+		var successfulDeductions = new List<(Guid PlayerId, string Label)>();
+
+		foreach (var (playerId, label) in players)
+		{
+			var spendResult = await SpendAsync(playerId, amount, reason);
+			if (spendResult.IsFailure(out var spendError))
+			{
+				await RollbackManyAsync(successfulDeductions, amount, reason + " Rollback");
+				return Result.Failure<bool>($"Insufficient credits for {label}: {spendError.Message}");
+			}
+
+			successfulDeductions.Add((playerId, label));
+		}
+
+		return Result.Success(true);
+	}
+
+	private async Task RollbackManyAsync(List<(Guid PlayerId, string Label)> players, int amount, string reason)
+	{
+		foreach (var (playerId, label) in players)
+		{
+			var addResult = await AddAsync(playerId, amount, reason);
+			if (addResult.IsFailure(out var error))
+				LogError($"CRITICAL: Failed to rollback credits for {label} ({playerId}): {error.Message}");
+		}
+	}
+
+	/// <summary>
 	/// Single-spend flow with confirmation: fetch balance, show the spend
 	/// dialog, then spend on confirm. One entry point so games stop hand-rolling
 	/// balance -> confirm -> spend. Does NOT cover multi-player rollback (Nines)
