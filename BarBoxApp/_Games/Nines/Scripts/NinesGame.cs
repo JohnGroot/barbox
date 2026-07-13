@@ -17,6 +17,9 @@ public partial class NinesGame : GameController
 {
 	protected override string GetGameId() => "nines_game";
 
+	// Backend activity sessions use the tag "nines" (not the registry id "nines_game").
+	protected override string GetGameTag() => "nines";
+
 	#region Constants
 
 	private const string CONFIG_PATH = "res://_Games/Nines/NinesGameConfig.tres";
@@ -54,6 +57,7 @@ public partial class NinesGame : GameController
 	// Credit management
 	private CreditService? _creditService;
 	private EventService? _eventService;
+	private NinesEventService? _ninesEventService;
 
 	#endregion
 
@@ -203,6 +207,7 @@ public partial class NinesGame : GameController
 	{
 		_creditService = CreditService.GetInstance();
 		_eventService = EventService.GetInstance();
+		_ninesEventService = new NinesEventService(_eventService);
 
 		if (_creditService == null)
 		{
@@ -287,39 +292,25 @@ public partial class NinesGame : GameController
 	/// </summary>
 	private async Task RecordJackpotWinAsync()
 	{
-		if (_eventService == null)
+		if (_ninesEventService == null)
 		{
-			GD.Print("[Nines] No backend - jackpot win not recorded");
+			GD.Print("[Nines] No event service - jackpot win not recorded");
 			return;
 		}
 
-		try
-		{
-			var venueName = _eventService.GetVenueName();
-			var winningPlayer = GetCurrentPlayer();
+		var winningPlayer = GetCurrentPlayer();
 
-			var result = await _eventService.EmitEventAsync("nines/jackpot_won", new
-			{
-				venue_name = venueName,
-				player_id = winningPlayer?.PhoneNumber ?? "unknown",
-				player_name = winningPlayer?.DisplayName ?? "Unknown",
-				jackpot_amount = _state.JackpotAmount,
-				timestamp = DateTime.UtcNow.ToString("o")
-			});
+		// player_id is the winner's phone number (Nines convention, not a UUID).
+		var result = await _ninesEventService.EmitJackpotWonAsync(
+			_ninesEventService.GetVenueName(),
+			winningPlayer?.PhoneNumber ?? "unknown",
+			winningPlayer?.DisplayName ?? "Unknown",
+			_state.JackpotAmount);
 
-			if (result.IsSuccess(out _))
-			{
-				GD.Print($"[Nines] Jackpot win recorded with backend");
-			}
-			else if (result.IsFailure(out var error))
-			{
-				GD.PrintErr($"[Nines] Failed to record jackpot win: {error.Message}");
-			}
-		}
-		catch (Exception ex)
-		{
-			GD.PrintErr($"[Nines] Error recording jackpot win: {ex.Message}");
-		}
+		if (result.IsSuccess(out _))
+			GD.Print("[Nines] Jackpot win recorded with backend");
+		else if (result.IsFailure(out var error))
+			GD.PrintErr($"[Nines] Failed to record jackpot win: {error.Message}");
 	}
 
 	private void AutoLogoutOnExit()
@@ -514,8 +505,44 @@ public partial class NinesGame : GameController
 			return false;
 		}
 
+		// Create the backend activity session so game events (jackpot win) are
+		// recorded against a real session. Non-fatal: the game still plays if it fails.
+		await TryCreateBackendSessionAsync();
+
 		StartGame();
 		return true;
+	}
+
+	/// <summary>
+	/// Create the backend activity session for the current logged-in players.
+	/// Nines previously skipped this entirely, leaving jackpot events without a
+	/// session to attach to. Session close is handled by the base class.
+	/// </summary>
+	private async Task TryCreateBackendSessionAsync()
+	{
+		if (_sessionManager == null)
+			return;
+
+		var sessions = new List<UserSession>();
+		foreach (var player in _state.Players.Where(p => p.IsLoggedIn))
+		{
+			var session = _sessionManager.GetSessionByPhone(player.PhoneNumber);
+			if (session != null)
+				sessions.Add(session);
+		}
+
+		if (sessions.Count == 0)
+			return;
+
+		var boxId = Platform.BoxId;
+		var hostPlayerId = sessions[0].PlayerId;
+		var playerIdStrings = sessions.Select(s => s.PlayerId.ToString()).ToList();
+
+		var result = await StartBackendSessionAsync(boxId, hostPlayerId, playerIdStrings);
+		if (result.IsFailure(out var error))
+			GD.PrintErr($"[Nines] WARNING: Failed to create backend session: {error.Message} - jackpot win may not record");
+		else
+			GD.Print("[Nines] Backend session created");
 	}
 
 	private async Task<Result<bool>> DeductCreditsWithRollbackAsync()
