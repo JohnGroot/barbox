@@ -14,58 +14,19 @@ namespace BarBox.Games.Nines.Tests;
 /// that entry-credit deduction rolls back cleanly.
 /// Runs against the real seeded test backend (see MiningGameTests for the pattern).
 /// </summary>
-public class NinesGameTests : TestClass
+public class NinesGameTests : GameSessionTestBase
 {
 	private const string GAME_TAG = "nines";
-	private SessionEventService _eventService;
-	private CreditService _creditService;
-	private Guid _testBoxId;
-	private Guid _testPlayerId;
-	private string _testPlayerPhone;
-	private Guid _testSessionId;
+	protected override string GameTag => GAME_TAG;
+
+	private SessionEventService _eventService => EventService;
+	private Guid _testPlayerId => TestPlayerId;
+	private string _testPlayerPhone => TestPlayerPhone;
+	private Guid _testSessionId => TestSessionId;
+	private CreditService _creditService => GetCreditService();
 
 	public NinesGameTests(Node testScene) : base(testScene)
 	{
-	}
-
-	[SetupAll]
-	public async Task SetupNinesGameSession()
-	{
-		TestHelpers.LogTestInfo("Setting up Nines Game test session");
-
-		var isHealthy = await TestHelpers.IsTestBackendHealthyAsync();
-		if (!isHealthy)
-		{
-			TestHelpers.LogTestWarning("Test backend is not healthy - some tests may be skipped");
-			return;
-		}
-
-		_eventService = TestScene.GetNode<SessionEventService>("/root/SessionEventService");
-		_eventService.ShouldNotBeNull("SessionEventService autoload must be available");
-		_creditService = TestScene.GetNode<CreditService>("/root/CreditService");
-
-		// Use seeded test identifiers (API key is only valid for the seeded Box ID)
-		_testBoxId = TestHelpers.SeededTestBoxId;
-		var (playerId, phone, _, _) = TestHelpers.GetSeededTestPlayer(1);
-		_testPlayerId = playerId;
-		_testPlayerPhone = phone;
-
-		// Fold Nines into the activity-session lifecycle it previously skipped
-		var sessionResult = await _eventService.CreateActivitySessionAsync(
-			_testBoxId,
-			_testPlayerId,
-			GAME_TAG);
-
-		if (sessionResult.IsSuccess(out var sessionId))
-		{
-			_testSessionId = sessionId;
-			_testSessionId.ShouldNotBe(Guid.Empty, "Session ID should be valid");
-			TestHelpers.LogTestInfo($"Nines session created: {_testSessionId}");
-		}
-		else if (sessionResult.IsFailure(out var error))
-		{
-			TestHelpers.LogTestWarning($"Failed to create session: {error.Message}");
-		}
 	}
 
 	[Test]
@@ -142,20 +103,5 @@ public class NinesGameTests : TestClass
 		var refundResult = await _creditService.AddAsync(_testPlayerId, entryCost, "Nines Entry Rollback");
 		refundResult.IsSuccess(out var afterRefund).ShouldBeTrue("Rollback should restore credits");
 		afterRefund.ShouldBe(seededBalance, "Balance should be restored after rollback");
-	}
-
-	[CleanupAll]
-	public async Task CleanupNinesGameSession()
-	{
-		if (_eventService != null && _testSessionId != Guid.Empty)
-		{
-			TestHelpers.LogTestInfo("Closing nines game session");
-			var result = await _eventService.CloseActivitySessionAsync(_testSessionId);
-
-			if (result.IsSuccess(out var _))
-				TestHelpers.LogTestInfo("Session closed successfully");
-			else if (result.IsFailure(out var error))
-				TestHelpers.LogTestWarning($"Session close failed: {error.Message}");
-		}
 	}
 }

@@ -13,56 +13,15 @@ namespace BarBox.Games.MiningGame.Tests;
 /// Comprehensive integration tests for Mining Game
 /// Tests complete game flow with real backend integration
 /// </summary>
-public class MiningGameTests : TestClass
+public class MiningGameTests : GameSessionTestBase
 {
 	private const string GAME_TAG = "mining";
-	private SessionEventService _eventService;
-	private Guid _testBoxId;
-	private Guid _testPlayerId;
-	private Guid _testSessionId;
+	protected override string GameTag => GAME_TAG;
+
+	private SessionEventService _eventService => EventService;
 
 	public MiningGameTests(Node testScene) : base(testScene)
 	{
-	}
-
-	[SetupAll]
-	public async Task SetupMiningGameSession()
-	{
-		TestHelpers.LogTestInfo("Setting up Mining Game test session");
-
-		// Verify backend is healthy
-		var isHealthy = await TestHelpers.IsTestBackendHealthyAsync();
-		if (!isHealthy)
-		{
-			TestHelpers.LogTestWarning("Test backend is not healthy - some tests may be skipped");
-			return;
-		}
-
-		// Get SessionEventService
-		_eventService = TestScene.GetNode<SessionEventService>("/root/SessionEventService");
-		_eventService.ShouldNotBeNull("SessionEventService autoload must be available");
-
-		// Use seeded test identifiers (API key is only valid for seeded Box ID)
-		_testBoxId = TestHelpers.SeededTestBoxId;
-		var (playerId, _, _, _) = TestHelpers.GetSeededTestPlayer(1);
-		_testPlayerId = playerId;
-
-		// Create activity session for mining
-		var sessionResult = await _eventService.CreateActivitySessionAsync(
-			_testBoxId,
-			_testPlayerId,
-			GAME_TAG);
-
-		if (sessionResult.IsSuccess(out var sessionId))
-		{
-			_testSessionId = sessionId;
-			_testSessionId.ShouldNotBe(Guid.Empty, "Session ID should be valid");
-			TestHelpers.LogTestInfo($"Mining session created: {_testSessionId}");
-		}
-		else if (sessionResult.IsFailure(out var error))
-		{
-			TestHelpers.LogTestWarning($"Failed to create session: {error.Message}");
-		}
 	}
 
 	[Test]
@@ -322,24 +281,5 @@ public class MiningGameTests : TestClass
 		TestHelpers.LogTestInfo($"Step 4 - Credit Deposit: {(deposit.IsSuccess(out var _) ? "✓" : "✗")}");
 
 		TestHelpers.LogTestInfo("=== Mining Game Flow Complete ===");
-	}
-
-	[CleanupAll]
-	public async Task CleanupMiningGameSession()
-	{
-		if (_eventService != null && _testSessionId != Guid.Empty)
-		{
-			TestHelpers.LogTestInfo("Closing mining game session");
-			var result = await _eventService.CloseActivitySessionAsync(_testSessionId);
-
-			if (result.IsSuccess(out var _))
-			{
-				TestHelpers.LogTestInfo("Session closed successfully");
-			}
-			else if (result.IsFailure(out var error))
-			{
-				TestHelpers.LogTestWarning($"Session close failed: {error.Message}");
-			}
-		}
 	}
 }

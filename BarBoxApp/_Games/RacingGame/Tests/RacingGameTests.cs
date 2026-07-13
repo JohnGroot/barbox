@@ -13,59 +13,20 @@ namespace BarBox.Games.Racing.Tests;
 /// Comprehensive integration tests for Racing Game
 /// Tests race sessions, checkpoint/lap tracking, leaderboards
 /// </summary>
-public class RacingGameTests : TestClass
+public class RacingGameTests : GameSessionTestBase
 {
 	private const string GAME_TAG = "racing";
 	private const string DEFAULT_TRACK_ID = "oval";
-	private SessionEventService _eventService;
-	private RacingEventService _racingEventService;
-	private Guid _testBoxId;
-	private Guid _testPlayerId;
-	private Guid _testSessionId;
+	protected override string GameTag => GAME_TAG;
+
+	private SessionEventService _eventService => EventService;
+	private RacingEventService _racingEventService => new(EventService);
+	private Guid _testBoxId => TestBoxId;
+	private Guid _testPlayerId => TestPlayerId;
+	private Guid _testSessionId => TestSessionId;
 
 	public RacingGameTests(Node testScene) : base(testScene)
 	{
-	}
-
-	[SetupAll]
-	public async Task SetupRacingGameSession()
-	{
-		TestHelpers.LogTestInfo("Setting up Racing Game test session");
-
-		// Verify backend is healthy
-		var isHealthy = await TestHelpers.IsTestBackendHealthyAsync();
-		if (!isHealthy)
-		{
-			TestHelpers.LogTestWarning("Test backend is not healthy - some tests may be skipped");
-			return;
-		}
-
-		// Get SessionEventService and create RacingEventService
-		_eventService = TestScene.GetNode<SessionEventService>("/root/SessionEventService");
-		_eventService.ShouldNotBeNull("SessionEventService autoload must be available");
-		_racingEventService = new RacingEventService(_eventService);
-
-		// Use seeded test identifiers (API key is only valid for seeded Box ID)
-		_testBoxId = TestHelpers.SeededTestBoxId;
-		var (playerId, _, _, _) = TestHelpers.GetSeededTestPlayer(1);
-		_testPlayerId = playerId;
-
-		// Create racing session
-		var sessionResult = await _eventService.CreateActivitySessionAsync(
-			_testBoxId,
-			_testPlayerId,
-			GAME_TAG);
-
-		if (sessionResult.IsSuccess(out var sessionId))
-		{
-			_testSessionId = sessionId;
-			_testSessionId.ShouldNotBe(Guid.Empty, "Session ID should be valid");
-			TestHelpers.LogTestInfo($"Racing session created: {_testSessionId}");
-		}
-		else if (sessionResult.IsFailure(out var sessionError))
-		{
-			TestHelpers.LogTestWarning($"Failed to create session: {sessionError.Message}");
-		}
 	}
 
 	[Test]
@@ -579,22 +540,4 @@ public class RacingGameTests : TestClass
 		}
 	}
 
-	[CleanupAll]
-	public async Task CleanupRacingGameSession()
-	{
-		if (_eventService != null && _testSessionId != Guid.Empty)
-		{
-			TestHelpers.LogTestInfo("Closing racing game session");
-			var result = await _eventService.CloseActivitySessionAsync(_testSessionId);
-
-			if (result.IsSuccess(out var _))
-			{
-				TestHelpers.LogTestInfo("Session closed successfully");
-			}
-			else if (result.IsFailure(out var error))
-			{
-				TestHelpers.LogTestWarning($"Session close failed: {error.Message}");
-			}
-		}
-	}
 }
