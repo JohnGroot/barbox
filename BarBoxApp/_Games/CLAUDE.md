@@ -6,17 +6,20 @@ Games are self-contained and context-aware, working both standalone (development
 
 | Pattern | When to Use | Example |
 |---------|-------------|---------|
-| **Consolidation** (preferred for simple) | < 10 mechanics, idle/incremental | MiningGame (4 files) |
+| **Consolidation** (preferred for simple) | < 10 mechanics, idle/incremental | MiningGame |
 | **Multi-Component** | Complex systems, multiple modes | CarromGame |
 | **Physics-Heavy** | Real-time, performance-critical | RacingGame |
-| **Single-File** | Rapid prototyping, < 500 lines | SimpleSampleGame |
 
-## Consolidation Pattern (4 files max)
+## Consolidation Pattern
 
-- `GameTypes.cs` - All enums, data structures
+Keep the file count small, organized around a core split (MiningGame is the
+reference — ~10 files across `Logic/`, `Data/`, `Visual/`, `Services/`):
+
+- `Game.cs` - Main game controller (extends `GameController`)
+- `Engine.cs` / `State.cs` - Tick logic and domain state
 - `GameUI.cs` - Complete UI with nested helpers
-- `Game.cs` - Main game with nested Engine/State
 - `GameConfig.cs` - Unified config (mechanics + UI + locations)
+- `*EventService.cs` - Backend calls (extends `GameEventServiceBase`)
 
 ## Game Lifecycle Rules
 

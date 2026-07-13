@@ -16,7 +16,7 @@ bxctl/
 - **env.py**: Environment variables, database URL configuration
 - **structures.py**: All Pydantic request/response models. Separation: structures.py = API layer, db/defs.py = data layer
 - **db/**: SQLAlchemy models, CRUD operations, database connectivity
-- **games/**: Self-contained game modules (carrom, racing, mining)
+- **games/**: Self-contained game modules (carrom, racing, mining, nines)
 - **web/**: FastAPI routers, endpoints, dependency injection
 
 ## Model Conventions

@@ -14,7 +14,7 @@ BoxTeam is building the infrastructure for user persistence, transactions and ga
 ## Architecture
 
 ### Frontend (BarBoxApp/)
-- **Engine**: Godot 4.7 with C#10 (.NET)
+- **Engine**: Godot 4.7 with C# (.NET 9)
 
 ### Backend (BarBoxServices/)
 - **Framework**: FastAPI (Python)
@@ -91,9 +91,8 @@ barbox/
 │   └── scripts/           # Dev & test scripts
 ├── docs/                  # Architecture documentation
 │   └── architecture/
-│       ├── sessions.md    # Session architecture guide
-│       └── session-refactoring-2024-11.md  # Recent refactoring
-└── GodotDocs_4_6/        # Local Godot documentation
+│       └── sessions.md    # Session architecture guide
+└── GodotDocs_4_6/        # Local Godot documentation (4.6; project is on 4.7)
 ```
 
 ## Key Technologies
@@ -155,7 +154,7 @@ GET  /game/{tag}/leaderboard         # Game leaderboard
 ### Backend won't start
 - **Port 8000 in use**: Kill the process using `lsof -i :8000` to find PID, then `kill <PID>`
 - **Database locked**: Close any other backend instances
-- **Dependencies missing**: Run `pip install -r requirements.txt` in virtual environment
+- **Dependencies missing**: Run `uv pip install -e .` in the virtual environment (see Backend Setup above)
 - **Python version**: Requires Python 3.13+
 
 ### Tests failing

@@ -2,8 +2,8 @@
 
 ## Progressive Complexity Patterns
 
-### Single-File Pattern (SimpleSampleGame)
-For rapid prototyping and games < 500 lines. Complete game in one file with built-in UI.
+### Single-File Pattern
+For rapid prototyping and games < 500 lines. Complete game in one file with built-in UI. (No current game uses this; it's a prototyping starting point.)
 
 ### Multi-Component Pattern (CarromGame)
 For complex games with distinct systems. Delegate to specialized managers (PhaseManager, InputController, CameraController).
@@ -12,11 +12,12 @@ For complex games with distinct systems. Delegate to specialized managers (Phase
 For performance-critical real-time games. Specialized systems with direct input polling for minimal latency.
 
 ### Consolidation Pattern (MiningGame) - Preferred for simple games
-4 core files maximum:
-- `GameTypes.cs` - All enums, data structures in shared namespace
+Small core split (MiningGame is ~10 files across `Logic/`, `Data/`, `Visual/`, `Services/`):
+- `Game.cs` - Main game controller (extends `GameController`)
+- `Engine.cs` / `State.cs` - Tick logic and domain state
 - `GameUI.cs` - Complete UI system with nested helper classes
-- `Game.cs` - Main game with nested Engine/State classes
 - `GameConfig.cs` - Unified configuration (mechanics + UI + locations)
+- `*EventService.cs` - Backend calls (extends `GameEventServiceBase`)
 
 **Key principles:** Direct method calls over signals, nested classes for related functionality, unified configuration, eliminated indirection.
 
@@ -72,7 +73,7 @@ private void DetectAndAdaptToContext()
 
 ## Input Handling
 
-### Simple games (SimpleSampleGame)
+### Simple games
 Handle `InputEventScreenTouch` and `InputEventMouseButton` uniformly in `_Input()`.
 
 ### Complex games (CarromGame)

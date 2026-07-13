@@ -8,6 +8,17 @@ Quick-start guide to deploy the BarBoxServices FastAPI backend to Fly.io using S
 **Timeline:** 1-2 hours for initial deployment
 **Cost Estimate:** $3-5/month (shared-cpu-1x with 512MB RAM + 1GB volume)
 
+> **Status note:** The deployment files this guide describes creating
+> (`Dockerfile`, `.dockerignore`, `fly.toml`) already exist in
+> `BarBoxServices/` — treat Phase 1 as reference for how they work, and verify
+> the committed files against the snippets here before deploying.
+>
+> **App-name note:** The deployed app per the committed `fly.toml` is
+> **`barbox-backend`**. Commands in later sections that reference
+> `barbox-backend-prod` / `barbox-backend-staging` describe a proposed
+> multi-environment naming convention that is not currently in use —
+> substitute `barbox-backend` unless/until separate environments are created.
+
 ---
 
 ## Prerequisites

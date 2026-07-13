@@ -20,7 +20,9 @@ games/{game_name}/
 +-- router.py     # FastAPI endpoints
 ```
 
-Current games: carrom, racing, mining. Zero core edits to add new games.
+Current games: carrom, racing, mining, nines. Adding a game touches three core
+registration points (see below); routers and the validation event registry
+auto-derive from the `GAMES` dict.
 See `agent_docs/game-module-guide.md` for complete guide.
 
 ## Session Event Lifecycle
@@ -32,12 +34,20 @@ See `agent_docs/game-module-guide.md` for complete guide.
 
 ## CRITICAL: Event Type Registration
 
-**New event types MUST be registered in TWO locations:**
+**New event types MUST be registered in these locations:**
 
 1. **Game schemas**: `src/bxctl/games/{game}/schemas.py` - `Literal[...]` type
+   plus the canonical `EventType = FooEventType` alias
 2. **Master validation**: `src/bxctl/structures.py` - `SessionEventType` union
+3. **Payload classification**: `src/bxctl/games/validation.py` - every event in
+   `EVENT_PAYLOAD_MODELS` (Pydantic payload model) or `NO_PAYLOAD_EVENTS`
+   (explicitly unvalidated)
 
-Missing from `structures.py` = HTTP 422 validation error.
+New *games* additionally register in the `GAMES` dict (`structures.py`), which
+auto-wires their router and event registry.
+
+Missing from `structures.py` = HTTP 422 validation error. Missing payload
+classification = `RuntimeError` at import (`_check_payload_model_coverage`).
 
 ## CRITICAL: API Path Synchronization
 
@@ -82,7 +92,7 @@ BarBoxServices/
 |   +-- structures.py    # Pydantic models for CORE API
 |   +-- env.py           # Environment configuration
 |   +-- db/              # Database layer
-|   +-- games/           # Game modules (carrom, racing, mining)
+|   +-- games/           # Game modules (carrom, racing, mining, nines)
 |   +-- web/             # API layer (main.py, dependencies.py, routers)
 +-- test/                # Hurl integration tests
 +-- scripts/             # Dev scripts

@@ -42,7 +42,7 @@ Godot 4.7 game platform using C# with autoload-based service architecture and co
 - Cache strings as consts instead of inline
 - Use `TweenConstants` for animations to reduce GC allocation
 - **Signals**: Only for external integration (GameHost). Direct method calls internally
-- **File consolidation**: Simple games use 4 files max (Types, UI, Game, Config)
+- **File consolidation**: Keep simple games to a small core split (Game, Engine/State, UI, Config, EventService — see `_Games/CLAUDE.md`)
 - **Nested classes** for tightly related functionality
 
 ## Error Handling
@@ -63,7 +63,7 @@ Godot 4.7 game platform using C# with autoload-based service architecture and co
 
 ## Local Documentation
 
-- **Godot 4.6 Docs**: `GodotDocs_4_6/` at repo root (prefer over web searches, gitignored)
+- **Godot 4.6 Docs**: `GodotDocs_4_6/` at repo root (prefer over web searches, gitignored). Note: docs are one minor version behind — the project is on Godot 4.7; double-check 4.7 release notes for anything version-sensitive.
 
 ## Reference Documentation
 
