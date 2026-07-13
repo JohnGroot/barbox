@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -16,6 +17,7 @@ public partial class GameRegistry : AutoloadBase
 	{
 		// Synchronous initialization - guaranteed before any scene loads
 		LoadGameConfigurations();
+		ValidateGameConfigurations();
 	}
 
 	public static GameRegistry GetAutoload()
@@ -27,16 +29,32 @@ public partial class GameRegistry : AutoloadBase
 	{
 		if (gameData == null || string.IsNullOrEmpty(gameData.GameId))
 		{
-			LogError("[GameRegistry] Cannot register game: invalid metadata");
-			return;
+			throw new InvalidOperationException("[GameRegistry] Cannot register game: invalid metadata");
 		}
 
 		if (_availableGames.ContainsKey(gameData.GameId))
 		{
-			LogWarning($"[GameRegistry] Overwriting existing game: {gameData.GameId}");
+			throw new InvalidOperationException($"[GameRegistry] Duplicate game id: {gameData.GameId}");
 		}
 
 		_availableGames[gameData.GameId] = gameData;
+	}
+
+	/// <summary>
+	/// Boot-time check that every registered game's scene actually exists.
+	/// Catches a bad ScenePath at startup instead of a silent no-op the next
+	/// time someone tries to load that game.
+	/// </summary>
+	private void ValidateGameConfigurations()
+	{
+		foreach (var game in _availableGames.Values)
+		{
+			if (!ResourceLoader.Exists(game.ScenePath))
+			{
+				throw new InvalidOperationException(
+					$"[GameRegistry] Game '{game.GameId}' has a missing ScenePath: {game.ScenePath}");
+			}
+		}
 	}
 
 	public GameMetadata[] GetAvailableGames()
@@ -79,9 +97,6 @@ public partial class GameRegistry : AutoloadBase
 
 	private void LoadGameConfigurations()
 	{
-		// Load from _Data/GameRegistry.json when available
-		// For now, register sample games manually
-
 		// 2D time trial racing game with daily seeded race tracks
 		RegisterGame(new GameMetadata
 		{

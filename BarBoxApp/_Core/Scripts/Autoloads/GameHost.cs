@@ -52,11 +52,17 @@ public partial class GameHost : AutoloadBase
 		// Stop any current game first
 		StopCurrentGame();
 
-		// Validate game data (GameRegistry guaranteed to exist)
+		// Validate game data (GameRegistry guaranteed to exist). GameRegistry's
+		// own boot-time check means an unregistered id here is a caller bug,
+		// not a data problem - fail loudly rather than silently no-op.
 		var gameData = _gameRegistry.GetGameData(gameId);
-		if (gameData == null || !gameData.IsActive)
+		if (gameData == null)
 		{
-			LogError($"Game {gameId} not found or inactive");
+			throw new InvalidOperationException($"[GameHost] Unknown game id: {gameId}");
+		}
+		if (!gameData.IsActive)
+		{
+			LogError($"Game {gameId} is inactive");
 			return;
 		}
 

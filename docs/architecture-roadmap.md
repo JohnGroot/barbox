@@ -281,13 +281,21 @@ touch the same call-site surface); item 5 (docs) strictly last.
    `/root/SessionEventService` node-path lookups are test-fixture plumbing,
    not game code, and also out of scope. Full C# + Hurl suite green (291
    passed).
-3. **Registry hygiene — not JSON.** Keep the hardcoded C# registry (compile-
-   checked, ~4 lines per game); delete the stale "Load from
-   _Data/GameRegistry.json" comment (`GameRegistry.cs:82`). Upgrade the silent
-   failure mode: `GameHost.LoadGameOverlay` logs and returns on an unknown id
-   (`GameHost.cs:57-61`) — instead, add a boot-time assertion in
-   `GameRegistry` initialization that every registered game's `ScenePath`
-   exists and ids are unique, and make unknown-id loading fail loudly.
+3. ~~**Registry hygiene — not JSON.**~~ **DONE (2026-07-13)** — deleted the
+   stale "Load from _Data/GameRegistry.json" comment. `GameRegistry.RegisterGame`
+   now throws on a duplicate id instead of logging a warning and silently
+   overwriting; a new `ValidateGameConfigurations()` runs in
+   `OnServiceEnterTree` right after registration and throws if any game's
+   `ScenePath` doesn't resolve (`ResourceLoader.Exists`), so a bad scene path
+   fails at boot instead of the next time that game is opened.
+   `GameHost.LoadGameOverlay`'s unknown-id branch now throws
+   `InvalidOperationException` instead of logging and returning — with the
+   boot-time check in place, an unregistered id reaching this method is a
+   caller bug (e.g. a typo in menu wiring), not a data condition to degrade
+   gracefully around. The lone real caller (`MainController.OnGameSelected`)
+   already re-validates via `GetGameData` before calling, so this only
+   changes behavior for a genuine bug. Full C# + Hurl suite green (291
+   passed).
 4. **Backend drift guards.** The two forgettable manual edits when adding a
    game are the `SessionEventType` union (`structures.py:94-100`) and payload
    classification (`games/validation.py`). The payload guard already exists
