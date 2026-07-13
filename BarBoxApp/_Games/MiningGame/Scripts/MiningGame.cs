@@ -12,6 +12,9 @@ public partial class MiningGame : GameController
 {
 	protected override string GetGameId() => "mining_game";
 
+	// Backend activity sessions use the tag "mining" (not the registry id "mining_game").
+	protected override string GetGameTag() => "mining";
+
 	// ================================================================
 	// CONSTANTS
 	// ================================================================
@@ -62,7 +65,6 @@ public partial class MiningGame : GameController
 	private MiningEngine _engine;
 	private MiningState _state;
 	private EventService _eventService;
-	private Guid _activitySessionId;
 	private MiningEventService _miningEventService;
 
 	// Platform services
@@ -280,12 +282,8 @@ public partial class MiningGame : GameController
 
 		GD.Print($"[MiningGame] Creating backend session for player {playerId} at box {boxId}");
 
-		var sessionResult = await _eventService.CreateActivitySessionAsync(
-			boxId: boxId,
-			playerId: playerId,
-			gameTag: "mining",
-			playerIds: null
-		);
+		// Session create/close is owned by GameController (auto-closed on teardown).
+		var sessionResult = await StartBackendSessionAsync(boxId, playerId);
 
 		if (sessionResult.IsFailure(out var error))
 		{
@@ -294,8 +292,7 @@ public partial class MiningGame : GameController
 		}
 		else if (sessionResult.IsSuccess(out var sessionId))
 		{
-			_activitySessionId = sessionId;
-			GD.Print($"[MiningGame] Backend session created successfully: {_activitySessionId}");
+			GD.Print($"[MiningGame] Backend session created successfully: {sessionId}");
 		}
 	}
 
@@ -409,7 +406,15 @@ public partial class MiningGame : GameController
 
 	protected override void OnGameTeardown()
 	{
-		// Note: User signal disconnection is handled automatically by base class
+		// Cleanup engine
+		if (IsInstanceValid(_engine))
+			_engine.StopMining();
+
+		// Cleanup state
+		if (IsInstanceValid(_state))
+			_state.ClearAllState();
+
+		// Note: User signal disconnection and backend session close are handled by the base class
 	}
 
 	protected override HelpContentData GetHelpContent()
@@ -586,29 +591,4 @@ public partial class MiningGame : GameController
 		}
 	}
 		
-	public override void _Notification(int what)
-	{
-		if (what == NotificationExitTree)
-		{
-			// Close activity session if active
-			if (_activitySessionId != Guid.Empty && _eventService != null)
-			{
-				_ = _eventService.CloseActivitySessionAsync(_activitySessionId);
-			}
-
-			// Cleanup engine
-			if (IsInstanceValid(_engine))
-			{
-				_engine.StopMining();
-			}
-
-			// Cleanup state
-			if (IsInstanceValid(_state))
-			{
-				_state.ClearAllState();
-			}
-
-			// Note: User signal disconnection is handled automatically by base class
-		}
-	}
 }

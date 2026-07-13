@@ -47,6 +47,14 @@ public class GameEventServiceBase
 	}
 
 	/// <summary>
+	/// Submit a game result/score event. Single guarded entry point so every
+	/// game routes results through the same validated path (delegates to
+	/// EmitEventSafeAsync).
+	/// </summary>
+	protected Task<Result<bool>> SubmitResultAsync(string eventType, object payload)
+		=> EmitEventSafeAsync(eventType, payload);
+
+	/// <summary>
 	/// Query backend with proper connection lifecycle and error handling
 	/// Returns raw JSON string for manual parsing by derived classes
 	/// Delegates to EventService for HTTP operations (reuses persistent connection)

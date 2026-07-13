@@ -1,3 +1,4 @@
+using BarBox.Core.Utils;
 using Godot;
 using LightResults;
 using System;
@@ -164,6 +165,30 @@ public partial class CreditService : AutoloadBase
 		UpdateCache(playerId, expectedBalance);
 		EmitSignal(SignalName.CreditsChanged, playerId.ToString(), expectedBalance);
 		return Result.Success(expectedBalance);
+	}
+
+	/// <summary>
+	/// Single-spend flow with confirmation: fetch balance, show the spend
+	/// dialog, then spend on confirm. One entry point so games stop hand-rolling
+	/// balance -> confirm -> spend. Does NOT cover multi-player rollback (Nines)
+	/// or spend-then-deposit (Carrom) shapes.
+	///
+	/// NOTE: CreditConfirmationHelper.ShowCreditConfirmationAsync is currently a
+	/// stub that always confirms - the confirmation gate is not yet enforced.
+	/// </summary>
+	public async Task<Result<int>> SpendWithConfirmationAsync(Guid playerId, string phoneNumber, int amount, string reason)
+	{
+		if (amount <= 0)
+			return Result.Failure<int>("Amount must be positive");
+
+		var balanceResult = await GetBalanceAsync(playerId);
+		int currentBalance = balanceResult.IsSuccess(out var balance) ? balance : 0;
+
+		bool confirmed = await CreditConfirmationHelper.ShowCreditConfirmationAsync(phoneNumber, amount, reason, currentBalance);
+		if (!confirmed)
+			return Result.Failure<int>("Credit spend cancelled");
+
+		return await SpendAsync(playerId, amount, reason);
 	}
 
 	/// <summary>

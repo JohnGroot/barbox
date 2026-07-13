@@ -52,7 +52,7 @@ public class MiningEventService : GameEventServiceBase
 			last_extraction_time = lastExtractionTime.ToString("O")  // ISO 8601 format for precise timestamp
 		};
 
-		return await EmitEventSafeAsync(EVENT_EXTRACT_COMPLETE, payload);
+		return await SubmitResultAsync(EVENT_EXTRACT_COMPLETE, payload);
 	}
 
 	public async Task<Result<bool>> EmitUpgradePurchaseAsync(
@@ -86,7 +86,7 @@ public class MiningEventService : GameEventServiceBase
 			location_id = locationId
 		};
 
-		return await EmitEventSafeAsync(EVENT_UPGRADE_PURCHASE, payload);
+		return await SubmitResultAsync(EVENT_UPGRADE_PURCHASE, payload);
 	}
 
 	public async Task<Result<bool>> EmitCreditDepositAsync(
@@ -108,7 +108,7 @@ public class MiningEventService : GameEventServiceBase
 			credits_earned = creditsEarned
 		};
 
-		return await EmitEventSafeAsync(EVENT_CREDIT_DEPOSIT, payload);
+		return await SubmitResultAsync(EVENT_CREDIT_DEPOSIT, payload);
 	}
 
 	private Result<MiningMetadataData> ParseMetadataData(Godot.Collections.Dictionary jsonDict)
@@ -160,7 +160,7 @@ public class MiningEventService : GameEventServiceBase
 			bonus_amount = bonusAmount
 		};
 
-		return await EmitEventSafeAsync(EVENT_FIRST_TIME_BONUS, payload);
+		return await SubmitResultAsync(EVENT_FIRST_TIME_BONUS, payload);
 	}
 
 	/// <summary>
