@@ -76,8 +76,8 @@ layer 2.
 - `CreditService` primitives — ALL money flows: single spend
   (`SpendWithConfirmationAsync`), multi-player spend with rollback, and
   machine-pot transfer (the latter two added in WS3).
-- `ToastService` (`Platform.Toast`), `PlayerRoster`, `GameTestFixture` —
-  added in WS3.
+- `NotificationService` (`Platform.Notifications`), `PlayerRoster`,
+  `GameSessionTestBase` — added in WS3.
 
 **Layer 3 — Games** (`_Games/*`): free-form internally. Mining is the
 reference implementation (Game / Engine / State / UI / Config / EventService
@@ -526,36 +526,11 @@ Guardrails against over-engineering; each with the reason it's excluded:
 
 ## §5 — Definition of Done: the "Fifth Game" Checklist
 
-When WS1–WS3 land, adding a game looks like this (this section graduates into
-`docs/adding-a-game.md` during WS2 item 5):
-
-**App side:**
-1. Copy the Mining reference shape (Game / Engine / State / UI / Config /
-   EventService).
-2. Subclass `GameController`; implement `GetGameId()` — one id, used
-   everywhere (registry, backend tag, scene).
-3. Add one registration line in `GameRegistry.cs` — boot assertion catches a
-   bad scene path or duplicate id.
-4. All platform access through `Platform.X`. Money through `CreditService`
-   primitives (single spend / multi-spend-rollback / machine transfer — all
-   confirmation-gated). Results through your `GameEventServiceBase` subclass'
-   `SubmitResultAsync`. User feedback through `Platform.Toast`. Players
-   through `PlayerRoster`.
-5. Call `StartBackendSessionAsync` when gameplay begins; the base auto-closes
-   it on teardown.
-
-**Backend side:**
-6. Create `games/<tag>/` (`schemas.py` with `EventType` alias, `service.py`,
-   `router.py`); add one `GAMES` dict entry. Import-time guards catch a
-   missing `SessionEventType` union edit or unclassified payload.
-
-**Tests:**
-7. Subclass `GameTestFixture` for flow tests; drop one auto-discovered Hurl
-   file under `test/02-feature/<tag>/`.
-
-**Verify:** the three §0 commands, plus play the game once in-editor and
-confirm `play/begin → score/result → finish` events post and credit entry
-gates correctly.
+**Superseded (2026-07-13):** this section's draft graduated into
+`docs/adding-a-game.md` when WS2 item 5 landed, and that doc has since been
+kept current through WS3 (credit shapes, `Platform.Notifications`,
+`PlayerRoster`, `GameSessionTestBase`). See `docs/adding-a-game.md` for the
+authoritative checklist — don't maintain two copies.
 
 Nice-to-have beyond this roadmap (WS6): `_Games/_Template`, shared
 leaderboard widget, countdown primitive.

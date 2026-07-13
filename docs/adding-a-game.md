@@ -39,11 +39,25 @@ with a separate `"racing"` tag). One string, one meaning, everywhere.
    and call the inherited `SubmitResultAsync(eventType, payload)` — it
    handles session/validity checks and backend-error mapping once, for every
    game.
-7. For credit spends, prefer `CreditService.SpendWithConfirmationAsync` for
-   the common single-spend-with-confirmation shape. Multi-player
-   rollback (Nines) and spend-then-deposit (Carrom) shapes aren't covered by
-   a shared helper yet — see the roadmap's WS3 for that work.
-8. Create a test suite under `_Games/YourGame/Tests/` (GoDotTest).
+7. For credit spends, use `CreditService`'s shared shapes rather than
+   hand-rolling: `SpendWithConfirmationAsync` (single spend with confirmation),
+   `SpendManyWithRollbackAsync` (deduct from multiple players, rolling back
+   already-successful deductions if one fails), or `TransferToMachineAsync`
+   (player → machine pot, refunding the player if the deposit fails).
+8. For player-visible errors/status, use `Platform.Notifications.Show(message,
+   severity)` rather than a bespoke error UI — it's a shared, stacking,
+   auto-dismissing overlay (severity: Info/Success/Warning/Error).
+9. For a multi-player roster keyed by session identity (not Carrom's
+   turn-slot-label style — see `docs/architecture-roadmap.md` §3 WS3 item 3
+   for why that one's different), extend `PlayerRosterEntry`
+   (`_Core/Scripts/Gameplay/PlayerRoster.cs`) and back your player list with a
+   `PlayerRoster<T>`. UUID-keyed; phone number is an attribute for backend
+   emit boundaries that need it, not the key.
+10. Create a test suite under `_Games/YourGame/Tests/` (GoDotTest). If it
+    needs one activity session created once for the whole suite (the common
+    case — see Mining/Nines/Racing), extend
+    `Tests/Fixtures/GameSessionTestBase.cs` instead of hand-rolling
+    `[SetupAll]`/`[CleanupAll]` — just override `GameTag`.
 
 ## 3. Backend side (`BarBoxServices/`)
 

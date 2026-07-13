@@ -29,9 +29,11 @@ writing its own start/stop flow. Platform services are reached through the
 
 Money and backend-result reporting go through the SDK's shared entry points
 instead of each game hand-rolling them:
-- `CreditService.SpendWithConfirmationAsync` - balance fetch + confirm dialog + spend, one call
+- `CreditService.SpendWithConfirmationAsync`/`SpendManyWithRollbackAsync`/`TransferToMachineAsync` - single spend, multi-player rollback, and machine-pot transfer shapes; games shouldn't hand-roll credit deduct/rollback logic
 - `GameEventServiceBase.SubmitResultAsync` - validated, error-mapped event submission for a game's `*EventService`
 - `GameController.StartBackendSessionAsync`/base `_ExitTree` - activity-session create/close, owned by the base class
+- `Platform.Notifications.Show(message, severity)` - shared stacking/auto-dismissing notification overlay for player-visible status and errors
+- `PlayerRoster<T>`/`PlayerRosterEntry` (`_Core/Scripts/Gameplay/PlayerRoster.cs`) - UUID-keyed multi-player roster, phone number as an attribute
 
 See `docs/adding-a-game.md` for the full new-game checklist across both codebases.
 
