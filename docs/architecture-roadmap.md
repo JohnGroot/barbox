@@ -105,7 +105,7 @@ roadmap):
 | WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
 | WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | **DONE (2026-07-13)** — all 5 increments, see §3 notes |
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | **DONE (2026-07-13)** — all 5 items, see §3 notes |
-| WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | Not started |
+| WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | In progress (item 1, credit correctness, done 2026-07-13) |
 | WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
 | WS5 | Backend infra: machine-credits TOCTOU fix, Alembic, dead deps, formatting | none; TOCTOU fix may be pulled forward anytime | Low/Med | Not started |
 | WS6 | Deferred until a second consumer appears: leaderboard widget, countdown, lobby, `_Games/_Template` | trigger-based | — | Intentionally deferred |
@@ -344,28 +344,28 @@ touch the same call-site surface); item 5 (docs) strictly last.
 
 Priority order within the workstream. Money first.
 
-1. **Credit correctness** *(gated on WS1 ② for the machine-pot item)*:
-   - **Real spend confirmation.** `CreditConfirmationHelper.cs:34` is a stub
-     that auto-confirms every spend, in production too — Racing charges real
-     credits with no user-facing confirmation. Decision made: build the real
-     modal. Route `ShowCreditConfirmationAsync` through `UIManager`'s existing
-     modal/confirmation infrastructure (`UIManager.ShowConfirmationAsync`,
-     `UIManager.cs:332`) with amount + balance shown; keep a dev/test bypass
-     flag that cannot be on in production builds.
-   - **`CreditService.SpendManyWithRollbackAsync(players, amount)`** — the
-     multi-player deduct-with-rollback shape. Migrate Nines' hand-rolled
-     `DeductCreditsWithRollbackAsync`/`RollbackCreditsAsync`
-     (`NinesGame.cs:547-608`) onto it.
-   - **`CreditService.TransferToMachineAsync(...)`** — the spend-then-deposit
-     (player → machine pot) shape with rollback on partial failure. Migrate
-     Carrom's table-credit flow (`CarromPlayerSetupMenu.cs:1409` spend,
-     `:1293` refund).
-   - **Mining deposit**: `MiningState.cs:434` fire-and-forgets `AddAsync`
-     when converting gems to credits — await it and surface failure to the
-     player.
-   - Verify each migration against the existing money tests
-     (`CreditServiceTests`, `CarromMachineCreditsIntegrationTests`, the Nines
-     rollback test) + the Hurl credit suites.
+1. ~~**Credit correctness** *(gated on WS1 ② for the machine-pot item)*~~
+   **DONE (2026-07-13)**:
+   - **Real spend confirmation.** `CreditConfirmationHelper.ShowCreditConfirmationAsync`
+     now routes through `UIManager.ShowConfirmationAsync` with amount + balance
+     shown; the development auto-confirm bypass is derived from
+     `BuildContext.IsExportedBuild`, so it cannot be true in a production build.
+   - **`CreditService.SpendManyWithRollbackAsync(players, amount, reason)`**
+     added — takes `(PlayerId, Label)` pairs so per-player failure messages
+     keep a display name. Nines' `DeductCreditsWithRollbackAsync` now resolves
+     sessions up front and delegates to it; `RollbackCreditsAsync` deleted.
+   - **`CreditService.TransferToMachineAsync(gameTag, boxId, playerId, amount, lobbySessionId, spendReason)`**
+     added — spends from the player then deposits to the machine pot,
+     refunding the player if the deposit fails. Carrom's
+     `OnTransferCreditButtonPressed` migrated onto it (previously logged and
+     continued on deposit failure, leaving the local table-credit count out of
+     sync with the backend with no refund).
+   - **Mining deposit**: `MiningState.PurchaseCredit` (now `PurchaseCreditAsync`,
+     returns `CreditPurchaseResult`) awaits `AddAsync`, refunds the spent gems
+     and surfaces failure via `MiningGameUI.ShowError` if the deposit fails.
+   - Verified via the full C# suite (291 tests, including `CreditServiceTests`,
+     `CarromMachineCreditsIntegrationTests`, `NinesGameTests`) + Hurl credit
+     suites after each of the four sub-items, each landed as its own commit.
 2. **ToastService.** Four incompatible "tell the user something" mechanisms
    exist; `CarromNotificationSystem` (555 lines — typed, stacking, timed/
    sticky, fade animations) is the best. Promote a generalized version to
