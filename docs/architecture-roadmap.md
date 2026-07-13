@@ -105,7 +105,7 @@ roadmap):
 | WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
 | WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | **DONE (2026-07-13)** — all 5 increments, see §3 notes |
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | **DONE (2026-07-13)** — all 5 items, see §3 notes |
-| WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | In progress (item 1, credit correctness, done 2026-07-13) |
+| WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | In progress (items 1-2 done 2026-07-13; see §3 notes) |
 | WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
 | WS5 | Backend infra: machine-credits TOCTOU fix, Alembic, dead deps, formatting | none; TOCTOU fix may be pulled forward anytime | Low/Med | Not started |
 | WS6 | Deferred until a second consumer appears: leaderboard widget, countdown, lobby, `_Games/_Template` | trigger-based | — | Intentionally deferred |
@@ -366,12 +366,35 @@ Priority order within the workstream. Money first.
    - Verified via the full C# suite (291 tests, including `CreditServiceTests`,
      `CarromMachineCreditsIntegrationTests`, `NinesGameTests`) + Hurl credit
      suites after each of the four sub-items, each landed as its own commit.
-2. **ToastService.** Four incompatible "tell the user something" mechanisms
-   exist; `CarromNotificationSystem` (555 lines — typed, stacking, timed/
-   sticky, fade animations) is the best. Promote a generalized version to
-   `_Core`, expose as `Platform.Toast`, migrate Carrom onto it, then replace
-   the bespoke `NinesUI.ShowError`, `MiningGameUI.ShowError`, and Racing's
-   inline error paths.
+2. ~~**ToastService.**~~ **DONE (2026-07-13)** — named `NotificationService`
+   (user preferred "notification" over "toast"), exposed as
+   `Platform.Notifications`:
+   - `_Core/Scripts/Autoloads/NotificationService.cs` promotes Carrom's
+     stacking/timed/sticky/fade-animation machinery (previously
+     `CarromNotificationSystem`, 555 lines) to a shared autoload. Generic
+     `Show(message, severity, color?, sticky?, duration?)` API — severity
+     (Info/Success/Warning/Error) supplies defaults, callers can override any
+     of them.
+   - Carrom migrated: its game-specific notification taxonomy (turn start,
+     foul, queen events, breaking attempts) stays local as
+     `CarromNotificationStyle`, mapping onto the platform service's generic
+     params. `CarromNotificationSystem.cs` deleted.
+   - Nines' `NinesUI.ShowError` previously only `GD.PrintErr`'d — never
+     actually reached the player. Now routes through
+     `Platform.Notifications`.
+   - Mining's `MiningGameUI.ShowError` previously built its own full-screen
+     blocking overlay with a dismiss button; now routes through
+     `Platform.Notifications` (a deliberate UX change: blocking modal →
+     non-blocking notification).
+   - Racing had no notification mechanism at all — every failure only ever
+     hit `GD.PrintErr`. Added `Platform.Notifications` calls at the
+     genuinely user-facing failure points (race save failure, time
+     trial/race-again cancellation, missing session, credit purchase
+     unavailable); internal/config-time diagnostics (track metadata,
+     retry-loop logging) deliberately left console-only. Racing's leaderboard
+     display (`ShowGlobalHighScores`) was found to only ever `GD.Print` to
+     the console on both success and failure paths — a separate, larger,
+     pre-existing gap, left out of this item's scope.
 3. **PlayerRoster.** Four independent roster implementations with
    inconsistent identity keying: Nines (`NinesGame.cs:339-455`, phone-keyed),
    Carrom (`CarromGame.cs:1458-1475` + the setup menu, phone-as-PlayerId),
