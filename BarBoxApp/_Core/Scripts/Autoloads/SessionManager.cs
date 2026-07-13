@@ -104,15 +104,18 @@ public partial class SessionManager : AutoloadBase
 
 			LogInfo($"SessionManager: Logging out {phoneNumbers.Length} active user(s)...");
 
-			// Create logout tasks for all active users
-			var logoutTasks = new List<Task<bool>>();
-			foreach (var phoneNumber in phoneNumbers)
+			// Log out sequentially — LogoutUserAsync mutates the shared, non-thread-safe
+			// session dictionaries, so concurrent logouts would race (tenet 2). Preserve the
+			// overall 5-second shutdown budget by racing the sequential loop against a timeout.
+			async Task LogoutAllSequentiallyAsync()
 			{
-				logoutTasks.Add(LogoutUserAsync(phoneNumber));
+				foreach (var phoneNumber in phoneNumbers)
+				{
+					await LogoutUserAsync(phoneNumber);
+				}
 			}
 
-			// Wait for all logouts with 5-second timeout
-			var allLogoutsTask = Task.WhenAll(logoutTasks);
+			var allLogoutsTask = LogoutAllSequentiallyAsync();
 			var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
 			var completedTask = await Task.WhenAny(allLogoutsTask, timeoutTask);
 

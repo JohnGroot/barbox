@@ -233,35 +233,25 @@ public partial class ApplicationBootstrap : AutoloadBase
 
 	private async Task InitializePhase3Async(CancellationToken cancellationToken)
 	{
+		// Sequential, deterministic init (tenet 2) — services are independent here.
 		LogInfo("Phase 3: Session and Payment services (depend on EventService)");
-		var phase3Tasks = new[]
-		{
-			InitializeServiceAsync("SessionManager", SessionManager.GetInstance(), ServiceCriticality.Optional, cancellationToken),
-			InitializeServiceAsync("PaymentService", PaymentService.GetInstance(), ServiceCriticality.Optional, cancellationToken)
-		};
-		await Task.WhenAll(phase3Tasks);
+		await InitializeServiceAsync("SessionManager", SessionManager.GetInstance(), ServiceCriticality.Optional, cancellationToken);
+		await InitializeServiceAsync("PaymentService", PaymentService.GetInstance(), ServiceCriticality.Optional, cancellationToken);
 	}
 
 	private async Task InitializePhase4Async(CancellationToken cancellationToken)
 	{
+		// GameRegistry before GameHost: GameHost resolves GameRegistry on init.
 		LogInfo("Phase 4: Game services");
-		var phase4Tasks = new[]
-		{
-			InitializeServiceAsync("GameRegistry", GameRegistry.GetAutoload(), ServiceCriticality.Optional, cancellationToken),
-			InitializeServiceAsync("GameHost", GameHost.GetInstance(), ServiceCriticality.Optional, cancellationToken)
-		};
-		await Task.WhenAll(phase4Tasks);
+		await InitializeServiceAsync("GameRegistry", GameRegistry.GetAutoload(), ServiceCriticality.Optional, cancellationToken);
+		await InitializeServiceAsync("GameHost", GameHost.GetInstance(), ServiceCriticality.Optional, cancellationToken);
 	}
 
 	private async Task InitializePhase5Async(CancellationToken cancellationToken)
 	{
 		LogInfo("Phase 5: Input and UI services");
-		var phase5Tasks = new[]
-		{
-			InitializeServiceAsync("InputManager", GetAutoload<InputManager>(), ServiceCriticality.Optional, cancellationToken),
-			InitializeServiceAsync("UIManager", UIManager.GetInstance(), ServiceCriticality.Optional, cancellationToken)
-		};
-		await Task.WhenAll(phase5Tasks);
+		await InitializeServiceAsync("InputManager", GetAutoload<InputManager>(), ServiceCriticality.Optional, cancellationToken);
+		await InitializeServiceAsync("UIManager", UIManager.GetInstance(), ServiceCriticality.Optional, cancellationToken);
 	}
 
 	private async Task<bool> InitializeServiceAsync(string serviceName, AutoloadBase service, ServiceCriticality criticality, CancellationToken cancellationToken)
