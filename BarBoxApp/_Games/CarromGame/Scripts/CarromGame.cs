@@ -14,6 +14,9 @@ public partial class CarromGame : GameController
 {
 	protected override string GetGameId() => "carrom_game";
 
+	// Backend activity sessions use the tag "carrom" (not the registry id "carrom_game").
+	protected override string GetGameTag() => "carrom";
+
 	// ================================================================
 	// SIGNALS
 	// ================================================================
@@ -75,7 +78,7 @@ public partial class CarromGame : GameController
 	private CarromBoard _board;
 	private CarromInputController _inputController;
 	private EventService _eventService;
-	private Guid _activitySessionId;
+	private CarromEventService _carromEventService;
 
 	// Managers
 	private CarromPieceFactory _pieceFactory;
@@ -143,6 +146,7 @@ public partial class CarromGame : GameController
 	{
 		// Initialize event service
 		_eventService = EventService.GetInstance();
+		_carromEventService = new CarromEventService(_eventService);
 	}
 
 	/// <summary>
@@ -1503,36 +1507,33 @@ public partial class CarromGame : GameController
 
 		try
 		{
-			// Emit event to backend (event-sourced persistence)
-			if (_eventService != null)
+			// Build scores dictionary with player scores
+			// For single-player competitive mode, we only have one player's score
+			var scores = new Dictionary<string, int>();
+			if (_competitiveModeManager != null)
 			{
-				// Build scores dictionary with player scores
-				// For single-player competitive mode, we only have one player's score
-				var scores = new Dictionary<string, int>();
-				if (_competitiveModeManager != null)
-				{
-					// Get player score from competitive mode manager
-					// Assuming a method exists to get current score
-					scores[playerId] = 0; // TODO: Get actual score from competitive mode
-				}
-
-				var mode = _carromGameMode.ToString().ToLowerInvariant();
-				var winnerId = isWin ? playerId : "";
-
-				var payload = new { mode = mode, winner = winnerId, scores = scores };
-			_ = _eventService.EmitEventAsync("carrom/round_finish", payload);
-
-				// Thread-safe logging via CallDeferred
-				CallDeferred(MethodName.LogSavedData, $"Emitted round_finish event - Win: {isWin}");
+				// Get player score from competitive mode manager
+				// Assuming a method exists to get current score
+				scores[playerId] = 0; // TODO: Get actual score from competitive mode
 			}
+
+			var mode = _carromGameMode.ToString().ToLowerInvariant();
+			var winnerId = isWin ? playerId : "";
+
+			// Emit result through the shared guarded path (event-sourced persistence)
+			var result = await _carromEventService.EmitRoundFinishAsync(mode, winnerId, scores);
+
+			// Thread-safe logging via CallDeferred
+			if (result.IsFailure(out var error))
+				CallDeferred(MethodName.LogAsyncError, $"Failed to emit round_finish event: {error.Message}");
+			else
+				CallDeferred(MethodName.LogSavedData, $"Emitted round_finish event - Win: {isWin}");
 		}
 		catch (System.Exception ex)
 		{
 			// Thread-safe error logging via CallDeferred
 			CallDeferred(MethodName.LogAsyncError, $"Exception emitting game result event: {ex.Message}");
 		}
-
-		await Task.CompletedTask;
 	}
 
 	/// <summary>
@@ -2351,14 +2352,9 @@ public partial class CarromGame : GameController
 			{
 				var boxId = locationManager.BoxId;
 
-				// Create multiplayer activity session using new API
+				// Create multiplayer activity session (owned by GameController, auto-closed on teardown)
 				var playerIdStrings = playerIds.Select(id => id.ToString()).ToList();
-				var sessionResult = await _eventService.CreateActivitySessionAsync(
-					boxId: boxId,
-					playerId: playerIds[0], // Host player
-					gameTag: "carrom",
-					playerIds: playerIdStrings
-				);
+				var sessionResult = await StartBackendSessionAsync(boxId, playerIds[0], playerIdStrings);
 
 				// Validate objects still exist after async boundary
 				if (!IsInstanceValid(_eventService) || !IsInstanceValid(_notificationSystem))
@@ -2382,11 +2378,7 @@ public partial class CarromGame : GameController
 					return;
 				}
 
-				if (sessionResult.IsSuccess(out var sessionId))
-				{
-					_activitySessionId = sessionId;
-				}
-				GD.Print($"[CarromGame] Multiplayer session created successfully: {_activitySessionId}");
+				GD.Print("[CarromGame] Multiplayer session created successfully");
 			}
 			else
 			{
@@ -2420,11 +2412,7 @@ public partial class CarromGame : GameController
 		if (_isDebugBuild)
 			ClearDebugMetrics();
 
-		// Close activity session if active
-		if (_activitySessionId != Guid.Empty && _eventService != null)
-		{
-			_ = _eventService.CloseActivitySessionAsync(_activitySessionId);
-		}
+		// Backend session close is handled automatically by the base class.
 
 		// Clean up signals and references
 		if (_board != null && GodotObject.IsInstanceValid(_board))
