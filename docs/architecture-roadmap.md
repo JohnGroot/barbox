@@ -296,14 +296,17 @@ touch the same call-site surface); item 5 (docs) strictly last.
    already re-validates via `GetGameData` before calling, so this only
    changes behavior for a genuine bug. Full C# + Hurl suite green (291
    passed).
-4. **Backend drift guards.** The two forgettable manual edits when adding a
-   game are the `SessionEventType` union (`structures.py:94-100`) and payload
-   classification (`games/validation.py`). The payload guard already exists
-   (`_check_payload_model_coverage`, `validation.py:47-59`). Add the missing
-   one: an import-time assert that every `GAMES` key's event types are
-   reachable through `SessionEventType` (i.e., the union includes each game's
-   `EventType`), so a missing union edit fails at boot, not with a runtime
-   422.
+4. ~~**Backend drift guards.**~~ **DONE (2026-07-13)** — added
+   `_check_session_event_type_coverage()` in `structures.py`, called at
+   import time right after the `SessionEventType` union is defined. It
+   flattens the union's `Literal` members (PEP 695 `type` aliases need
+   `get_args(SessionEventType.__value__)`, not `get_args(SessionEventType)`
+   directly, since the alias itself is a `TypeAliasType`) and checks every
+   `GAMES[name]["schemas"].EventType` value is covered; raises `RuntimeError`
+   naming the missing event(s) otherwise. Verified it actually fires by
+   temporarily dropping a game from the union and confirming the import
+   fails with the expected message. Full C# + Hurl suite green (291 C# +
+   24/24 Hurl).
 5. **Docs pass (after items 1–4 settle the contract).** Rewrite the
    pre-GameController guidance:
    - `BarBoxApp/_Games/CLAUDE.md:21-51` — "Game Lifecycle Rules" and "Context

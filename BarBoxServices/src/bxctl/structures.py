@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 from uuid import UUID
 
 from pydantic import BaseModel, Field, PlainSerializer
@@ -98,6 +98,32 @@ type SessionEventType = (
     | mining.schemas.MiningEventType
     | nines.schemas.NinesEventType
 )
+
+
+def _check_session_event_type_coverage() -> None:
+    """Fail fast if a registered game's EventType isn't reachable through SessionEventType.
+
+    Adding a game to GAMES without also adding its schemas.EventType to the
+    SessionEventType union above would otherwise only surface as a runtime
+    422 on that game's first event.
+    """
+    covered = {
+        literal
+        for member in get_args(SessionEventType.__value__)
+        for literal in get_args(member)
+    }
+    for game_name, game_data in GAMES.items():
+        game_events = set(get_args(game_data["schemas"].EventType))
+        missing = game_events - covered
+        if missing:
+            raise RuntimeError(
+                f"Game '{game_name}' event type(s) {sorted(missing)} are not reachable "
+                "through SessionEventType in structures.py. Add the game's EventType to "
+                "the SessionEventType union."
+            )
+
+
+_check_session_event_type_coverage()
 
 
 class SessionEventBase(BaseModel):
