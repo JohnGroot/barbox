@@ -1403,43 +1403,53 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				return;
 			}
 
-			// Step 1: Spend from player account via CreditService (handles polling and cache refresh)
-			var spendResult = await _creditService.SpendAsync(
-				session.PlayerId,
-				selectedAmount.Value,
-				"Transfer to Carrom table"
-			);
-
-			// Validate scene still exists after async operation
-			if (!IsInstanceValid(this))
-				return;
-
-			if (spendResult.IsFailure(out var spendError))
-			{
-				GD.PrintErr($"Failed to spend credits: {spendError.Message}");
-				return;
-			}
-
-			// Step 2: Deposit to machine credits pot (machine-specific logic)
+			// Spend from player account and deposit to the machine pot in one
+			// step, rolling back the spend if the deposit fails partway through.
 			if (session.LobbySessionId != Guid.Empty)
 			{
 				var locationManager = LocationManager.GetAutoload();
-				if (locationManager != null)
+				if (locationManager == null)
 				{
-					var boxId = locationManager.BoxId;
-					var depositResult = await _creditService.DepositMachineCreditsAsync(
-						"carrom",  // Use game tag (not game ID) to match backend queries
-						boxId,
-						session.PlayerId,
-						selectedAmount.Value,
-						session.LobbySessionId
-					);
+					GD.PrintErr("LocationManager not available for credit transfer");
+					return;
+				}
 
-					if (depositResult.IsFailure(out var depositError))
-					{
-						GD.PrintErr($"Failed to deposit to machine pot: {depositError.Message}");
-						// Continue anyway - player credits already deducted
-					}
+				var boxId = locationManager.BoxId;
+				var transferResult = await _creditService.TransferToMachineAsync(
+					"carrom",  // Use game tag (not game ID) to match backend queries
+					boxId,
+					session.PlayerId,
+					selectedAmount.Value,
+					session.LobbySessionId,
+					"Transfer to Carrom table"
+				);
+
+				// Validate scene still exists after async operation
+				if (!IsInstanceValid(this))
+					return;
+
+				if (transferResult.IsFailure(out var transferError))
+				{
+					GD.PrintErr($"Credit transfer failed: {transferError.Message}");
+					return;
+				}
+			}
+			else
+			{
+				// No lobby session (e.g. standalone/dev) - nothing to deposit into, spend only
+				var spendResult = await _creditService.SpendAsync(
+					session.PlayerId,
+					selectedAmount.Value,
+					"Transfer to Carrom table"
+				);
+
+				if (!IsInstanceValid(this))
+					return;
+
+				if (spendResult.IsFailure(out var spendError))
+				{
+					GD.PrintErr($"Failed to spend credits: {spendError.Message}");
+					return;
 				}
 			}
 

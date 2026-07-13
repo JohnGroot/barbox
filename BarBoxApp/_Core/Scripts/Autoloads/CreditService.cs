@@ -390,6 +390,37 @@ public partial class CreditService : AutoloadBase
 	}
 
 	/// <summary>
+	/// Spend from a player's account then deposit the same amount into the
+	/// machine pot. Refunds the player if the deposit fails partway through,
+	/// so a backend hiccup on the deposit call never leaves credits deducted
+	/// with nothing to show for it.
+	/// </summary>
+	public async Task<Result<MachineCreditsResponse>> TransferToMachineAsync(
+		string gameTag,
+		Guid boxId,
+		Guid playerId,
+		int amount,
+		Guid lobbySessionId,
+		string spendReason)
+	{
+		var spendResult = await SpendAsync(playerId, amount, spendReason);
+		if (spendResult.IsFailure(out var spendError))
+			return Result.Failure<MachineCreditsResponse>(spendError.Message);
+
+		var depositResult = await DepositMachineCreditsAsync(gameTag, boxId, playerId, amount, lobbySessionId);
+		if (depositResult.IsFailure(out var depositError))
+		{
+			var refundResult = await AddAsync(playerId, amount, spendReason + " Rollback");
+			if (refundResult.IsFailure(out var refundError))
+				LogError($"CRITICAL: Failed to rollback machine transfer for {playerId}: {refundError.Message}");
+
+			return Result.Failure<MachineCreditsResponse>($"Failed to deposit to machine pot: {depositError.Message}");
+		}
+
+		return depositResult;
+	}
+
+	/// <summary>
 	/// Consume credits from machine pot (for game start)
 	/// </summary>
 	public async Task<Result<MachineCreditsResponse>> ConsumeMachineCreditsAsync(
