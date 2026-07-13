@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using BarBox.Core.Gameplay;
 using Godot;
 
 namespace BarBox.Games.Nines;
@@ -144,14 +145,9 @@ public class CardStack
 /// <summary>
 /// Player data for multi-player support
 /// </summary>
-public class NinesPlayer
+public class NinesPlayer : PlayerRosterEntry
 {
-	public string PhoneNumber { get; init; } = string.Empty;
-	public string DisplayName { get; set; } = "Player";
 	public int Credits { get; set; }
-	public int SlotIndex { get; init; }
-
-	public bool IsLoggedIn => !string.IsNullOrEmpty(PhoneNumber);
 
 	// Analytics tracking
 	public int CorrectPredictions { get; set; }

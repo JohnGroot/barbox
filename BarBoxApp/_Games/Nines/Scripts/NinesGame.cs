@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BarBox.Core.Autoloads;
+using BarBox.Core.Gameplay;
 using Godot;
 using LightResults;
 
@@ -331,13 +332,11 @@ public partial class NinesGame : GameController
 		if (session == null)
 			return;
 
-		var phoneNumber = session.PhoneNumber;
-
 		// Check if already in players list
-		if (_state.Players.Any(p => p.PhoneNumber == phoneNumber))
+		if (_state.Roster.Contains(session.PlayerId))
 		{
 			// Update existing player data
-			var existingPlayer = _state.Players.First(p => p.PhoneNumber == phoneNumber);
+			var existingPlayer = _state.Roster.Find(session.PlayerId);
 			existingPlayer.DisplayName = !string.IsNullOrEmpty(session.UserName) ? session.UserName : "Player";
 			// Credits will be fetched from SessionEventService in credit flow implementation
 		}
@@ -379,13 +378,14 @@ public partial class NinesGame : GameController
 
 		var player = new NinesPlayer
 		{
+			PlayerId = session.PlayerId,
 			PhoneNumber = session.PhoneNumber,
 			DisplayName = displayName,
 			Credits = 0, // Credits will be fetched from SessionEventService in credit flow implementation
 			SlotIndex = slotIndex
 		};
 
-		_state.Players.Add(player);
+		_state.Roster.Add(player);
 		GD.Print($"[Nines] Player added: {player.DisplayName} (slot {slotIndex})");
 	}
 
@@ -400,13 +400,13 @@ public partial class NinesGame : GameController
 		var slotIndex = _state.Players.Count;
 		var player = new NinesPlayer
 		{
-			PhoneNumber = string.Empty, // Anonymous
+			PhoneNumber = string.Empty, // Anonymous - PlayerId left as Guid.Empty (not logged in)
 			DisplayName = $"Player {slotIndex + 1}",
 			Credits = 0,
 			SlotIndex = slotIndex
 		};
 
-		_state.Players.Add(player);
+		_state.Roster.Add(player);
 		_ui?.RefreshPlayerList();
 		GD.Print($"[Nines] Anonymous player added: {player.DisplayName}");
 	}
@@ -425,7 +425,7 @@ public partial class NinesGame : GameController
 			}
 		}
 
-		_state.Players.Remove(player);
+		_state.Roster.Remove(player);
 
 		// Recalculate slot indices
 		for (int i = 0; i < _state.Players.Count; i++)
@@ -1289,7 +1289,8 @@ public partial class NinesGame : GameController
 		public TurnSubState TurnSubState { get; set; } = TurnSubState.SelectingStack;
 
 		public List<CardStack> Stacks { get; } = new();
-		public List<NinesPlayer> Players { get; } = new();
+		public PlayerRoster<NinesPlayer> Roster { get; } = new();
+		public IReadOnlyList<NinesPlayer> Players => Roster.Players;
 
 		public int CurrentPlayerIndex { get; set; }
 		public CardStack? SelectedStack { get; set; }
