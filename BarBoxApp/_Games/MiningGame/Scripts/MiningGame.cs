@@ -10,10 +10,7 @@ namespace BarBox.Games.MiningGame;
 [GlobalClass]
 public partial class MiningGame : GameController
 {
-	protected override string GetGameId() => "mining_game";
-
-	// Backend activity sessions use the tag "mining" (not the registry id "mining_game").
-	protected override string GetGameTag() => "mining";
+	protected override string GetGameId() => "mining";
 
 	// ================================================================
 	// CONSTANTS

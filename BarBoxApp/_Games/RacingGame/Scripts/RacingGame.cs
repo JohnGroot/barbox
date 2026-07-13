@@ -93,10 +93,7 @@ public class RacingUIState
 [GlobalClass]
 public partial class RacingGame : GameController
 {
-	protected override string GetGameId() => "racing_game";
-
-	// Backend activity sessions use the tag "racing" (not the registry id "racing_game").
-	protected override string GetGameTag() => "racing";
+	protected override string GetGameId() => "racing";
 
 	// ================================================================
 	// SIGNALS

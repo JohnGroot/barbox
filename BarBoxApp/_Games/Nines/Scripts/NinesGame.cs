@@ -15,10 +15,7 @@ namespace BarBox.Games.Nines;
 /// </summary>
 public partial class NinesGame : GameController
 {
-	protected override string GetGameId() => "nines_game";
-
-	// Backend activity sessions use the tag "nines" (not the registry id "nines_game").
-	protected override string GetGameTag() => "nines";
+	protected override string GetGameId() => "nines";
 
 	#region Constants
 

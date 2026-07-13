@@ -8,7 +8,7 @@
 script = ExtResource("1_3w5hw")
 Config = ExtResource("2_d4bfs")
 UIPath = NodePath("MiningGameUI")
-GameId = "mining_game"
+GameId = "mining"
 CanPause = false
 metadata/_custom_type_script = "uid://c8vylp72vcaag"
 

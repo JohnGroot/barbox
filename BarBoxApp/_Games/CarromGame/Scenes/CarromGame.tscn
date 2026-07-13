@@ -23,7 +23,7 @@ WhitePieceTemplate = ExtResource("2_1b4uc")
 BlackPieceTemplate = ExtResource("3_pw2n5")
 RedPieceTemplate = ExtResource("4_oio5e")
 StrikerTemplate = ExtResource("5_yqxup")
-GameId = "carrom_game"
+GameId = "carrom"
 
 [node name="CarromBoard" type="Node2D" parent="."]
 script = ExtResource("2_mm0sl")

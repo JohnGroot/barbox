@@ -95,13 +95,6 @@ public abstract partial class GameController : Node2D
 	private Guid _activitySessionId;
 
 	/// <summary>
-	/// Backend game_tag for the activity session. Defaults to the registry game
-	/// id; override when the backend tag differs (e.g. Mining's id is
-	/// "mining_game" but its tag is "mining").
-	/// </summary>
-	protected virtual string GetGameTag() => GetGameId();
-
-	/// <summary>
 	/// Creates the backend activity session and stores its id for automatic
 	/// close on teardown. Call when gameplay actually begins (timing varies per
 	/// game). Returns the Result so the caller decides whether failure is fatal.
@@ -111,7 +104,7 @@ public abstract partial class GameController : Node2D
 		if (Platform.Events == null)
 			return Result.Failure<Guid>("SessionEventService not available");
 
-		var result = await Platform.Events.CreateActivitySessionAsync(boxId, playerId, GetGameTag(), playerIds);
+		var result = await Platform.Events.CreateActivitySessionAsync(boxId, playerId, GetGameId(), playerIds);
 		if (result.IsSuccess(out var sessionId))
 			_activitySessionId = sessionId;
 

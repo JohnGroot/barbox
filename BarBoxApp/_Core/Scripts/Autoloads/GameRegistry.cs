@@ -81,11 +81,11 @@ public partial class GameRegistry : AutoloadBase
 	{
 		// Load from _Data/GameRegistry.json when available
 		// For now, register sample games manually
-		
+
 		// 2D time trial racing game with daily seeded race tracks
 		RegisterGame(new GameMetadata
 		{
-			GameId = "racing_game",
+			GameId = "racing",
 			DisplayName = "Racing Game",
 			Description = "2D time trial racing game with multiple tracks and competitive timing",
 			ScenePath = "res://_Games/RacingGame/Scenes/RacingGame.tscn",
@@ -100,7 +100,7 @@ public partial class GameRegistry : AutoloadBase
 		// Traditional board game with physics-based gameplay
 		RegisterGame(new GameMetadata
 		{
-			GameId = "carrom_game",
+			GameId = "carrom",
 			DisplayName = "Carrom",
 			Description = "Traditional board game featuring physics-based striking and strategic pocket play",
 			ScenePath = "res://_Games/CarromGame/Scenes/CarromGame.tscn",
@@ -115,7 +115,7 @@ public partial class GameRegistry : AutoloadBase
 		// Idle mining game with upgrades and gem collection
 		RegisterGame(new GameMetadata
 		{
-			GameId = "mining_game",
+			GameId = "mining",
 			DisplayName = "Mining Game",
 			Description = "Idle mining game where you collect gems, upgrade your equipment, and extract resources across different locations",
 			ScenePath = "res://_Games/MiningGame/Scenes/MiningGame.tscn",
@@ -130,7 +130,7 @@ public partial class GameRegistry : AutoloadBase
 		// Card prediction game with time-based jackpot
 		RegisterGame(new GameMetadata
 		{
-			GameId = "nines_game",
+			GameId = "nines",
 			DisplayName = "Nines",
 			Description = "Card prediction game where players guess higher, lower, or same. Survive the deck to win the jackpot!",
 			ScenePath = "res://_Games/Nines/Nines.tscn",

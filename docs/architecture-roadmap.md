@@ -104,7 +104,7 @@ roadmap):
 |---|-----------|------------|------|--------|
 | WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
 | WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | **DONE (2026-07-13)** — all 5 increments, see §3 notes |
-| WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | Not started |
+| WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | In progress (item 1 done 2026-07-13) |
 | WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | Not started |
 | WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
 | WS5 | Backend infra: machine-credits TOCTOU fix, Alembic, dead deps, formatting | none; TOCTOU fix may be pulled forward anytime | Low/Med | Not started |
@@ -252,16 +252,15 @@ sequencing note "after WS1 (rename settles names)" is satisfied).
 Small items, each its own commit. Do 1–4 after WS1 (item 1 and WS1's rename
 touch the same call-site surface); item 5 (docs) strictly last.
 
-1. **One identity per game.** Today each game has two magic strings: the
-   registry id (`"mining_game"`, `GameRegistry.cs:80-144`) and the backend tag
-   (`"mining"`, via `GetGameTag()` overrides). Forgetting the override
-   silently sends the wrong tag to the backend. Fix: rename registry ids to
-   the backend tags (`mining_game`→`mining`, `racing_game`→`racing`,
-   `carrom_game`→`carrom`, nines likewise), delete `GetGameTag()` from
-   `GameController.cs` (and the four per-game overrides) so `GetGameId()` is
-   the single name. Grep both codebases for the old ids (menu wiring, scene
-   metadata, tests). Verify: full C# + Hurl suites — the Hurl tests validate
-   backend tags end-to-end.
+1. ~~**One identity per game.**~~ **DONE (2026-07-13)** — registry ids
+   renamed to backend tags (`mining_game`→`mining`, `racing_game`→`racing`,
+   `carrom_game`→`carrom`, `nines_game`→`nines`) in `GameRegistry.cs`, the two
+   `.tscn` scene metadata copies (`CarromGame.tscn`, `MiningGame.tscn`), and
+   the four `GetGameId()` overrides. `GetGameTag()` deleted from
+   `GameController.cs` and all four per-game overrides;
+   `StartBackendSessionAsync` now passes `GetGameId()` directly. No menu-
+   wiring or test references to the old `_game`-suffixed ids existed. Full
+   C# + Hurl suite green (291 passed).
 2. **One discovery idiom.** Convert the games to `Platform.X`:
    Racing (`RacingGame.cs:264-270` GetInstance block, `:495` InputManager,
    `:893` LocationManager), Carrom (`CarromGame.cs:145-149`), Nines

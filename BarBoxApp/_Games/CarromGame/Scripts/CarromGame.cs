@@ -12,10 +12,7 @@ namespace BarBox.Games.Carrom;
 [GlobalClass]
 public partial class CarromGame : GameController
 {
-	protected override string GetGameId() => "carrom_game";
-
-	// Backend activity sessions use the tag "carrom" (not the registry id "carrom_game").
-	protected override string GetGameTag() => "carrom";
+	protected override string GetGameId() => "carrom";
 
 	// ================================================================
 	// SIGNALS
