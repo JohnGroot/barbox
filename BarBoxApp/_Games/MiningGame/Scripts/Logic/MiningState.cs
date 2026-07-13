@@ -231,7 +231,7 @@ public partial class MiningState : Node
 
 		// Happy path: load from backend
 		var playerId = currentSession.PlayerId;
-		// Get venue name from EventService for venue-scoped mining progress
+		// Get venue name from SessionEventService for venue-scoped mining progress
 		// Mining progress follows player across machines at same venue
 		var eventService = _game.GetEventService();
 		var venueName = eventService.GetVenueName() ?? "default";

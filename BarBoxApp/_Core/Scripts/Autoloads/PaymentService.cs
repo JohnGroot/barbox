@@ -109,7 +109,7 @@ public partial class PaymentService : AutoloadBase
 			return PaymentResult.Failure("No active session - please log in first");
 		}
 
-		// CRITICAL: Check EventService readiness BEFORE processing payment
+		// CRITICAL: Check SessionEventService readiness BEFORE processing payment
 		var validation = ValidateEventServiceReady();
 		if (validation.HasValue)
 			return validation.Value;
@@ -217,24 +217,24 @@ public partial class PaymentService : AutoloadBase
 
 	private PaymentResult? ValidateEventServiceReady()
 	{
-		var eventService = EventService.GetInstance();
+		var eventService = SessionEventService.GetInstance();
 		var eventServiceExists = eventService != null;
 		var eventServiceReady = eventService?.IsReady ?? false;
 
 		if (!eventServiceExists)
 		{
-			LogError("Cannot process payment - EventService not found");
+			LogError("Cannot process payment - SessionEventService not found");
 			return PaymentResult.Failure(
-				$"EventService not initialized - credits cannot be added. " +
-				$"Diagnostics: EventService exists: {eventServiceExists}, EventService ready: {eventServiceReady}");
+				$"SessionEventService not initialized - credits cannot be added. " +
+				$"Diagnostics: SessionEventService exists: {eventServiceExists}, SessionEventService ready: {eventServiceReady}");
 		}
 
 		if (!eventServiceReady)
 		{
-			LogError("Cannot process payment - EventService not ready");
+			LogError("Cannot process payment - SessionEventService not ready");
 			return PaymentResult.Failure(
-				$"EventService not ready - backend connection required. " +
-				$"Diagnostics: EventService exists: {eventServiceExists}, EventService ready: {eventServiceReady}");
+				$"SessionEventService not ready - backend connection required. " +
+				$"Diagnostics: SessionEventService exists: {eventServiceExists}, SessionEventService ready: {eventServiceReady}");
 		}
 
 		return null;

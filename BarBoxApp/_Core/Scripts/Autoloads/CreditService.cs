@@ -83,8 +83,8 @@ public partial class CreditService : AutoloadBase
 		if (amount <= 0)
 			return Result.Failure<int>("Amount must be positive");
 
-		// Ensure EventService is ready (with retry for race condition) - credit/spend is a
-		// session-scoped emit, which EventService still owns
+		// Ensure SessionEventService is ready (with retry for race condition) - credit/spend is a
+		// session-scoped emit, which SessionEventService still owns
 		var eventServiceResult = await EnsureEventServiceReadyAsync();
 		if (!eventServiceResult.IsSuccess(out var eventService))
 			return Result.Failure<int>("Credit service unavailable");
@@ -200,8 +200,8 @@ public partial class CreditService : AutoloadBase
 		if (amount <= 0)
 			return Result.Failure<int>("Amount must be positive");
 
-		// Ensure EventService is ready (with retry for race condition) - credit/earn is a
-		// session-scoped emit, which EventService still owns
+		// Ensure SessionEventService is ready (with retry for race condition) - credit/earn is a
+		// session-scoped emit, which SessionEventService still owns
 		var eventServiceResult = await EnsureEventServiceReadyAsync();
 		if (!eventServiceResult.IsSuccess(out var eventService))
 			return Result.Failure<int>("Credit service unavailable");
@@ -412,34 +412,34 @@ public partial class CreditService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Validates EventService is ready, with retry logic to handle initialization race conditions.
-	/// Waits up to 1 second for EventService to become ready before failing.
+	/// Validates SessionEventService is ready, with retry logic to handle initialization race conditions.
+	/// Waits up to 1 second for SessionEventService to become ready before failing.
 	/// </summary>
-	private async Task<Result<EventService>> EnsureEventServiceReadyAsync()
+	private async Task<Result<SessionEventService>> EnsureEventServiceReadyAsync()
 	{
-		var eventService = EventService.GetInstance();
+		var eventService = SessionEventService.GetInstance();
 		if (eventService != null && eventService.IsReady)
 			return Result.Success(eventService);
 
-		// Wait for EventService to become ready (handles initialization race condition)
+		// Wait for SessionEventService to become ready (handles initialization race condition)
 		const int MAX_RETRIES = 10;
 		const float RETRY_DELAY_SECONDS = 0.1f;
 
 		for (int i = 0; i < MAX_RETRIES; i++)
 		{
 			await DelayAsync(RETRY_DELAY_SECONDS);
-			eventService = EventService.GetInstance();
+			eventService = SessionEventService.GetInstance();
 			if (eventService != null && eventService.IsReady)
 			{
-				LogInfo($"EventService became ready after {(i + 1) * RETRY_DELAY_SECONDS:F1}s");
+				LogInfo($"SessionEventService became ready after {(i + 1) * RETRY_DELAY_SECONDS:F1}s");
 				return Result.Success(eventService);
 			}
 		}
 
-		var exists = EventService.GetInstance() != null;
-		var ready = EventService.GetInstance()?.IsReady ?? false;
-		LogError($"EventService not available (exists: {exists}, ready: {ready})");
-		return Result.Failure<EventService>("Credit service unavailable");
+		var exists = SessionEventService.GetInstance() != null;
+		var ready = SessionEventService.GetInstance()?.IsReady ?? false;
+		LogError($"SessionEventService not available (exists: {exists}, ready: {ready})");
+		return Result.Failure<SessionEventService>("Credit service unavailable");
 	}
 
 	/// <summary>

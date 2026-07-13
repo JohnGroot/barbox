@@ -12,7 +12,7 @@ namespace BarBox.Tests.Fixtures;
 /// </summary>
 public abstract class FailureScenarioTestBase : BackendTestBase
 {
-	private EventService _eventService;
+	private SessionEventService _eventService;
 #if DEBUG
 	private bool _eventServiceStateModified = false;
 	private bool _originalEventServiceState = false;
@@ -36,8 +36,8 @@ public abstract class FailureScenarioTestBase : BackendTestBase
 	}
 
 	/// <summary>
-	/// Simulate EventService not being ready (backend not initialized).
-	/// This forces EventService.IsReady to return false, simulating the
+	/// Simulate SessionEventService not being ready (backend not initialized).
+	/// This forces SessionEventService.IsReady to return false, simulating the
 	/// production bug where backend fails to start.
 	/// </summary>
 	protected void SimulateEventServiceNotReady()
@@ -45,7 +45,7 @@ public abstract class FailureScenarioTestBase : BackendTestBase
 #if DEBUG
 		if (_eventService == null)
 		{
-			TestHelpers.LogTestWarning("EventService not found - cannot simulate failure");
+			TestHelpers.LogTestWarning("SessionEventService not found - cannot simulate failure");
 			return;
 		}
 
@@ -55,14 +55,14 @@ public abstract class FailureScenarioTestBase : BackendTestBase
 
 		// Force not ready state
 		_eventService.SetReadyStateForTesting(false);
-		TestHelpers.LogTestInfo("EventService forced to NOT READY state");
+		TestHelpers.LogTestInfo("SessionEventService forced to NOT READY state");
 #else
 		TestHelpers.LogTestWarning("Failure simulation requires DEBUG build");
 #endif
 	}
 
 	/// <summary>
-	/// Restore EventService to ready state after simulating failure.
+	/// Restore SessionEventService to ready state after simulating failure.
 	/// Should be called in test cleanup or finally blocks.
 	/// </summary>
 	protected void RestoreEventServiceReady()
@@ -72,7 +72,7 @@ public abstract class FailureScenarioTestBase : BackendTestBase
 		{
 			_eventService.SetReadyStateForTesting(_originalEventServiceState);
 			_eventServiceStateModified = false;
-			TestHelpers.LogTestInfo($"EventService restored to original state: {(_originalEventServiceState ? "READY" : "NOT READY")}");
+			TestHelpers.LogTestInfo($"SessionEventService restored to original state: {(_originalEventServiceState ? "READY" : "NOT READY")}");
 		}
 #endif
 	}
@@ -90,7 +90,7 @@ public abstract class FailureScenarioTestBase : BackendTestBase
 	}
 
 	/// <summary>
-	/// Verify that EventService is currently in not-ready state
+	/// Verify that SessionEventService is currently in not-ready state
 	/// </summary>
 	protected bool IsEventServiceNotReady()
 	{

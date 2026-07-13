@@ -16,7 +16,7 @@ namespace BarBox.Games.MiningGame.Tests;
 public class MiningGameTests : TestClass
 {
 	private const string GAME_TAG = "mining";
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private Guid _testBoxId;
 	private Guid _testPlayerId;
 	private Guid _testSessionId;
@@ -38,9 +38,9 @@ public class MiningGameTests : TestClass
 			return;
 		}
 
-		// Get EventService
-		_eventService = TestScene.GetNode<EventService>("/root/EventService");
-		_eventService.ShouldNotBeNull("EventService autoload must be available");
+		// Get SessionEventService
+		_eventService = TestScene.GetNode<SessionEventService>("/root/SessionEventService");
+		_eventService.ShouldNotBeNull("SessionEventService autoload must be available");
 
 		// Use seeded test identifiers (API key is only valid for seeded Box ID)
 		_testBoxId = TestHelpers.SeededTestBoxId;
@@ -73,7 +73,7 @@ public class MiningGameTests : TestClass
 
 		if (_eventService == null)
 		{
-			TestHelpers.LogTestInfo("Skipping - EventService not available");
+			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 
@@ -103,7 +103,7 @@ public class MiningGameTests : TestClass
 	{
 		if (_eventService == null)
 		{
-			TestHelpers.LogTestInfo("Skipping - EventService not available");
+			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 
@@ -149,7 +149,7 @@ public class MiningGameTests : TestClass
 	{
 		if (_eventService == null)
 		{
-			TestHelpers.LogTestInfo("Skipping - EventService not available");
+			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 
@@ -170,7 +170,7 @@ public class MiningGameTests : TestClass
 	{
 		if (_eventService == null)
 		{
-			TestHelpers.LogTestInfo("Skipping - EventService not available");
+			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 
@@ -202,7 +202,7 @@ public class MiningGameTests : TestClass
 	{
 		if (_eventService == null)
 		{
-			TestHelpers.LogTestInfo("Skipping - EventService not available");
+			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 
@@ -244,7 +244,7 @@ public class MiningGameTests : TestClass
 	{
 		if (_eventService == null)
 		{
-			TestHelpers.LogTestInfo("Skipping - EventService not available");
+			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 
@@ -281,7 +281,7 @@ public class MiningGameTests : TestClass
 	{
 		if (_eventService == null)
 		{
-			TestHelpers.LogTestInfo("Skipping - EventService not available");
+			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 

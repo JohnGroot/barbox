@@ -13,9 +13,9 @@ namespace BarBox.Core.Autoloads;
 /// Event-based persistence service for BarBox backend integration
 /// Forwards all game/session events to local BarBoxServices backend
 /// </summary>
-public partial class EventService : AutoloadBase
+public partial class SessionEventService : AutoloadBase
 {
-	private const string NotReadyError = "EventService not initialized - backend not ready";
+	private const string NotReadyError = "SessionEventService not initialized - backend not ready";
 	private const string UnknownError = "Unknown error";
 
 	private string _venueName;
@@ -40,7 +40,7 @@ public partial class EventService : AutoloadBase
 		_backend = BackendClient.GetInstance();
 		if (_backend == null)
 		{
-			throw new InvalidOperationException("BackendClient not found - EventService requires BackendClient");
+			throw new InvalidOperationException("BackendClient not found - SessionEventService requires BackendClient");
 		}
 
 		LogInfo("Waiting for BackendClient to become ready...");
@@ -51,7 +51,7 @@ public partial class EventService : AutoloadBase
 			throw new InvalidOperationException("BackendClient failed to become ready within timeout");
 		}
 
-		LogInfo("EventService ready (transport delegated to BackendClient)");
+		LogInfo("SessionEventService ready (transport delegated to BackendClient)");
 	}
 
 
@@ -131,7 +131,7 @@ public partial class EventService : AutoloadBase
 				_backend.Close();
 
 				// Provide detailed error logging to help diagnose authentication issues
-				LogError($"[EventService] Activity session creation failed:");
+				LogError($"[SessionEventService] Activity session creation failed:");
 				LogError($"  Status Code: {responseCode}");
 				LogError($"  Endpoint: PUT {url}");
 				LogError($"  Box ID: {boxId}");
@@ -299,7 +299,7 @@ public partial class EventService : AutoloadBase
 				_backend.Close();
 
 				// Log full error details for debugging
-				LogError($"[EventService] Lobby session creation failed:");
+				LogError($"[SessionEventService] Lobby session creation failed:");
 				LogError($"  Endpoint: POST /box/{{boxId}}/lobby/session");
 				LogError($"  Status Code: {responseCode}");
 				LogError($"  Response Body: {errorBody}");
@@ -319,7 +319,7 @@ public partial class EventService : AutoloadBase
 
 			if (string.IsNullOrEmpty(bodyText))
 			{
-				LogError("[EventService] Empty response body from successful lobby session creation (201)");
+				LogError("[SessionEventService] Empty response body from successful lobby session creation (201)");
 				return Result.Failure<Guid>("Empty response body from lobby session creation");
 			}
 
@@ -331,12 +331,12 @@ public partial class EventService : AutoloadBase
 				return Result.Success(sessionId);
 			}
 
-			LogError($"[EventService] Failed to parse lobby session ID from response: {bodyText}");
+			LogError($"[SessionEventService] Failed to parse lobby session ID from response: {bodyText}");
 			return Result.Failure<Guid>($"Failed to parse lobby session ID from response: {bodyText}");
 		}
 		catch (Exception ex)
 		{
-			LogError($"[EventService] Lobby session creation exception: {ex.Message}\nStack: {ex.StackTrace}");
+			LogError($"[SessionEventService] Lobby session creation exception: {ex.Message}\nStack: {ex.StackTrace}");
 			_backend.Close();
 			return Result.Failure<Guid>($"Lobby session creation exception: {ex.Message}");
 		}
@@ -370,7 +370,7 @@ public partial class EventService : AutoloadBase
 				return Result.Success(true);
 
 			var error = result.IsFailure(out var e) ? e.Message : UnknownError;
-			LogError($"[EventService] Backend error response: {error}");
+			LogError($"[SessionEventService] Backend error response: {error}");
 			return Result.Failure<bool>($"Event submission failed: {error}");
 		}
 		catch (Exception ex)
@@ -489,9 +489,9 @@ public partial class EventService : AutoloadBase
 	/// <summary>
 	/// Get the singleton instance
 	/// </summary>
-	public static EventService GetInstance()
+	public static SessionEventService GetInstance()
 	{
-		return GetAutoload<EventService>();
+		return GetAutoload<SessionEventService>();
 	}
 
 #if DEBUG
@@ -501,7 +501,7 @@ public partial class EventService : AutoloadBase
 
 	/// <summary>
 	/// FOR TESTING ONLY: Override ready state to simulate backend failures.
-	/// This allows tests to verify error handling when EventService is not available.
+	/// This allows tests to verify error handling when SessionEventService is not available.
 	/// </summary>
 	/// <param name="ready">The ready state to simulate (true = ready, false = not ready)</param>
 	public void SetReadyStateForTesting(bool ready)
@@ -527,7 +527,7 @@ public partial class EventService : AutoloadBase
 	public new bool IsReady => _useTestReadyOverride ? _testReadyOverride : (_backend?.IsReady ?? false);
 #else
 	/// <summary>
-	/// Ready state forwards to BackendClient - EventService itself has no separate transport to be ready about.
+	/// Ready state forwards to BackendClient - SessionEventService itself has no separate transport to be ready about.
 	/// </summary>
 	public new bool IsReady => _backend?.IsReady ?? false;
 #endif

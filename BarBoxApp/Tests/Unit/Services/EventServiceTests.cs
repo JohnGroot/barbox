@@ -8,11 +8,11 @@ using Shouldly;
 namespace BarBox.Tests.Unit.Services;
 
 /// <summary>
-/// Unit tests for EventService - backend communication and session management
+/// Unit tests for SessionEventService - backend communication and session management
 /// </summary>
 public class EventServiceTests : BackendTestBase
 {
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private CreditService _creditService;
 
 	public EventServiceTests(Node testScene) : base(testScene)
@@ -31,11 +31,11 @@ public class EventServiceTests : BackendTestBase
 	public async Task CreateActivitySession_WithValidParams_ReturnsSessionId()
 	{
 		// Arrange
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 		var gameTag = "mining";
 
 		// Act - create session without pre-registering box/player
-		// EventService should handle creation internally
+		// SessionEventService should handle creation internally
 		var result = await _eventService.CreateActivitySessionAsync(
 			TestBoxId,
 			TestPlayerId,
@@ -58,7 +58,7 @@ public class EventServiceTests : BackendTestBase
 	public async Task CreateActivitySession_WithoutGameTag_ReturnsFailure()
 	{
 		// Arrange
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 
 		// Act
 		var result = await _eventService.CreateActivitySessionAsync(
@@ -76,7 +76,7 @@ public class EventServiceTests : BackendTestBase
 	public async Task CreateActivitySession_WithMultiplePlayerIds_IncludesInRequest()
 	{
 		// Arrange
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 		var gameTag = "carrom";
 		var playerIds = new System.Collections.Generic.List<string>
 		{
@@ -108,7 +108,7 @@ public class EventServiceTests : BackendTestBase
 	public async Task CloseActivitySession_WithValidSession_ReturnsSuccess()
 	{
 		// Arrange
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 		var sessionId = TestHelpers.GenerateTestSessionId();
 
 		// Act
@@ -134,7 +134,7 @@ public class EventServiceTests : BackendTestBase
 	{
 		// This test requires a full integration setup
 		// For now, testing the API surface
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 
 		TestHelpers.LogTestInfo("EmitEvent test requires integration setup - see Integration tests");
 	}
@@ -143,7 +143,7 @@ public class EventServiceTests : BackendTestBase
 	public void IsReady_ReflectsBackendState()
 	{
 		// Arrange
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 		var backendManager = GetBackendManager();
 		backendManager.ShouldNotBeNull("BackendManager must be available");
 
@@ -152,21 +152,21 @@ public class EventServiceTests : BackendTestBase
 		var backendRunning = backendManager.IsBackendRunning();
 
 		// Assert
-		TestHelpers.LogTestInfo($"EventService ready: {isReady}");
+		TestHelpers.LogTestInfo($"SessionEventService ready: {isReady}");
 		TestHelpers.LogTestInfo($"Backend running: {backendRunning}");
 
-		// EventService should not be ready if backend isn't running
+		// SessionEventService should not be ready if backend isn't running
 		if (isReady && !backendRunning)
 		{
-			false.ShouldBeTrue("EventService ready but backend not running - state inconsistency!");
+			false.ShouldBeTrue("SessionEventService ready but backend not running - state inconsistency!");
 		}
 		else if (!isReady && backendRunning)
 		{
-			TestHelpers.LogTestInfo("Backend running but EventService not ready - may be initializing");
+			TestHelpers.LogTestInfo("Backend running but SessionEventService not ready - may be initializing");
 		}
 		else
 		{
-			TestHelpers.LogTestInfo("✓ EventService state matches backend state");
+			TestHelpers.LogTestInfo("✓ SessionEventService state matches backend state");
 			true.ShouldBeTrue("State is consistent");
 		}
 	}
@@ -175,13 +175,13 @@ public class EventServiceTests : BackendTestBase
 	public async Task AddCredits_BeforeInitialized_ReturnsFailure()
 	{
 		// Arrange
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 		var isReady = _eventService.IsReady;
 
 		if (isReady)
 		{
 			// Skip this test if service is ready - we can't test the "not ready" path
-			TestHelpers.LogTestInfo("Test skipped - EventService is already ready");
+			TestHelpers.LogTestInfo("Test skipped - SessionEventService is already ready");
 			return;
 		}
 
@@ -189,7 +189,7 @@ public class EventServiceTests : BackendTestBase
 		var result = await _creditService.AddAsync(TestPlayerId, 100, "test");
 
 		// Assert
-		result.IsFailure(out var error).ShouldBeTrue("Should fail when EventService not ready");
+		result.IsFailure(out var error).ShouldBeTrue("Should fail when SessionEventService not ready");
 		error.Message.ShouldNotBeNullOrEmpty("Error message should be provided");
 
 		if (error.Message.Contains("not initialized") || error.Message.Contains("not ready"))
@@ -207,12 +207,12 @@ public class EventServiceTests : BackendTestBase
 	public async Task EmitEventAsync_WithoutActiveSession_ReturnsProperError()
 	{
 		// Arrange
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 		var isReady = _eventService.IsReady;
 
 		if (!isReady)
 		{
-			TestHelpers.LogTestInfo("EventService not ready - testing error handling");
+			TestHelpers.LogTestInfo("SessionEventService not ready - testing error handling");
 		}
 
 		// Act - try to emit event without session
@@ -237,7 +237,7 @@ public class EventServiceTests : BackendTestBase
 	public async Task Operations_BeforeBackendReady_FailGracefully()
 	{
 		// Arrange
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 		var backendManager = GetBackendManager();
 		backendManager.ShouldNotBeNull("BackendManager must be available");
 
@@ -245,7 +245,7 @@ public class EventServiceTests : BackendTestBase
 		var eventServiceReady = _eventService.IsReady;
 
 		TestHelpers.LogTestInfo($"Backend running: {backendRunning}");
-		TestHelpers.LogTestInfo($"EventService ready: {eventServiceReady}");
+		TestHelpers.LogTestInfo($"SessionEventService ready: {eventServiceReady}");
 
 		if (!eventServiceReady)
 		{
@@ -263,17 +263,17 @@ public class EventServiceTests : BackendTestBase
 			// Both should fail when not ready
 			if (!sessionSuccess && !creditSuccess)
 			{
-				TestHelpers.LogTestInfo("✓ Operations correctly fail when EventService not ready");
+				TestHelpers.LogTestInfo("✓ Operations correctly fail when SessionEventService not ready");
 				true.ShouldBeTrue("Operations correctly failed");
 			}
 			else
 			{
-				false.ShouldBeTrue("Some operations succeeded despite EventService not ready");
+				false.ShouldBeTrue("Some operations succeeded despite SessionEventService not ready");
 			}
 		}
 		else
 		{
-			TestHelpers.LogTestInfo("EventService is ready - operations should work");
+			TestHelpers.LogTestInfo("SessionEventService is ready - operations should work");
 		}
 	}
 
@@ -284,25 +284,25 @@ public class EventServiceTests : BackendTestBase
 		var backendManager = GetBackendManager();
 
 		// Assert
-		backendManager.ShouldNotBeNull("EventService requires BackendManager");
+		backendManager.ShouldNotBeNull("SessionEventService requires BackendManager");
 		TestHelpers.LogTestInfo("✓ BackendManager dependency satisfied");
 
-		// EventService should subscribe to BackendReady signal
+		// SessionEventService should subscribe to BackendReady signal
 		// This is validated by the IsReady correlation test
-		TestHelpers.LogTestInfo("EventService initialization depends on BackendManager.BackendReady signal");
+		TestHelpers.LogTestInfo("SessionEventService initialization depends on BackendManager.BackendReady signal");
 	}
 
 	[Test]
 	public async Task RaceConditionFix_BackendAlreadyRunning_EventServiceBecomesReady()
 	{
 		// This test verifies the fix for the signal registration race condition
-		// Issue: If backend becomes ready between EventService checking IsBackendRunning()
-		// and registering for the BackendReady signal, EventService never initializes
+		// Issue: If backend becomes ready between SessionEventService checking IsBackendRunning()
+		// and registering for the BackendReady signal, SessionEventService never initializes
 
 		// Arrange
 		var backendManager = GetBackendManager();
 		backendManager.ShouldNotBeNull("BackendManager must be available");
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 
 		// Wait for backend to be fully ready
 		var backendReady = await TestHelpers.WaitForConditionAsync(
@@ -310,33 +310,33 @@ public class EventServiceTests : BackendTestBase
 			timeoutSeconds: 30.0f);
 
 		backendReady.ShouldBeTrue("Backend should become ready within timeout");
-		TestHelpers.LogTestInfo("✓ Backend is running before EventService check");
+		TestHelpers.LogTestInfo("✓ Backend is running before SessionEventService check");
 
-		// Act - EventService should detect backend is already running
-		// With the race condition fix, EventService checks IsBackendRunning() again
+		// Act - SessionEventService should detect backend is already running
+		// With the race condition fix, SessionEventService checks IsBackendRunning() again
 		// after registering for the signal, ensuring it catches already-running state
 
-		// Wait for EventService to initialize (should be quick since backend already ready)
+		// Wait for SessionEventService to initialize (should be quick since backend already ready)
 		var eventServiceReady = await TestHelpers.WaitForConditionAsync(
 			() => _eventService.IsReady,
 			timeoutSeconds: 5.0f);
 
 		// Assert
-		eventServiceReady.ShouldBeTrue("EventService should become ready when backend pre-exists");
-		_eventService.IsReady.ShouldBeTrue("EventService.IsReady should return true");
+		eventServiceReady.ShouldBeTrue("SessionEventService should become ready when backend pre-exists");
+		_eventService.IsReady.ShouldBeTrue("SessionEventService.IsReady should return true");
 
-		TestHelpers.LogTestInfo("✓ Race condition fix verified - EventService initializes correctly even when backend already running");
-		TestHelpers.LogTestInfo("  This test would have failed before the fix (EventService.cs:84-91)");
+		TestHelpers.LogTestInfo("✓ Race condition fix verified - SessionEventService initializes correctly even when backend already running");
+		TestHelpers.LogTestInfo("  This test would have failed before the fix (SessionEventService.cs:84-91)");
 	}
 
 	[Test]
 	public void EventService_AfterInit_HasConfiguredApiKey()
 	{
 		// Arrange
-		_eventService.ShouldNotBeNull("EventService must exist");
+		_eventService.ShouldNotBeNull("SessionEventService must exist");
 
 		// Act - Access API key field via reflection (test-only verification)
-		// The API key lives on BackendClient (sole HTTP transport), not EventService
+		// The API key lives on BackendClient (sole HTTP transport), not SessionEventService
 		var backendClient = BackendClient.GetInstance();
 		backendClient.ShouldNotBeNull("BackendClient must exist");
 		var apiKeyField = typeof(BackendClient).GetField("_boxApiKey",
@@ -389,12 +389,12 @@ public class EventServiceTests : BackendTestBase
 	public async Task EventService_SuccessfulRequest_ImpliesValidHeaders()
 	{
 		// Arrange
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 
 		// Ensure service is ready for auth header testing
 		_eventService.IsReady.ShouldBeTrue(
-			"EventService must be ready to test authentication headers. " +
-			"Check that backend is running and EventService initialized.");
+			"SessionEventService must be ready to test authentication headers. " +
+			"Check that backend is running and SessionEventService initialized.");
 
 		var locationManager = LocationManager.GetAutoload();
 		var apiKey = locationManager?.BoxApiKey;
@@ -437,7 +437,7 @@ public class EventServiceTests : BackendTestBase
 	public override Task CleanupTestResources()
 	{
 		base.CleanupTestResources();
-		// EventService is autoload - don't queue free
+		// SessionEventService is autoload - don't queue free
 		_eventService = null;
 		return Task.CompletedTask;
 	}

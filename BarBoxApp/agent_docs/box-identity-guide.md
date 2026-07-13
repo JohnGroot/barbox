@@ -9,18 +9,18 @@ BarBox uses a consistent naming convention for all identifiers:
 **BoxId** (`Guid`): Secure UUID for backend authentication and database foreign keys
 - Example: `12345678-1234-1234-1234-123456789012`
 - Never display to users
-- Access: `EventService.GetInstance().GetBoxId()`
+- Access: `SessionEventService.GetInstance().GetBoxId()`
 
 **BoxName** (`string`): Human-readable machine identifier for display and logging
 - Example: `besties_box_1`, `arcade_terminal_2`
 - Format: lowercase_with_underscores
-- Access: `EventService.GetInstance().GetBoxName()`
+- Access: `SessionEventService.GetInstance().GetBoxName()`
 
 **VenueName** (`string`): Human-readable venue identifier for venue-scoped data
 - Example: `best_intentions`, `johnnys_arcade`
 - Format: lowercase_with_underscores
 - Venue-scoped data follows players across machines at same venue
-- Access: `EventService.GetInstance().GetVenueName()`
+- Access: `SessionEventService.GetInstance().GetVenueName()`
 
 ## Terminal-Scoped vs Venue-Scoped Data
 
@@ -35,7 +35,7 @@ BarBox uses a consistent naming convention for all identifiers:
 ## Quick Reference
 
 ```csharp
-var eventService = EventService.GetInstance();
+var eventService = SessionEventService.GetInstance();
 var venueName = eventService.GetVenueName();  // Venue-scoped queries
 var boxName = eventService.GetBoxName();      // Display and logging
 var boxId = eventService.GetBoxId();          // Backend auth (rarely needed by games)

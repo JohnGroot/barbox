@@ -8,13 +8,13 @@ namespace BarBox.Games.Nines;
 /// <summary>
 /// Nines game-specific event service.
 /// Emits nines results through the shared, guarded GameEventServiceBase path
-/// (replacing the previous raw EventService.EmitEventAsync call in game logic).
+/// (replacing the previous raw SessionEventService.EmitEventAsync call in game logic).
 /// </summary>
 public class NinesEventService : GameEventServiceBase
 {
 	private const string EVENT_JACKPOT_WON = "nines/jackpot_won";
 
-	public NinesEventService(EventService eventService = null) : base(eventService)
+	public NinesEventService(SessionEventService eventService = null) : base(eventService)
 	{
 	}
 

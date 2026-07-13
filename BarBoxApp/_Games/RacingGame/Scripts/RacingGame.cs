@@ -195,7 +195,7 @@ public partial class RacingGame : GameController
 
 	// Event service
 	private RacingEventService _racingEventService;
-	private EventService _eventService;
+	private SessionEventService _eventService;
 
 	// ================================================================
 	// PRIVATE FIELDS - TRACK AND WORLD SYSTEMS
@@ -264,7 +264,7 @@ public partial class RacingGame : GameController
 	protected override void OnDiscoverServices()
 	{
 		// Service discovery only - no component creation
-		_eventService = EventService.GetInstance();
+		_eventService = SessionEventService.GetInstance();
 		_sessionManager = SessionManager.GetInstance();
 		_creditService = CreditService.GetInstance();
 	}

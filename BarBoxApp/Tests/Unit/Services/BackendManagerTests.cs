@@ -176,19 +176,19 @@ public class BackendManagerTests : BackendTestBase
 		{
 			TestHelpers.LogTestInfo("Backend failure detected:");
 			TestHelpers.LogTestInfo("  - Operations requiring backend will fail");
-			TestHelpers.LogTestInfo("  - EventService should not be ready");
+			TestHelpers.LogTestInfo("  - SessionEventService should not be ready");
 			TestHelpers.LogTestInfo("  - PaymentService credit operations will fail");
 
-			// Verify EventService correlates with backend state
+			// Verify SessionEventService correlates with backend state
 			var eventService = GetEventService();
-			eventService.ShouldNotBeNull("EventService must be available");
+			eventService.ShouldNotBeNull("SessionEventService must be available");
 
 			var eventServiceReady = eventService.IsReady;
-			TestHelpers.LogTestInfo($"  EventService ready: {eventServiceReady}");
+			TestHelpers.LogTestInfo($"  SessionEventService ready: {eventServiceReady}");
 
 			if (eventServiceReady && !isRunning)
 			{
-				false.ShouldBeTrue("EventService reports ready but backend not running - inconsistent state!");
+				false.ShouldBeTrue("SessionEventService reports ready but backend not running - inconsistent state!");
 			}
 		}
 		else

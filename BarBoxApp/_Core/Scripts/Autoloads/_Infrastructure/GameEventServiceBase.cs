@@ -10,13 +10,13 @@ namespace BarBox.Core.Autoloads;
 /// <summary>
 /// Base class for game-specific event services
 /// Provides common validation, error handling, and HTTP query patterns
-/// Consolidates patterns from successful SessionManager/EventService flows
+/// Consolidates patterns from successful SessionManager/SessionEventService flows
 /// </summary>
 public class GameEventServiceBase
 {
-	protected EventService _eventService;
+	protected SessionEventService _eventService;
 
-	public GameEventServiceBase(EventService eventService)
+	public GameEventServiceBase(SessionEventService eventService)
 	{
 		_eventService = eventService;
 	}
@@ -57,7 +57,7 @@ public class GameEventServiceBase
 	/// <summary>
 	/// Query backend with proper connection lifecycle and error handling
 	/// Returns raw JSON string for manual parsing by derived classes
-	/// Delegates to EventService for HTTP operations (reuses persistent connection)
+	/// Delegates to SessionEventService for HTTP operations (reuses persistent connection)
 	/// </summary>
 	protected async Task<Result<string>> QueryBackendRawAsync(
 		string endpoint,
@@ -67,7 +67,7 @@ public class GameEventServiceBase
 		if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
 			return Result.Failure<string>("Event service not available");
 
-		// Delegate to EventService which maintains persistent HttpClient
+		// Delegate to SessionEventService which maintains persistent HttpClient
 		return await _eventService.QueryRawAsync(endpoint, queryParams);
 	}
 

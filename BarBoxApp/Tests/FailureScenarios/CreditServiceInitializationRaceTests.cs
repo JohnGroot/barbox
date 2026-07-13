@@ -10,20 +10,20 @@ namespace BarBox.Tests.FailureScenarios;
 /// <summary>
 /// Tests that reproduce the CreditService initialization race condition bug.
 ///
-/// BUG: CreditService caches EventService reference during OnServiceInitialize().
-/// If EventService isn't ready yet, _eventService field is set to null and NEVER UPDATED.
-/// This causes credit operations to fail even after EventService becomes ready.
+/// BUG: CreditService caches SessionEventService reference during OnServiceInitialize().
+/// If SessionEventService isn't ready yet, _eventService field is set to null and NEVER UPDATED.
+/// This causes credit operations to fail even after SessionEventService becomes ready.
 ///
 /// REPRODUCTION: The exact production error shows:
-///   [CreditService] ERROR: EventService not available (exists: False, ready: False)
-///   [PaymentService] ERROR: Diagnostics: EventService exists: True, EventService ready: True
+///   [CreditService] ERROR: SessionEventService not available (exists: False, ready: False)
+///   [PaymentService] ERROR: Diagnostics: SessionEventService exists: True, SessionEventService ready: True
 ///
-/// This proves CreditService has a stale null reference while EventService is actually ready.
+/// This proves CreditService has a stale null reference while SessionEventService is actually ready.
 /// </summary>
 public class CreditServiceInitializationRaceTests : BackendTestBase
 {
 	private CreditService _creditService;
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private SessionManager _sessionManager;
 
 	public CreditServiceInitializationRaceTests(Node testScene) : base(testScene)
@@ -41,12 +41,12 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 
 	/// <summary>
 	/// Reproduces the exact production bug: CreditService._eventService is null
-	/// even though EventService.GetInstance() returns a valid ready instance.
+	/// even though SessionEventService.GetInstance() returns a valid ready instance.
 	///
 	/// This test simulates the race condition where:
-	/// 1. CreditService.OnServiceInitialize() runs before EventService is ready
+	/// 1. CreditService.OnServiceInitialize() runs before SessionEventService is ready
 	/// 2. CreditService caches null reference in _eventService field
-	/// 3. EventService becomes ready later
+	/// 3. SessionEventService becomes ready later
 	/// 4. Credit operations fail because CreditService still has null reference
 	///
 	/// Expected: This test SHOULD FAIL with current code, proving the bug exists.
@@ -72,31 +72,31 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 		{
 			var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 
-			// Verify EventService is actually ready (matches production logs)
-			_eventService.ShouldNotBeNull("EventService should exist");
-			_eventService.IsReady.ShouldBeTrue("EventService should be ready");
-			TestHelpers.LogTestInfo($"✓ EventService exists and is ready (matches production)");
+			// Verify SessionEventService is actually ready (matches production logs)
+			_eventService.ShouldNotBeNull("SessionEventService should exist");
+			_eventService.IsReady.ShouldBeTrue("SessionEventService should be ready");
+			TestHelpers.LogTestInfo($"✓ SessionEventService exists and is ready (matches production)");
 
-			// Verify EventService.GetInstance() works (matches PaymentService check)
-			var eventServiceViaGetInstance = EventService.GetInstance();
-			eventServiceViaGetInstance.ShouldNotBeNull("EventService.GetInstance() should return instance");
-			eventServiceViaGetInstance.IsReady.ShouldBeTrue("EventService.GetInstance() should be ready");
-			TestHelpers.LogTestInfo($"✓ EventService.GetInstance() returns ready instance (matches PaymentService diagnostic)");
+			// Verify SessionEventService.GetInstance() works (matches PaymentService check)
+			var eventServiceViaGetInstance = SessionEventService.GetInstance();
+			eventServiceViaGetInstance.ShouldNotBeNull("SessionEventService.GetInstance() should return instance");
+			eventServiceViaGetInstance.IsReady.ShouldBeTrue("SessionEventService.GetInstance() should be ready");
+			TestHelpers.LogTestInfo($"✓ SessionEventService.GetInstance() returns ready instance (matches PaymentService diagnostic)");
 
 			// Act - attempt to add credits via CreditService
 			TestHelpers.LogTestInfo("Attempting to add credits via CreditService...");
 			var addResult = await _creditService.AddAsync(playerId, 10, "Test credit add");
 
 			// Assert - This is where the bug manifests
-			// Production logs show: [CreditService] ERROR: EventService not available (exists: False, ready: False)
-			// This means CreditService._eventService is null even though EventService.GetInstance() works
+			// Production logs show: [CreditService] ERROR: SessionEventService not available (exists: False, ready: False)
+			// This means CreditService._eventService is null even though SessionEventService.GetInstance() works
 
 			if (addResult.IsFailure(out var addError))
 			{
 				TestHelpers.LogTestError($"❌ BUG REPRODUCED: Credit add failed: {addError.Message}");
-				TestHelpers.LogTestError($"   EventService.GetInstance() is ready: {eventServiceViaGetInstance.IsReady}");
-				TestHelpers.LogTestError($"   But CreditService reports EventService not available");
-				TestHelpers.LogTestError($"   This proves CreditService has stale null reference to EventService");
+				TestHelpers.LogTestError($"   SessionEventService.GetInstance() is ready: {eventServiceViaGetInstance.IsReady}");
+				TestHelpers.LogTestError($"   But CreditService reports SessionEventService not available");
+				TestHelpers.LogTestError($"   This proves CreditService has stale null reference to SessionEventService");
 
 				// Document the exact bug
 				addError.Message.Contains("Credit service unavailable").ShouldBeTrue(
@@ -104,7 +104,7 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 
 				// This assertion will FAIL with current buggy code, proving the bug exists
 				addResult.IsSuccess(out var _).ShouldBeTrue(
-					"BUG: CreditService should succeed when EventService is ready, " +
+					"BUG: CreditService should succeed when SessionEventService is ready, " +
 					"but fails due to cached null _eventService field. " +
 					"This proves the initialization race condition exists.");
 			}
@@ -128,16 +128,16 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 
 	/// <summary>
 	/// Tests the specific scenario from production logs where PaymentService
-	/// successfully validates EventService is ready, but CreditService fails.
+	/// successfully validates SessionEventService is ready, but CreditService fails.
 	///
 	/// Production error sequence:
 	/// 1. [PaymentService] Processing purchase...
 	/// 2. [DebugPaymentService] Purchase approved - Transaction ID: DEBUG_TXN_xxx
-	/// 3. [CreditService] ERROR: EventService not available (exists: False, ready: False)
-	/// 4. [PaymentService] ERROR: Diagnostics: EventService exists: True, EventService ready: True
+	/// 3. [CreditService] ERROR: SessionEventService not available (exists: False, ready: False)
+	/// 4. [PaymentService] ERROR: Diagnostics: SessionEventService exists: True, SessionEventService ready: True
 	///
-	/// This proves the race condition: PaymentService sees ready EventService,
-	/// CreditService sees null EventService.
+	/// This proves the race condition: PaymentService sees ready SessionEventService,
+	/// CreditService sees null SessionEventService.
 	/// </summary>
 	[Test]
 	public async Task PaymentPurchase_EventServiceReadyForPaymentService_ButNotForCreditService()
@@ -165,12 +165,12 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 			var paymentService = GetPaymentService();
 			var purchaseResult = await paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
-			// Verify EventService state (like PaymentService does)
-			var eventService = EventService.GetInstance();
+			// Verify SessionEventService state (like PaymentService does)
+			var eventService = SessionEventService.GetInstance();
 			var eventServiceExists = eventService != null;
 			var eventServiceReady = eventService?.IsReady ?? false;
 
-			TestHelpers.LogTestInfo($"EventService diagnostics: exists={eventServiceExists}, ready={eventServiceReady}");
+			TestHelpers.LogTestInfo($"SessionEventService diagnostics: exists={eventServiceExists}, ready={eventServiceReady}");
 
 			// Assert - reproduce the exact production error
 			if (!purchaseResult.IsSuccess)
@@ -185,7 +185,7 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 				}
 
 				TestHelpers.LogTestError($"❌ BUG REPRODUCED: Purchase failed: {purchaseResult.ErrorMessage}");
-				TestHelpers.LogTestError($"   Diagnostics: EventService exists: {eventServiceExists}, EventService ready: {eventServiceReady}");
+				TestHelpers.LogTestError($"   Diagnostics: SessionEventService exists: {eventServiceExists}, SessionEventService ready: {eventServiceReady}");
 				TestHelpers.LogTestError($"   This matches production logs exactly!");
 
 				// Verify credits were NOT added (correct behavior for failed purchase)
@@ -196,8 +196,8 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 
 				// This assertion will FAIL with current buggy code
 				(purchaseResult.IsSuccess).ShouldBeTrue(
-					$"BUG: Purchase should succeed when EventService is ready. " +
-					$"EventService exists: {eventServiceExists}, ready: {eventServiceReady}. " +
+					$"BUG: Purchase should succeed when SessionEventService is ready. " +
+					$"SessionEventService exists: {eventServiceExists}, ready: {eventServiceReady}. " +
 					$"Error: {purchaseResult.ErrorMessage}");
 			}
 			else
@@ -244,11 +244,11 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 		{
 			var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 
-			// Verify EventService is ready
-			var eventService = EventService.GetInstance();
+			// Verify SessionEventService is ready
+			var eventService = SessionEventService.GetInstance();
 			eventService.ShouldNotBeNull();
 			eventService.IsReady.ShouldBeTrue();
-			TestHelpers.LogTestInfo($"✓ EventService is ready");
+			TestHelpers.LogTestInfo($"✓ SessionEventService is ready");
 
 			// Test 1: GetBalanceAsync
 			var balanceResult = await _creditService.GetBalanceAsync(playerId);

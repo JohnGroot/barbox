@@ -15,7 +15,7 @@ namespace BarBox.Tests.Integration;
 public class PlayerRegistrationTests : BackendTestBase
 {
 	private SessionManager _sessionManager;
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private BackendManager _backendManager;
 	private CreditService _creditService;
 
@@ -53,7 +53,7 @@ public class PlayerRegistrationTests : BackendTestBase
 		servicesReady.ShouldBeTrue(
 			"Integration test requires backend services. " +
 			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
-			$"EventService: {_eventService?.IsReady ?? false}");
+			$"SessionEventService: {_eventService?.IsReady ?? false}");
 
 		// Register player account before login
 		var registrationResult = await _sessionManager.CreateUserAccountAsync(TestPlayerPhone, "1234", TestPlayerUsername);
@@ -118,7 +118,7 @@ public class PlayerRegistrationTests : BackendTestBase
 		servicesReady.ShouldBeTrue(
 			"Integration test requires backend services. " +
 			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
-			$"EventService: {_eventService?.IsReady ?? false}");
+			$"SessionEventService: {_eventService?.IsReady ?? false}");
 
 		// Register player account before first login
 		var registrationResult = await _sessionManager.CreateUserAccountAsync(phone2, pin2, username2);
@@ -189,7 +189,7 @@ public class PlayerRegistrationTests : BackendTestBase
 		servicesReady.ShouldBeTrue(
 			"Integration test requires backend services. " +
 			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
-			$"EventService: {_eventService?.IsReady ?? false}");
+			$"SessionEventService: {_eventService?.IsReady ?? false}");
 
 		// Register player account before login
 		var registrationResult = await _sessionManager.CreateUserAccountAsync(phone3, pin3, username3);
@@ -266,7 +266,7 @@ public class PlayerRegistrationTests : BackendTestBase
 		var isEventServiceReady = _eventService?.IsReady ?? false;
 
 		TestHelpers.LogTestInfo($"Backend running: {isBackendRunning}");
-		TestHelpers.LogTestInfo($"EventService ready: {isEventServiceReady}");
+		TestHelpers.LogTestInfo($"SessionEventService ready: {isEventServiceReady}");
 
 		// Attempt registration (may fail if backend unavailable)
 		if (isBackendRunning && isEventServiceReady)
@@ -327,7 +327,7 @@ public class PlayerRegistrationTests : BackendTestBase
 	{
 		// Validate all required services are present
 		_sessionManager.ShouldNotBeNull("SessionManager must be present");
-		_eventService.ShouldNotBeNull("EventService must be present");
+		_eventService.ShouldNotBeNull("SessionEventService must be present");
 		_backendManager.ShouldNotBeNull("BackendManager must be present");
 		_creditService.ShouldNotBeNull("CreditService must be present");
 
@@ -338,7 +338,7 @@ public class PlayerRegistrationTests : BackendTestBase
 		TestHelpers.LogTestInfo($"BackendManager running: {isRunning}");
 
 		var isReady = _eventService.IsReady;
-		TestHelpers.LogTestInfo($"EventService ready: {isReady}");
+		TestHelpers.LogTestInfo($"SessionEventService ready: {isReady}");
 
 		true.ShouldBeTrue("Service dependency validation complete");
 	}
@@ -366,7 +366,7 @@ public class PlayerRegistrationTests : BackendTestBase
 		{
 			TestHelpers.LogTestWarning("Service readiness timeout - some services not ready");
 			TestHelpers.LogTestInfo($"  Backend running: {_backendManager?.IsBackendRunning() ?? false}");
-			TestHelpers.LogTestInfo($"  EventService ready: {_eventService?.IsReady ?? false}");
+			TestHelpers.LogTestInfo($"  SessionEventService ready: {_eventService?.IsReady ?? false}");
 		}
 
 		return ready;

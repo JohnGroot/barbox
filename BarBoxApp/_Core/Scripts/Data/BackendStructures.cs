@@ -5,7 +5,7 @@ using LightResults;
 
 /// <summary>
 /// Core backend response structures for player-related queries
-/// Game-specific response structures are defined in their respective EventService files
+/// Game-specific response structures are defined in their respective SessionEventService files
 ///
 /// UUID Serialization Convention:
 /// - Backend uses UUID type for IDs (player_id, box_id, origin_id, etc.)

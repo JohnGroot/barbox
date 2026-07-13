@@ -77,7 +77,7 @@ public partial class CarromGame : GameController
 	private CarromGameMode _carromGameMode = CarromGameMode.Practice;
 	private CarromBoard _board;
 	private CarromInputController _inputController;
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private CarromEventService _carromEventService;
 
 	// Managers
@@ -145,7 +145,7 @@ public partial class CarromGame : GameController
 	protected override void OnDiscoverServices()
 	{
 		// Initialize event service
-		_eventService = EventService.GetInstance();
+		_eventService = SessionEventService.GetInstance();
 		_carromEventService = new CarromEventService(_eventService);
 	}
 

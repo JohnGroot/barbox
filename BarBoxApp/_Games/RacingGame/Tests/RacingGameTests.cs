@@ -17,7 +17,7 @@ public class RacingGameTests : TestClass
 {
 	private const string GAME_TAG = "racing";
 	private const string DEFAULT_TRACK_ID = "oval";
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private RacingEventService _racingEventService;
 	private Guid _testBoxId;
 	private Guid _testPlayerId;
@@ -40,9 +40,9 @@ public class RacingGameTests : TestClass
 			return;
 		}
 
-		// Get EventService and create RacingEventService
-		_eventService = TestScene.GetNode<EventService>("/root/EventService");
-		_eventService.ShouldNotBeNull("EventService autoload must be available");
+		// Get SessionEventService and create RacingEventService
+		_eventService = TestScene.GetNode<SessionEventService>("/root/SessionEventService");
+		_eventService.ShouldNotBeNull("SessionEventService autoload must be available");
 		_racingEventService = new RacingEventService(_eventService);
 
 		// Use seeded test identifiers (API key is only valid for seeded Box ID)
@@ -283,7 +283,7 @@ public class RacingGameTests : TestClass
 	{
 		if (_eventService == null)
 		{
-			TestHelpers.LogTestInfo("Skipping - EventService not available");
+			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 
@@ -355,13 +355,13 @@ public class RacingGameTests : TestClass
 	{
 		if (_eventService == null)
 		{
-			TestHelpers.LogTestInfo("Skipping - EventService not available");
+			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 
 		TestHelpers.LogTestInfo("=== Testing Race Finish with Valid Lap Times ===");
 
-		// Create a session for this test (EventService requires active session for EmitEventAsync)
+		// Create a session for this test (SessionEventService requires active session for EmitEventAsync)
 		var sessionResult = await _eventService.CreateActivitySessionAsync(
 			_testBoxId,
 			_testPlayerId,
@@ -428,13 +428,13 @@ public class RacingGameTests : TestClass
 	{
 		if (_eventService == null)
 		{
-			TestHelpers.LogTestInfo("Skipping - EventService not available");
+			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 
 		TestHelpers.LogTestInfo("=== Testing Race Finish with Fast Lap Times (Previously Blocked) ===");
 
-		// Create a session for this test (EventService requires active session for EmitEventAsync)
+		// Create a session for this test (SessionEventService requires active session for EmitEventAsync)
 		var sessionResult = await _eventService.CreateActivitySessionAsync(
 			_testBoxId,
 			_testPlayerId,
@@ -499,7 +499,7 @@ public class RacingGameTests : TestClass
 
 		TestHelpers.LogTestInfo("=== Testing Data Integrity Validation ===");
 
-		// Create a session for this test (EventService requires active session for EmitEventAsync)
+		// Create a session for this test (SessionEventService requires active session for EmitEventAsync)
 		var sessionResult = await _eventService.CreateActivitySessionAsync(
 			_testBoxId,
 			_testPlayerId,

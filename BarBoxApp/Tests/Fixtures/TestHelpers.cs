@@ -261,12 +261,12 @@ public static class TestHelpers
 	}
 
 	/// <summary>
-	/// Get EventService autoload instance
+	/// Get SessionEventService autoload instance
 	/// </summary>
-	public static EventService GetEventService()
+	public static SessionEventService GetEventService()
 	{
 		if (Engine.GetMainLoop() is not SceneTree tree) return null;
-		return tree.Root?.GetNode<EventService>("/root/EventService");
+		return tree.Root?.GetNode<SessionEventService>("/root/SessionEventService");
 	}
 
 	/// <summary>
@@ -297,14 +297,14 @@ public static class TestHelpers
 	}
 
 	/// <summary>
-	/// Wait for EventService to be ready with timeout
+	/// Wait for SessionEventService to be ready with timeout
 	/// </summary>
 	public static async Task<bool> WaitForEventServiceReadyAsync(float timeoutSeconds = 10.0f)
 	{
 		var eventService = GetEventService();
 		if (eventService == null)
 		{
-			LogTestError("EventService not found");
+			LogTestError("SessionEventService not found");
 			return false;
 		}
 
@@ -314,11 +314,11 @@ public static class TestHelpers
 
 		if (isReady)
 		{
-			LogTestInfo("EventService ready");
+			LogTestInfo("SessionEventService ready");
 		}
 		else
 		{
-			LogTestWarning("EventService readiness timeout");
+			LogTestWarning("SessionEventService readiness timeout");
 		}
 
 		return isReady;
@@ -346,7 +346,7 @@ public static class TestHelpers
 
 			LogTestWarning("Service readiness timeout. Status:");
 			LogTestWarning($"  Backend: {backendManager?.IsBackendRunning() ?? false}");
-			LogTestWarning($"  EventService: {eventService?.IsReady ?? false}");
+			LogTestWarning($"  SessionEventService: {eventService?.IsReady ?? false}");
 			LogTestWarning($"  SessionManager: {sessionManager != null}");
 		}
 
@@ -366,14 +366,14 @@ public static class TestHelpers
 
 		LogTestInfo("Service States:");
 		LogTestInfo($"  BackendManager: {(backendManager != null ? $"Present, Running={backendManager.IsBackendRunning()}" : "Missing")}");
-		LogTestInfo($"  EventService: {(eventService != null ? $"Present, Ready={eventService.IsReady}" : "Missing")}");
+		LogTestInfo($"  SessionEventService: {(eventService != null ? $"Present, Ready={eventService.IsReady}" : "Missing")}");
 		LogTestInfo($"  SessionManager: {(sessionManager != null ? "Present" : "Missing")}");
 		LogTestInfo($"  PaymentService: {(paymentService != null ? "Present" : "Missing")}");
 		LogTestInfo($"  CreditService: {(creditService != null ? "Present" : "Missing")}");
 	}
 
 	/// <summary>
-	/// Force EventService into not-ready state for failure testing.
+	/// Force SessionEventService into not-ready state for failure testing.
 	/// Only works in DEBUG builds. Returns true if successful.
 	/// </summary>
 	public static bool ForceEventServiceNotReady()
@@ -382,12 +382,12 @@ public static class TestHelpers
 		var eventService = GetEventService();
 		if (eventService == null)
 		{
-			LogTestError("Cannot force EventService not ready - service not found");
+			LogTestError("Cannot force SessionEventService not ready - service not found");
 			return false;
 		}
 
 		eventService.SetReadyStateForTesting(false);
-		LogTestInfo("EventService forced to NOT READY state");
+		LogTestInfo("SessionEventService forced to NOT READY state");
 		return true;
 #else
 		LogTestWarning("Failure simulation requires DEBUG build");
@@ -396,7 +396,7 @@ public static class TestHelpers
 	}
 
 	/// <summary>
-	/// Restore EventService to ready state after failure testing.
+	/// Restore SessionEventService to ready state after failure testing.
 	/// Only works in DEBUG builds.
 	/// </summary>
 	public static void RestoreEventServiceReady()
@@ -406,7 +406,7 @@ public static class TestHelpers
 		if (eventService != null)
 		{
 			eventService.SetReadyStateForTesting(true);
-			LogTestInfo("EventService restored to READY state");
+			LogTestInfo("SessionEventService restored to READY state");
 		}
 #endif
 	}

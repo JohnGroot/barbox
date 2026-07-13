@@ -43,7 +43,7 @@ public partial class SessionManager : AutoloadBase
 	[Signal] public delegate void UserLoggedInEventHandler(string phoneNumber);
 	[Signal] public delegate void UserLoggedOutEventHandler(string phoneNumber);
 
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private BackendClient _backend;
 	private Dictionary<string, UserSession> _activeSessions = new();
 	private Dictionary<Guid, UserSession> _sessionsByPlayerId = new(); // Secondary index for O(1) lookup by PlayerId
@@ -66,10 +66,10 @@ public partial class SessionManager : AutoloadBase
 
 	protected override void OnServiceEnterTree()
 	{
-		_eventService = EventService.GetInstance();
+		_eventService = SessionEventService.GetInstance();
 		if (_eventService == null)
 		{
-			LogWarning("EventService not found - user events will not be persisted to backend");
+			LogWarning("SessionEventService not found - user events will not be persisted to backend");
 		}
 
 		_backend = BackendClient.GetInstance();
@@ -192,7 +192,7 @@ public partial class SessionManager : AutoloadBase
 			// Authenticate with backend and get JWT token
 			if (_eventService == null || !_eventService.IsReady)
 			{
-				LogError("EventService not available - cannot authenticate");
+				LogError("SessionEventService not available - cannot authenticate");
 				return Result.Failure<UserSession>("Backend service not available");
 			}
 
@@ -299,7 +299,7 @@ public partial class SessionManager : AutoloadBase
 			}
 			else
 			{
-				LogWarning("EventService not available - user events will not be persisted");
+				LogWarning("SessionEventService not available - user events will not be persisted");
 			}
 
 			LogInfo($"User session created for phone {cleanedPhone}");
@@ -639,7 +639,7 @@ public partial class SessionManager : AutoloadBase
 		// Create lobby session on-demand
 		if (_eventService == null || !_eventService.IsReady)
 		{
-			return Result.Failure<Guid>("EventService not available for lobby session creation");
+			return Result.Failure<Guid>("SessionEventService not available for lobby session creation");
 		}
 
 		LogInfo($"Creating lobby session on-demand for player {playerId}");
@@ -722,7 +722,7 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	/// <summary>
-	/// Get JWT token for a specific player (for EventService Authorization header)
+	/// Get JWT token for a specific player (for SessionEventService Authorization header)
 	/// Returns null if session not found or token expired
 	/// </summary>
 	public string GetJwtToken(Guid playerId)

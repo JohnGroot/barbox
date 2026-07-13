@@ -8,7 +8,7 @@ namespace BarBox.Tests.FailureScenarios;
 
 /// <summary>
 /// Comprehensive failure scenario tests for PaymentService.
-/// Tests the exact production bug: backend fails to start, EventService not ready,
+/// Tests the exact production bug: backend fails to start, SessionEventService not ready,
 /// payment succeeds but credits aren't added.
 /// Requires DEBUG build to use test hooks.
 /// </summary>
@@ -52,11 +52,11 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 
 		try
 		{
-			// Simulate backend failure (EventService not ready)
+			// Simulate backend failure (SessionEventService not ready)
 			SimulateEventServiceNotReady();
 
 			// Verify simulation worked
-			IsEventServiceNotReady().ShouldBeTrue("Test infrastructure error: EventService should be simulated as not ready");
+			IsEventServiceNotReady().ShouldBeTrue("Test infrastructure error: SessionEventService should be simulated as not ready");
 
 			// Act - attempt purchase (simulates exact production scenario)
 			var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
@@ -68,8 +68,8 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			TestHelpers.LogTestInfo($"✓ Purchase correctly failed: {result.ErrorMessage}");
 
 			// Verify diagnostic info in error
-			result.ErrorMessage.Contains("EventService").ShouldBeTrue(
-				"Error message should include diagnostic information about EventService");
+			result.ErrorMessage.Contains("SessionEventService").ShouldBeTrue(
+				"Error message should include diagnostic information about SessionEventService");
 		}
 		finally
 		{
@@ -128,7 +128,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 				$"REGRESSION: Credits should not change when purchase fails (was {initialCredits}, now {finalCredits})");
 			TestHelpers.LogTestInfo($"✓ Credits unchanged: {finalCredits} (correct behavior)");
 
-			result.IsSuccess.ShouldBeFalse("Purchase should fail when EventService not ready");
+			result.IsSuccess.ShouldBeFalse("Purchase should fail when SessionEventService not ready");
 		}
 		finally
 		{
@@ -216,14 +216,14 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, CreditPack.CreateForTest(5, 5.00m));
 
 			// Assert - Error message must contain diagnostic info
-			result.IsSuccess.ShouldBeFalse("Purchase should fail when EventService not ready");
+			result.IsSuccess.ShouldBeFalse("Purchase should fail when SessionEventService not ready");
 
 			var error = result.ErrorMessage;
 			error.ShouldNotBeNullOrEmpty("Error message should be provided");
 			TestHelpers.LogTestInfo($"Error message: {error}");
 
 			// Check for diagnostic keywords
-			error.Contains("EventService").ShouldBeTrue("Error should mention EventService");
+			error.Contains("SessionEventService").ShouldBeTrue("Error should mention SessionEventService");
 
 			var hasReadinessMention = error.Contains("ready", System.StringComparison.OrdinalIgnoreCase) ||
 			                         error.Contains("initialized", System.StringComparison.OrdinalIgnoreCase);
@@ -282,8 +282,8 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			SimulateEventServiceNotReady();
 			var result1 = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
-			// Note: Can't check credits while EventService is down
-			TestHelpers.LogTestInfo($"After failed purchase attempt (EventService down)");
+			// Note: Can't check credits while SessionEventService is down
+			TestHelpers.LogTestInfo($"After failed purchase attempt (SessionEventService down)");
 
 			// Purchase 2: Succeeds (backend up)
 			RestoreEventServiceReady();

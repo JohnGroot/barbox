@@ -56,7 +56,7 @@ public partial class NinesGame : GameController
 
 	// Credit management
 	private CreditService? _creditService;
-	private EventService? _eventService;
+	private SessionEventService? _eventService;
 	private NinesEventService? _ninesEventService;
 
 	#endregion
@@ -113,7 +113,7 @@ public partial class NinesGame : GameController
 		SetupCreditService();
 		SetupUI();
 
-		GD.Print($"[Nines] Game initialized - EventService: {_eventService != null}");
+		GD.Print($"[Nines] Game initialized - SessionEventService: {_eventService != null}");
 	}
 
 	private void SetupUI()
@@ -206,7 +206,7 @@ public partial class NinesGame : GameController
 	private void SetupCreditService()
 	{
 		_creditService = CreditService.GetInstance();
-		_eventService = EventService.GetInstance();
+		_eventService = SessionEventService.GetInstance();
 		_ninesEventService = new NinesEventService(_eventService);
 
 		if (_creditService == null)
@@ -349,7 +349,7 @@ public partial class NinesGame : GameController
 			// Update existing player data
 			var existingPlayer = _state.Players.First(p => p.PhoneNumber == phoneNumber);
 			existingPlayer.DisplayName = !string.IsNullOrEmpty(session.UserName) ? session.UserName : "Player";
-			// Credits will be fetched from EventService in credit flow implementation
+			// Credits will be fetched from SessionEventService in credit flow implementation
 		}
 		else if (_state.Players.Count < Config.MaxPlayers)
 		{
@@ -391,7 +391,7 @@ public partial class NinesGame : GameController
 		{
 			PhoneNumber = session.PhoneNumber,
 			DisplayName = displayName,
-			Credits = 0, // Credits will be fetched from EventService in credit flow implementation
+			Credits = 0, // Credits will be fetched from SessionEventService in credit flow implementation
 			SlotIndex = slotIndex
 		};
 

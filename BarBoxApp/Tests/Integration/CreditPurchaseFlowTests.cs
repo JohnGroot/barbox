@@ -8,14 +8,14 @@ namespace BarBox.Tests.Integration;
 
 /// <summary>
 /// End-to-end integration tests for credit purchase flow
-/// Tests the complete flow: Payment -> SessionManager -> EventService -> Backend
+/// Tests the complete flow: Payment -> SessionManager -> SessionEventService -> Backend
 /// These tests validate the entire system working together, not individual components
 /// </summary>
 public class CreditPurchaseFlowTests : BackendTestBase
 {
 	private PaymentService _paymentService;
 	private SessionManager _sessionManager;
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private BackendManager _backendManager;
 	private CreditService _creditService;
 
@@ -42,7 +42,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		servicesReady.ShouldBeTrue(
 			"Integration test requires backend services. " +
 			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
-			$"EventService: {_eventService?.IsReady ?? false}");
+			$"SessionEventService: {_eventService?.IsReady ?? false}");
 
 		// Create and login user
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -115,7 +115,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		var isEventServiceReady = _eventService?.IsReady ?? false;
 
 		TestHelpers.LogTestInfo($"Backend running: {isBackendRunning}");
-		TestHelpers.LogTestInfo($"EventService ready: {isEventServiceReady}");
+		TestHelpers.LogTestInfo($"SessionEventService ready: {isEventServiceReady}");
 
 		// Act
 		var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
@@ -124,13 +124,13 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		// Assert
 		if (!isBackendRunning || !isEventServiceReady)
 		{
-			(result.IsSuccess).ShouldBeFalse("Purchase must fail when backend/EventService not ready");
+			(result.IsSuccess).ShouldBeFalse("Purchase must fail when backend/SessionEventService not ready");
 			result.ErrorMessage.ShouldNotBeNullOrEmpty("Error message should be provided");
 			TestHelpers.LogTestInfo($"Purchase correctly failed: {result.ErrorMessage}");
 
 			// Verify error message is informative
-			var hasEventServiceDiagnostics = result.ErrorMessage.Contains("EventService") || result.ErrorMessage.Contains("backend");
-			hasEventServiceDiagnostics.ShouldBeTrue("Error message should include diagnostic information about EventService or backend");
+			var hasEventServiceDiagnostics = result.ErrorMessage.Contains("SessionEventService") || result.ErrorMessage.Contains("backend");
+			hasEventServiceDiagnostics.ShouldBeTrue("Error message should include diagnostic information about SessionEventService or backend");
 			TestHelpers.LogTestInfo("✓ Error message includes diagnostic information");
 		}
 		else
@@ -148,7 +148,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		// Validate all required services are present
 		_paymentService.ShouldNotBeNull("PaymentService must be present");
 		_sessionManager.ShouldNotBeNull("SessionManager must be present");
-		_eventService.ShouldNotBeNull("EventService must be present");
+		_eventService.ShouldNotBeNull("SessionEventService must be present");
 		_backendManager.ShouldNotBeNull("BackendManager must be present");
 
 		TestHelpers.LogTestInfo("All required services present");
@@ -158,7 +158,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		TestHelpers.LogTestInfo($"BackendManager running: {isRunning}");
 
 		var isReady = _eventService.IsReady;
-		TestHelpers.LogTestInfo($"EventService ready: {isReady}");
+		TestHelpers.LogTestInfo($"SessionEventService ready: {isReady}");
 
 		// Check PaymentService availability
 		var paymentAvailable = await _paymentService.IsServiceAvailableAsync();
@@ -175,7 +175,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		servicesReady.ShouldBeTrue(
 			"Integration test requires backend services. " +
 			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
-			$"EventService: {_eventService?.IsReady ?? false}");
+			$"SessionEventService: {_eventService?.IsReady ?? false}");
 
 		// Create and login user
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -239,11 +239,11 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		var isBackendRunning = _backendManager?.IsBackendRunning() ?? false;
 		var isEventServiceReady = _eventService?.IsReady ?? false;
 
-		TestHelpers.LogTestInfo($"Initial state - Backend: {isBackendRunning}, EventService: {isEventServiceReady}");
+		TestHelpers.LogTestInfo($"Initial state - Backend: {isBackendRunning}, SessionEventService: {isEventServiceReady}");
 
 		if (!isBackendRunning || !isEventServiceReady)
 		{
-			TestHelpers.LogTestInfo("Backend or EventService not ready - this test documents expected recovery behavior");
+			TestHelpers.LogTestInfo("Backend or SessionEventService not ready - this test documents expected recovery behavior");
 			TestHelpers.LogTestInfo("Expected: PaymentService should fail gracefully with diagnostic error message");
 			TestHelpers.LogTestInfo("Expected: After backend becomes ready, subsequent purchases should succeed");
 			return;
@@ -275,7 +275,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		servicesReady.ShouldBeTrue(
 			"Integration test requires backend services. " +
 			$"Backend: {_backendManager?.IsBackendRunning() ?? false}, " +
-			$"EventService: {_eventService?.IsReady ?? false}");
+			$"SessionEventService: {_eventService?.IsReady ?? false}");
 
 		// Create and login user
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
@@ -356,7 +356,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		{
 			TestHelpers.LogTestWarning("Service readiness timeout - some services not ready");
 			TestHelpers.LogTestInfo($"  Backend running: {_backendManager?.IsBackendRunning() ?? false}");
-			TestHelpers.LogTestInfo($"  EventService ready: {_eventService?.IsReady ?? false}");
+			TestHelpers.LogTestInfo($"  SessionEventService ready: {_eventService?.IsReady ?? false}");
 		}
 
 		return ready;

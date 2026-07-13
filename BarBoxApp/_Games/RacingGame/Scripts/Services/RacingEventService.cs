@@ -12,7 +12,7 @@ using BarBox.Games.Racing;
 /// </summary>
 public class RacingEventService : GameEventServiceBase
 {
-	public RacingEventService(EventService eventService = null) : base(eventService)
+	public RacingEventService(SessionEventService eventService = null) : base(eventService)
 	{
 	}
 

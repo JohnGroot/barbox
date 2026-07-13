@@ -22,7 +22,7 @@ public class ServiceReadinessTests : BackendTestBase
 		// Arrange
 		var requiredServices = new[]
 		{
-			"EventService",
+			"SessionEventService",
 			"SessionManager",
 			"PaymentService",
 			"BackendManager",
@@ -48,26 +48,26 @@ public class ServiceReadinessTests : BackendTestBase
 		var backendManager = GetBackendManager();
 
 		// Assert
-		eventService.ShouldNotBeNull("EventService must be available");
+		eventService.ShouldNotBeNull("SessionEventService must be available");
 		backendManager.ShouldNotBeNull("BackendManager must be available");
 
-		TestHelpers.LogTestInfo("EventService → BackendManager dependency:");
+		TestHelpers.LogTestInfo("SessionEventService → BackendManager dependency:");
 
-		// EventService should wait for BackendReady signal
+		// SessionEventService should wait for BackendReady signal
 		var eventServiceReady = eventService.IsReady;
 		var backendRunning = backendManager.IsBackendRunning();
 
-		TestHelpers.LogTestInfo($"  EventService ready: {eventServiceReady}");
+		TestHelpers.LogTestInfo($"  SessionEventService ready: {eventServiceReady}");
 		TestHelpers.LogTestInfo($"  Backend running: {backendRunning}");
 
 		// Validate dependency relationship
 		if (eventServiceReady && !backendRunning)
 		{
-			false.ShouldBeTrue("EventService ready but backend not running - dependency violation!");
+			false.ShouldBeTrue("SessionEventService ready but backend not running - dependency violation!");
 		}
 		else if (!eventServiceReady && backendRunning)
 		{
-			TestHelpers.LogTestWarning("Backend running but EventService not ready - may be initializing");
+			TestHelpers.LogTestWarning("Backend running but SessionEventService not ready - may be initializing");
 		}
 		else if (eventServiceReady && backendRunning)
 		{
@@ -89,16 +89,16 @@ public class ServiceReadinessTests : BackendTestBase
 
 		// Assert
 		sessionManager.ShouldNotBeNull("SessionManager must be available");
-		eventService.ShouldNotBeNull("EventService must be available");
+		eventService.ShouldNotBeNull("SessionEventService must be available");
 
-		TestHelpers.LogTestInfo("SessionManager → EventService dependency:");
+		TestHelpers.LogTestInfo("SessionManager → SessionEventService dependency:");
 		TestHelpers.LogTestInfo($"  SessionManager exists: {sessionManager != null}");
-		TestHelpers.LogTestInfo($"  EventService exists: {eventService != null}");
-		TestHelpers.LogTestInfo($"  EventService ready: {eventService.IsReady}");
+		TestHelpers.LogTestInfo($"  SessionEventService exists: {eventService != null}");
+		TestHelpers.LogTestInfo($"  SessionEventService ready: {eventService.IsReady}");
 
-		// SessionManager should be able to check EventService readiness
+		// SessionManager should be able to check SessionEventService readiness
 		// This test validates the dependency exists and can be checked
-		TestHelpers.LogTestInfo("✓ SessionManager has access to EventService state");
+		TestHelpers.LogTestInfo("✓ SessionManager has access to SessionEventService state");
 		true.ShouldBeTrue("Dependency validated");
 	}
 
@@ -125,7 +125,7 @@ public class ServiceReadinessTests : BackendTestBase
 	public void ServiceDependencyChain_IsValid()
 	{
 		// Validate the complete dependency chain:
-		// BackendManager → EventService → SessionManager → PaymentService
+		// BackendManager → SessionEventService → SessionManager → PaymentService
 
 		var backendManager = GetBackendManager();
 		var eventService = GetEventService();
@@ -134,13 +134,13 @@ public class ServiceReadinessTests : BackendTestBase
 
 		TestHelpers.LogTestInfo("Complete service dependency chain:");
 		TestHelpers.LogTestInfo($"  1. BackendManager: {backendManager != null}");
-		TestHelpers.LogTestInfo($"  2. EventService: {eventService != null}");
+		TestHelpers.LogTestInfo($"  2. SessionEventService: {eventService != null}");
 		TestHelpers.LogTestInfo($"  3. SessionManager: {sessionManager != null}");
 		TestHelpers.LogTestInfo($"  4. PaymentService: {paymentService != null}");
 
 		// Assert all services are present
 		backendManager.ShouldNotBeNull("BackendManager must be present in dependency chain");
-		eventService.ShouldNotBeNull("EventService must be present in dependency chain");
+		eventService.ShouldNotBeNull("SessionEventService must be present in dependency chain");
 		sessionManager.ShouldNotBeNull("SessionManager must be present in dependency chain");
 		paymentService.ShouldNotBeNull("PaymentService must be present in dependency chain");
 
@@ -150,12 +150,12 @@ public class ServiceReadinessTests : BackendTestBase
 
 		TestHelpers.LogTestInfo($"\nReadiness states:");
 		TestHelpers.LogTestInfo($"  Backend running: {backendRunning}");
-		TestHelpers.LogTestInfo($"  EventService ready: {eventServiceReady}");
+		TestHelpers.LogTestInfo($"  SessionEventService ready: {eventServiceReady}");
 
 		// Validate chain integrity
 		if (eventServiceReady && !backendRunning)
 		{
-			false.ShouldBeTrue("Chain integrity violation: EventService ready without backend");
+			false.ShouldBeTrue("Chain integrity violation: SessionEventService ready without backend");
 		}
 		else
 		{
@@ -173,14 +173,14 @@ public class ServiceReadinessTests : BackendTestBase
 
 		// Assert
 		creditService.ShouldNotBeNull("CreditService must be available");
-		eventService.ShouldNotBeNull("EventService must be available");
+		eventService.ShouldNotBeNull("SessionEventService must be available");
 
-		TestHelpers.LogTestInfo("CreditService → EventService dependency:");
+		TestHelpers.LogTestInfo("CreditService → SessionEventService dependency:");
 		TestHelpers.LogTestInfo($"  CreditService exists: {creditService != null}");
-		TestHelpers.LogTestInfo($"  EventService exists: {eventService != null}");
-		TestHelpers.LogTestInfo($"  EventService ready: {eventService.IsReady}");
+		TestHelpers.LogTestInfo($"  SessionEventService exists: {eventService != null}");
+		TestHelpers.LogTestInfo($"  SessionEventService ready: {eventService.IsReady}");
 
-		TestHelpers.LogTestInfo("✓ CreditService has access to EventService");
+		TestHelpers.LogTestInfo("✓ CreditService has access to SessionEventService");
 		true.ShouldBeTrue("Dependency validated");
 	}
 
@@ -206,7 +206,7 @@ public class ServiceReadinessTests : BackendTestBase
 		if (eventService != null)
 		{
 			var ready = eventService.IsReady;
-			TestHelpers.LogTestInfo($"  EventService: {(ready ? "Ready" : "Not ready")}");
+			TestHelpers.LogTestInfo($"  SessionEventService: {(ready ? "Ready" : "Not ready")}");
 		}
 
 		TestHelpers.LogTestInfo($"  SessionManager: {(sessionManager != null ? "Available" : "Missing")}");
@@ -232,7 +232,7 @@ public class ServiceReadinessTests : BackendTestBase
 		var services = new[]
 		{
 			("BackendManager", "/root/BackendManager"),
-			("EventService", "/root/EventService"),
+			("SessionEventService", "/root/SessionEventService"),
 			("SessionManager", "/root/SessionManager"),
 			("PaymentService", "/root/PaymentService"),
 			("CreditService", "/root/CreditService")

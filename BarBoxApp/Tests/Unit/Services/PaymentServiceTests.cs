@@ -9,13 +9,13 @@ namespace BarBox.Tests.Unit.Services;
 
 /// <summary>
 /// Unit tests for PaymentService - payment processing and credit addition
-/// Tests the complete flow: Payment -> SessionManager -> EventService -> Backend
+/// Tests the complete flow: Payment -> SessionManager -> SessionEventService -> Backend
 /// </summary>
 public class PaymentServiceTests : BackendTestBase
 {
 	private PaymentService _paymentService;
 	private SessionManager _sessionManager;
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private CreditService _creditService;
 
 	public PaymentServiceTests(Node testScene) : base(testScene)
@@ -38,7 +38,7 @@ public class PaymentServiceTests : BackendTestBase
 		// Arrange
 		_paymentService.ShouldNotBeNull("PaymentService must be available");
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 
 		// Skip if using Stripe provider - Stripe requires user action (QR payment)
 		// which can't complete in automated tests without real payment
@@ -61,10 +61,10 @@ public class PaymentServiceTests : BackendTestBase
 
 		try
 		{
-			// Verify EventService is ready before attempting purchase
+			// Verify SessionEventService is ready before attempting purchase
 			if (!_eventService.IsReady)
 			{
-				TestHelpers.LogTestInfo("Test skipped - EventService not ready");
+				TestHelpers.LogTestInfo("Test skipped - SessionEventService not ready");
 				return;
 			}
 
@@ -124,7 +124,7 @@ public class PaymentServiceTests : BackendTestBase
 		// Arrange
 		_paymentService.ShouldNotBeNull("PaymentService must be available");
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 
 		// Skip if using Stripe provider - Stripe requires user action (QR payment)
 		// which can't complete in automated tests without real payment
@@ -147,35 +147,35 @@ public class PaymentServiceTests : BackendTestBase
 
 		try
 		{
-			// FORCE EventService to not ready state (simulates backend failure)
+			// FORCE SessionEventService to not ready state (simulates backend failure)
 			if (!TestHelpers.ForceEventServiceNotReady())
 			{
-				TestHelpers.LogTestInfo("Test skipped - could not force EventService not ready");
+				TestHelpers.LogTestInfo("Test skipped - could not force SessionEventService not ready");
 				return;
 			}
 
-			// Verify EventService is actually not ready
-			_eventService.IsReady.ShouldBeFalse("EventService should be forced to NOT READY state");
-			TestHelpers.LogTestInfo("EventService forced to NOT READY state - simulating backend failure");
+			// Verify SessionEventService is actually not ready
+			_eventService.IsReady.ShouldBeFalse("SessionEventService should be forced to NOT READY state");
+			TestHelpers.LogTestInfo("SessionEventService forced to NOT READY state - simulating backend failure");
 
 			// Act - attempt purchase with backend unavailable
 			var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 			// Assert - purchase MUST fail
-			result.IsSuccess.ShouldBeFalse("Purchase must fail when EventService not ready");
+			result.IsSuccess.ShouldBeFalse("Purchase must fail when SessionEventService not ready");
 			result.ErrorMessage.ShouldNotBeNullOrEmpty("Error message should be provided");
 			TestHelpers.LogTestInfo($"Purchase correctly failed: {result.ErrorMessage}");
 
 			// Verify error message includes diagnostic info
-			var hasDiagnostics = result.ErrorMessage.Contains("EventService") &&
+			var hasDiagnostics = result.ErrorMessage.Contains("SessionEventService") &&
 			                    (result.ErrorMessage.Contains("ready") || result.ErrorMessage.Contains("initialized"));
-			hasDiagnostics.ShouldBeTrue("Error message should include EventService diagnostics");
+			hasDiagnostics.ShouldBeTrue("Error message should include SessionEventService diagnostics");
 			TestHelpers.LogTestInfo("✓ Error message includes proper diagnostics");
 		}
 		finally
 		{
-			// ALWAYS restore EventService state
+			// ALWAYS restore SessionEventService state
 			TestHelpers.RestoreEventServiceReady();
 			await _sessionManager.LogoutUserAsync(TestPlayerPhone);
 		}
@@ -231,7 +231,7 @@ public class PaymentServiceTests : BackendTestBase
 		// Arrange
 		_paymentService.ShouldNotBeNull("PaymentService must be available");
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 
 		// Skip if using Stripe provider - Stripe requires user action (QR payment)
 		// which can't complete in automated tests without real payment
@@ -254,10 +254,10 @@ public class PaymentServiceTests : BackendTestBase
 
 		try
 		{
-			// Verify EventService is ready
+			// Verify SessionEventService is ready
 			if (!_eventService.IsReady)
 			{
-				TestHelpers.LogTestInfo("Test skipped - EventService not ready");
+				TestHelpers.LogTestInfo("Test skipped - SessionEventService not ready");
 				return;
 			}
 
@@ -312,7 +312,7 @@ public class PaymentServiceTests : BackendTestBase
 		// Arrange
 		_paymentService.ShouldNotBeNull("PaymentService must be available");
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
-		_eventService.ShouldNotBeNull("EventService must be available");
+		_eventService.ShouldNotBeNull("SessionEventService must be available");
 
 		// Act
 		var isAvailable = await _paymentService.IsServiceAvailableAsync();
@@ -325,15 +325,15 @@ public class PaymentServiceTests : BackendTestBase
 		var eventServiceReady = _eventService.IsReady;
 
 		TestHelpers.LogTestInfo($"  SessionManager exists: {hasSessionManager}");
-		TestHelpers.LogTestInfo($"  EventService ready: {eventServiceReady}");
+		TestHelpers.LogTestInfo($"  SessionEventService ready: {eventServiceReady}");
 
 		if (isAvailable && !eventServiceReady)
 		{
-			TestHelpers.LogTestInfo("Service reports available but EventService not ready - may be in initialization");
+			TestHelpers.LogTestInfo("Service reports available but SessionEventService not ready - may be in initialization");
 		}
 		else if (!isAvailable && eventServiceReady)
 		{
-			TestHelpers.LogTestInfo("Service reports unavailable but EventService ready - verify dependencies");
+			TestHelpers.LogTestInfo("Service reports unavailable but SessionEventService ready - verify dependencies");
 		}
 		else
 		{

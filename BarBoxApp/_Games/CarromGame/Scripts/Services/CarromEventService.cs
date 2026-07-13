@@ -9,13 +9,13 @@ namespace BarBox.Games.Carrom;
 /// Carrom game-specific event service.
 /// Provides a type-safe method for emitting carrom results through the shared,
 /// guarded GameEventServiceBase path, replacing the previous raw fire-and-forget
-/// EventService.EmitEventAsync call in game logic.
+/// SessionEventService.EmitEventAsync call in game logic.
 /// </summary>
 public class CarromEventService : GameEventServiceBase
 {
 	private const string EVENT_ROUND_FINISH = "carrom/round_finish";
 
-	public CarromEventService(EventService eventService = null) : base(eventService)
+	public CarromEventService(SessionEventService eventService = null) : base(eventService)
 	{
 	}
 

@@ -11,7 +11,7 @@ namespace BarBox.Tests.Integration;
 /// Integration tests for Carrom machine credit endpoints
 /// Tests actual HTTP communication between frontend and backend
 ///
-/// CRITICAL: These tests validate the API contract between EventService and backend
+/// CRITICAL: These tests validate the API contract between SessionEventService and backend
 /// They specifically test that machine credits endpoints use correct URL paths:
 /// - GET /machine-credits/{game_tag}
 /// - POST /machine-credits/{game_tag}/deposit
@@ -22,7 +22,7 @@ namespace BarBox.Tests.Integration;
 /// </summary>
 public class CarromMachineCreditsIntegrationTests : BackendTestBase
 {
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private SessionManager _sessionManager;
 	private BackendManager _backendManager;
 	private CreditService _creditService;
@@ -262,7 +262,7 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 		{
 			TestHelpers.LogTestWarning("Service readiness timeout - some services not ready");
 			TestHelpers.LogTestInfo($"  Backend running: {_backendManager?.IsBackendRunning() ?? false}");
-			TestHelpers.LogTestInfo($"  EventService ready: {_eventService?.IsReady ?? false}");
+			TestHelpers.LogTestInfo($"  SessionEventService ready: {_eventService?.IsReady ?? false}");
 		}
 
 		return ready;

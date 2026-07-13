@@ -12,9 +12,9 @@ Use explicit lifecycle phases with documented post-condition guarantees. Validat
 protected override void DiscoverServices()
 {
 	base.DiscoverServices();
-	_eventService = EventService.GetInstance();
+	_eventService = SessionEventService.GetInstance();
 	if (_eventService == null)
-		throw new InvalidOperationException("EventService is required but not available");
+		throw new InvalidOperationException("SessionEventService is required but not available");
 
 	if (GameHost.IsProductionContext())
 	{
@@ -88,7 +88,7 @@ _engine?.StartMining();             // If _engine is required, this HIDES BUGS
 
 | Category | Examples | Strategy |
 |----------|----------|----------|
-| Required (Production) | SessionManager, EventService | Throw in `DiscoverServices()` if null |
+| Required (Production) | SessionManager, SessionEventService | Throw in `DiscoverServices()` if null |
 | Optional Platform | GameHost, CreditService | Null-conditional `?.` |
 | Game Components | _engine, _state, _ui | No checks after init |
 

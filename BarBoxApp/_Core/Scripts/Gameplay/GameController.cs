@@ -109,7 +109,7 @@ public abstract partial class GameController : Node2D
 	protected async Task<Result<Guid>> StartBackendSessionAsync(Guid boxId, Guid playerId, List<string> playerIds = null)
 	{
 		if (Platform.Events == null)
-			return Result.Failure<Guid>("EventService not available");
+			return Result.Failure<Guid>("SessionEventService not available");
 
 		var result = await Platform.Events.CreateActivitySessionAsync(boxId, playerId, GetGameTag(), playerIds);
 		if (result.IsSuccess(out var sessionId))

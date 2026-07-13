@@ -64,7 +64,7 @@ public partial class MiningGame : GameController
 	private MiningGameUI _ui;
 	private MiningEngine _engine;
 	private MiningState _state;
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private MiningEventService _miningEventService;
 
 	// Platform services
@@ -92,10 +92,10 @@ public partial class MiningGame : GameController
 	protected override void OnDiscoverServices()
 	{
 		// Initialize REQUIRED event services
-		_eventService = EventService.GetInstance();
+		_eventService = SessionEventService.GetInstance();
 		if (_eventService == null)
 		{
-			throw new InvalidOperationException("EventService is required but not available");
+			throw new InvalidOperationException("SessionEventService is required but not available");
 		}
 
 		_miningEventService = new MiningEventService(_eventService);

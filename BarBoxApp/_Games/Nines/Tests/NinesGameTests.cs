@@ -17,7 +17,7 @@ namespace BarBox.Games.Nines.Tests;
 public class NinesGameTests : TestClass
 {
 	private const string GAME_TAG = "nines";
-	private EventService _eventService;
+	private SessionEventService _eventService;
 	private CreditService _creditService;
 	private Guid _testBoxId;
 	private Guid _testPlayerId;
@@ -40,8 +40,8 @@ public class NinesGameTests : TestClass
 			return;
 		}
 
-		_eventService = TestScene.GetNode<EventService>("/root/EventService");
-		_eventService.ShouldNotBeNull("EventService autoload must be available");
+		_eventService = TestScene.GetNode<SessionEventService>("/root/SessionEventService");
+		_eventService.ShouldNotBeNull("SessionEventService autoload must be available");
 		_creditService = TestScene.GetNode<CreditService>("/root/CreditService");
 
 		// Use seeded test identifiers (API key is only valid for the seeded Box ID)

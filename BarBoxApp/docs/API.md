@@ -50,7 +50,7 @@ protected GameContext Platform { get; private set; }
 | Service | Purpose | Access |
 |---------|---------|--------|
 | `Platform.Session` | User authentication, sessions | `SessionManager` |
-| `Platform.Events` | Event sourcing, backend communication | `EventService` |
+| `Platform.Events` | Event sourcing, backend communication | `SessionEventService` |
 | `Platform.Credits` | Credit management | `CreditService` |
 | `Platform.Location` | Box/venue configuration | `LocationManager` |
 | `Platform.Host` | Game orchestration, lifecycle | `GameHost` |
@@ -351,4 +351,4 @@ GD.Print(BuildContext.GetContextDescription());
 | `_Core/Scripts/_Utils/BuildContext.cs` | Cached build context detection |
 | `_Core/Scripts/Autoloads/GameHost.cs` | Game lifecycle orchestration |
 | `_Core/Scripts/Autoloads/SessionManager.cs` | User authentication and sessions |
-| `_Core/Scripts/Autoloads/EventService.cs` | Backend event emission |
+| `_Core/Scripts/Autoloads/SessionEventService.cs` | Backend event emission |

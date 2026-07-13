@@ -145,7 +145,7 @@ GET  /game/{tag}/leaderboard         # Game leaderboard
 ### Frontend Services
 - **SessionManager**: User authentication and session management
 - **CreditService**: Balance queries and transactions with smart caching
-- **EventService**: Backend communication and event streaming
+- **SessionEventService**: Backend communication and event streaming
 - **LocationManager**: Box identification and configuration
 - **GameHost**: Game orchestration and lifecycle management
 

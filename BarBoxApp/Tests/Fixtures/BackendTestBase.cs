@@ -17,7 +17,7 @@ public abstract class BackendTestBase : TestClass
 	protected string TestPlayerPhone { get; private set; }
 
 	// Cached service references for performance
-	private EventService _cachedEventService;
+	private SessionEventService _cachedEventService;
 	private SessionManager _cachedSessionManager;
 	private CreditService _cachedCreditService;
 	private PaymentService _cachedPaymentService;
@@ -48,7 +48,7 @@ public abstract class BackendTestBase : TestClass
 			TestHelpers.LogTestInfo("✓ Test backend is healthy");
 		}
 
-		// Wait for services to finish async initialization (BackendManager + EventService)
+		// Wait for services to finish async initialization (BackendManager + SessionEventService)
 		TestHelpers.LogTestInfo("Waiting for services to initialize...");
 		var servicesReady = await TestHelpers.WaitForConditionAsync(() =>
 		{
@@ -63,7 +63,7 @@ public abstract class BackendTestBase : TestClass
 
 		if (servicesReady)
 		{
-			TestHelpers.LogTestInfo("✓ BackendManager and EventService are ready");
+			TestHelpers.LogTestInfo("✓ BackendManager and SessionEventService are ready");
 		}
 		else
 		{
@@ -149,20 +149,20 @@ public abstract class BackendTestBase : TestClass
 	// ============================================================
 
 	/// <summary>
-	/// Get EventService autoload for testing.
+	/// Get SessionEventService autoload for testing.
 	/// Uses cached reference with validation for performance.
 	/// </summary>
-	protected EventService GetEventService()
+	protected SessionEventService GetEventService()
 	{
 		if (_cachedEventService != null && GodotObject.IsInstanceValid(_cachedEventService))
 		{
 			return _cachedEventService;
 		}
 
-		_cachedEventService = TestScene.GetNode<EventService>("/root/EventService");
+		_cachedEventService = TestScene.GetNode<SessionEventService>("/root/SessionEventService");
 		if (_cachedEventService == null)
 		{
-			TestHelpers.LogTestError("EventService autoload not found!");
+			TestHelpers.LogTestError("SessionEventService autoload not found!");
 		}
 		return _cachedEventService;
 	}
@@ -309,8 +309,8 @@ public abstract class BackendTestBase : TestClass
 	}
 
 	/// <summary>
-	/// Verify EventService is NOT ready for testing graceful degradation.
-	/// Returns true if EventService exists but is not ready.
+	/// Verify SessionEventService is NOT ready for testing graceful degradation.
+	/// Returns true if SessionEventService exists but is not ready.
 	/// </summary>
 	protected bool VerifyEventServiceNotReady()
 	{
@@ -318,7 +318,7 @@ public abstract class BackendTestBase : TestClass
 
 		if (eventService == null)
 		{
-			TestHelpers.LogTestError("EventService does not exist - cannot verify not-ready state");
+			TestHelpers.LogTestError("SessionEventService does not exist - cannot verify not-ready state");
 			return false;
 		}
 
@@ -326,11 +326,11 @@ public abstract class BackendTestBase : TestClass
 
 		if (isReady)
 		{
-			TestHelpers.LogTestError("EventService is READY when it should be NOT READY");
+			TestHelpers.LogTestError("SessionEventService is READY when it should be NOT READY");
 			return false;
 		}
 
-		TestHelpers.LogTestInfo("✓ EventService correctly in NOT READY state");
+		TestHelpers.LogTestInfo("✓ SessionEventService correctly in NOT READY state");
 		return true;
 	}
 
@@ -348,7 +348,7 @@ public abstract class BackendTestBase : TestClass
 
 		TestHelpers.LogTestInfo("Service Failure State Verification:");
 		TestHelpers.LogTestInfo($"  Backend NOT running: {backendNotRunning}");
-		TestHelpers.LogTestInfo($"  EventService NOT ready: {eventServiceNotReady}");
+		TestHelpers.LogTestInfo($"  SessionEventService NOT ready: {eventServiceNotReady}");
 
 		return backendNotRunning && eventServiceNotReady;
 	}

@@ -19,7 +19,7 @@ public class MiningEventService : GameEventServiceBase
 	private const string EVENT_CREDIT_DEPOSIT = "mining/credit_deposit";
 	private const string EVENT_FIRST_TIME_BONUS = "mining/first_time_bonus";
 
-	public MiningEventService(EventService eventService = null) : base(eventService)
+	public MiningEventService(SessionEventService eventService = null) : base(eventService)
 	{
 	}
 
@@ -29,7 +29,7 @@ public class MiningEventService : GameEventServiceBase
 		if (quantity < 1)
 			return Result.Failure<bool>(ValidationMessages.MinValue("Quantity", 1));
 
-		// Check EventService availability (required for location_id)
+		// Check SessionEventService availability (required for location_id)
 		if (_eventService == null)
 			return Result.Failure<bool>("Event service not available");
 
@@ -37,7 +37,7 @@ public class MiningEventService : GameEventServiceBase
 		var locationId = _eventService.GetVenueName();
 		if (string.IsNullOrEmpty(locationId))
 		{
-			LogWarning("Venue name not available from EventService, using 'default'");
+			LogWarning("Venue name not available from SessionEventService, using 'default'");
 			locationId = "default";
 		}
 

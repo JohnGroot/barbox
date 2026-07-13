@@ -12,7 +12,7 @@ public class GameContext
 {
 	// Core Services (always available after ApplicationBootstrap)
 	public SessionManager Session { get; private init; }
-	public EventService Events { get; private init; }
+	public SessionEventService Events { get; private init; }
 	public LocationManager Location { get; private init; }
 	public CreditService Credits { get; private init; }
 
@@ -47,7 +47,7 @@ public class GameContext
 		return new GameContext
 		{
 			Session = AutoloadBase.GetAutoload<SessionManager>(),
-			Events = AutoloadBase.GetAutoload<EventService>(),
+			Events = AutoloadBase.GetAutoload<SessionEventService>(),
 			Location = AutoloadBase.GetAutoload<LocationManager>(),
 			Credits = AutoloadBase.GetAutoload<CreditService>(),
 			Host = AutoloadBase.GetAutoload<GameHost>(),

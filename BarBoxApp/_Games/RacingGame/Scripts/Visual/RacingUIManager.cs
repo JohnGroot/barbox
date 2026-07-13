@@ -158,7 +158,7 @@ namespace BarBox.Games.Racing
 		TimeTrialCreditCost = timeTrialCreditCost;
 
 		// Initialize singleton racing event service
-		_racingEventService = new RacingEventService(EventService.GetInstance());
+		_racingEventService = new RacingEventService(SessionEventService.GetInstance());
 
 		SetupUILayer();
 		SetupMainUI();

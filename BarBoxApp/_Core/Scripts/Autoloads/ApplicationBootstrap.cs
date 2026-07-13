@@ -230,16 +230,16 @@ public partial class ApplicationBootstrap : AutoloadBase
 			LogError("BackendClient failed to initialize - all HTTP-backed systems (credits/auth/emit/stripe) will be unavailable");
 		}
 
-		var eventServiceReady = await InitializeServiceAsync("EventService", EventService.GetInstance(), ServiceCriticality.Optional, cancellationToken);
+		var eventServiceReady = await InitializeServiceAsync("SessionEventService", SessionEventService.GetInstance(), ServiceCriticality.Optional, cancellationToken);
 		if (!eventServiceReady)
 		{
-			LogError("EventService failed to initialize - credit system will be unavailable");
+			LogError("SessionEventService failed to initialize - credit system will be unavailable");
 		}
 	}
 
 	private async Task InitializePhase3Async(CancellationToken cancellationToken)
 	{
-		LogInfo("Phase 3: Session and Payment services (depend on EventService)");
+		LogInfo("Phase 3: Session and Payment services (depend on SessionEventService)");
 		await InitializeServiceAsync("SessionManager", SessionManager.GetInstance(), ServiceCriticality.Optional, cancellationToken);
 		await InitializeServiceAsync("PaymentService", PaymentService.GetInstance(), ServiceCriticality.Optional, cancellationToken);
 	}

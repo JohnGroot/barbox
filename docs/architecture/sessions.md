@@ -12,7 +12,7 @@ The BarBox platform uses a **two-tier session model** that cleanly separates aut
 ```
 User logs in → UserSession created (SessionManager)
   ↓
-User launches game → ActivitySession created (game code + EventService)
+User launches game → ActivitySession created (game code + SessionEventService)
   ↓
 User plays game → Events emitted to ActivitySession
   ↓
@@ -101,9 +101,9 @@ class BoxSession(Base):  # Will be renamed to ActivitySession
 
 **New Service**: Extracted from SessionManager for single responsibility
 
-### EventService
+### SessionEventService
 **Responsibility**: Backend communication
-**Location**: `BarBoxApp/_Core/Scripts/Autoloads/EventService.cs`
+**Location**: `BarBoxApp/_Core/Scripts/Autoloads/SessionEventService.cs`
 
 **Key Methods**:
 - `CreateActivitySessionAsync(boxId, playerId, gameTag, playerIds)` - NEW
@@ -148,13 +148,13 @@ Response: {"id": "session-uuid"}
 public partial class RacingGame : Node
 {
     private Guid _activitySessionId;
-    private EventService _eventService;
+    private SessionEventService _eventService;
     private LocationManager _locationManager;
     private SessionManager _sessionManager;
 
     public override async void _Ready()
     {
-        _eventService = EventService.GetInstance();
+        _eventService = SessionEventService.GetInstance();
         _locationManager = LocationManager.GetAutoload();
         _sessionManager = SessionManager.GetInstance();
 
@@ -273,11 +273,11 @@ public partial class CarromGame : Node
 
 ### 📋 To Do (Per Game)
 1. **Update game to create ActivitySession on launch**
-   - Call `EventService.CreateActivitySessionAsync()` with `game_tag`
+   - Call `SessionEventService.CreateActivitySessionAsync()` with `game_tag`
    - Store returned session ID
 
 2. **Update game to close ActivitySession on exit**
-   - Call `EventService.CloseActivitySessionAsync(sessionId)`
+   - Call `SessionEventService.CloseActivitySessionAsync(sessionId)`
    - Emit `play/finish` event before closing
 
 3. **Update credit operations to use CreditService**
@@ -410,7 +410,7 @@ public partial class MyGame : Node
 ## Troubleshooting
 
 ### "Game session creation failed"
-- Check EventService is initialized: `EventService.GetInstance() != null`
+- Check SessionEventService is initialized: `SessionEventService.GetInstance() != null`
 - Check LocationManager has box ID: `LocationManager.IsConfigLoaded`
 - Check backend is running: `curl http://127.0.0.1:8000/alive`
 - Check game_tag is provided (required parameter)
@@ -418,7 +418,7 @@ public partial class MyGame : Node
 ### "Credits not updating"
 - Use CreditService instead of UserSession.Credits
 - CreditService has 30s cache - use `forceRefresh: true` if needed
-- Check EventService connectivity
+- Check SessionEventService connectivity
 
 ### "Orphaned sessions in database"
 - Games must call `CloseActivitySessionAsync()` on exit
@@ -431,4 +431,4 @@ public partial class MyGame : Node
 - Session API Endpoints: `BarBoxServices/src/bxctl/web/box.py`
 - SessionManager: `BarBoxApp/_Core/Scripts/Autoloads/SessionManager.cs`
 - CreditService: `BarBoxApp/_Core/Scripts/Autoloads/CreditService.cs`
-- EventService: `BarBoxApp/_Core/Scripts/Autoloads/EventService.cs`
+- SessionEventService: `BarBoxApp/_Core/Scripts/Autoloads/SessionEventService.cs`

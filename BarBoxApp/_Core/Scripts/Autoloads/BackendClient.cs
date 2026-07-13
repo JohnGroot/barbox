@@ -12,7 +12,7 @@ namespace BarBox.Core.Autoloads;
 /// <summary>
 /// Sole HTTP transport layer for backend communication.
 /// Owns the HttpClient connection lifecycle, header building, and the generic
-/// query/post/put verbs. Domain services (EventService, CreditService, etc.)
+/// query/post/put verbs. Domain services (SessionEventService, CreditService, etc.)
 /// build their URLs/payloads and call through this - no other class should
 /// touch Godot's HttpClient directly.
 /// </summary>
@@ -44,7 +44,7 @@ public partial class BackendClient : AutoloadBase
 	/// Supplies the JWT Bearer token for a given player ID when building authenticated
 	/// request headers. Set by SessionManager during its own initialization - this
 	/// delegate is what lets BackendClient add JWT headers without depending on the
-	/// SessionManager type (which itself depends on BackendClient via EventService).
+	/// SessionManager type (which itself depends on BackendClient via SessionEventService).
 	/// </summary>
 	public Func<Guid, string> JwtTokenProvider { get; set; }
 
@@ -418,7 +418,7 @@ public partial class BackendClient : AutoloadBase
 
 	/// <summary>
 	/// POST a pre-serialized JSON event body to a session endpoint (/box/session/{sessionId}).
-	/// Shared primitive behind EventService.EmitEventAsync / EmitUserEventAsync.
+	/// Shared primitive behind SessionEventService.EmitEventAsync / EmitUserEventAsync.
 	/// Returns the raw response body on 201; callers interpret/log domain-specific errors.
 	/// </summary>
 	public async Task<Result<string>> PostToSessionAsync(Guid sessionId, string json, Guid? playerId = null)
@@ -662,10 +662,10 @@ public partial class BackendClient : AutoloadBase
 		return apiKey;
 	}
 
-	// Internal forwarding members for EventService's raw-HttpClient session methods
+	// Internal forwarding members for SessionEventService's raw-HttpClient session methods
 	// (CreateActivitySessionAsync/CloseActivitySessionAsync/CreateLobbySessionAsync) -
 	// those methods aren't moving to BackendClient in this increment, but _httpClient
-	// itself is no longer accessible to EventService, so they call these instead.
+	// itself is no longer accessible to SessionEventService, so they call these instead.
 	internal Godot.Error Request(HttpClient.Method method, string url, string[] headers, string body = null)
 	{
 		return body == null

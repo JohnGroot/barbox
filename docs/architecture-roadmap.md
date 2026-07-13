@@ -103,7 +103,7 @@ roadmap):
 | # | Workstream | Depends on | Risk | Status |
 |---|-----------|------------|------|--------|
 | WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
-| WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | Increments ①②③④ DONE (2026-07-13) — see §3 note; ⑤ (rename) not started |
+| WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | **DONE (2026-07-13)** — all 5 increments, see §3 notes |
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | Not started |
 | WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | Not started |
 | WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
@@ -226,11 +226,26 @@ weren't in this increment's move list. Build + full C# suite (291/291,
 unchanged pass count — no test called the six moved methods' `EventService`
 form directly) + Hurl green.
 
-**WS1 status:** increments ①–④ complete. Increment ⑤ (rename
-`EventService` → `SessionEventService`) remains — see Appendix A for the
-churn list (autoload node name, ~7 test node-paths, `GetInstance()` callers,
-`GameEventServiceBase._eventService` field type). Optional per the roadmap's
-own analysis; not yet scheduled.
+**2026-07-13 — Increment ⑤ DONE.** `EventService` renamed to
+`SessionEventService` throughout: class name (file renamed
+`EventService.cs` → `SessionEventService.cs`, including its `.uid` sidecar),
+the `project.godot` autoload node, all `GetInstance()` callers, the 7 test
+node-paths (`GetNode<EventService>("/root/EventService")` →
+`GetNode<SessionEventService>("/root/SessionEventService")` in
+`BackendTestBase`, `TestHelpers`, and the four `*GameTests` files),
+`GameEventServiceBase`'s field type, and the 4 game event-service ctors.
+Per the churn-minimizer, `GameContext.Events`'s property *name* is
+unchanged — only its type became `SessionEventService`. Applied via a
+word-boundary rename (`\bEventService\b`) so per-game event-service classes
+(`MiningEventService`, `CarromEventService`, etc., and
+`GameEventServiceBase`) were correctly left untouched, as were lowercase
+`_eventService` field/variable names and test helper method names like
+`SimulateEventServiceNotReady` (out of this increment's scope). Docs
+naming the class updated too (§6). Build + full C# suite (291/291) + Hurl
+green.
+
+**WS1 status: all 5 increments DONE.** WS2 is now unblocked (its
+sequencing note "after WS1 (rename settles names)" is satisfied).
 
 ### WS2 — New-game developer experience
 
@@ -466,7 +481,7 @@ steps, and onboarding errors`).
 | `README.md:112-129` "Adding a New Game" | WS2 items 1–4 | Replace hand-rolled session code with checklist pointer |
 | `BarBoxApp/agent_docs/game-development-patterns.md` lifecycle/context sections, `autoload-service-patterns.md`, `architectural-tenets.md` | WS2 items 1–4 | Same pre-GameController drift |
 | `docs/adding-a-game.md` (new) | WS2 items 1–4 | The §5 checklist as a living doc |
-| Any doc naming `EventService` / its methods | WS1 | Update to `BackendClient`/`SessionEventService` as part of increment ⑤ |
+| ~~Any doc naming `EventService` / its methods~~ | — | **DONE 2026-07-13** — renamed to `SessionEventService` in README.md, `BarBoxApp/docs/API.md`, `agent_docs/box-identity-guide.md`, `agent_docs/architectural-tenets.md`, `docs/architecture/sessions.md`. `agent_docs/httpclient-patterns.md`'s "Use for: BackendManager, EventService" line is skipped — it's stale beyond a rename (HttpClient now lives on `BackendClient`, not the session/emit class) and belongs with the WS2 item 5 autoload-doc pass below. `*EventService.cs` mentions in `_Games/CLAUDE.md`/`game-development-patterns.md` are the per-game convention (`MiningEventService`, etc.), unrelated to this rename — left untouched. |
 | `BarBoxServices/docs/STRIPE_PAYMENT_INTEGRATION_PLAN.md` | nothing — anytime | Reframe from "plan" to "implemented reference" (Stripe is live in `web/payments.py`) |
 | `BarBoxServices/docs/FLY_IO_DEPLOYMENT_GUIDE.md` Phase 1 | nothing — anytime | Reframe "files to create" → "files that exist" (status note added 2026-07-13; full reframe pending) |
 

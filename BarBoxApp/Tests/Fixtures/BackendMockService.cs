@@ -24,7 +24,7 @@ namespace BarBox.Tests.Fixtures;
 /// - Performance testing (mock doesn't reflect real network latency)
 ///
 /// VS. DEBUG HOOKS:
-/// - DEBUG hooks (like EventService.SetReadyStateForTesting): Require DEBUG builds,
+/// - DEBUG hooks (like SessionEventService.SetReadyStateForTesting): Require DEBUG builds,
 ///   modify real service state, tightly coupled to production code
 /// - BackendMockService: Works in all builds, isolated test fixture, no production
 ///   code coupling
@@ -202,7 +202,7 @@ public partial class BackendMockService : Node
 	}
 
 	/// <summary>
-	/// Create a mock EventService state for testing payment validation.
+	/// Create a mock SessionEventService state for testing payment validation.
 	/// Returns a simple state object that can be used in tests.
 	/// </summary>
 	public static EventServiceMockState CreateMockEventServiceState(bool isReady, bool exists = true)
@@ -215,7 +215,7 @@ public partial class BackendMockService : Node
 	}
 
 	/// <summary>
-	/// Simple struct to hold EventService mock state.
+	/// Simple struct to hold SessionEventService mock state.
 	/// </summary>
 	public struct EventServiceMockState
 	{
@@ -224,7 +224,7 @@ public partial class BackendMockService : Node
 
 		public override string ToString()
 		{
-			return $"EventService [Exists={Exists}, Ready={IsReady}]";
+			return $"SessionEventService [Exists={Exists}, Ready={IsReady}]";
 		}
 	}
 

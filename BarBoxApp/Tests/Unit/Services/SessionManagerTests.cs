@@ -199,12 +199,12 @@ public class SessionManagerTests : BackendTestBase
 
 		try
 		{
-			// Check EventService readiness
+			// Check SessionEventService readiness
 			var eventService = GetEventService();
-			eventService.ShouldNotBeNull("EventService must be available");
+			eventService.ShouldNotBeNull("SessionEventService must be available");
 			var eventServiceReady = eventService.IsReady;
 
-			TestHelpers.LogTestInfo($"EventService ready: {eventServiceReady}");
+			TestHelpers.LogTestInfo($"SessionEventService ready: {eventServiceReady}");
 
 			// Get playerId from session
 			var session = _sessionManager.GetSessionByPhone(TestPlayerPhone);
@@ -217,12 +217,12 @@ public class SessionManagerTests : BackendTestBase
 			// Assert
 			if (!eventServiceReady)
 			{
-				result.IsFailure(out var resultError).ShouldBeTrue("Add credits should fail when EventService not ready");
-				TestHelpers.LogTestInfo($"Add credits correctly failed when EventService not ready: {resultError.Message}");
+				result.IsFailure(out var resultError).ShouldBeTrue("Add credits should fail when SessionEventService not ready");
+				TestHelpers.LogTestInfo($"Add credits correctly failed when SessionEventService not ready: {resultError.Message}");
 			}
 			else
 			{
-				TestHelpers.LogTestInfo($"EventService ready, add credits result: {result.IsSuccess()}");
+				TestHelpers.LogTestInfo($"SessionEventService ready, add credits result: {result.IsSuccess()}");
 			}
 		}
 		finally
@@ -239,7 +239,7 @@ public class SessionManagerTests : BackendTestBase
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		_creditService.ShouldNotBeNull("CreditService must be available");
 		var eventService = GetEventService();
-		eventService.ShouldNotBeNull("EventService must be available");
+		eventService.ShouldNotBeNull("SessionEventService must be available");
 
 		var loginResult = await _sessionManager.LoginUserByPhoneAsync(TestPlayerPhone, "1234");
 
@@ -261,20 +261,20 @@ public class SessionManagerTests : BackendTestBase
 			// Act - try to add credits via CreditService
 			var result = await _creditService.AddAsync(playerId, 50, "test");
 
-			// Assert - Should correlate with EventService readiness
-			TestHelpers.LogTestInfo($"EventService ready: {eventServiceReady}, Add credits: {result.IsSuccess()}");
+			// Assert - Should correlate with SessionEventService readiness
+			TestHelpers.LogTestInfo($"SessionEventService ready: {eventServiceReady}, Add credits: {result.IsSuccess()}");
 
 			if (result.IsSuccess() && !eventServiceReady)
 			{
-				false.ShouldBeTrue("Credits added despite EventService not ready!");
+				false.ShouldBeTrue("Credits added despite SessionEventService not ready!");
 			}
 			else if (result.IsFailure() && eventServiceReady)
 			{
-				TestHelpers.LogTestInfo("EventService ready but add credits failed - check logs");
+				TestHelpers.LogTestInfo("SessionEventService ready but add credits failed - check logs");
 			}
 			else
 			{
-				TestHelpers.LogTestInfo("✓ Add credits behavior matches EventService state");
+				TestHelpers.LogTestInfo("✓ Add credits behavior matches SessionEventService state");
 				true.ShouldBeTrue("State is consistent");
 			}
 		}
@@ -295,7 +295,7 @@ public class SessionManagerTests : BackendTestBase
 
 		if (eventService == null || !eventService.IsReady)
 		{
-			TestHelpers.LogTestInfo("Test skipped - EventService not ready");
+			TestHelpers.LogTestInfo("Test skipped - SessionEventService not ready");
 			return;
 		}
 
@@ -320,7 +320,7 @@ public class SessionManagerTests : BackendTestBase
 			var result = await _creditService.AddAsync(playerId, 100, "test");
 
 			// Assert
-			result.IsSuccess(out var newBalance).ShouldBeTrue("Add credits should succeed when EventService ready");
+			result.IsSuccess(out var newBalance).ShouldBeTrue("Add credits should succeed when SessionEventService ready");
 
 			// Verify CreditService returns updated balance
 			var updatedCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
