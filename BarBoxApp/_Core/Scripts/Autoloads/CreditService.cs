@@ -56,7 +56,7 @@ public partial class CreditService : AutoloadBase
 	/// </summary>
 	public async Task<Result<int>> GetBalanceAsync(Guid playerId, bool forceRefresh = false)
 	{
-		// Check cache first (before waiting for EventService)
+		// Check cache first (before waiting for BackendClient)
 		if (!forceRefresh && _balanceCache.TryGetValue(playerId, out var cached))
 		{
 			if (!cached.IsStale)
@@ -65,13 +65,7 @@ public partial class CreditService : AutoloadBase
 			}
 		}
 
-		// Ensure EventService is ready (with retry for race condition)
-		var eventServiceResult = await EnsureEventServiceReadyAsync();
-		if (!eventServiceResult.IsSuccess(out var eventService))
-			return Result.Failure<int>("Credit service unavailable");
-
-		// Query backend
-		var result = await eventService.GetPlayerCreditsAsync(playerId);
+		var result = await QueryPlayerCreditsAsync(playerId);
 		if (result.IsSuccess(out var credits))
 		{
 			UpdateCache(playerId, credits);
@@ -89,7 +83,8 @@ public partial class CreditService : AutoloadBase
 		if (amount <= 0)
 			return Result.Failure<int>("Amount must be positive");
 
-		// Ensure EventService is ready (with retry for race condition)
+		// Ensure EventService is ready (with retry for race condition) - credit/spend is a
+		// session-scoped emit, which EventService still owns
 		var eventServiceResult = await EnsureEventServiceReadyAsync();
 		if (!eventServiceResult.IsSuccess(out var eventService))
 			return Result.Failure<int>("Credit service unavailable");
@@ -112,10 +107,16 @@ public partial class CreditService : AutoloadBase
 			return Result.Failure<int>("Failed to obtain lobby session");
 		}
 
-		var initialBalance = await GetInitialBalanceAsync(eventService, playerId);
+		var initialBalance = await GetInitialBalanceAsync(playerId);
 
 		// Backend validates balance and performs spend atomically
-		var spendResult = await eventService.SpendCreditsAsync(playerId, amount, reason, lobbySessionId);
+		var payload = new
+		{
+			location_id = GetVenueName(),
+			amount = amount,
+			reason = reason
+		};
+		var spendResult = await eventService.EmitUserEventAsync(playerId, "credit/spend", payload, lobbySessionId);
 		if (spendResult.IsFailure(out var spendError))
 		{
 			LogWarning($"Credit spend failed: {spendError.Message}");
@@ -129,7 +130,7 @@ public partial class CreditService : AutoloadBase
 
 		while ((System.DateTime.UtcNow - startTime).TotalSeconds < BALANCE_POLL_TIMEOUT_SECONDS)
 		{
-			var balanceResult = await eventService.GetPlayerCreditsAsync(playerId);
+			var balanceResult = await QueryPlayerCreditsAsync(playerId);
 			if (balanceResult.IsSuccess(out var newBalance) && newBalance <= expectedMaxBalance)
 			{
 				UpdateCache(playerId, newBalance);
@@ -143,7 +144,7 @@ public partial class CreditService : AutoloadBase
 		}
 
 		// Timeout - get final balance for diagnostic purposes
-		var finalBalanceResult = await eventService.GetPlayerCreditsAsync(playerId);
+		var finalBalanceResult = await QueryPlayerCreditsAsync(playerId);
 		var finalBalance = finalBalanceResult.IsSuccess(out var finalValue) ? finalValue : -1;
 
 		LogWarning($"Credit spend timeout: Event succeeded but balance did not update within {BALANCE_POLL_TIMEOUT_SECONDS}s. " +
@@ -199,7 +200,8 @@ public partial class CreditService : AutoloadBase
 		if (amount <= 0)
 			return Result.Failure<int>("Amount must be positive");
 
-		// Ensure EventService is ready (with retry for race condition)
+		// Ensure EventService is ready (with retry for race condition) - credit/earn is a
+		// session-scoped emit, which EventService still owns
 		var eventServiceResult = await EnsureEventServiceReadyAsync();
 		if (!eventServiceResult.IsSuccess(out var eventService))
 			return Result.Failure<int>("Credit service unavailable");
@@ -222,9 +224,15 @@ public partial class CreditService : AutoloadBase
 			return Result.Failure<int>("Failed to obtain lobby session");
 		}
 
-		var initialBalance = await GetInitialBalanceAsync(eventService, playerId);
+		var initialBalance = await GetInitialBalanceAsync(playerId);
 
-		var addResult = await eventService.AddCreditsAsync(playerId, amount, reason, lobbySessionId);
+		var payload = new
+		{
+			location_id = GetVenueName(),
+			amount = amount,
+			reason = reason
+		};
+		var addResult = await eventService.EmitUserEventAsync(playerId, "credit/earn", payload, lobbySessionId);
 		if (addResult.IsFailure(out var addError))
 		{
 			LogWarning($"Credit add failed: {addError.Message}");
@@ -238,7 +246,7 @@ public partial class CreditService : AutoloadBase
 
 		while ((System.DateTime.UtcNow - startTime).TotalSeconds < BALANCE_POLL_TIMEOUT_SECONDS)
 		{
-			var balanceResult = await eventService.GetPlayerCreditsAsync(playerId);
+			var balanceResult = await QueryPlayerCreditsAsync(playerId);
 			if (balanceResult.IsSuccess(out var newBalance) && newBalance >= expectedMinBalance)
 			{
 				UpdateCache(playerId, newBalance);
@@ -252,7 +260,7 @@ public partial class CreditService : AutoloadBase
 		}
 
 		// Timeout - get final balance for diagnostic purposes
-		var finalBalanceResult = await eventService.GetPlayerCreditsAsync(playerId);
+		var finalBalanceResult = await QueryPlayerCreditsAsync(playerId);
 		var finalBalance = finalBalanceResult.IsSuccess(out var finalValue) ? finalValue : -1;
 
 		LogWarning($"Credit add timeout: Event succeeded but balance did not update within {BALANCE_POLL_TIMEOUT_SECONDS}s. " +
@@ -281,14 +289,7 @@ public partial class CreditService : AutoloadBase
 	/// </summary>
 	public async Task ReconcileBalanceAsync(Guid playerId)
 	{
-		var eventService = EventService.GetInstance();
-		if (eventService == null || !eventService.IsReady)
-		{
-			LogWarning("EventService not available for reconciliation");
-			return;
-		}
-
-		var backendResult = await eventService.GetPlayerCreditsAsync(playerId);
+		var backendResult = await QueryPlayerCreditsAsync(playerId);
 		if (backendResult.IsFailure(out var error))
 		{
 			LogWarning($"Reconciliation failed: {error.Message}");
@@ -314,10 +315,100 @@ public partial class CreditService : AutoloadBase
 		}
 	}
 
+	/// <summary>
+	/// Get machine credit pot balance and player contributions
+	/// </summary>
+	public async Task<Result<MachineCreditsResponse>> GetMachineCreditsAsync(string gameTag, Guid boxId)
+	{
+		var backendResult = await EnsureBackendClientReadyAsync();
+		if (!backendResult.IsSuccess(out var backend))
+			return Result.Failure<MachineCreditsResponse>("Credit service unavailable");
+
+		var queryParams = new Dictionary<string, string>
+		{
+			{ "box_id", boxId.ToString() }
+		};
+
+		return await backend.QueryAsync<MachineCreditsResponse>($"/machine-credits/{gameTag}", queryParams);
+	}
+
+	/// <summary>
+	/// Deposit credits to machine pot (from player account)
+	/// </summary>
+	public async Task<Result<MachineCreditsResponse>> DepositMachineCreditsAsync(
+		string gameTag,
+		Guid boxId,
+		Guid playerId,
+		int amount,
+		Guid lobbySessionId)
+	{
+		var backendResult = await EnsureBackendClientReadyAsync();
+		if (!backendResult.IsSuccess(out var backend))
+			return Result.Failure<MachineCreditsResponse>("Credit service unavailable");
+
+		var request = new MachineCreditsDepositRequest
+		{
+			BoxId = boxId,
+			PlayerId = playerId,
+			Amount = amount,
+			LobbySessionId = lobbySessionId
+		};
+		return await backend.PostAsync<MachineCreditsDepositRequest, MachineCreditsResponse>(
+			$"/machine-credits/{gameTag}/deposit", request, 201, playerId: playerId);
+	}
+
+	/// <summary>
+	/// Consume credits from machine pot (for game start)
+	/// </summary>
+	public async Task<Result<MachineCreditsResponse>> ConsumeMachineCreditsAsync(
+		string gameTag,
+		Guid boxId,
+		int amount,
+		Guid gameSessionId)
+	{
+		var backendResult = await EnsureBackendClientReadyAsync();
+		if (!backendResult.IsSuccess(out var backend))
+			return Result.Failure<MachineCreditsResponse>("Credit service unavailable");
+
+		var request = new MachineCreditsConsumeRequest
+		{
+			BoxId = boxId,
+			Amount = amount,
+			GameSessionId = gameSessionId
+		};
+		return await backend.PostAsync<MachineCreditsConsumeRequest, MachineCreditsResponse>(
+			$"/machine-credits/{gameTag}/consume", request, 200);
+	}
+
 	private void UpdateCache(Guid playerId, int amount)
 	{
 		// Thread-safe: ConcurrentDictionary indexer atomically adds or updates
 		_balanceCache[playerId] = new CachedBalance(amount, DateTime.UtcNow);
+	}
+
+	private static string GetVenueName() => LocationManager.GetAutoload()?.VenueName ?? "";
+
+	/// <summary>
+	/// Get player's credit balance for current location, over BackendClient directly
+	/// </summary>
+	private async Task<Result<int>> QueryPlayerCreditsAsync(Guid playerId)
+	{
+		var backendResult = await EnsureBackendClientReadyAsync();
+		if (!backendResult.IsSuccess(out var backend))
+			return Result.Failure<int>("Credit service unavailable");
+
+		var result = await backend.QueryAsync<PlayerCreditsResponse>(
+			$"/player/{playerId}/credits",
+			new Dictionary<string, string> { { "location_id", GetVenueName() } }
+		);
+
+		if (result.IsSuccess(out var creditsResponse))
+			return Result.Success(creditsResponse.Credits);
+
+		if (result.IsFailure(out var error))
+			return Result.Failure<int>(error.Message);
+
+		return Result.Failure<int>("Unknown error getting player credits");
 	}
 
 	/// <summary>
@@ -351,9 +442,40 @@ public partial class CreditService : AutoloadBase
 		return Result.Failure<EventService>("Credit service unavailable");
 	}
 
-	private async Task<int> GetInitialBalanceAsync(EventService eventService, Guid playerId)
+	/// <summary>
+	/// Validates BackendClient is ready, with retry logic to handle initialization race conditions.
+	/// Waits up to 1 second for BackendClient to become ready before failing.
+	/// </summary>
+	private async Task<Result<BackendClient>> EnsureBackendClientReadyAsync()
 	{
-		var result = await eventService.GetPlayerCreditsAsync(playerId);
+		var backend = BackendClient.GetInstance();
+		if (backend != null && backend.IsReady)
+			return Result.Success(backend);
+
+		// Wait for BackendClient to become ready (handles initialization race condition)
+		const int MAX_RETRIES = 10;
+		const float RETRY_DELAY_SECONDS = 0.1f;
+
+		for (int i = 0; i < MAX_RETRIES; i++)
+		{
+			await DelayAsync(RETRY_DELAY_SECONDS);
+			backend = BackendClient.GetInstance();
+			if (backend != null && backend.IsReady)
+			{
+				LogInfo($"BackendClient became ready after {(i + 1) * RETRY_DELAY_SECONDS:F1}s");
+				return Result.Success(backend);
+			}
+		}
+
+		var exists = BackendClient.GetInstance() != null;
+		var ready = BackendClient.GetInstance()?.IsReady ?? false;
+		LogError($"BackendClient not available (exists: {exists}, ready: {ready})");
+		return Result.Failure<BackendClient>("Credit service unavailable");
+	}
+
+	private async Task<int> GetInitialBalanceAsync(Guid playerId)
+	{
+		var result = await QueryPlayerCreditsAsync(playerId);
 		if (result.IsFailure(out var error))
 		{
 			LogWarning($"Could not get initial balance: {error.Message}");

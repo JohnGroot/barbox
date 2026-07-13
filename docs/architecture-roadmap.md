@@ -103,7 +103,7 @@ roadmap):
 | # | Workstream | Depends on | Risk | Status |
 |---|-----------|------------|------|--------|
 | WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
-| WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | Increment ① DONE (2026-07-13) — see §3 note; ②–⑤ not started |
+| WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | Increments ①② DONE (2026-07-13) — see §3 note; ③–⑤ not started |
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | Not started |
 | WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | Not started |
 | WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
@@ -175,6 +175,27 @@ knowing before touching this code again:
   to user events) — this was preserved as-is, not "fixed," since fixing it
   would be an undocumented behavior change riding along in a pure-transport
   refactor.
+
+**2026-07-13 — Increment ② DONE.** `GetPlayerCreditsAsync`,
+`AddCreditsAsync`/`SpendCreditsAsync`, and the three `*MachineCreditsAsync`
+methods moved out of `EventService` into `CreditService`. `CreditService` now
+depends on `BackendClient` directly for player-credit queries and machine
+credits (new `EnsureBackendClientReadyAsync` retry helper, mirroring the
+existing `EnsureEventServiceReadyAsync` one), and still depends on
+`EventService.EmitUserEventAsync` for the two credit-earn/spend session
+events (that primitive stays owned by EventService/session-emit, per Target
+Architecture — CreditService now calls it directly instead of through the
+deleted `AddCreditsAsync`/`SpendCreditsAsync` double-hop). `GetMachineCreditsAsync`/
+`DepositMachineCreditsAsync`/`ConsumeMachineCreditsAsync` are new public
+`CreditService` methods (they weren't public there before — only `EventService`
+exposed them). Carrom's `CarromPlayerSetupMenu.cs` (the only direct game
+caller, per Appendix A) updated to call `CreditService` instead of
+`EventService` for all three; its now-dead `_eventService` field was removed
+(zero remaining call sites in that file). Build + full C# suite (291/291) +
+Hurl green — required updating several backend integration tests
+(`CarromMachineCreditsIntegrationTests`, `PlayerRegistrationTests`,
+`CreditPurchaseFlowTests`, `EventServiceTests`) that called the now-removed
+`EventService` credit methods directly; all now go through `CreditService`.
 
 ### WS2 — New-game developer experience
 

@@ -53,7 +53,7 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 		}
 
 		// Act - Query machine credits (this would 404 with wrong URL path)
-		var result = await _eventService.GetMachineCreditsAsync("carrom", TestBoxId);
+		var result = await _creditService.GetMachineCreditsAsync("carrom", TestBoxId);
 
 		// Assert - Should return 200, not 404
 		if (result.IsSuccess(out var credits))
@@ -96,7 +96,7 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 		var playerId = session.PlayerId;
 		var lobbySessionId = session.LobbySessionId;
 
-		var addCreditsResult = await _eventService.AddCreditsAsync(playerId, 100, "Test setup", lobbySessionId);
+		var addCreditsResult = await _creditService.AddAsync(playerId, 100, "Test setup");
 
 		if (addCreditsResult.IsFailure(out var addError))
 		{
@@ -106,7 +106,7 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 		}
 
 		// Get initial machine balance
-		var initialResult = await _eventService.GetMachineCreditsAsync("carrom", TestBoxId);
+		var initialResult = await _creditService.GetMachineCreditsAsync("carrom", TestBoxId);
 		initialResult.IsSuccess(out var initialCredits).ShouldBeTrue();
 		var initialBalance = initialCredits.Balance;
 		TestHelpers.LogTestInfo($"Initial machine balance: {initialBalance}");
@@ -121,7 +121,7 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 			"Player should have sufficient credits for deposit");
 
 		// Step 2: Deposit to machine pot
-		var depositResult = await _eventService.DepositMachineCreditsAsync(
+		var depositResult = await _creditService.DepositMachineCreditsAsync(
 			"carrom", boxId, playerId, 5, lobbySessionId);
 
 		// Assert - Both steps should succeed
@@ -131,7 +131,7 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 			"Expected: POST /machine-credits/carrom/deposit");
 
 		// Verify backend balance increased
-		var finalResult = await _eventService.GetMachineCreditsAsync("carrom", TestBoxId);
+		var finalResult = await _creditService.GetMachineCreditsAsync("carrom", TestBoxId);
 		finalResult.IsSuccess(out var finalCredits).ShouldBeTrue();
 
 		finalCredits.Balance.ShouldBe(
@@ -168,7 +168,7 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 		var playerId = session.PlayerId;
 		var lobbySessionId = session.LobbySessionId;
 
-		var addCreditsResult = await _eventService.AddCreditsAsync(playerId, 100, "Test setup", lobbySessionId);
+		var addCreditsResult = await _creditService.AddAsync(playerId, 100, "Test setup");
 
 		if (addCreditsResult.IsFailure(out var addError))
 		{
@@ -190,7 +190,7 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 		}
 
 		// Step 2: Deposit to machine pot
-		var depositResult = await _eventService.DepositMachineCreditsAsync(
+		var depositResult = await _creditService.DepositMachineCreditsAsync(
 			"carrom", boxId, playerId, 10, lobbySessionId);
 
 		if (!depositResult.IsSuccess(out var _))
@@ -215,13 +215,13 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 		TestHelpers.LogTestInfo($"Created game session: {gameSessionId}");
 
 		// Capture balance BEFORE consuming (machine pot may have accumulated from prior tests)
-		var beforeConsumeResult = await _eventService.GetMachineCreditsAsync("carrom", TestBoxId);
+		var beforeConsumeResult = await _creditService.GetMachineCreditsAsync("carrom", TestBoxId);
 		beforeConsumeResult.IsSuccess(out var beforeState).ShouldBeTrue("Should get balance before consume");
 		var balanceBeforeConsume = beforeState.Balance;
 		TestHelpers.LogTestInfo($"Machine balance before consume: {balanceBeforeConsume}");
 
 		// Act - Consume credits from machine pot
-		var consumeResult = await _eventService.ConsumeMachineCreditsAsync(
+		var consumeResult = await _creditService.ConsumeMachineCreditsAsync(
 			"carrom", TestBoxId, 8, gameSessionId);
 
 		// Assert - Consume should succeed

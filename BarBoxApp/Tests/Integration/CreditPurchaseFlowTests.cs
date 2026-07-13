@@ -79,7 +79,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		TestHelpers.LogTestInfo($"✓ Credits correctly added");
 
 		// Verify backend has record
-		var backendCredits = await _eventService.GetPlayerCreditsAsync(playerId);
+		var backendCredits = await _creditService.GetBalanceAsync(playerId);
 
 		if (backendCredits.IsSuccess(out var backendCreditAmount))
 		{

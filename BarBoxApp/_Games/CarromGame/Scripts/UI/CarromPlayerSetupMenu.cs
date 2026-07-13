@@ -45,7 +45,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	private SessionManager _sessionManager;
 	private UIManager _uiManager;
 	private CreditService _creditService;
-	private EventService _eventService;
 
 	// Modals
 	private CreditTransferModal _creditTransferModal;
@@ -575,7 +574,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		_sessionManager = SessionManager.GetInstance();
 		_uiManager = UIManager.GetInstance();
 		_creditService = CreditService.GetInstance();
-		_eventService = EventService.GetInstance();
 
 		// Create credit transfer modal
 		_creditTransferModal = new CreditTransferModal();
@@ -1398,8 +1396,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			if (!selectedAmount.HasValue || selectedAmount.Value < 1)
 				return;
 
-			// Transfer credits: player credits → machine credits (via CreditService + EventService)
-			if (_creditService == null || _eventService == null)
+			// Transfer credits: player credits → machine credits (via CreditService)
+			if (_creditService == null)
 			{
 				GD.PrintErr("Required services not available for credit transfer");
 				return;
@@ -1429,7 +1427,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				if (locationManager != null)
 				{
 					var boxId = locationManager.BoxId;
-					var depositResult = await _eventService.DepositMachineCreditsAsync(
+					var depositResult = await _creditService.DepositMachineCreditsAsync(
 						"carrom",  // Use game tag (not game ID) to match backend queries
 						boxId,
 						session.PlayerId,
@@ -1495,10 +1493,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		}
 
 		// Consume credits from machine pot (backend tracking)
-		var eventService = EventService.GetInstance();
 		var locationManager = LocationManager.GetAutoload();
 
-		if (eventService != null && locationManager != null)
+		if (_creditService != null && locationManager != null)
 		{
 			var boxId = locationManager.BoxId;
 
@@ -1506,7 +1503,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			// For now, use a temporary session ID - will be replaced with actual game session
 			var tempGameSessionId = Guid.NewGuid();
 
-			var consumeResult = await eventService.ConsumeMachineCreditsAsync(
+			var consumeResult = await _creditService.ConsumeMachineCreditsAsync(
 				"carrom",  // Use game tag to match backend queries
 				boxId,
 				_costPerGame,
@@ -1638,10 +1635,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	{
 		try
 		{
-			var eventService = EventService.GetInstance();
-			if (eventService == null)
+			if (_creditService == null)
 			{
-				GD.Print("[CarromPlayerSetupMenu] EventService not available - using local state only");
+				GD.Print("[CarromPlayerSetupMenu] CreditService not available - using local state only");
 				return;
 			}
 
@@ -1653,7 +1649,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			}
 
 			var boxId = locationManager.BoxId;
-			var result = await eventService.GetMachineCreditsAsync("carrom", boxId);
+			var result = await _creditService.GetMachineCreditsAsync("carrom", boxId);
 
 			if (result.IsSuccess(out var machineCredits))
 			{

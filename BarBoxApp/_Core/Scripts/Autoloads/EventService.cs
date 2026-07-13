@@ -657,60 +657,6 @@ public partial class EventService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Get player's credit balance for current location
-	/// </summary>
-	public async Task<Result<int>> GetPlayerCreditsAsync(Guid playerId)
-	{
-		var locationId = GetVenueName();
-		var result = await QueryAsync<PlayerCreditsResponse>(
-			$"/player/{playerId}/credits",
-			new Dictionary<string, string> { { "location_id", locationId } }
-		);
-
-		if (result.IsSuccess(out var creditsResponse))
-			return Result.Success(creditsResponse.Credits);
-
-		if (result.IsFailure(out var error))
-			return Result.Failure<int>(error.Message);
-
-		return Result.Failure<int>("Unknown error getting player credits");
-	}
-
-	/// <summary>
-	/// Emit credit earn event to backend
-	/// Uses user-scoped events - does not require ActivitySession
-	/// </summary>
-	/// <param name="lobbySessionId">Lobby session ID (from UserSession.LobbySessionId)</param>
-	public async Task<Result<bool>> AddCreditsAsync(Guid playerId, int amount, string reason, Guid lobbySessionId)
-	{
-		var payload = new
-		{
-			location_id = GetVenueName(),
-			amount = amount,
-			reason = reason
-		};
-
-		return await EmitUserEventAsync(playerId, "credit/earn", payload, lobbySessionId);
-	}
-
-	/// <summary>
-	/// Emit credit spend event to backend
-	/// Uses user-scoped events - does not require ActivitySession
-	/// </summary>
-	/// <param name="lobbySessionId">Lobby session ID (from UserSession.LobbySessionId)</param>
-	public async Task<Result<bool>> SpendCreditsAsync(Guid playerId, int amount, string reason, Guid lobbySessionId)
-	{
-		var payload = new
-		{
-			location_id = GetVenueName(),
-			amount = amount,
-			reason = reason
-		};
-
-		return await EmitUserEventAsync(playerId, "credit/spend", payload, lobbySessionId);
-	}
-
-	/// <summary>
 	/// Create a Stripe Checkout Session for credit purchase
 	/// Returns session URL for QR code display
 	/// </summary>
@@ -770,62 +716,6 @@ public partial class EventService : AutoloadBase
 		}
 
 		return Result.Failure<CheckoutStatusResponse>("Unknown error getting checkout status");
-	}
-
-	/// <summary>
-	/// Get machine credit pot balance and player contributions
-	/// </summary>
-	public async Task<Result<MachineCreditsResponse>> GetMachineCreditsAsync(string gameTag, Guid boxId)
-	{
-		var queryParams = new Dictionary<string, string>
-		{
-			{ "box_id", boxId.ToString() }
-		};
-
-		return await QueryAsync<MachineCreditsResponse>(
-			$"/machine-credits/{gameTag}",
-			queryParams
-		);
-	}
-
-	/// <summary>
-	/// Deposit credits to machine pot (from player account)
-	/// </summary>
-	public async Task<Result<MachineCreditsResponse>> DepositMachineCreditsAsync(
-		string gameTag,
-		Guid boxId,
-		Guid playerId,
-		int amount,
-		Guid lobbySessionId)
-	{
-		var request = new MachineCreditsDepositRequest
-		{
-			BoxId = boxId,
-			PlayerId = playerId,
-			Amount = amount,
-			LobbySessionId = lobbySessionId
-		};
-		return await PostAsync<MachineCreditsDepositRequest, MachineCreditsResponse>(
-			$"/machine-credits/{gameTag}/deposit", request, 201, playerId: playerId);
-	}
-
-	/// <summary>
-	/// Consume credits from machine pot (for game start)
-	/// </summary>
-	public async Task<Result<MachineCreditsResponse>> ConsumeMachineCreditsAsync(
-		string gameTag,
-		Guid boxId,
-		int amount,
-		Guid gameSessionId)
-	{
-		var request = new MachineCreditsConsumeRequest
-		{
-			BoxId = boxId,
-			Amount = amount,
-			GameSessionId = gameSessionId
-		};
-		return await PostAsync<MachineCreditsConsumeRequest, MachineCreditsResponse>(
-			$"/machine-credits/{gameTag}/consume", request, 200);
 	}
 
 	/// <summary>

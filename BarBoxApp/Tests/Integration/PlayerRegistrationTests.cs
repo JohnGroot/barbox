@@ -225,7 +225,7 @@ public class PlayerRegistrationTests : BackendTestBase
 		TestHelpers.LogTestInfo($"Player registered: {playerId}");
 
 		// Get initial balance
-		var initialBalanceResult = await _eventService.GetPlayerCreditsAsync(playerId);
+		var initialBalanceResult = await _creditService.GetBalanceAsync(playerId);
 		var initialBalance = initialBalanceResult.IsSuccess(out var initBalance) ? initBalance : 0;
 		TestHelpers.LogTestInfo($"Initial balance: {initialBalance}");
 
@@ -238,7 +238,7 @@ public class PlayerRegistrationTests : BackendTestBase
 		}
 
 		// Get updated balance
-		var updatedBalanceResult = await _eventService.GetPlayerCreditsAsync(playerId);
+		var updatedBalanceResult = await _creditService.GetBalanceAsync(playerId);
 		if (updatedBalanceResult.IsFailure(out var balanceError))
 		{
 			updatedBalanceResult.IsSuccess(out var _).ShouldBeTrue($"Balance query should succeed, but failed: {balanceError.Message}");

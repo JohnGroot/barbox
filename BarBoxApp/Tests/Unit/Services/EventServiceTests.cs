@@ -13,6 +13,7 @@ namespace BarBox.Tests.Unit.Services;
 public class EventServiceTests : BackendTestBase
 {
 	private EventService _eventService;
+	private CreditService _creditService;
 
 	public EventServiceTests(Node testScene) : base(testScene)
 	{
@@ -23,6 +24,7 @@ public class EventServiceTests : BackendTestBase
 	{
 		base.SetupTestIdentifiers();
 		_eventService = GetEventService();
+		_creditService = GetCreditService();
 	}
 
 	[Test]
@@ -183,8 +185,8 @@ public class EventServiceTests : BackendTestBase
 			return;
 		}
 
-		// Act - try to add credits when not initialized (lobbySessionId doesn't matter for this test)
-		var result = await _eventService.AddCreditsAsync(TestPlayerId, 100, "test", Guid.NewGuid());
+		// Act - try to add credits when not initialized
+		var result = await _creditService.AddAsync(TestPlayerId, 100, "test");
 
 		// Assert
 		result.IsFailure(out var error).ShouldBeTrue("Should fail when EventService not ready");
@@ -249,7 +251,7 @@ public class EventServiceTests : BackendTestBase
 		{
 			// Test various operations fail gracefully
 			var sessionResult = await _eventService.CreateActivitySessionAsync(TestBoxId, TestPlayerId, "test");
-			var creditResult = await _eventService.AddCreditsAsync(TestPlayerId, 10, "test", Guid.NewGuid());
+			var creditResult = await _creditService.AddAsync(TestPlayerId, 10, "test");
 
 			// Assert
 			var sessionSuccess = sessionResult.IsSuccess(out var _);
