@@ -47,8 +47,6 @@ public partial class BackendManager : AutoloadBase
 	private bool _isBackendRunning = false;
 	private int _backendProcessId = -1;  // Track backend process for lifecycle management
 
-	[Signal] public delegate void BackendReadyEventHandler();
-	[Signal] public delegate void BackendStartFailedEventHandler(string error);
 
 	protected override async Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
@@ -95,14 +93,11 @@ public partial class BackendManager : AutoloadBase
 			LogError($"Backend not available at {_backendHost}:{_backendPort}");
 			LogError("To start manually: cd BarBoxServices && sh scripts/dev.sh");
 
-			CallDeferred(MethodName.EmitSignal, SignalName.BackendStartFailed, error.Message);
-
 			throw new Exception($"Backend failed: {error.Message}");
 		}
 
 		_isBackendRunning = true;
 		LogInfo($"Backend is available and healthy at {_backendHost}:{_backendPort}");
-		CallDeferred(MethodName.EmitSignal, SignalName.BackendReady);
 	}
 
 
@@ -544,12 +539,10 @@ public partial class BackendManager : AutoloadBase
 		{
 			_isBackendRunning = true;
 			LogInfo($"Backend reconnected successfully at {_backendHost}:{_backendPort}");
-			CallDeferred(MethodName.EmitSignal, SignalName.BackendReady);
 		}
 		else if (result.IsFailure(out var error))
 		{
 			LogWarning($"Backend retry failed: {error.Message}");
-			CallDeferred(MethodName.EmitSignal, SignalName.BackendStartFailed, error.Message);
 		}
 	}
 

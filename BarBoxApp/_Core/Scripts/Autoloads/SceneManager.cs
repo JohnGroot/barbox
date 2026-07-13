@@ -4,9 +4,6 @@ namespace BarBox.Core.Autoloads;
 
 public partial class SceneManager : AutoloadBase
 {
-	[Signal] public delegate void SceneChangedEventHandler(string scenePath);
-	[Signal] public delegate void SceneChangeStartedEventHandler(string scenePath);
-
 	private const string MAIN_MENU_SCENE = "res://_Core/Scenes/Main.tscn";
 
 	private SceneTree _sceneTree;
@@ -36,8 +33,6 @@ public partial class SceneManager : AutoloadBase
 		if (string.IsNullOrEmpty(scenePath) || scenePath == _currentScenePath)
 			return;
 
-		EmitSignal(SignalName.SceneChangeStarted, scenePath);
-		
 		CallDeferred(nameof(DeferredChangeScene), scenePath);
 	}
 
@@ -48,7 +43,6 @@ public partial class SceneManager : AutoloadBase
 		if (error == Error.Ok)
 		{
 			_currentScenePath = scenePath;
-			EmitSignal(SignalName.SceneChanged, scenePath);
 			LogInfo($"Scene changed to: {scenePath}");
 		}
 		else

@@ -56,10 +56,6 @@ public partial class EventService : AutoloadBase
 	private Guid _currentSessionId;
 	private Guid _currentBoxId;
 
-	[Signal] public delegate void EventSubmittedEventHandler(string sessionId, string eventType);
-	[Signal] public delegate void EventSubmissionFailedEventHandler(string sessionId, string error);
-	[Signal] public delegate void SessionCreatedEventHandler(string sessionId);
-
 	protected override async Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
 		_httpClient = new HttpClient();
@@ -239,7 +235,6 @@ public partial class EventService : AutoloadBase
 			_currentBoxId = boxId;
 
 			LogInfo($"Activity session created: {sessionId} (game: {gameTag})");
-			CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.SessionCreated, sessionId.ToString());
 
 			return Result.Success(sessionId);
 		}
@@ -407,7 +402,6 @@ public partial class EventService : AutoloadBase
 			{
 				var sessionId = Guid.Parse(response["id"].ToString());
 				LogInfo($"Lobby session created: {sessionId}");
-				CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.SessionCreated, sessionId.ToString());
 				return Result.Success(sessionId);
 			}
 
@@ -459,7 +453,6 @@ public partial class EventService : AutoloadBase
 			if (error != Godot.Error.Ok)
 			{
 				var errorMsg = $"Event submission request failed: {error}";
-				CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.EventSubmissionFailed, _currentSessionId.ToString(), errorMsg);
 				return Result.Failure<bool>(errorMsg);
 			}
 
@@ -477,7 +470,6 @@ public partial class EventService : AutoloadBase
 				LogInfo($"[HTTP] Status after response read: {_httpClient.GetStatus()}");
 #endif
 
-				CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.EventSubmitted, _currentSessionId.ToString(), eventType);
 				return Result.Success(true);
 			}
 
@@ -492,7 +484,6 @@ public partial class EventService : AutoloadBase
 				failureMsg += $" - {errorBody}";
 			}
 
-			CallDeferred(GodotObject.MethodName.EmitSignal, SignalName.EventSubmissionFailed, _currentSessionId.ToString(), failureMsg);
 			return Result.Failure<bool>(failureMsg);
 		}
 		catch (Exception ex)

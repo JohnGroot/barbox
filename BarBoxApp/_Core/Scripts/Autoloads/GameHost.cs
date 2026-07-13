@@ -17,8 +17,6 @@ public partial class GameHost : AutoloadBase
 
 	[Signal] public delegate void GameStartedEventHandler(string gameId);
 	[Signal] public delegate void GameEndedEventHandler(string gameId);
-	[Signal] public delegate void GamePausedEventHandler(string gameId);
-	[Signal] public delegate void GameResumedEventHandler(string gameId);
 
 	private GameController _currentGame;
 	private string _currentGameId = string.Empty;
@@ -188,26 +186,6 @@ public partial class GameHost : AutoloadBase
 	{
 		LogInfo($"{_currentGameId} ended");
 		EmitSignal(SignalName.GameEnded, _currentGameId);
-	}
-
-	/// <summary>
-	/// Called when domain-specific game session pauses (e.g., race pauses)
-	/// Emits platform-level GamePaused signal for platform services
-	/// </summary>
-	public void NotifyGamePaused()
-	{
-		LogInfo($"{_currentGameId} paused");
-		EmitSignal(SignalName.GamePaused, _currentGameId);
-	}
-
-	/// <summary>
-	/// Called when domain-specific game session resumes (e.g., race resumes)
-	/// Emits platform-level GameResumed signal for platform services
-	/// </summary>
-	public void NotifyGameResumed()
-	{
-		LogInfo($"{_currentGameId} resumed");
-		EmitSignal(SignalName.GameResumed, _currentGameId);
 	}
 
 	// Public API for games and other systems

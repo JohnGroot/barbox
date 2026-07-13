@@ -2042,9 +2042,6 @@ public partial class RacingGame : GameController
 	{
 		_timingSystem.SetPaused(true);
 
-		// Notify platform that game session paused
-		Platform.Host?.NotifyGamePaused();
-
 		EmitSignal(SignalName.RacePaused);
 		GD.Print("[RacingGame] Race paused");
 	}
@@ -2052,9 +2049,6 @@ public partial class RacingGame : GameController
 	protected override void OnResume()
 	{
 		_timingSystem.SetPaused(false);
-
-		// Notify platform that game session resumed
-		Platform.Host?.NotifyGameResumed();
 
 		EmitSignal(SignalName.RaceResumed);
 		GD.Print("[RacingGame] Race resumed");
