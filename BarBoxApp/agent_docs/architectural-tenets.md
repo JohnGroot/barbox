@@ -4,30 +4,28 @@ Six core tenets that guide BarBox game development.
 
 ## 1. Phased Initialization with Guarantees
 
-Use explicit lifecycle phases with documented post-condition guarantees. Validate requirements at phase boundaries, not during runtime.
+`GameController._Ready()` is sealed and owns the phase order (service
+context, registry lookup, `OnDiscoverServices`, `OnInitializeComponents`,
+UI/context setup, `OnInitializeAsync`, `OnActivateGame`). Games plug into
+this by overriding the `On*` hooks, not by re-deriving their own lifecycle.
+Validate requirements at phase boundaries, not during runtime.
 
 ```csharp
-/// PHASE 1: Service Discovery
-/// POST-GUARANTEES: _eventService exists and is valid (REQUIRED)
-protected override void DiscoverServices()
+/// PHASE: Service Discovery - Platform is already populated here.
+/// POST-GUARANTEES: _eventService and _miningEventService exist and are valid (REQUIRED)
+protected override void OnDiscoverServices()
 {
-	base.DiscoverServices();
-	_eventService = SessionEventService.GetInstance();
+	_eventService = Platform.Events;
 	if (_eventService == null)
 		throw new InvalidOperationException("SessionEventService is required but not available");
 
-	if (GameHost.IsProductionContext())
-	{
-		if (_userManager == null)
-			throw new InvalidOperationException("UserManager required in production");
-	}
+	_miningEventService = new MiningEventService(_eventService);
 }
 
-/// PHASE 2: Component Initialization
+/// PHASE: Component Initialization
 /// POST-GUARANTEES: _engine, _state, _ui exist and are valid
-protected override void InitializeComponents()
+protected override void OnInitializeComponents()
 {
-	base.InitializeComponents();
 	if (_locationDataRegistry.Count == 0)
 		throw new InvalidOperationException("No LocationDataResources configured.");
 
@@ -88,7 +86,7 @@ _engine?.StartMining();             // If _engine is required, this HIDES BUGS
 
 | Category | Examples | Strategy |
 |----------|----------|----------|
-| Required (Production) | SessionManager, SessionEventService | Throw in `DiscoverServices()` if null |
+| Required (Production) | SessionManager, SessionEventService | Throw in `OnDiscoverServices()` if null |
 | Optional Platform | GameHost, CreditService | Null-conditional `?.` |
 | Game Components | _engine, _state, _ui | No checks after init |
 
@@ -118,7 +116,7 @@ Missing configuration is a developer error. Fail fast at startup, not during gam
 
 ```csharp
 // Validate configuration at initialization
-protected override void InitializeComponents()
+protected override void OnInitializeComponents()
 {
 	if (LocationDataResources.Count == 0)
 		throw new InvalidOperationException("Location data not configured");

@@ -104,7 +104,7 @@ roadmap):
 |---|-----------|------------|------|--------|
 | WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
 | WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | **DONE (2026-07-13)** — all 5 increments, see §3 notes |
-| WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | In progress (item 1 done 2026-07-13) |
+| WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | **DONE (2026-07-13)** — all 5 items, see §3 notes |
 | WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | Not started |
 | WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
 | WS5 | Backend infra: machine-credits TOCTOU fix, Alembic, dead deps, formatting | none; TOCTOU fix may be pulled forward anytime | Low/Med | Not started |
@@ -307,24 +307,38 @@ touch the same call-site surface); item 5 (docs) strictly last.
    temporarily dropping a game from the union and confirming the import
    fails with the expected message. Full C# + Hurl suite green (291 C# +
    24/24 Hurl).
-5. **Docs pass (after items 1–4 settle the contract).** Rewrite the
-   pre-GameController guidance:
-   - `BarBoxApp/_Games/CLAUDE.md:21-51` — "Game Lifecycle Rules" and "Context
-     Detection" still teach hand-rolled `_gameActive` checks,
-     `CallDeferred(StartGame)`, and `GameHost.GetInstance()` context probing.
-     Rewrite around the `GameController` phase hooks and `Platform.X`.
-   - `BarBoxApp/CLAUDE.md` — never mentions `GameController`,
-     `SubmitResultAsync`, or `SpendWithConfirmationAsync`; add the SDK
-     contract summary.
-   - `README.md:112-129` "Adding a New Game" — shows direct
-     `CreateActivitySessionAsync`/`CloseActivitySessionAsync` calls that the
-     base class now owns, and a wrong `Games/` path casing. Replace with the
-     checklist pointer.
-   - `BarBoxApp/agent_docs/game-development-patterns.md` (lifecycle +
-     context-detection sections), `autoload-service-patterns.md`,
-     `architectural-tenets.md` — same drift; review alongside.
-   - Write **`docs/adding-a-game.md`**: the §5 checklist as a living doc,
-     covering both codebases end-to-end.
+5. ~~**Docs pass.**~~ **DONE (2026-07-13)** — rewrote the pre-GameController
+   guidance:
+   - `BarBoxApp/_Games/CLAUDE.md` — "Game Lifecycle Rules" and "Context
+     Detection" now teach the `On*` phase hooks and `Platform.X`, not
+     `_gameActive`/`CallDeferred(StartGame)`/`GetInstance()` probing.
+   - `BarBoxApp/CLAUDE.md` — added a "Game SDK Contract" section naming
+     `GameController`, its `On*` hooks, `SubmitResultAsync`,
+     `SpendWithConfirmationAsync`, and `StartBackendSessionAsync`.
+   - `README.md` "Adding a New Game" — replaced the stale direct
+     `CreateActivitySessionAsync`/`CloseActivitySessionAsync` example with a
+     pointer to the new checklist doc.
+   - `BarBoxApp/agent_docs/game-development-patterns.md` — rewrote "Game
+     Lifecycle" and "Context-Aware Design" around the `On*` hooks and
+     `Platform.X`; fixed a stale `InputManager.GetAutoload()` reference.
+   - `BarBoxApp/agent_docs/architectural-tenets.md` — Tenet 1's example used
+     pre-rename method names (`DiscoverServices`/`InitializeComponents` with
+     `base.X()` calls) and `GameHost.IsProductionContext()`; updated to
+     `OnDiscoverServices`/`OnInitializeComponents`/`Platform.Events`. Tenets 3
+     and 5 had the same stale method names in their tables/examples.
+   - `BarBoxApp/agent_docs/autoload-service-patterns.md` — reviewed; no
+     changes. Its `GetInstance()`/`GetAutoload()` examples are for
+     autoload-to-autoload calls, which the WS2 item 2 rule doesn't touch
+     (only `_Games/` code goes through `Platform.X`).
+   - `BarBoxServices/agent_docs/game-module-guide.md` — updated step 6's note
+     to mention the new boot-time `_check_session_event_type_coverage()`
+     guard from item 4, not just the HTTP 422 fallback.
+   - Wrote **`docs/adding-a-game.md`**: end-to-end checklist across both
+     codebases, referenced from `README.md` and `BarBoxApp/CLAUDE.md`.
+   - Found but left out of scope (not named in this item, flagged in §6
+     instead): `docs/architecture/sessions.md` still shows games hand-rolling
+     `CreateActivitySessionAsync`/`CloseActivitySessionAsync` directly,
+     predating `GameController.StartBackendSessionAsync`.
 
 ### WS3 — Game SDK v1
 
@@ -499,11 +513,12 @@ steps, and onboarding errors`).
 
 | Doc item | Blocked on | Notes |
 |----------|-----------|-------|
-| `BarBoxApp/_Games/CLAUDE.md` lifecycle + context-detection rewrite | WS2 items 1–4 | Rewrite around GameController hooks + Platform.X (WS2 item 5) |
-| `BarBoxApp/CLAUDE.md` SDK contract section | WS2 items 1–4 | Add GameController / SubmitResultAsync / credit primitives |
-| `README.md:112-129` "Adding a New Game" | WS2 items 1–4 | Replace hand-rolled session code with checklist pointer |
-| `BarBoxApp/agent_docs/game-development-patterns.md` lifecycle/context sections, `autoload-service-patterns.md`, `architectural-tenets.md` | WS2 items 1–4 | Same pre-GameController drift |
-| `docs/adding-a-game.md` (new) | WS2 items 1–4 | The §5 checklist as a living doc |
+| ~~`BarBoxApp/_Games/CLAUDE.md` lifecycle + context-detection rewrite~~ | — | **DONE 2026-07-13** (WS2 item 5) |
+| ~~`BarBoxApp/CLAUDE.md` SDK contract section~~ | — | **DONE 2026-07-13** (WS2 item 5) |
+| ~~`README.md:112-129` "Adding a New Game"~~ | — | **DONE 2026-07-13** (WS2 item 5) |
+| ~~`BarBoxApp/agent_docs/game-development-patterns.md` lifecycle/context sections, `architectural-tenets.md`~~ | — | **DONE 2026-07-13** (WS2 item 5). `autoload-service-patterns.md` reviewed, no changes needed — its examples are autoload-to-autoload, not `_Games/` code. |
+| ~~`docs/adding-a-game.md` (new)~~ | — | **DONE 2026-07-13** (WS2 item 5) |
+| `docs/architecture/sessions.md` — still shows games calling `CreateActivitySessionAsync`/`CloseActivitySessionAsync` directly | nothing — anytime | Predates `GameController.StartBackendSessionAsync`; found during WS2 item 5, out of that item's scope |
 | ~~Any doc naming `EventService` / its methods~~ | — | **DONE 2026-07-13** — renamed to `SessionEventService` in README.md, `BarBoxApp/docs/API.md`, `agent_docs/box-identity-guide.md`, `agent_docs/architectural-tenets.md`, `docs/architecture/sessions.md`. `agent_docs/httpclient-patterns.md`'s "Use for: BackendManager, EventService" line is skipped — it's stale beyond a rename (HttpClient now lives on `BackendClient`, not the session/emit class) and belongs with the WS2 item 5 autoload-doc pass below. `*EventService.cs` mentions in `_Games/CLAUDE.md`/`game-development-patterns.md` are the per-game convention (`MiningEventService`, etc.), unrelated to this rename — left untouched. |
 | `BarBoxServices/docs/STRIPE_PAYMENT_INTEGRATION_PLAN.md` | nothing — anytime | Reframe from "plan" to "implemented reference" (Stripe is live in `web/payments.py`) |
 | `BarBoxServices/docs/FLY_IO_DEPLOYMENT_GUIDE.md` Phase 1 | nothing — anytime | Reframe "files to create" → "files that exist" (status note added 2026-07-13; full reframe pending) |

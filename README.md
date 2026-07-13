@@ -110,24 +110,10 @@ barbox/
 ## Game Integration
 
 ### Adding a New Game
-1. Create game scene and scripts in `BarBoxApp/_Games/YourGame/`
-2. Implement ActivitySession lifecycle:
-   ```csharp
-   // On game start
-   var sessionId = await _eventService.CreateActivitySessionAsync(
-       boxId: _locationManager.BoxId,
-       playerId: userSession.PlayerId,
-       gameTag: "your_game"
-   );
 
-   // On game end
-   await _eventService.CloseActivitySessionAsync(sessionId);
-   ```
-3. Integrate credit checks using CreditService
-4. Add game to GameHost orchestrator
-5. Create test suite in `Games/YourGame/Tests`
-
-See [Session Architecture Guide](docs/architecture/sessions.md) for detailed patterns.
+See [docs/adding-a-game.md](docs/adding-a-game.md) for the full checklist
+across both codebases (registry entry, `GameController` lifecycle hooks,
+credit/event SDK usage, backend event-type registration).
 
 ## API Documentation
 

@@ -17,6 +17,24 @@ Godot 4.7 game platform using C# with autoload-based service architecture and co
 - **Optional Integration**: Games work standalone or with full platform
 - **Unified Authentication**: Phone/Username/PIN system with SessionManager
 
+## Game SDK Contract
+
+Every game extends `GameController` (`_Core/Scripts/Gameplay/GameController.cs`)
+and plugs into its sealed `_Ready()`/`_ExitTree()` lifecycle through the `On*`
+virtual hooks (`OnDiscoverServices`, `OnInitializeComponents`,
+`OnInitializeAsync`, `OnActivateGame`, `OnGameTeardown`, ...) rather than
+writing its own start/stop flow. Platform services are reached through the
+`Platform` property (`GameContext`) only — never `GetInstance()`/
+`GetAutoload()`/raw `/root/` paths from `_Games/` (see `_Games/CLAUDE.md`).
+
+Money and backend-result reporting go through the SDK's shared entry points
+instead of each game hand-rolling them:
+- `CreditService.SpendWithConfirmationAsync` - balance fetch + confirm dialog + spend, one call
+- `GameEventServiceBase.SubmitResultAsync` - validated, error-mapped event submission for a game's `*EventService`
+- `GameController.StartBackendSessionAsync`/base `_ExitTree` - activity-session create/close, owned by the base class
+
+See `docs/adding-a-game.md` for the full new-game checklist across both codebases.
+
 ## Architectural Tenets
 
 1. **Phased Initialization** - Validate at phase boundaries, not runtime

@@ -49,7 +49,10 @@ games/{game_name}/
        | foo.schemas.FooEventType
    )
    ```
-   Missing from the union = HTTP 422 on event submission.
+   Forgetting this fails immediately at import time
+   (`_check_session_event_type_coverage()` raises `RuntimeError` naming the
+   uncovered event types) rather than surfacing as an HTTP 422 the first time
+   a client submits that event.
 
 7. **Classify payloads** (`games/validation.py`): every event type must appear
    in `EVENT_PAYLOAD_MODELS` (with a Pydantic payload model) or in

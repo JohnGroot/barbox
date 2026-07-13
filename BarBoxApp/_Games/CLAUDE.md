@@ -23,10 +23,21 @@ reference — ~10 files across `Logic/`, `Data/`, `Visual/`, `Services/`):
 
 ## Game Lifecycle Rules
 
-1. Check `_gameActive` before state changes
-2. Reset state in `StartGame()`, cleanup in `EndGame()`
-3. Auto-start in dev context via `CallDeferred(MethodName.StartGame)`
-4. In production, wait for GameHost to trigger start
+`GameController._Ready()`/`_ExitTree()` are sealed and own the phase order
+(service discovery → components → UI/context → async init → activate; and
+teardown → session close on exit). Plug in via the `On*` hooks instead of
+writing your own start/stop flow:
+
+1. Discover game-specific services in `OnDiscoverServices()`, build
+   engine/state/UI in `OnInitializeComponents()`
+2. Do async work (backend loads) in `OnInitializeAsync()`; start gameplay in
+   `OnActivateGame()` — called after all initialization completes
+3. In development (no `GameHost`), `OnActivateGame()` still fires — a
+   standalone scene auto-activates without extra wiring
+4. In production, `GameHost` drives the same lifecycle through the base
+   class; games don't special-case "wait for GameHost to start"
+5. Clean up game-specific state in `OnGameTeardown()` — the base class
+   already closes the backend session
 
 ## UI Requirements
 
@@ -47,9 +58,15 @@ All games must include: HUD (score/timer/pause), pause overlay, game over overla
 
 ## Context Detection
 
+`OnActivateGame()` runs automatically in both contexts — no manual deferral
+needed. Branch only on what data source to use:
+
 ```csharp
-if (Platform.Host != null) { /* production */ }
-else { _playerId = "dev_player"; CallDeferred(MethodName.StartGame); }
+protected override void OnActivateGame()
+{
+	if (Platform.Host != null) { /* production: use the real logged-in session */ }
+	else { _playerId = "dev_player"; /* standalone: synthetic session */ }
+}
 ```
 
 ## Service Discovery

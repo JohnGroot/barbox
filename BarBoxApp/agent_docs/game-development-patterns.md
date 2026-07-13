@@ -32,37 +32,43 @@ Small core split (MiningGame is ~10 files across `Logic/`, `Data/`, `Visual/`, `
 
 ## Game Lifecycle
 
+`GameController._Ready()`/`_ExitTree()` are sealed and own the phase order.
+Games plug in via the `On*` virtual hooks instead of hand-rolling their own
+start/stop flow:
+
 ```csharp
-public void StartGame()
-{
-	if (_gameActive) return;
-	_gameActive = true;
-	_gamePaused = false;
-	_score = 0;
-	EmitSignal(SignalName.PlayerAdded, _playerId);
-	EmitSignal(SignalName.GameStarted);
-}
+protected override void OnDiscoverServices() { /* Platform is populated; grab game-specific services */ }
+protected override void OnInitializeComponents() { /* create engine/state/UI */ }
+protected override Task OnInitializeAsync() => LoadSavedStateAsync();
+protected override void OnActivateGame() { /* start gameplay / show initial state */ }
+protected override void OnGameTeardown() { /* game-specific cleanup; base handles session close */ }
 ```
 
 ## Context-Aware Design
 
+`OnActivateGame()` runs automatically in both contexts - no manual deferral
+needed. Branch only on which data source to use, typically in
+`OnActivateGame()` itself:
+
 ```csharp
-private void DetectAndAdaptToContext()
+protected override void OnActivateGame()
 {
-	_gameHost = GameHost.GetInstance();
-	if (_gameHost != null && GodotObject.IsInstanceValid(_gameHost))
+	if (Platform.Host != null)
 	{
 		_isProductionContext = true;
-		_playerId = _gameHost.GetPlayerSession("default")?.PlayerId;
+		_playerId = Platform.PrimaryUser?.PlayerId.ToString();
 	}
 	else
 	{
 		_isProductionContext = false;
-		_playerId = "dev_player";
-		CallDeferred(MethodName.StartGame);  // Auto-start for testing
+		_playerId = "dev_player";  // standalone: synthetic session
 	}
 }
 ```
+
+Or simply check `Platform.IsProduction`/`Platform.IsDevelopment` (from
+`BuildContext`, exposed on `GameContext`) when you don't need the `GameHost`
+reference itself.
 
 ## Signal Guidelines
 
@@ -80,7 +86,7 @@ Handle `InputEventScreenTouch` and `InputEventMouseButton` uniformly in `_Input(
 Gesture recognition with mode detection (PowerAiming vs LateralMovement).
 
 ### Performance-critical (RacingGame)
-Direct polling via `InputManager.GetAutoload()` for minimal latency. Optional smoothing via Lerp.
+Direct polling via `Platform.Input` for minimal latency. Optional smoothing via Lerp.
 
 ### Component-based
 Use `InputComponent` for consistent handling with configurable radius and acceptance.
