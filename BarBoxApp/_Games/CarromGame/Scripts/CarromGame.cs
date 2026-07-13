@@ -399,12 +399,6 @@ public partial class CarromGame : GameController
 		// Connect to PenaltyPiecesTweenCompleted for turn advancement flow
 		PenaltyPiecesTweenCompleted += OnPenaltyPiecesTweenCompleted;
 
-		// Forward phase changes to score display for UI synchronization
-		_gameStateManager.PhaseChanged += (oldPhase, newPhase) =>
-		{
-			_scoreDisplay?.OnPhaseChanged(oldPhase, newPhase);
-		};
-
 		GD.Print("[CarromGame] GameStateManager initialized");
 	}
 
@@ -1908,6 +1902,9 @@ public partial class CarromGame : GameController
 			// Input is blocked when not in Ready phase
 			bool inputBlocked = newPhase != "Ready";
 			_scoreDisplay.SetInputBlockedVisual(inputBlocked);
+
+			// Keep the score display's own phase-driven UI in sync
+			_scoreDisplay.OnPhaseChanged(oldPhase, newPhase);
 		}
 
 		// Update title to reflect current state for debugging

@@ -194,13 +194,15 @@ public partial class CarromNotificationSystem : CanvasLayer
 				.SetTrans(Tween.TransitionType.Cubic)
 				.SetEase(Tween.EaseType.In);
 
-			_fadeTween.Finished += () =>
+			_fadeTween.Finished += OnFadeOutFinished;
+		}
+
+		private void OnFadeOutFinished()
+		{
+			if (IsInstanceValid(this))
 			{
-				if (IsInstanceValid(this))
-				{
-					EmitSignal(SignalName.ReadyToRemove, this);
-				}
-			};
+				EmitSignal(SignalName.ReadyToRemove, this);
+			}
 		}
 
 		public void ForceCleanup()
