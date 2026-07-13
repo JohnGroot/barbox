@@ -48,10 +48,18 @@ All games must include: HUD (score/timer/pause), pause overlay, game over overla
 ## Context Detection
 
 ```csharp
-var gameHost = GameHost.GetInstance();
-if (gameHost != null) { /* production */ }
+if (Platform.Host != null) { /* production */ }
 else { _playerId = "dev_player"; CallDeferred(MethodName.StartGame); }
 ```
+
+## Service Discovery
+
+Games access platform services exclusively through `Platform` (the
+`GameContext` populated once in `GameController._Ready()`) —
+`Platform.Session`, `Platform.Events`, `Platform.Credits`, `Platform.Host`,
+`Platform.UI`, `Platform.Input`, `Platform.Location`, `Platform.Registry`.
+Never call `GetInstance()`/`GetAutoload()` or reference a raw `/root/` node
+path directly in `_Games/` — those go through `Platform.X` only.
 
 ## Reference
 

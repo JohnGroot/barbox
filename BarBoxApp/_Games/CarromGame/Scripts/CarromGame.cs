@@ -142,7 +142,7 @@ public partial class CarromGame : GameController
 	protected override void OnDiscoverServices()
 	{
 		// Initialize event service
-		_eventService = SessionEventService.GetInstance();
+		_eventService = Platform.Events;
 		_carromEventService = new CarromEventService(_eventService);
 	}
 
@@ -662,7 +662,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	protected virtual async void ReturnToPractice()
 	{
-		var uiManager = UIManager.GetInstance();
+		var uiManager = Platform.UI;
 		if (uiManager != null)
 		{
 			bool confirmed = await uiManager.ShowConfirmationAsync(
@@ -1454,7 +1454,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void SetupPlayerIntegration()
 	{
-		var gameHost = GameHost.GetInstance();
+		var gameHost = Platform.Host;
 
 		if (gameHost != null && GodotObject.IsInstanceValid(gameHost))
 		{
@@ -1570,7 +1570,7 @@ public partial class CarromGame : GameController
 	{
 		try
 		{
-			var sessionManager = SessionManager.GetInstance();
+			var sessionManager = Platform.Session;
 			if (sessionManager != null && GodotObject.IsInstanceValid(sessionManager))
 			{
 				var currentSession = sessionManager.GetPrimarySession();
@@ -1601,7 +1601,7 @@ public partial class CarromGame : GameController
 
 		// Standard "Return to Menu" button
 		buttons.Add(GameContextButton.CreateReturnToMenuButton(() => {
-			var sessionManager = SessionManager.GetInstance();
+			var sessionManager = Platform.Session;
 			sessionManager?.ResetAllIdleTimers();
 			ReturnToMainMenu();
 		}));
@@ -1610,19 +1610,19 @@ public partial class CarromGame : GameController
 		if (_carromGameMode == CarromGameMode.Practice)
 		{
 			buttons.Add(new ContextButtonData("Reset", () => {
-				var sessionManager = SessionManager.GetInstance();
+				var sessionManager = Platform.Session;
 				sessionManager?.ResetAllIdleTimers();
 				RequestPracticeReset();
 			}, "🔄", true, "Reset practice session"));
 			
 			buttons.Add(new ContextButtonData("2-Player Match", () => {
-				var sessionManager = SessionManager.GetInstance();
+				var sessionManager = Platform.Session;
 				sessionManager?.ResetAllIdleTimers();
 				StartCompetitiveMode(2);
 			}, "👥", true, "Start 2-player competitive match"));
 			
 			buttons.Add(new ContextButtonData("4-Player Match", () => {
-				var sessionManager = SessionManager.GetInstance();
+				var sessionManager = Platform.Session;
 				sessionManager?.ResetAllIdleTimers();
 				StartCompetitiveMode(4);
 			}, "👨‍👩‍👧‍👦", true, "Start 4-player doubles match"));
@@ -1636,7 +1636,7 @@ public partial class CarromGame : GameController
 			
 			// Return to practice mode
 			buttons.Add(new ContextButtonData("Return to Practice", () => {
-				var sessionManager = SessionManager.GetInstance();
+				var sessionManager = Platform.Session;
 				sessionManager?.ResetAllIdleTimers();
 				ReturnToPractice();
 			}, "🔄", true, "Return to practice mode"));
@@ -2341,7 +2341,7 @@ public partial class CarromGame : GameController
 		if (playerIds != null && playerIds.Length >= 2)
 		{
 			// Get box ID from LocationManager
-			var locationManager = LocationManager.GetAutoload();
+			var locationManager = Platform.Location;
 			if (locationManager != null && locationManager.IsConfigLoaded)
 			{
 				var boxId = locationManager.BoxId;

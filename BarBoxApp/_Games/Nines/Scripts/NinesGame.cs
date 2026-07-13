@@ -156,16 +156,9 @@ public partial class NinesGame : GameController
 	/// </summary>
 	public override string GetGameTitle() => "Nines";
 
-	private bool IsProductionContext()
-	{
-		// Check if GameHost is available
-		var gameHost = GetNodeOrNull("/root/GameHost");
-		return gameHost != null;
-	}
-
 	private void SetupSessionManager()
 	{
-		_sessionManager = SessionManager.GetInstance();
+		_sessionManager = Platform.Session;
 		if (_sessionManager == null)
 		{
 			GD.Print("[Nines] SessionManager not available - single player mode");
@@ -202,8 +195,8 @@ public partial class NinesGame : GameController
 
 	private void SetupCreditService()
 	{
-		_creditService = CreditService.GetInstance();
-		_eventService = SessionEventService.GetInstance();
+		_creditService = Platform.Credits;
+		_eventService = Platform.Events;
 		_ninesEventService = new NinesEventService(_eventService);
 
 		if (_creditService == null)

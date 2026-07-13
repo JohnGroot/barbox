@@ -261,13 +261,26 @@ touch the same call-site surface); item 5 (docs) strictly last.
    `StartBackendSessionAsync` now passes `GetGameId()` directly. No menu-
    wiring or test references to the old `_game`-suffixed ids existed. Full
    C# + Hurl suite green (291 passed).
-2. **One discovery idiom.** Convert the games to `Platform.X`:
-   Racing (`RacingGame.cs:264-270` GetInstance block, `:495` InputManager,
-   `:893` LocationManager), Carrom (`CarromGame.cs:145-149`), Nines
-   (`NinesGame.cs:126-128` setup helpers, `:165` raw `/root/GameHost` path —
-   use `Platform.IsProduction`). Then add a rule to `BarBoxApp/_Games/CLAUDE.md`:
-   no `GetInstance()`/`GetAutoload()`/raw `/root/` paths in `_Games/`;
-   `Platform.X` only.
+2. ~~**One discovery idiom.**~~ **DONE (2026-07-13)** — converted Racing,
+   Carrom, and Nines off `GetInstance()`/`GetAutoload()`/raw `/root/` paths
+   onto `Platform.X` (`Session`, `Events`, `Credits`, `Host`, `UI`, `Input`,
+   `Location`). Also found and converted call sites the roadmap's line
+   anchors didn't list (they'd drifted): `RacingGame.cs` UIManager/
+   SessionManager lookups outside the discovery block, `CarromGame.cs`'s
+   context-button closures and a second `LocationManager.GetAutoload()` at
+   the multiplayer-session start. Nines' `IsProductionContext()` helper
+   (wrapping a raw `/root/GameHost` lookup) was dead code — deleted rather
+   than converted, since `Platform.IsProduction` already covers that need.
+   Added the "`Platform.X` only" rule to `BarBoxApp/_Games/CLAUDE.md` and
+   fixed its own `Context Detection` example, which still showed
+   `GameHost.GetInstance()`. Left untouched: non-`GameController` helper/UI
+   classes (`RacingUIManager.cs`, `CarromCompetitiveModeManager.cs`,
+   `CarromPlayerSetupMenu.cs`, `MiningGame.cs`/`MiningState.cs`, `NinesUI.cs`)
+   — they have no `Platform` property to call through, and the roadmap's item
+   scope named only the three `GameController` subclasses. Test files'
+   `/root/SessionEventService` node-path lookups are test-fixture plumbing,
+   not game code, and also out of scope. Full C# + Hurl suite green (291
+   passed).
 3. **Registry hygiene — not JSON.** Keep the hardcoded C# registry (compile-
    checked, ~4 lines per game); delete the stale "Load from
    _Data/GameRegistry.json" comment (`GameRegistry.cs:82`). Upgrade the silent

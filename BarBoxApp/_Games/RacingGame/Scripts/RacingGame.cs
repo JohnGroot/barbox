@@ -261,9 +261,9 @@ public partial class RacingGame : GameController
 	protected override void OnDiscoverServices()
 	{
 		// Service discovery only - no component creation
-		_eventService = SessionEventService.GetInstance();
-		_sessionManager = SessionManager.GetInstance();
-		_creditService = CreditService.GetInstance();
+		_eventService = Platform.Events;
+		_sessionManager = Platform.Session;
+		_creditService = Platform.Credits;
 	}
 
 	/// <summary>
@@ -489,7 +489,7 @@ public partial class RacingGame : GameController
 			return;
 		}
 		
-		var inputManager = InputManager.GetAutoload();
+		var inputManager = Platform.Input;
 		if (inputManager == null) 
 		{
 			_hasDirectInput = false;
@@ -887,7 +887,7 @@ public partial class RacingGame : GameController
 			var currentSession = _sessionManager.GetPrimarySession();
 			if (currentSession?.PlayerId != null && currentSession.PlayerId != Guid.Empty)
 			{
-				var locationManager = LocationManager.GetAutoload();
+				var locationManager = Platform.Location;
 				if (locationManager != null && locationManager.IsConfigLoaded)
 				{
 					var boxId = locationManager.BoxId;
@@ -1793,7 +1793,7 @@ public partial class RacingGame : GameController
 		}
 
 		// Show credit purchase modal through UIManager for primary user
-		var uiManager = UIManager.GetInstance();
+		var uiManager = Platform.UI;
 		if (uiManager != null && IsInstanceValid(uiManager))
 		{
 			uiManager.ShowBuyCreditsModal(currentSession.PhoneNumber);
@@ -2207,7 +2207,7 @@ public partial class RacingGame : GameController
 	{
 		try
 		{
-			var sessionManager = SessionManager.GetInstance();
+			var sessionManager = Platform.Session;
 			if (sessionManager != null && IsInstanceValid(sessionManager))
 			{
 				var currentSession = sessionManager.GetPrimarySession();
