@@ -9,9 +9,9 @@ using Shouldly;
 namespace BarBox.Games.Nines.Tests;
 
 /// <summary>
-/// Integration tests for the Nines backend flow.
-/// Nines historically had no tests and skipped the activity-session lifecycle;
-/// these assert the session + jackpot-win contract the Stage 4 migration relies on.
+/// Integration tests for the Nines backend flow: asserts jackpot-win events are
+/// accepted on an active activity session, that NinesEventService records them, and
+/// that entry-credit deduction rolls back cleanly.
 /// Runs against the real seeded test backend (see MiningGameTests for the pattern).
 /// </summary>
 public class NinesGameTests : TestClass
@@ -98,7 +98,7 @@ public class NinesGameTests : TestClass
 			return;
 		}
 
-		// Exercise the production wrapper introduced by the Stage 4 migration
+		// Exercise the production NinesEventService wrapper
 		var service = new NinesEventService(_eventService);
 		var result = await service.EmitJackpotWonAsync("test_venue", _testPlayerPhone, "Test Winner", 7500);
 

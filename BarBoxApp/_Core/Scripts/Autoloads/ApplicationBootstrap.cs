@@ -233,7 +233,6 @@ public partial class ApplicationBootstrap : AutoloadBase
 
 	private async Task InitializePhase3Async(CancellationToken cancellationToken)
 	{
-		// Sequential, deterministic init (tenet 2) — services are independent here.
 		LogInfo("Phase 3: Session and Payment services (depend on EventService)");
 		await InitializeServiceAsync("SessionManager", SessionManager.GetInstance(), ServiceCriticality.Optional, cancellationToken);
 		await InitializeServiceAsync("PaymentService", PaymentService.GetInstance(), ServiceCriticality.Optional, cancellationToken);

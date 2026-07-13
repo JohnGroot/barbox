@@ -32,7 +32,7 @@ Godot 4.7 game platform using C# with autoload-based service architecture and co
 - **Classes**: PascalCase. **Methods/Properties**: PascalCase
 - **Fields**: Public PascalCase, Private `_camelCase`
 - **Organization**: Use `[ExportCategory("Section Name")]` for Inspector
-- **Comments**: Only where they add value beyond code. Explain "why" not "what"
+- **Comments**: Only where they add value beyond code. Explain "why" not "what". Write for the **human maintainer reading the code** — never address an agent or reference process/review artifacts (architectural tenets, audit/plan stage numbers, "introduced by X migration"). That context belongs in instruction files (CLAUDE.md), plan docs, or commit messages, not code comments.
 - **Modern C#**: File-scoped namespaces, `??=`, collection expressions, required properties in new code
 
 ## Development Rules

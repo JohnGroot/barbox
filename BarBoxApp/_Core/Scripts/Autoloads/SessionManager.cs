@@ -105,8 +105,8 @@ public partial class SessionManager : AutoloadBase
 			LogInfo($"SessionManager: Logging out {phoneNumbers.Length} active user(s)...");
 
 			// Log out sequentially — LogoutUserAsync mutates the shared, non-thread-safe
-			// session dictionaries, so concurrent logouts would race (tenet 2). Preserve the
-			// overall 5-second shutdown budget by racing the sequential loop against a timeout.
+			// session dictionaries, so concurrent logouts would race. Preserve the overall
+			// 5-second shutdown budget by racing the sequential loop against a timeout.
 			async Task LogoutAllSequentiallyAsync()
 			{
 				foreach (var phoneNumber in phoneNumbers)
