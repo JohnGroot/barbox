@@ -124,7 +124,7 @@ public partial class NinesUI : CanvasLayer
 	public void ShowError(string message)
 	{
 		GD.PrintErr($"[Nines UI] {message}");
-		// Could show a toast notification here
+		_game?.ShowNotification(message, NotificationSeverity.Error);
 	}
 
 	public void RefreshPlayerList()

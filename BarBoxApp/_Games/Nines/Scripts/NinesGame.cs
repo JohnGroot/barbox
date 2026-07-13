@@ -458,6 +458,13 @@ public partial class NinesGame : GameController
 	#region Game Flow - Public API
 
 	/// <summary>
+	/// Show a notification via the shared platform overlay. Lets NinesUI
+	/// surface errors without reaching into Platform directly.
+	/// </summary>
+	internal void ShowNotification(string message, NotificationSeverity severity) =>
+		Platform.Notifications?.Show(message, severity);
+
+	/// <summary>
 	/// Check if game can be started - requires at least one logged-in player.
 	/// </summary>
 	public bool CanPlay()
