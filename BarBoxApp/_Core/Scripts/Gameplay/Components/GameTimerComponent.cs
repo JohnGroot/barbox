@@ -7,7 +7,6 @@ using Godot;
 public partial class GameTimerComponent : Node
 {
 	[Signal] public delegate void TimeUpEventHandler();
-	[Signal] public delegate void TimeRemainingChangedEventHandler(float timeRemaining);
 
 	[ExportCategory("Timer Settings")]
 	[Export] public float TimeLimit { get; set; } = 0.0f; // 0 = no time limit
@@ -75,14 +74,6 @@ public partial class GameTimerComponent : Node
 	{
 		_isActive = false;
 		EmitSignal(SignalName.TimeUp);
-	}
-
-	public override void _Process(double delta)
-	{
-		if (_isActive && _timer != null && !_timer.IsStopped())
-		{
-			EmitSignal(SignalName.TimeRemainingChanged, GetTimeRemaining());
-		}
 	}
 
 	public override void _Notification(int what)

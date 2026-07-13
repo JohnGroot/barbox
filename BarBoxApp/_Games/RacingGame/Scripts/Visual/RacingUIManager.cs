@@ -51,11 +51,6 @@ namespace BarBox.Games.Racing
 	// Main UI layer
 	private CanvasLayer _uiLayer;
 	
-	// Status display labels (kept for compatibility)
-	private Label _speedLabel;
-	private Label _lapLabel;
-	private Label _timeLabel;
-
 	// Arc-based HUD renderer
 	private RacingHUDArcRenderer _hudArcRenderer;
 
@@ -199,21 +194,6 @@ namespace BarBox.Games.Racing
 		// Create arc-based HUD renderer
 		_hudArcRenderer = new RacingHUDArcRenderer();
 		_uiLayer.AddChild(_hudArcRenderer);
-
-		// Create invisible status bar elements for compatibility (keep references for code that updates them)
-		var statusBar = new HBoxContainer();
-		statusBar.Visible = false; // Hide completely - arc renderer provides all visual feedback
-		parent.AddChild(statusBar);
-
-		// Create labels but keep them hidden (for compatibility with existing update code)
-		_speedLabel = new Label() { Text = "Speed: 0" };
-		_lapLabel = new Label() { Text = "Practice Mode" };
-		_timeLabel = new Label() { Text = "Gap: 0.0s" };
-
-		// Don't add them to the UI - just keep references
-		// statusBar.AddChild(_speedLabel);
-		// statusBar.AddChild(_lapLabel);
-		// statusBar.AddChild(_timeLabel);
 	}
 
 	/// <summary>
@@ -531,29 +511,6 @@ namespace BarBox.Games.Racing
 			var timeText = $"{timeLabel}: {timeDisplay:F1}s";
 			var isPracticeMode = (gameMode == RacingMode.Practice);
 			_hudArcRenderer.UpdateHUDState(carSpeed, maxSpeed, currentLap, targetLaps, lapProgress, timeText, isPracticeMode);
-		}
-
-		// Update traditional labels (fallback/debug display)
-		if (_speedLabel != null)
-		{
-			_speedLabel.Text = $"Speed: {(int)carSpeed}";
-		}
-
-		if (_lapLabel != null)
-		{
-			if (gameMode == RacingMode.Practice)
-			{
-				_lapLabel.Text = "Practice Mode";
-			}
-			else
-			{
-				_lapLabel.Text = $"Lap: {currentLap}/{targetLaps}";
-			}
-		}
-
-		if (_timeLabel != null)
-		{
-			_timeLabel.Text = $"{timeLabel}: {timeDisplay:F1}s";
 		}
 	}
 

@@ -335,11 +335,6 @@ public partial class RacingGame : GameController
 		// Clean up signals and references
 		DisconnectTrackSignals();
 
-		if (IsInstanceValid(_racingCar))
-		{
-			_racingCar.CarMoved -= OnCarMoved;
-		}
-
 		// Disconnect timing system signals
 		if (IsInstanceValid(_timingSystem))
 		{
@@ -446,9 +441,6 @@ public partial class RacingGame : GameController
 		// Set input enabled callback to decouple car from parent type
 		_racingCar.InputEnabledCallback = IsInputEnabled;
 
-		// Connect car movement events for visual feedback
-		_racingCar.CarMoved += OnCarMoved;
-		
 		// Add player to game controller
 		_playerMgmt.AddPlayer(_racingCar);
 		
@@ -566,6 +558,7 @@ public partial class RacingGame : GameController
 			}
 		}
 		_zoneManager.UpdateFrictionlessEffects((float)delta);
+		_visualRenderer.ShouldRender = IsRaceActive() && !IsRacePaused();
 		_visualRenderer.UpdateVisualFeedback((float)delta);
 		_visualRenderer.UpdateTireTrails();
 
@@ -575,13 +568,6 @@ public partial class RacingGame : GameController
 			_uiFrameCounter = 0;
 			UpdateUI();
 		}
-	}
-
-	public override void _Draw()
-	{
-		// Visual feedback is now handled by VisualFeedbackRenderer
-		// Update renderer visibility based on game state (guaranteed valid after Phase 2)
-		_visualRenderer.ShouldRender = IsRaceActive() && !IsRacePaused();
 	}
 
 	// ================================================================
@@ -1129,15 +1115,6 @@ public partial class RacingGame : GameController
 		ResetCheckpoints();          // Reset checkpoint tracking and visuals
 		PositionCarAtStart();        // Reset position AND physics state (calls ResetCarState)
 		_racingCar?.SetActive(true); // Reactivate racing car
-	}
-
-	// ================================================================
-	// CAR MANAGEMENT
-	// ================================================================
-
-	private void OnCarMoved(Vector2 position, Vector2 velocity)
-	{
-		QueueRedraw(); // Trigger visual updates
 	}
 
 	// ================================================================

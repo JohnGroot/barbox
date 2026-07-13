@@ -117,6 +117,9 @@ public partial class CarromInputController : Node2D
 	// GC OPTIMIZATION: Pre-allocated ray exclusion array to avoid per-raycast allocation
 	private readonly Godot.Collections.Array<Rid> _rayExcludeBuffer = new();
 
+	// GC OPTIMIZATION: Reused ray query params to avoid per-step allocation during trajectory aiming
+	private readonly PhysicsRayQueryParameters2D _rayQuery = new();
+
 	// Input modes
 	private enum InputMode
 	{
@@ -1426,15 +1429,16 @@ public partial class CarromInputController : Node2D
 		var spaceState = GetWorld2D()?.DirectSpaceState;
 		if (spaceState != null)
 		{
-			var query = PhysicsRayQueryParameters2D.Create(from, to);
-			query.CollisionMask = 1; // Collision layer for pieces
+			// GC OPTIMIZATION: Reuse pre-allocated query params and exclusion array
+			_rayQuery.From = from;
+			_rayQuery.To = to;
+			_rayQuery.CollisionMask = 1; // Collision layer for pieces
 
-			// GC OPTIMIZATION: Reuse pre-allocated exclusion array
 			_rayExcludeBuffer.Clear();
 			_rayExcludeBuffer.Add(_striker.GetRid());
-			query.Exclude = _rayExcludeBuffer;
-			
-			var result = spaceState.IntersectRay(query);
+			_rayQuery.Exclude = _rayExcludeBuffer;
+
+			var result = spaceState.IntersectRay(_rayQuery);
 			if (result.Count > 0)
 			{
 				Vector2 collisionPoint = result["position"].AsVector2();

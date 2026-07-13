@@ -26,8 +26,7 @@ public partial class MiningEngine : Node
 
 		_game.GetState().ProcessReadyMiningTicks();
 
-		// Update UI - direct call, guaranteed valid
-		_game.GetUI()?.UpdateMiningProgress();
+		// UI progress is driven by MiningGameUI's own _Process (incremental update)
 	}
 
 	public void StartMining()

@@ -126,23 +126,6 @@ public partial class InputManager : AutoloadBase
 		return _activeTouches.GetValueOrDefault(fingerId, _mousePosition);
 	}
 
-	public Vector2[] GetAllTouchPositions()
-	{
-		var positions = new List<Vector2>();
-		
-		foreach (var touch in _activeTouches.Values)
-		{
-			positions.Add(touch);
-		}
-		
-		if (_mousePressed)
-		{
-			positions.Add(_mousePosition);
-		}
-		
-		return positions.ToArray();
-	}
-
 	public int GetActiveTouchCount()
 	{
 		int count = _activeTouches.Count;

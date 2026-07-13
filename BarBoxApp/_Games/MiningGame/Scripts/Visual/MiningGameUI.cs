@@ -47,6 +47,7 @@ public partial class MiningGameUI : Control
 	private int _lastPendingGems = -1;
 	private int _lastMaxCapacity = -1;
 	private float _lastProgress = -1;
+	private int _lastDisplayedSeconds = -1;
 
 	public void Initialize(MiningGame game, MiningGameConfig config)
 	{
@@ -441,13 +442,22 @@ public partial class MiningGameUI : Control
 	{
 		if (timeRemaining <= 0)
 		{
-			_progressLabel.Text = "Mining...";
+			if (_lastDisplayedSeconds != 0)
+			{
+				_progressLabel.Text = "Mining...";
+				_lastDisplayedSeconds = 0;
+			}
 			return;
 		}
 
-		int hours = (int)(timeRemaining / 3600);
-		int minutes = (int)((timeRemaining % 3600) / 60);
-		int seconds = (int)(timeRemaining % 60);
+		int totalSeconds = (int)timeRemaining;
+		if (totalSeconds == _lastDisplayedSeconds)
+			return;
+		_lastDisplayedSeconds = totalSeconds;
+
+		int hours = totalSeconds / 3600;
+		int minutes = (totalSeconds % 3600) / 60;
+		int seconds = totalSeconds % 60;
 
 		_progressLabel.Text = $"Next mining tick in: {hours:00}:{minutes:00}:{seconds:00}";
 	}

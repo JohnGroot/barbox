@@ -12,13 +12,6 @@ namespace BarBox.Games.Racing
 	public partial class RacingCar : BasePlayer
 	{
 		// ================================================================
-		// SIGNALS
-		// ================================================================
-		
-		[Signal] public delegate void CarMovedEventHandler(Vector2 position, Vector2 velocity);
-		[Signal] public delegate void CarRotatedEventHandler(float rotation);
-
-		// ================================================================
 		// EXPORT PROPERTIES - CAR SETTINGS
 		// ================================================================
 		
@@ -387,10 +380,6 @@ namespace BarBox.Games.Racing
 			_carBody.MoveAndSlide();
 
 			InvalidatePositionCache();
-
-			// Emit movement signals
-			EmitSignal(SignalName.CarMoved, _carBody.GlobalPosition, _velocity);
-			EmitSignal(SignalName.CarRotated, _carBody.Rotation);
 		}
 
 		// ================================================================
@@ -453,10 +442,6 @@ namespace BarBox.Games.Racing
 			_currentSpeed = _lockedVelocity.Length();
 
 			InvalidatePositionCache();
-
-			// Emit movement signals
-			EmitSignal(SignalName.CarMoved, _carBody.GlobalPosition, _lockedVelocity);
-			EmitSignal(SignalName.CarRotated, _lockedRotation);
 		}
 
 		private void ExitFrictionlessState()

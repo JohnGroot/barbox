@@ -80,11 +80,6 @@ public partial class BuyCreditsModal : Control
 		Visible = false;
 	}
 
-	public override void _Process(double delta)
-	{
-		// Progress bar is now updated via OnProgressUpdate event
-	}
-
 	private void SetupModalLayout()
 	{
 		SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
