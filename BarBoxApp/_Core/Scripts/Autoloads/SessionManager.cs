@@ -75,6 +75,20 @@ public partial class SessionManager : AutoloadBase
 		LogInfo("SessionManager initialized with event-sourced persistence");
 	}
 
+	protected override void OnServiceInitialize()
+	{
+		var backendClient = BackendClient.GetInstance();
+		if (backendClient != null)
+		{
+			backendClient.JwtTokenProvider = GetJwtToken;
+			LogInfo("Registered JWT token provider with BackendClient");
+		}
+		else
+		{
+			LogWarning("BackendClient not found - authenticated requests will be missing JWT tokens");
+		}
+	}
+
 	public override void _Notification(int what)
 	{
 		if (what == NotificationWMCloseRequest)

@@ -222,9 +222,15 @@ public partial class ApplicationBootstrap : AutoloadBase
 
 	private async Task InitializePhase2Async(CancellationToken cancellationToken)
 	{
-		LogInfo("Phase 2: Event Service (depends on BackendManager)");
-		var eventServiceReady = await InitializeServiceAsync("EventService", EventService.GetInstance(), ServiceCriticality.Optional, cancellationToken);
+		LogInfo("Phase 2: Transport + Event Service (depends on BackendManager)");
 
+		var backendClientReady = await InitializeServiceAsync("BackendClient", BackendClient.GetInstance(), ServiceCriticality.Optional, cancellationToken);
+		if (!backendClientReady)
+		{
+			LogError("BackendClient failed to initialize - all HTTP-backed systems (credits/auth/emit/stripe) will be unavailable");
+		}
+
+		var eventServiceReady = await InitializeServiceAsync("EventService", EventService.GetInstance(), ServiceCriticality.Optional, cancellationToken);
 		if (!eventServiceReady)
 		{
 			LogError("EventService failed to initialize - credit system will be unavailable");

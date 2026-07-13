@@ -103,7 +103,7 @@ roadmap):
 | # | Workstream | Depends on | Risk | Status |
 |---|-----------|------------|------|--------|
 | WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
-| WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | Spec ready, not started |
+| WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | Increment ① DONE (2026-07-13) — see §3 note; ②–⑤ not started |
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | Not started |
 | WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | Not started |
 | WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
@@ -150,6 +150,31 @@ carried verbatim in **Appendix A**. Execute it as written: increment ①
 CreditService, Stripe → StripePaymentService, auth → SessionManager/
 LocationManager, rename to `SessionEventService`) are mechanical afterwards.
 Build + full C# suite + Hurl after every increment.
+
+**2026-07-13 — Increment ① DONE.** `BackendClient.cs` created as the sole
+HTTP transport autoload (registered in `project.godot` between
+`BackendManager` and `EventService`); `EventService` slimmed to session/emit/
+identity, calling through `_backend` for everything else. `JwtTokenProvider`
+delegate wired from `SessionManager.OnServiceInitialize`.
+`ApplicationBootstrap` Phase 2 now initializes `BackendClient` before
+`EventService`. Build + full C# suite (291/291) + Hurl green. Two things not
+in the original Appendix A spec, discovered during execution and worth
+knowing before touching this code again:
+- `CreateActivitySessionAsync`/`CloseActivitySessionAsync`/
+  `CreateLobbySessionAsync` stayed on `EventService` per the increment ①
+  scope, but they use Godot's `HttpClient` directly (not the generic verbs) —
+  `BackendClient` exposes a small set of `internal` forwarding members
+  (`Request`, `Poll`, `GetStatus`, `GetResponseCode`,
+  `ReadResponseBodyChunk/Async`, `Close`, plus `internal`
+  `EnsureConnectedAsync`/`WaitForResponseAsync`/`BuildHeaders`/
+  `BuildPlayerHeaders`) so these three methods can keep working unchanged.
+  Increment ②–④ should fold these into whichever service ends up owning
+  session lifecycle rather than growing this internal surface further.
+- `EmitUserEventAsync`'s `playerId` parameter was already unused pre-split
+  (verified at the old `BuildHeaders()` call site — no JWT was ever attached
+  to user events) — this was preserved as-is, not "fixed," since fixing it
+  would be an undocumented behavior change riding along in a pure-transport
+  refactor.
 
 ### WS2 — New-game developer experience
 

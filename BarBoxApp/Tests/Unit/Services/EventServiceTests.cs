@@ -334,9 +334,12 @@ public class EventServiceTests : BackendTestBase
 		_eventService.ShouldNotBeNull("EventService must exist");
 
 		// Act - Access API key field via reflection (test-only verification)
-		var apiKeyField = typeof(EventService).GetField("_boxApiKey",
+		// The API key lives on BackendClient (sole HTTP transport), not EventService
+		var backendClient = BackendClient.GetInstance();
+		backendClient.ShouldNotBeNull("BackendClient must exist");
+		var apiKeyField = typeof(BackendClient).GetField("_boxApiKey",
 			System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-		var apiKey = apiKeyField?.GetValue(_eventService) as string;
+		var apiKey = apiKeyField?.GetValue(backendClient) as string;
 
 		// Assert
 		apiKey.ShouldNotBeNull("API key should be loaded from config");

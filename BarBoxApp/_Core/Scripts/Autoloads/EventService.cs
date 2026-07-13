@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,115 +16,43 @@ namespace BarBox.Core.Autoloads;
 /// </summary>
 public partial class EventService : AutoloadBase
 {
-	// Configuration - initialized in OnServiceInitializeAsync after LocationManager loads .env files
-	// (Static readonly fields would capture env vars before .env is loaded!)
-	private string _baseUrl;
-	private string _backendHost;
-	private int _backendPort;
-	private bool _useHttps;
+	private const string NotReadyError = "EventService not initialized - backend not ready";
+	private const string UnknownError = "Unknown error";
 
-	private static Uri ParseBackendUrl(string url)
-	{
-		try
-		{
-			return new Uri(url);
-		}
-		catch (Exception ex)
-		{
-			GD.PrintErr($"[EventService] Invalid BARBOX_BACKEND_URL '{url}': {ex.Message}. Using default.");
-			return new Uri("http://127.0.0.1:8000");
-		}
-	}
-
-	private const int REQUEST_TIMEOUT_MS = 5000;
-	private const int POLL_INTERVAL_MS = 10;
-
-	// Enable detailed HTTP lifecycle logging for debugging connection issues
-	// To enable: Add DEBUG_HTTP_LIFECYCLE to project defines or use #define DEBUG_HTTP_LIFECYCLE at top of file
-
-	private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
-	{
-		PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-	};
-
-	private HttpClient _httpClient;
 	private string _venueName;
 	private string _boxName;
 	private Guid _boxId;
-	private string _boxApiKey;
 	private Guid _currentSessionId;
 	private Guid _currentBoxId;
+	private BackendClient _backend;
 
 	protected override async Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
-		_httpClient = new HttpClient();
-
-		// Load configuration AFTER LocationManager has loaded .env files
-		// (Static readonly fields would capture env vars before .env is loaded!)
 		var locationManager = LocationManager.GetAutoload();
-		_baseUrl = locationManager?.BackendUrl
-			?? System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_URL")
-			?? "http://127.0.0.1:8000";
-
-		var parsedUrl = new Uri(_baseUrl);
-		_backendHost = parsedUrl.Host;
-		_backendPort = parsedUrl.Port;
-		_useHttps = parsedUrl.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
-
-		// Log backend configuration at startup for debugging
-		LogInfo($"Backend configuration: {_backendHost}:{_backendPort} (HTTPS: {_useHttps})");
-		LogInfo($"BASE_URL: {_baseUrl}");
-
-		// Load box identity from LocationManager (reuse variable from above)
 		if (locationManager == null || !locationManager.IsConfigLoaded)
 			throw new InvalidOperationException("LocationManager is required but not available or not initialized");
 
 		_venueName = locationManager.VenueName;
 		_boxName = locationManager.BoxName;
+		_boxId = locationManager.BoxId;
 
-		try
-		{
-			_boxId = locationManager.BoxId;
-			_boxApiKey = GetBoxApiKey();
-			LogInfo($"Box ID: {_boxId}, API Key: {(string.IsNullOrEmpty(_boxApiKey) ? "NOT SET" : "SET")}");
+		LogInfo($"Identity: venue={_venueName}, box={_boxName} ({_boxId})");
 
-			// FAIL LOUDLY in editor mode if API key missing
-			if (string.IsNullOrEmpty(_boxApiKey) && OS.HasFeature("editor"))
-			{
-				LogError("╔════════════════════════════════════════════════════════════╗");
-				LogError("║ CRITICAL: EventService API Key Configuration Missing!     ║");
-				LogError("║                                                            ║");
-				LogError("║ HTTP requests to backend will fail with 401/403 errors!   ║");
-				LogError("║                                                            ║");
-				LogError("║ Fix: Add to .env.local file:                               ║");
-				LogError("║   BARBOX_API_KEY=<api-key>                                ║");
-				LogError("║                                                            ║");
-				LogError("║ Get key: curl -X POST http://127.0.0.1:8000/test/seed     ║");
-				LogError("╚════════════════════════════════════════════════════════════╝");
-			}
-		}
-		catch (Exception ex)
+		_backend = BackendClient.GetInstance();
+		if (_backend == null)
 		{
-			LogError($"Failed to get Box configuration: {ex.Message}");
-			throw new InvalidOperationException($"EventService requires valid Box configuration: {ex.Message}\nStack Trace: {ex.StackTrace}");
+			throw new InvalidOperationException("BackendClient not found - EventService requires BackendClient");
 		}
 
-		// Wait for BackendManager to be ready
-		var backendManager = BackendManager.GetInstance();
-		if (backendManager == null)
-		{
-			throw new InvalidOperationException("BackendManager not found - EventService requires BackendManager");
-		}
-
-		LogInfo("Waiting for BackendManager to become ready...");
-		var backendReady = await backendManager.WaitForReadyAsync(timeoutSeconds: 30.0f, cancellationToken);
+		LogInfo("Waiting for BackendClient to become ready...");
+		var backendReady = await _backend.WaitForReadyAsync(timeoutSeconds: 30.0f, cancellationToken);
 
 		if (!backendReady)
 		{
-			throw new InvalidOperationException("BackendManager failed to become ready within timeout");
+			throw new InvalidOperationException("BackendClient failed to become ready within timeout");
 		}
 
-		LogInfo($"EventService ready - backend available at {_baseUrl}");
+		LogInfo("EventService ready (transport delegated to BackendClient)");
 	}
 
 
@@ -145,7 +72,7 @@ public partial class EventService : AutoloadBase
 		List<string> playerIds = null)
 	{
 		if (!IsReady)
-			return Result.Failure<Guid>("EventService not initialized - backend not ready");
+			return Result.Failure<Guid>(NotReadyError);
 
 		if (string.IsNullOrEmpty(gameTag))
 			return Result.Failure<Guid>("game_tag is required");
@@ -157,7 +84,7 @@ public partial class EventService : AutoloadBase
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] CreateActivitySession - Starting for game '{gameTag}'");
 #endif
-			await EnsureConnectedAsync();
+			await _backend.EnsureConnectedAsync();
 
 			// Build URL with required game_tag
 			var url = $"/box/{boxId}/session/{sessionId}?game_tag={Uri.EscapeDataString(gameTag)}";
@@ -169,13 +96,13 @@ public partial class EventService : AutoloadBase
 				url += $"&player_ids={Uri.EscapeDataString(playerIdsJson)}";
 			}
 
-			var headers = BuildPlayerHeaders(playerId).ToArray();
+			var headers = _backend.BuildPlayerHeaders(playerId).ToArray();
 
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] CreateActivitySession - PUT {url}");
 #endif
 
-			var error = _httpClient.Request(
+			var error = _backend.Request(
 				HttpClient.Method.Put,
 				url,
 				headers
@@ -184,9 +111,9 @@ public partial class EventService : AutoloadBase
 			if (error != Godot.Error.Ok)
 				return Result.Failure<Guid>($"Activity session creation request failed: {error}");
 
-			await WaitForResponseAsync();
+			await _backend.WaitForResponseAsync();
 
-			var responseCode = _httpClient.GetResponseCode();
+			var responseCode = _backend.GetResponseCode();
 
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] CreateActivitySession - Response code: {responseCode}");
@@ -195,14 +122,14 @@ public partial class EventService : AutoloadBase
 			if (responseCode != 202)
 			{
 				// Read response body for detailed error information
-				_httpClient.Poll();
+				_backend.Poll();
 				await DelayAsync(0.05f);
-				_httpClient.Poll();
+				_backend.Poll();
 
-				var errorBodyBytes = _httpClient.ReadResponseBodyChunk();
+				var errorBodyBytes = _backend.ReadResponseBodyChunk();
 				var errorBody = errorBodyBytes.GetStringFromUtf8();
 
-				_httpClient.Close();
+				_backend.Close();
 
 				// Provide detailed error logging to help diagnose authentication issues
 				LogError($"[EventService] Activity session creation failed:");
@@ -244,7 +171,7 @@ public partial class EventService : AutoloadBase
 			LogError($"[HTTP] CreateActivitySession - Exception: {ex.Message}\nStack Trace: {ex.StackTrace}");
 #endif
 
-			_httpClient.Close();
+			_backend.Close();
 			return Result.Failure<Guid>($"Activity session creation exception: {ex.Message}");
 		}
 	}
@@ -258,7 +185,7 @@ public partial class EventService : AutoloadBase
 	public async Task<Result<bool>> CloseActivitySessionAsync(Guid sessionId)
 	{
 		if (!IsReady)
-			return Result.Failure<bool>("EventService not initialized - backend not ready");
+			return Result.Failure<bool>(NotReadyError);
 
 		try
 		{
@@ -266,16 +193,16 @@ public partial class EventService : AutoloadBase
 			LogInfo($"[HTTP] CloseActivitySession - Closing session {sessionId}");
 #endif
 
-			await EnsureConnectedAsync();
+			await _backend.EnsureConnectedAsync();
 
 			var url = $"/box/session/{sessionId}/close";
-			var headers = BuildHeaders().ToArray();
+			var headers = _backend.BuildHeaders().ToArray();
 
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] CloseActivitySession - POST {url}");
 #endif
 
-			var error = _httpClient.Request(
+			var error = _backend.Request(
 				HttpClient.Method.Post,
 				url,
 				headers
@@ -284,9 +211,9 @@ public partial class EventService : AutoloadBase
 			if (error != Godot.Error.Ok)
 				return Result.Failure<bool>($"Session close request failed: {error}");
 
-			await WaitForResponseAsync();
+			await _backend.WaitForResponseAsync();
 
-			var responseCode = _httpClient.GetResponseCode();
+			var responseCode = _backend.GetResponseCode();
 
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] CloseActivitySession - Response code: {responseCode}");
@@ -294,7 +221,7 @@ public partial class EventService : AutoloadBase
 
 			if (responseCode != 200)
 			{
-				_httpClient.Close();
+				_backend.Close();
 				return Result.Failure<bool>($"Session close failed with code {responseCode}");
 			}
 
@@ -314,7 +241,7 @@ public partial class EventService : AutoloadBase
 			LogError($"[HTTP] CloseActivitySession - Exception: {ex.Message}");
 #endif
 
-			_httpClient.Close();
+			_backend.Close();
 			return Result.Failure<bool>($"Session close exception: {ex.Message}");
 		}
 	}
@@ -329,7 +256,7 @@ public partial class EventService : AutoloadBase
 	public async Task<Result<Guid>> CreateLobbySessionAsync(Guid boxId, Guid playerId)
 	{
 		if (!IsReady)
-			return Result.Failure<Guid>("EventService not initialized - backend not ready");
+			return Result.Failure<Guid>(NotReadyError);
 
 		try
 		{
@@ -337,17 +264,17 @@ public partial class EventService : AutoloadBase
 			LogInfo($"[HTTP] CreateLobbySession - Starting for player {playerId}");
 #endif
 
-			await EnsureConnectedAsync();
+			await _backend.EnsureConnectedAsync();
 
 			var url = $"/box/{boxId}/lobby/session";
-			var headers = BuildHeaders(playerId);
+			var headers = _backend.BuildHeaders(playerId);
 			headers.Add($"Player-Id: {playerId}");
 
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] CreateLobbySession - POST {url}");
 #endif
 
-			var error = _httpClient.Request(
+			var error = _backend.Request(
 				HttpClient.Method.Post,
 				url,
 				headers.ToArray()
@@ -356,9 +283,9 @@ public partial class EventService : AutoloadBase
 			if (error != Godot.Error.Ok)
 				return Result.Failure<Guid>($"Lobby session creation request failed: {error}");
 
-			await WaitForResponseAsync();
+			await _backend.WaitForResponseAsync();
 
-			var responseCode = _httpClient.GetResponseCode();
+			var responseCode = _backend.GetResponseCode();
 
 #if DEBUG_HTTP_LIFECYCLE
 			LogInfo($"[HTTP] CreateLobbySession - Response code: {responseCode}");
@@ -367,10 +294,10 @@ public partial class EventService : AutoloadBase
 			if (responseCode != 201)
 			{
 				// CRITICAL: Read error response body to understand backend error
-				var errorBodyBytes = await _httpClient.ReadResponseBodyAsync();
+				var errorBodyBytes = await _backend.ReadResponseBodyAsync();
 				var errorBody = errorBodyBytes.GetStringFromUtf8();
 
-				_httpClient.Close();
+				_backend.Close();
 
 				// Log full error details for debugging
 				LogError($"[EventService] Lobby session creation failed:");
@@ -384,11 +311,11 @@ public partial class EventService : AutoloadBase
 
 			// Parse response to get session ID
 			// Poll to ensure body is fully received
-			_httpClient.Poll();
+			_backend.Poll();
 			await DelayAsync(0.05f);
-			_httpClient.Poll();
+			_backend.Poll();
 
-			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
+			var bodyBytes = await _backend.ReadResponseBodyAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
 			if (string.IsNullOrEmpty(bodyText))
@@ -411,7 +338,7 @@ public partial class EventService : AutoloadBase
 		catch (Exception ex)
 		{
 			LogError($"[EventService] Lobby session creation exception: {ex.Message}\nStack: {ex.StackTrace}");
-			_httpClient.Close();
+			_backend.Close();
 			return Result.Failure<Guid>($"Lobby session creation exception: {ex.Message}");
 		}
 	}
@@ -423,7 +350,7 @@ public partial class EventService : AutoloadBase
 	public async Task<Result<bool>> EmitEventAsync(string eventType, object payload)
 	{
 		if (!IsReady)
-			return Result.Failure<bool>("EventService not initialized - backend not ready");
+			return Result.Failure<bool>(NotReadyError);
 
 		if (_currentSessionId == Guid.Empty)
 			return Result.Failure<bool>("No active session - call CreateSessionAsync first");
@@ -437,54 +364,15 @@ public partial class EventService : AutoloadBase
 				payload = payload
 			};
 
-			var json = JsonSerializer.Serialize(eventData, JsonOptions);
+			var json = JsonSerializer.Serialize(eventData, BackendClient.JsonOptions);
 
-			await EnsureConnectedAsync();
-
-			var headers = BuildJsonHeaders().ToArray();
-
-			var error = _httpClient.Request(
-				HttpClient.Method.Post,
-				$"/box/session/{_currentSessionId}",
-				headers,
-				json
-			);
-
-			if (error != Godot.Error.Ok)
-			{
-				var errorMsg = $"Event submission request failed: {error}";
-				return Result.Failure<bool>(errorMsg);
-			}
-
-			await WaitForResponseAsync();
-
-			var responseCode = _httpClient.GetResponseCode();
-			if (responseCode == 201)
-			{
-				// This prevents POST-then-GET state interference by clearing the Body state
-				var responseBody = await _httpClient.ReadResponseBodyAsync();
-
-#if DEBUG_HTTP_LIFECYCLE
-				LogInfo($"[HTTP] POST succeeded, consumed {responseBody.Length} bytes");
-				_httpClient.Poll();
-				LogInfo($"[HTTP] Status after response read: {_httpClient.GetStatus()}");
-#endif
-
+			var result = await _backend.PostToSessionAsync(_currentSessionId, json);
+			if (result.IsSuccess(out _))
 				return Result.Success(true);
-			}
 
-			// CRITICAL: Read error response body to see actual backend validation error
-			var errorBodyBytes = await _httpClient.ReadResponseBodyAsync();
-			var errorBody = errorBodyBytes.GetStringFromUtf8();
-
-			var failureMsg = $"Event submission failed with code {responseCode}";
-			if (!string.IsNullOrEmpty(errorBody))
-			{
-				LogError($"[EventService] Backend error response: {errorBody}");
-				failureMsg += $" - {errorBody}";
-			}
-
-			return Result.Failure<bool>(failureMsg);
+			var error = result.IsFailure(out var e) ? e.Message : UnknownError;
+			LogError($"[EventService] Backend error response: {error}");
+			return Result.Failure<bool>($"Event submission failed: {error}");
 		}
 		catch (Exception ex)
 		{
@@ -502,7 +390,7 @@ public partial class EventService : AutoloadBase
 	public async Task<Result<bool>> EmitUserEventAsync(Guid playerId, string eventType, object payload, Guid lobbySessionId)
 	{
 		if (!IsReady)
-			return Result.Failure<bool>("EventService not initialized - backend not ready");
+			return Result.Failure<bool>(NotReadyError);
 
 		if (lobbySessionId == Guid.Empty)
 		{
@@ -517,62 +405,25 @@ public partial class EventService : AutoloadBase
 			LogInfo($"[HTTP] EmitUserEvent - {eventType} to lobby session {sessionId}");
 #endif
 
-			await EnsureConnectedAsync();
-
-			var payloadJson = JsonSerializer.Serialize(payload, JsonOptions);
+			var payloadJson = JsonSerializer.Serialize(payload, BackendClient.JsonOptions);
 			var eventJson = JsonSerializer.Serialize(new
 			{
 				type = eventType,
 				payload = JsonSerializer.Deserialize<Dictionary<string, object>>(payloadJson)
-			}, JsonOptions);
+			}, BackendClient.JsonOptions);
 
-			var url = $"/box/session/{sessionId}";
-			var headers = BuildHeaders();
-			headers.Add("Content-Type: application/json");
-			headers.Add($"Content-Length: {Encoding.UTF8.GetByteCount(eventJson)}");
-			var headersArray = headers.ToArray();
-
-#if DEBUG_HTTP_LIFECYCLE
-			LogInfo($"[HTTP] EmitUserEvent - POST {url}");
-#endif
-
-			var error = _httpClient.Request(
-				HttpClient.Method.Post,
-				url,
-				headersArray,
-				eventJson
-			);
-
-			if (error != Godot.Error.Ok)
-				return Result.Failure<bool>($"User event submission request failed: {error}");
-
-			await WaitForResponseAsync();
-
-			var responseCode = _httpClient.GetResponseCode();
-
-#if DEBUG_HTTP_LIFECYCLE
-			LogInfo($"[HTTP] EmitUserEvent - Response code: {responseCode}");
-#endif
-
-			if (responseCode == 201)
+			// NOTE: playerId is intentionally NOT passed to PostToSessionAsync here - this
+			// preserves existing behavior where user events never attach a JWT (see BuildHeaders()
+			// call with no playerId in the pre-split code this replaces).
+			var result = await _backend.PostToSessionAsync(sessionId, eventJson);
+			if (result.IsSuccess(out _))
 			{
-				// Read response body to complete the request cycle
-				// Using reactive polling
-				var responseBodyBytes = await _httpClient.ReadResponseBodyAsync();
-			var responseBody = responseBodyBytes.GetStringFromUtf8();
-
-#if DEBUG_HTTP_LIFECYCLE
-				LogInfo($"[HTTP] POST succeeded, consumed {responseBody.Length} bytes");
-				_httpClient.Poll();
-				LogInfo($"[HTTP] Status after response read: {_httpClient.GetStatus()}");
-#endif
-
 				LogInfo($"User event submitted: {eventType} to lobby session {sessionId}");
 				return Result.Success(true);
 			}
 
-			var failureMsg = $"User event submission failed with code {responseCode}";
-			return Result.Failure<bool>(failureMsg);
+			var error = result.IsFailure(out var e) ? e.Message : UnknownError;
+			return Result.Failure<bool>($"User event submission failed: {error}");
 		}
 		catch (Exception ex)
 		{
@@ -606,300 +457,35 @@ public partial class EventService : AutoloadBase
 	/// Execute GET query against backend API
 	/// </summary>
 	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
-	public async Task<Result<TResponse>> QueryAsync<TResponse>(
+	public Task<Result<TResponse>> QueryAsync<TResponse>(
 		string endpoint,
 		Dictionary<string, string> queryParams = null,
 		Guid? playerId = null
 	) where TResponse : class
-	{
-		if (!IsReady)
-			return Result.Failure<TResponse>("EventService not initialized - backend not ready");
-
-		try
-		{
-			await EnsureConnectedAsync();
-
-			var url = endpoint;
-			if (queryParams != null && queryParams.Count > 0)
-			{
-				var query = string.Join("&",
-					queryParams.Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
-				url = $"{endpoint}?{query}";
-			}
-
-			var headers = BuildHeaders(playerId);
-			headers.Add("Accept: application/json");
-			var headersArray = headers.ToArray();
-
-			var error = _httpClient.Request(HttpClient.Method.Get, url, headersArray);
-			if (error != Godot.Error.Ok)
-				return Result.Failure<TResponse>($"Query request failed: {error}");
-
-			await WaitForResponseAsync();
-
-			var responseCode = _httpClient.GetResponseCode();
-			if (responseCode != 200)
-			{
-				// Close connection to allow recovery on next request
-				_httpClient.Close();
-				return Result.Failure<TResponse>($"Query failed with code {responseCode}");
-			}
-
-			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
-			var bodyText = bodyBytes.GetStringFromUtf8();
-
-			// Validate body before deserializing
-			if (string.IsNullOrEmpty(bodyText))
-			{
-				_httpClient.Close();
-				return Result.Failure<TResponse>("Empty response body from query");
-			}
-
-			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
-			return Result.Success(response);
-		}
-		catch (Exception ex)
-		{
-			// Close connection on exception to ensure clean state
-			_httpClient.Close();
-			return Result.Failure<TResponse>($"Query exception: {ex.Message}");
-		}
-	}
+		=> _backend.QueryAsync<TResponse>(endpoint, queryParams, playerId);
 
 	/// <summary>
 	/// Execute GET query against backend API, returning raw JSON string
 	/// Used by game event services for custom JSON parsing
 	/// </summary>
 	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
-	public async Task<Result<string>> QueryRawAsync(
+	public Task<Result<string>> QueryRawAsync(
 		string endpoint,
 		Dictionary<string, string> queryParams = null,
 		Guid? playerId = null
-	)
-	{
-		if (!IsReady)
-			return Result.Failure<string>("EventService not initialized - backend not ready");
-
-		try
-		{
-			await EnsureConnectedAsync();
-
-			var url = endpoint;
-			if (queryParams != null && queryParams.Count > 0)
-			{
-				var query = string.Join("&",
-					queryParams.Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
-				url = $"{endpoint}?{query}";
-			}
-
-			var headers = BuildHeaders(playerId);
-			headers.Add("Accept: application/json");
-			var headersArray = headers.ToArray();
-
-			var error = _httpClient.Request(HttpClient.Method.Get, url, headersArray);
-			if (error != Godot.Error.Ok)
-				return Result.Failure<string>($"Query request failed: {error}");
-
-			await WaitForResponseAsync();
-
-			// CRITICAL: Poll to ensure body is fully received
-			// Using reactive polling
-			var responseCode = _httpClient.GetResponseCode();
-			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
-			var bodyText = bodyBytes.GetStringFromUtf8();
-
-			if (responseCode != 200)
-			{
-				// Extract backend error details for better debugging
-				var errorMessage = $"Query failed with code {responseCode}";
-
-				// Try to parse backend error structure
-				if (!string.IsNullOrEmpty(bodyText))
-				{
-					try
-					{
-						var parseResult = Json.ParseString(bodyText);
-						if (parseResult.Obj != null)
-						{
-							var errorDict = parseResult.AsGodotDictionary();
-
-							// Extract structured error fields
-							var code = errorDict.GetValueOrDefault("code", "UNKNOWN").ToString();
-							var message = errorDict.GetValueOrDefault("message", bodyText).ToString();
-							var requestId = errorDict.GetValueOrDefault("request_id", "N/A").ToString();
-
-							// Build comprehensive error message
-							errorMessage = $"HTTP {responseCode} [{code}]: {message}";
-
-							// Log full error details for debugging
-							GD.PrintErr($"[EventService] Backend error:");
-							GD.PrintErr($"  Status: {responseCode}");
-							GD.PrintErr($"  Code: {code}");
-							GD.PrintErr($"  Message: {message}");
-							GD.PrintErr($"  Request ID: {requestId}");
-							if (errorDict.ContainsKey("details"))
-							{
-								GD.PrintErr($"  Details: {errorDict["details"]}");
-							}
-							GD.PrintErr($"  Endpoint: {endpoint}");
-						}
-						else
-						{
-							// Failed to parse JSON, use raw body
-							errorMessage = $"Query failed with code {responseCode}: {bodyText}";
-							GD.PrintErr($"[EventService] HTTP {responseCode} error (raw): {bodyText}");
-						}
-					}
-					catch (Exception parseEx)
-					{
-						// Parsing failed, use raw error
-						errorMessage = $"Query failed with code {responseCode}: {bodyText}";
-						GD.PrintErr($"[EventService] Failed to parse error response: {parseEx.Message}");
-						GD.PrintErr($"[EventService] Raw error: {bodyText}");
-					}
-				}
-				else
-				{
-					GD.PrintErr($"[EventService] HTTP {responseCode} with empty response body");
-				}
-
-				// Close connection to allow recovery on next request
-				_httpClient.Close();
-				return Result.Failure<string>(errorMessage);
-			}
-
-			return Result.Success(bodyText);
-		}
-		catch (Exception ex)
-		{
-			// Close connection on exception to ensure clean state
-			_httpClient.Close();
-			return Result.Failure<string>($"Query exception: {ex.Message}");
-		}
-	}
+	) => _backend.QueryRawAsync(endpoint, queryParams, playerId);
 
 	/// <summary>
 	/// Execute POST request against backend API with JSON body
 	/// </summary>
 	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
-	public async Task<Result<TResponse>> PostAsync<TRequest, TResponse>(
+	public Task<Result<TResponse>> PostAsync<TRequest, TResponse>(
 		string endpoint,
 		TRequest requestBody,
 		int expectedStatusCode = 201,
 		Guid? playerId = null
 	) where TResponse : class
-	{
-		if (!IsReady)
-			return Result.Failure<TResponse>("EventService not initialized - backend not ready");
-
-		try
-		{
-			await EnsureConnectedAsync();
-
-			var json = JsonSerializer.Serialize(requestBody, JsonOptions);
-
-			var headers = BuildJsonHeaders(playerId).ToArray();
-
-			var error = _httpClient.Request(HttpClient.Method.Post, endpoint, headers, json);
-			if (error != Godot.Error.Ok)
-				return Result.Failure<TResponse>($"POST request failed: {error}");
-
-			await WaitForResponseAsync();
-
-			var responseCode = _httpClient.GetResponseCode();
-			if (responseCode != expectedStatusCode)
-			{
-				var errorBytes = await _httpClient.ReadResponseBodyAsync();
-				var errorText = errorBytes.GetStringFromUtf8();
-
-				// Close connection to allow recovery on next request
-				_httpClient.Close();
-
-				// Extract user-friendly error message from backend response
-				var userFriendlyError = BarBox.Core.Utils.ErrorMessageHelper.GetUserFriendlyError(errorText);
-				return Result.Failure<TResponse>(userFriendlyError);
-			}
-
-			// Ensure response body is fully received (Godot HttpClient timing issue)
-			// Using reactive polling
-			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
-			var bodyText = bodyBytes.GetStringFromUtf8();
-
-#if DEBUG_HTTP_LIFECYCLE
-			LogInfo($"[HTTP] PostAsync response: code={responseCode}, bodyLength={bodyBytes.Length}");
-#endif
-
-			// Validate body before deserializing
-			if (string.IsNullOrEmpty(bodyText))
-			{
-				_httpClient.Close();
-				return Result.Failure<TResponse>($"POST returned {responseCode} with empty response body");
-			}
-
-			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
-			return Result.Success(response);
-		}
-		catch (Exception ex)
-		{
-			// Close connection on exception to ensure clean state
-			_httpClient.Close();
-			return Result.Failure<TResponse>($"POST exception: {ex.Message}");
-		}
-	}
-
-	/// <summary>
-	/// Execute PUT request against backend API with JSON body
-	/// </summary>
-	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
-	public async Task<Result<TResponse>> PutAsync<TRequest, TResponse>(
-		string endpoint,
-		TRequest requestBody,
-		int expectedStatusCode = 200,
-		Guid? playerId = null
-	) where TResponse : class
-	{
-		if (!IsReady)
-			return Result.Failure<TResponse>("EventService not initialized - backend not ready");
-
-		try
-		{
-			await EnsureConnectedAsync();
-
-			var json = JsonSerializer.Serialize(requestBody, JsonOptions);
-
-			var headers = BuildJsonHeaders(playerId).ToArray();
-
-			var error = _httpClient.Request(HttpClient.Method.Put, endpoint, headers, json);
-			if (error != Godot.Error.Ok)
-				return Result.Failure<TResponse>($"PUT request failed: {error}");
-
-			await WaitForResponseAsync();
-
-			var responseCode = _httpClient.GetResponseCode();
-			if (responseCode != expectedStatusCode)
-			{
-				var errorBytes = await _httpClient.ReadResponseBodyAsync();
-				var errorText = errorBytes.GetStringFromUtf8();
-
-				// Close connection to allow recovery on next request
-				_httpClient.Close();
-
-				return Result.Failure<TResponse>($"PUT failed with code {responseCode}: {errorText}");
-			}
-
-			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
-			var bodyText = bodyBytes.GetStringFromUtf8();
-
-			var response = JsonSerializer.Deserialize<TResponse>(bodyText, JsonOptions);
-			return Result.Success(response);
-		}
-		catch (Exception ex)
-		{
-			// Close connection on exception to ensure clean state
-			_httpClient.Close();
-			return Result.Failure<TResponse>($"PUT exception: {ex.Message}");
-		}
-	}
+		=> _backend.PostAsync<TRequest, TResponse>(endpoint, requestBody, expectedStatusCode, playerId);
 
 	/// <summary>
 	/// Check if username is available for registration
@@ -917,7 +503,7 @@ public partial class EventService : AutoloadBase
 		if (result.IsFailure(out var error))
 			return Result.Failure<bool>(error.Message);
 
-		return Result.Failure<bool>("Unknown error");
+		return Result.Failure<bool>(UnknownError);
 	}
 
 	/// <summary>
@@ -959,7 +545,7 @@ public partial class EventService : AutoloadBase
 			return Result.Failure<PlayerValidationResponse>(error.Message);
 		}
 
-		return Result.Failure<PlayerValidationResponse>("Unknown error");
+		return Result.Failure<PlayerValidationResponse>(UnknownError);
 	}
 
 	/// <summary>
@@ -990,7 +576,7 @@ public partial class EventService : AutoloadBase
 			return Result.Failure<Guid>(error.Message);
 		}
 
-		return Result.Failure<Guid>("Unknown error");
+		return Result.Failure<Guid>(UnknownError);
 	}
 
 	/// <summary>
@@ -1008,7 +594,7 @@ public partial class EventService : AutoloadBase
 		};
 
 		// Use PUT for idempotent box registration
-		var result = await PutAsync<BoxCreateRequest, BoxDetailResponse>(
+		var result = await _backend.PutAsync<BoxCreateRequest, BoxDetailResponse>(
 			$"/box/{boxId}",
 			request,
 			200
@@ -1067,7 +653,7 @@ public partial class EventService : AutoloadBase
 		if (result.IsFailure(out var error))
 			return Result.Failure<Guid>(error.Message);
 
-		return Result.Failure<Guid>("Unknown error");
+		return Result.Failure<Guid>(UnknownError);
 	}
 
 	/// <summary>
@@ -1242,219 +828,6 @@ public partial class EventService : AutoloadBase
 			$"/machine-credits/{gameTag}/consume", request, 200);
 	}
 
-	// Private helper methods
-
-	/// <summary>
-	/// Build HTTP headers with Box API key and optional player Authorization token
-	/// </summary>
-	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
-	private List<string> BuildHeaders(Guid? playerId = null)
-	{
-		if (string.IsNullOrEmpty(_boxApiKey))
-		{
-			LogError("CRITICAL: Attempting HTTP request without API key configured!");
-			throw new InvalidOperationException("Box API key not configured - check .env.local file");
-		}
-
-		var headers = new List<string>
-		{
-			$"X-Box-API-Key: {_boxApiKey}",
-			$"X-Box-ID: {_boxId}",
-			"User-Agent: BarBox-Client/1.0"
-		};
-
-		if (!playerId.HasValue || playerId.Value == Guid.Empty)
-			return headers;
-
-		var sessionManager = SessionManager.GetInstance();
-		if (sessionManager == null)
-		{
-			GD.PushError("[EventService] Authenticated request failed: SessionManager not available");
-			return headers;
-		}
-
-		var jwtToken = sessionManager.GetJwtToken(playerId.Value);
-		if (string.IsNullOrEmpty(jwtToken))
-		{
-			GD.PushError($"[EventService] Authenticated request for player {playerId.Value} failed: JWT token not found");
-			return headers;
-		}
-
-		headers.Add($"Authorization: Bearer {jwtToken}");
-		return headers;
-	}
-
-	/// <summary>
-	/// Build headers for JSON request/response operations
-	/// </summary>
-	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
-	private List<string> BuildJsonHeaders(Guid? playerId = null)
-	{
-		var headers = BuildHeaders(playerId);
-		headers.Add("Accept: application/json");
-		headers.Add("Content-Type: application/json");
-		return headers;
-	}
-
-	/// <summary>
-	/// Build headers with player ID for player-scoped operations
-	/// </summary>
-	private List<string> BuildPlayerHeaders(Guid playerId)
-	{
-		var headers = BuildHeaders();
-		headers.Add($"Player-Id: {playerId}");
-		return headers;
-	}
-
-	private async Task EnsureConnectedAsync()
-	{
-		_httpClient.Poll();
-		var currentStatus = _httpClient.GetStatus();
-
-#if DEBUG_HTTP_LIFECYCLE
-		LogInfo($"[HTTP] EnsureConnected - Initial status: {currentStatus}");
-#endif
-
-		// Connection is ready for new requests
-		if (currentStatus == HttpClient.Status.Connected)
-		{
-#if DEBUG_HTTP_LIFECYCLE
-			LogInfo("[HTTP] Connection ready for reuse (keep-alive)");
-#endif
-			return;
-		}
-
-		// Handle intermediate states from previous requests
-		if (currentStatus == HttpClient.Status.Body)
-		{
-#if DEBUG_HTTP_LIFECYCLE
-			LogInfo("[HTTP] Cleaning up unconsumed response body from previous request");
-#endif
-
-			// Fully consume response body - may be chunked, requiring multiple reads
-			const int MAX_DISCARD_BYTES = 10 * 1024 * 1024; // 10MB limit to prevent DOS
-			int totalBytesDiscarded = 0;
-			while (_httpClient.GetStatus() == HttpClient.Status.Body)
-			{
-				// Direct call intentional - chunked reading in loop
-				var chunk = _httpClient.ReadResponseBodyChunk();
-				if (chunk.Length == 0)
-					break; // No more data available
-
-				totalBytesDiscarded += chunk.Length;
-
-				// Prevent unbounded memory consumption from malicious/buggy responses
-				if (totalBytesDiscarded > MAX_DISCARD_BYTES)
-				{
-					LogError($"Response body exceeded {MAX_DISCARD_BYTES} bytes - aborting connection");
-					_httpClient.Close();
-					throw new InvalidOperationException($"Response body too large (>{MAX_DISCARD_BYTES} bytes)");
-				}
-			}
-
-#if DEBUG_HTTP_LIFECYCLE
-			if (totalBytesDiscarded > 0)
-				LogInfo($"[HTTP] Discarded {totalBytesDiscarded} bytes of unconsumed response data");
-#endif
-
-			// Poll to advance state machine after full consumption
-			_httpClient.Poll();
-			currentStatus = _httpClient.GetStatus();
-
-			if (currentStatus == HttpClient.Status.Connected)
-			{
-#if DEBUG_HTTP_LIFECYCLE
-				LogInfo("[HTTP] Connection recovered to Connected state after cleanup");
-#endif
-				return; // Now ready for reuse
-			}
-		}
-
-		// If still not in a good state, close and reconnect
-		if (currentStatus != HttpClient.Status.Disconnected)
-		{
-#if DEBUG_HTTP_LIFECYCLE
-			LogInfo($"[HTTP] Closing stale connection (status: {currentStatus})");
-#endif
-
-			_httpClient.Close();
-			await DelayAsync(0.01f); // Brief delay for clean close
-		}
-
-		// Establish new connection
-#if DEBUG_HTTP_LIFECYCLE
-		LogInfo($"[HTTP] Establishing new connection to {_backendHost}:{_backendPort} (HTTPS: {_useHttps})");
-#endif
-
-		// Configure TLS options for HTTPS
-		TlsOptions tlsOptions = null;
-		if (_useHttps)
-		{
-			// Pass hostname for SNI (Server Name Indication) - required for Fly.io's shared IP infrastructure
-			tlsOptions = TlsOptions.Client(null, _backendHost);
-		}
-
-		var error = _httpClient.ConnectToHost(_backendHost, _backendPort, tlsOptions);
-		if (error != Godot.Error.Ok)
-			throw new InvalidOperationException($"Failed to connect to backend: {error}");
-
-		// Use aggressive polling utility - exits immediately when connected
-		bool connected = await _httpClient.PollUntilConnectedAsync(timeoutSeconds: 5.0f);
-		if (!connected)
-			throw new InvalidOperationException("Connection timeout");
-
-#if DEBUG_HTTP_LIFECYCLE
-		LogInfo("[HTTP] New connection established successfully");
-#endif
-	}
-
-	private async Task WaitForResponseAsync()
-	{
-#if DEBUG_HTTP_LIFECYCLE
-		_httpClient.Poll();
-		var statusBeforeWait = _httpClient.GetStatus();
-		LogInfo($"[HTTP] WaitForResponse - Status before wait: {statusBeforeWait}");
-#endif
-
-		// Use aggressive polling utility - exits immediately when response ready
-		bool ready = await _httpClient.PollUntilResponseReadyAsync(
-			timeoutSeconds: REQUEST_TIMEOUT_MS / 1000.0f
-		);
-
-		if (!ready)
-		{
-			_httpClient.Poll();
-			var finalStatus = _httpClient.GetStatus();
-			throw new InvalidOperationException($"Request timeout (final status: {finalStatus})");
-		}
-
-#if DEBUG_HTTP_LIFECYCLE
-		_httpClient.Poll();
-		var statusAfterWait = _httpClient.GetStatus();
-		LogInfo($"[HTTP] WaitForResponse - Status after wait: {statusAfterWait}");
-#endif
-	}
-
-
-	private string GetBoxApiKey()
-	{
-		var locationManager = LocationManager.GetAutoload();
-		if (locationManager != null && locationManager.IsConfigLoaded)
-		{
-			return locationManager.BoxApiKey;
-		}
-
-		// Fallback
-		var apiKey = System.Environment.GetEnvironmentVariable("BARBOX_API_KEY");
-		if (string.IsNullOrEmpty(apiKey))
-		{
-			LogWarning("BARBOX_API_KEY not set - authenticated requests will fail");
-			return "";
-		}
-
-		return apiKey;
-	}
-
 	/// <summary>
 	/// Get player ID from phone number by looking up active session
 	/// This is a compatibility helper for the phone-based auth system
@@ -1513,15 +886,14 @@ public partial class EventService : AutoloadBase
 	}
 
 	/// <summary>
-	/// Override IsReady property to check test override in DEBUG builds.
-	/// In RELEASE builds, this property doesn't exist and base.IsReady is used.
+	/// Ready state now forwards to BackendClient (the actual transport) - the test
+	/// override takes priority over that forwarded value when active.
 	/// </summary>
-	public new bool IsReady => _useTestReadyOverride ? _testReadyOverride : base.IsReady;
+	public new bool IsReady => _useTestReadyOverride ? _testReadyOverride : (_backend?.IsReady ?? false);
+#else
+	/// <summary>
+	/// Ready state forwards to BackendClient - EventService itself has no separate transport to be ready about.
+	/// </summary>
+	public new bool IsReady => _backend?.IsReady ?? false;
 #endif
-
-	protected override void OnServiceDestroyed()
-	{
-		_httpClient?.Close();
-		_httpClient = null;
-	}
 }
