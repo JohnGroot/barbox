@@ -8,8 +8,9 @@ RUN pip install uv
 WORKDIR /app
 
 # Copy project files
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock alembic.ini ./
 COPY src/ ./src/
+COPY alembic/ ./alembic/
 
 # Install dependencies
 RUN uv venv .venv && \

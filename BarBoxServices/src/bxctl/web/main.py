@@ -4,12 +4,15 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
+from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from sqlalchemy import inspect as sa_inspect
 from structlog import get_logger
 
 from bxctl import env
@@ -20,6 +23,12 @@ from bxctl.structures import GAMES
 from . import box, machine_credits, payments, player, test
 
 logger = get_logger()
+
+# Resolved relative to cwd, not __file__: once installed (Docker's `uv pip
+# install .`), bxctl lives under site-packages and no longer sits next to
+# alembic.ini. Every entry point (dev.sh, start_backend.sh, the Docker CMD)
+# already runs with cwd set to the project root, so this matches all of them.
+_ALEMBIC_INI = pathlib.Path("alembic.ini")
 
 # Rate limiter for authentication endpoints
 # Disable in dev/test environments to avoid interfering with integration tests
@@ -38,14 +47,39 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Remove stale ready file from previous run
     READY_FILE.unlink(missing_ok=True)
 
-    async with engine.begin() as conn:
-        # Optional: Drop database for clean testing
-        if settings.should_drop_database():
-            logger.info("Development mode: Dropping and recreating database")
-            await conn.run_sync(Base.metadata.drop_all)
+    if settings.is_production():
+        # Schema is Alembic-owned in production; migrations run against the
+        # persistent volume instead of create_all so schema changes are
+        # tracked and reviewable rather than inferred from the models. The
+        # existing prod volume predates Alembic and already has every table
+        # from the baseline revision with no alembic_version row, so the
+        # first boot on this revision must stamp rather than upgrade (an
+        # upgrade would try to CREATE TABLE on tables that already exist).
+        alembic_cfg = AlembicConfig(str(_ALEMBIC_INI))
 
-        # Always create missing tables
-        await conn.run_sync(Base.metadata.create_all)
+        async with engine.begin() as conn:
+            already_versioned = await conn.run_sync(
+                lambda c: sa_inspect(c).has_table("alembic_version")
+            )
+            has_baseline_tables = await conn.run_sync(
+                lambda c: sa_inspect(c).has_table("box")
+            )
+
+        if not already_versioned and has_baseline_tables:
+            await asyncio.to_thread(alembic_command.stamp, alembic_cfg, "head")
+            logger.info("Existing pre-Alembic database stamped at head")
+        else:
+            await asyncio.to_thread(alembic_command.upgrade, alembic_cfg, "head")
+            logger.info("Database migrated to head via Alembic")
+    else:
+        # Dev/test: create_all keeps iteration fast (no migration authoring
+        # needed for local schema changes).
+        async with engine.begin() as conn:
+            if settings.should_drop_database():
+                logger.info("Development mode: Dropping and recreating database")
+                await conn.run_sync(Base.metadata.drop_all)
+
+            await conn.run_sync(Base.metadata.create_all)
         logger.info(f"Database ready in {settings.env} mode (drop_on_startup={settings.drop_db_on_startup})")
 
     # Auto-seed test data in development mode for consistent editor/test experience

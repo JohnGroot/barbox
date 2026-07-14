@@ -7,6 +7,7 @@ dependencies = [
     "fastapi[standard]>=0.116.1",
     "dramatiq[redis,watch]>=1.18.0",
     "sqlalchemy[asyncio]>=2.0.41",
+    "alembic>=1.16.4",
     "structlog>=25.4.0",
     "aiosqlite>=0.21.0",
     "pydantic-settings>=2.10.1",
@@ -27,7 +28,6 @@ dev = [
     "ty>=0.0.1a16",
     "ruff>=0.12.5",
     "mypy>=1.17.0",
-    "alembic>=1.16.4",
     "ipython>=9.4.0",
 ]
 
