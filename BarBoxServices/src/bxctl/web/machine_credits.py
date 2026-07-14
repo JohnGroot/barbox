@@ -13,6 +13,7 @@ from structlog import get_logger
 
 from bxctl import structures
 from bxctl.db import defs
+from bxctl.games import common
 from . import dependencies
 
 logger = get_logger()
@@ -47,18 +48,9 @@ async def get_machine_credits(
     """
 
     # Aggregate machine_credit/deposit and machine_credit/consume events
-    sql = """
+    sql = f"""
 	SELECT
-		COALESCE(
-			SUM(CASE
-				WHEN bse.type = 'machine_credit/deposit' THEN
-					CAST(json_extract(bse.payload, '$.amount') AS INTEGER)
-				WHEN bse.type = 'machine_credit/consume' THEN
-					-CAST(json_extract(bse.payload, '$.amount') AS INTEGER)
-				ELSE 0
-			END),
-			0
-		) as balance
+		{common.signed_sum_sql("bse.payload, '$.amount'", "machine_credit/deposit", "machine_credit/consume")} as balance
 	FROM box_session_event bse
 	WHERE bse.type IN ('machine_credit/deposit', 'machine_credit/consume')
 	AND json_extract(bse.payload, '$.box_id') = :box_id

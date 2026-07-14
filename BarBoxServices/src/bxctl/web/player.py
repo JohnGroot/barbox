@@ -10,6 +10,7 @@ from structlog import get_logger
 from typing import Annotated
 
 from bxctl import db, env, structures
+from bxctl.games import common
 
 from . import auth, dependencies
 
@@ -483,18 +484,9 @@ async def get_player_credits(
     """Get player's credit balance for a specific location"""
 
     # Aggregate credits from credit/earn and credit/spend events
-    sql = """
+    sql = f"""
     SELECT
-        COALESCE(
-            SUM(CASE
-                WHEN bse.type = 'credit/earn' THEN
-                    CAST(json_extract(bse.payload, '$.amount') AS INTEGER)
-                WHEN bse.type = 'credit/spend' THEN
-                    -CAST(json_extract(bse.payload, '$.amount') AS INTEGER)
-                ELSE 0
-            END),
-            0
-        ) as credits
+        {common.signed_sum_sql("bse.payload, '$.amount'", "credit/earn", "credit/spend")} as credits
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
     WHERE bs.host_player_id = :player_id

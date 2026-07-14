@@ -150,6 +150,39 @@ def parse_username_safe(value: Any) -> str:
     return str(value)
 
 
+def signed_sum_sql(column: str, earn_type: str, spend_type: str) -> str:
+    """
+    Build the `SUM(CASE WHEN earn THEN + ... WHEN spend THEN - ... END)` SQL
+    fragment shared by every credit-balance query (player credits, machine
+    credit pots): balance is derived by summing signed amounts from an event
+    log rather than stored directly.
+
+    Args:
+        column: JSON path to the amount field, e.g. "bse.payload, '$.amount'"
+        earn_type: event `type` value that adds to the balance
+        spend_type: event `type` value that subtracts from the balance
+
+    Returns:
+        A `COALESCE(SUM(CASE ...), 0)` SQL expression - embed it directly in
+        a SELECT; the caller still owns the FROM/JOIN/WHERE clause, which
+        differs per balance kind (player-scoped vs box+game-scoped).
+
+    Example:
+        >>> signed_sum_sql("bse.payload, '$.amount'", "credit/earn", "credit/spend")
+        "COALESCE(SUM(CASE WHEN bse.type = 'credit/earn' THEN ... END), 0)"
+    """
+    return f"""COALESCE(
+        SUM(CASE
+            WHEN bse.type = '{earn_type}' THEN
+                CAST(json_extract({column}) AS INTEGER)
+            WHEN bse.type = '{spend_type}' THEN
+                -CAST(json_extract({column}) AS INTEGER)
+            ELSE 0
+        END),
+        0
+    )"""
+
+
 def safe_parse_leaderboard[T](
     rows: Any,
     parser_fn: Any,
