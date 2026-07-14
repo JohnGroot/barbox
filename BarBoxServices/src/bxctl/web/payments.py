@@ -406,7 +406,7 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail={
-                "code": "PAYMENT_SERVICE_TIMEOUT",
+                "code": structures.ErrorCode.PAYMENT_SERVICE_TIMEOUT,
                 "message": "Payment service timed out, please try again",
                 "retryable": True,
             },
@@ -416,7 +416,7 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
-                "code": "PAYMENT_SERVICE_UNAVAILABLE",
+                "code": structures.ErrorCode.PAYMENT_SERVICE_UNAVAILABLE,
                 "message": "Payment service temporarily unavailable",
                 "retryable": True,
             },
@@ -427,7 +427,7 @@ async def create_checkout_session(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             headers={"Retry-After": "60"},
             detail={
-                "code": "RATE_LIMITED",
+                "code": structures.ErrorCode.RATE_LIMITED,
                 "message": "Too many requests, please try again later",
                 "retryable": True,
             },
@@ -437,7 +437,7 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "code": "INVALID_PAYMENT_REQUEST",
+                "code": structures.ErrorCode.INVALID_PAYMENT_REQUEST,
                 "message": "Invalid payment request",
                 "retryable": False,
             },

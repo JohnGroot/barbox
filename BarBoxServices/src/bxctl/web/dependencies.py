@@ -8,7 +8,7 @@ from jose import JWTError
 from sqlalchemy import select
 from structlog import get_logger
 
-from bxctl import db
+from bxctl import db, structures
 from . import auth
 
 logger = get_logger()
@@ -47,13 +47,20 @@ async def _verify_box_api_key_header(box_id: UUID, x_box_api_key: str | None) ->
         logger.warning("box_auth_missing_api_key", box_id=str(box_id))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-Box-API-Key header",
+            detail={
+                "code": structures.ErrorCode.UNAUTHORIZED,
+                "message": "Missing X-Box-API-Key header",
+            },
         )
 
     if not auth.verify_box_api_key(x_box_api_key, box_id):
         logger.warning("box_auth_invalid_key", box_id=str(box_id))
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": structures.ErrorCode.UNAUTHORIZED,
+                "message": "Invalid API key",
+            },
         )
 
 
@@ -221,7 +228,11 @@ async def _get_authenticated_box_from_header(
     if not x_box_id:
         logger.warning("box_auth_missing_box_id_header")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-Box-ID header"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": structures.ErrorCode.UNAUTHORIZED,
+                "message": "Missing X-Box-ID header",
+            },
         )
 
     await _verify_box_api_key_header(x_box_id, x_box_api_key)

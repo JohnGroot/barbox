@@ -235,7 +235,10 @@ async def consume_machine_credits(
         if current.balance < request.amount:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Insufficient machine credits: have {current.balance}, need {request.amount}",
+                detail={
+                    "code": structures.ErrorCode.INSUFFICIENT_CREDITS,
+                    "message": f"Insufficient machine credits: have {current.balance}, need {request.amount}",
+                },
             )
 
         # Create machine_credit/consume event

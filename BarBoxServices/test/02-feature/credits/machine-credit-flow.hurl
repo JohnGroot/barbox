@@ -216,7 +216,8 @@ Content-Type: application/json
 }
 HTTP 400
 [Asserts]
-jsonpath "$.detail" contains "Insufficient machine credits"
+jsonpath "$.detail.code" == "INSUFFICIENT_CREDITS"
+jsonpath "$.detail.message" contains "Insufficient machine credits"
 
 # Step 18: Test box+game isolation - different game should have separate pot
 GET http://127.0.0.1:8000/machine-credits/racing?box_id=a206c3ee-733d-48a5-8906-a653f1b9f7ce
