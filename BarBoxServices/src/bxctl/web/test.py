@@ -13,7 +13,8 @@ from structlog import get_logger
 
 from bxctl import db, env, structures
 
-from . import auth, dependencies, payments
+from . import auth, dependencies
+from .payments import service as payments_service
 
 router = APIRouter(prefix="/test", tags=["Testing"])
 logger = get_logger()
@@ -317,7 +318,7 @@ async def mock_webhook(
 
     # Call pure business logic (same function used by real webhook)
     try:
-        result = await payments._issue_credits_for_payment(
+        result = await payments_service.issue_credits_for_payment(
             event_id=request.event_id,
             session_id=request.session_id,
             payment_intent_id=request.payment_intent_id,

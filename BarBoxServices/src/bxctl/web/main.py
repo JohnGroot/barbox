@@ -20,7 +20,8 @@ from bxctl.db.connectivity import engine
 from bxctl.db.defs import Base
 from bxctl.structures import GAMES
 
-from . import box, machine_credits, payments, player, test
+from . import box, machine_credits, player, test
+from .payments import router as payments_router
 
 logger = get_logger()
 
@@ -278,8 +279,8 @@ routers = (
     player.router,
     box.router,
     machine_credits.router,  # Machine credit pot management
-    payments.router,  # Stripe checkout sessions for credit purchases
-    payments.admin_router,  # Payment reconciliation (localhost only)
+    payments_router.router,  # Stripe checkout sessions for credit purchases
+    payments_router.admin_router,  # Payment reconciliation (localhost only)
     test.router,  # Test endpoints (only available in dev/test modes)
 )
 for router in routers:
