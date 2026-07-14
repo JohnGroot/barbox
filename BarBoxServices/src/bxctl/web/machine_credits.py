@@ -3,6 +3,8 @@
 Per box+game credit pools - credits transferred to machines persist until consumed by game start.
 """
 
+import asyncio
+from collections import defaultdict
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -15,6 +17,13 @@ from . import dependencies
 
 logger = get_logger()
 router = APIRouter(prefix="/machine-credits", tags=["Core: Machine Credits"])
+
+# Serializes check-then-insert consume requests per box+game pot so two
+# concurrent consumes can't both read the same pre-insert balance and
+# overdraw it. Single-process deployment (see fly.toml/start_backend.sh) makes
+# an in-process lock sufficient; SQLite has no row-level locking to lean on
+# instead.
+_consume_locks: defaultdict[tuple[str, str], asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 @router.get("/{game_tag}")
@@ -232,32 +241,35 @@ async def consume_machine_credits(
 			},
 		)
 
-	# Verify sufficient balance
-	current = await get_machine_credits(game_tag, request.box_id, db_service)
-	if current.balance < request.amount:
-		raise HTTPException(
-			status_code=status.HTTP_400_BAD_REQUEST,
-			detail=f"Insufficient machine credits: have {current.balance}, need {request.amount}"
-		)
+	# Serialize check-then-insert per box+game pot to prevent concurrent
+	# consumes from both passing the balance check and overdrawing it.
+	lock = _consume_locks[(game_tag, request.box_id.hex)]
+	async with lock:
+		current = await get_machine_credits(game_tag, request.box_id, db_service)
+		if current.balance < request.amount:
+			raise HTTPException(
+				status_code=status.HTTP_400_BAD_REQUEST,
+				detail=f"Insufficient machine credits: have {current.balance}, need {request.amount}"
+			)
 
-	# Create machine_credit/consume event
-	event_id = uuid4()
-	now = datetime.now(UTC)
+		# Create machine_credit/consume event
+		event_id = uuid4()
+		now = datetime.now(UTC)
 
-	await db_service.create(
-		target=defs.BoxSessionEvent,
-		data={
-			"id": event_id,
-			"session_id": request.game_session_id,
-			"type": "machine_credit/consume",
-			"timestamp": now,
-			"payload": {
-				"box_id": request.box_id.hex,
-				"game_tag": game_tag,
-				"amount": request.amount,
+		await db_service.create(
+			target=defs.BoxSessionEvent,
+			data={
+				"id": event_id,
+				"session_id": request.game_session_id,
+				"type": "machine_credit/consume",
+				"timestamp": now,
+				"payload": {
+					"box_id": request.box_id.hex,
+					"game_tag": game_tag,
+					"amount": request.amount,
+				}
 			}
-		}
-	)
+		)
 
 	logger.info(
 		"machine_credit_consumed",
