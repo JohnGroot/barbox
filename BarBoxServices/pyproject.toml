@@ -5,13 +5,11 @@ description = "Barbox is a box in the bar"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi[standard]>=0.116.1",
-    "dramatiq[redis,watch]>=1.18.0",
     "sqlalchemy[asyncio]>=2.0.41",
     "alembic>=1.16.4",
     "structlog>=25.4.0",
     "aiosqlite>=0.21.0",
     "pydantic-settings>=2.10.1",
-    "pottery>=3.0.1",
     "python-jose[cryptography]>=3.5.0",
     "bcrypt>=5.0.0",
     "slowapi>=0.1.9",

@@ -17,7 +17,6 @@ class _Settings(BaseSettings):
     Environment variables:
     - ENV: Environment mode (local/test/prod), defaults to "local"
     - SQLITE_PATH: Path to SQLite database file, defaults to "app.db"
-    - REDIS_URL: Redis connection URL (for future use)
     - DROP_DB_ON_STARTUP: Drop and recreate database on startup (defaults to False)
     - JWT_SECRET_KEY: Secret key for JWT signing (REQUIRED in production)
     - JWT_ALGORITHM: JWT signing algorithm, defaults to "HS256"
@@ -38,7 +37,6 @@ class _Settings(BaseSettings):
 
     env: Environment = "local"
     sqlite_path: str = "app.db"
-    redis_url: str = ""
     drop_db_on_startup: bool = False
 
     # JWT Configuration

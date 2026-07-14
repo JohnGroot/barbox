@@ -230,9 +230,6 @@ CORS_ALLOW_HEADERS=*
 
 # Database Management (dev only)
 DROP_DB_ON_STARTUP=false
-
-# Redis Configuration (optional, for future use)
-REDIS_URL=
 ```
 
 **For Production (Fly.io):** Use `fly secrets set` instead of `.env` file
