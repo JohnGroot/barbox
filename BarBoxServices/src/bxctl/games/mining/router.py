@@ -137,7 +137,9 @@ async def reset_player_mining_state(
         }
 
     except Exception as e:
-        logger.error("mining_state_reset_failed", player_id=str(player_id), error=str(e))
+        logger.error(
+            "mining_state_reset_failed", player_id=str(player_id), error=str(e)
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "OPERATION_FAILED", "message": str(e)},
@@ -168,7 +170,9 @@ async def register_location(
     try:
         return await service.register_or_get_location(db_service, venue_name)
     except ValueError as e:
-        logger.error("location_registration_failed", venue_name=venue_name, error=str(e))
+        logger.error(
+            "location_registration_failed", venue_name=venue_name, error=str(e)
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "REGISTRATION_FAILED", "message": str(e)},

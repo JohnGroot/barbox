@@ -54,7 +54,9 @@ async def get_jackpot_state(
         timestamp_str = row[0]
         if timestamp_str:
             try:
-                last_win_timestamp = datetime.fromisoformat(timestamp_str).replace(tzinfo=UTC)
+                last_win_timestamp = datetime.fromisoformat(timestamp_str).replace(
+                    tzinfo=UTC
+                )
             except ValueError:
                 last_win_timestamp = None
         else:

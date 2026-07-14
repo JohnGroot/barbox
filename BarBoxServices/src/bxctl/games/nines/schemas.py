@@ -19,8 +19,10 @@ EventType = NinesEventType
 
 # ============= EVENT PAYLOADS =============
 
+
 class NinesJackpotWonPayload(BaseModel):
     """Payload for nines/jackpot_won event."""
+
     venue_name: str = Field(description="Venue where jackpot was won")
     player_id: str = Field(description="Player who won the jackpot")
     jackpot_amount: int = Field(description="Credits won")
@@ -28,6 +30,7 @@ class NinesJackpotWonPayload(BaseModel):
 
 
 # ============= API RESPONSE MODELS =============
+
 
 class NinesJackpotResponse(BaseModel):
     """
@@ -37,15 +40,14 @@ class NinesJackpotResponse(BaseModel):
     Client calculates jackpot amount as:
     BaseJackpotValue + (DaysSinceLastWin * DailyJackpotGrowth)
     """
+
     venue_name: str = Field(description="Venue identifier")
     last_win_timestamp: datetime | None = Field(
         description="Timestamp of last jackpot win at this venue (None if never won)"
     )
     last_winner_name: str | None = Field(
-        default=None,
-        description="Display name of last jackpot winner"
+        default=None, description="Display name of last jackpot winner"
     )
     last_jackpot_amount: int | None = Field(
-        default=None,
-        description="Amount of last jackpot won"
+        default=None, description="Amount of last jackpot won"
     )

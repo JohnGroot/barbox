@@ -91,7 +91,9 @@ async def _get_player_mining_inventory(
 
         # Track most recent update (parse string timestamp)
         if row_timestamp_str:
-            row_timestamp = datetime.fromisoformat(row_timestamp_str).replace(tzinfo=UTC)
+            row_timestamp = datetime.fromisoformat(row_timestamp_str).replace(
+                tzinfo=UTC
+            )
             if row_timestamp > last_updated:
                 last_updated = row_timestamp
 
@@ -134,7 +136,9 @@ async def _get_player_mining_upgrades(
     GROUP BY upgrade_type
     """
 
-    result = await db.get_many_raw(sql, {"player_id": player_id.hex, "location_id": location_id})
+    result = await db.get_many_raw(
+        sql, {"player_id": player_id.hex, "location_id": location_id}
+    )
 
     # Build upgrades dictionary
     upgrades = {}
@@ -149,7 +153,9 @@ async def _get_player_mining_upgrades(
 
         # Track most recent update (parse string timestamp)
         if row_timestamp_str:
-            row_timestamp = datetime.fromisoformat(row_timestamp_str).replace(tzinfo=UTC)
+            row_timestamp = datetime.fromisoformat(row_timestamp_str).replace(
+                tzinfo=UTC
+            )
             if row_timestamp > last_updated:
                 last_updated = row_timestamp
 
@@ -195,10 +201,9 @@ async def _get_player_mining_timestamp(
     LIMIT 1
     """
 
-    result = await db.get_many_raw(sql, {
-        "player_id": player_id.hex,
-        "location_id": location_id
-    })
+    result = await db.get_many_raw(
+        sql, {"player_id": player_id.hex, "location_id": location_id}
+    )
     row = result.first()
 
     if row and row[0]:
@@ -246,7 +251,9 @@ async def _get_player_mining_metadata(
     AND json_extract(bse.payload, '$.location_id') = :location_id
     """
 
-    result = await db.get_many_raw(sql, {"player_id": player_id.hex, "location_id": location_id})
+    result = await db.get_many_raw(
+        sql, {"player_id": player_id.hex, "location_id": location_id}
+    )
     row = result.first()
 
     if row:
@@ -289,7 +296,12 @@ async def get_player_state(
     """
 
     # Call all internal query methods in parallel using asyncio.gather
-    inventory_response, upgrades_response, timestamp_response, metadata_response = await asyncio.gather(
+    (
+        inventory_response,
+        upgrades_response,
+        timestamp_response,
+        metadata_response,
+    ) = await asyncio.gather(
         _get_player_mining_inventory(db, player_id),
         _get_player_mining_upgrades(db, player_id, location_id),
         _get_player_mining_timestamp(db, player_id, location_id),
@@ -323,7 +335,9 @@ async def get_location_by_venue_name(
     Returns:
         MiningLocation if found, None otherwise
     """
-    stmt = select(defs.MiningLocation).where(defs.MiningLocation.venue_name == venue_name)
+    stmt = select(defs.MiningLocation).where(
+        defs.MiningLocation.venue_name == venue_name
+    )
     result = await db.session.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -404,7 +418,7 @@ async def register_or_get_location(
                 "gem_type": gem_type,
                 "display_name": display_name,
                 "created_at": datetime.now(UTC),
-            }
+            },
         )
 
         return schemas.MiningLocationResponse(

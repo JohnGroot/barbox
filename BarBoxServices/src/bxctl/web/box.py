@@ -66,7 +66,9 @@ async def create_box(
                 ),
                 "details": {
                     "conflict_field": "id" if existing_box.id == new_box.id else "tag",
-                    "conflict_value": str(new_box.id) if existing_box.id == new_box.id else new_box.tag,
+                    "conflict_value": str(new_box.id)
+                    if existing_box.id == new_box.id
+                    else new_box.tag,
                 },
             },
         )
@@ -113,7 +115,7 @@ async def create_box(
             detail={
                 "code": structures.ErrorCode.UNIQUE_CONSTRAINT,
                 "message": "Box creation failed due to a constraint violation.",
-                "details": {"error": str(e.orig) if hasattr(e, 'orig') else str(e)},
+                "details": {"error": str(e.orig) if hasattr(e, "orig") else str(e)},
             },
         )
 
@@ -271,7 +273,7 @@ async def register_box(
             detail={
                 "code": structures.ErrorCode.UNIQUE_CONSTRAINT,
                 "message": "Box registration failed due to a constraint violation.",
-                "details": {"error": str(e.orig) if hasattr(e, 'orig') else str(e)},
+                "details": {"error": str(e.orig) if hasattr(e, "orig") else str(e)},
             },
         )
 
@@ -361,8 +363,12 @@ async def create_box_session(
     authenticated_box: dependencies.BoxAuthenticatedWithPath,
     db_service: dependencies.Database,
     now: dependencies.Now,
-    player_id: Annotated[UUID | None, Header()] = None,  # Optional: Required for logged-in play, None for practice mode
-    player_ids: Annotated[str | None, Query()] = None,  # Optional JSON array of player IDs for multiplayer
+    player_id: Annotated[
+        UUID | None, Header()
+    ] = None,  # Optional: Required for logged-in play, None for practice mode
+    player_ids: Annotated[
+        str | None, Query()
+    ] = None,  # Optional JSON array of player IDs for multiplayer
 ) -> structures.BoxSessionDetail:
     """
     Create a game session for single or multiple players, or practice mode.
@@ -520,7 +526,9 @@ async def add_session_event(
         )
 
     # Use validated payload if available, otherwise original
-    final_payload = validated_payload if validated_payload is not None else event.payload
+    final_payload = (
+        validated_payload if validated_payload is not None else event.payload
+    )
 
     # Log credit event payloads for debugging
     if event.type in ("credit/earn", "credit/spend"):

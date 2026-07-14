@@ -50,7 +50,11 @@ def parse_json_field(value: Any) -> list | dict | None:
             return None
 
     # Unexpected type - log warning
-    logger.warning("unexpected_json_type", value_type=type(value).__name__, value_sample=str(value)[:100])
+    logger.warning(
+        "unexpected_json_type",
+        value_type=type(value).__name__,
+        value_sample=str(value)[:100],
+    )
     return None
 
 
@@ -79,7 +83,11 @@ def parse_float_list(value: Any) -> list[float] | None:
         return None
 
     if not isinstance(parsed, list):
-        logger.warning("expected_list_got_other", value_type=type(parsed).__name__, value_sample=str(parsed)[:100])
+        logger.warning(
+            "expected_list_got_other",
+            value_type=type(parsed).__name__,
+            value_sample=str(parsed)[:100],
+        )
         return None
 
     try:
@@ -165,7 +173,7 @@ def safe_parse_leaderboard[T](
         ...     return LeaderboardEntry(
         ...         player_id=parse_uuid_safe(row[0]),
         ...         username=parse_username_safe(row[1]),
-        ...         score=row[2]
+        ...         score=row[2],
         ...     )
         >>> leaderboard = safe_parse_leaderboard(result.tuples(), parse_row)
     """
@@ -175,7 +183,9 @@ def safe_parse_leaderboard[T](
             entry = parser_fn(row)
             entries.append(entry)
         except Exception as e:
-            logger.error("leaderboard_entry_parse_failed", row=str(row)[:200], error=str(e))
+            logger.error(
+                "leaderboard_entry_parse_failed", row=str(row)[:200], error=str(e)
+            )
             # Continue processing remaining rows instead of crashing
             continue
     return entries

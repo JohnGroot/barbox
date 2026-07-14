@@ -29,143 +29,147 @@ limiter = Limiter(key_func=get_remote_address, enabled=settings.is_production())
 @router.post("/auth/login", status_code=200, tags=["Auth"])
 @limiter.limit("5/minute")  # Max 5 login attempts per IP per minute
 async def authenticate_player(
-	request: Request,  # Required for rate limiter
-	credentials: structures.PlayerLoginRequest,
-	authenticated_box: dependencies.BoxAuthenticated,
-	db_service: dependencies.Database,
-	now: dependencies.Now,
+    request: Request,  # Required for rate limiter
+    credentials: structures.PlayerLoginRequest,
+    authenticated_box: dependencies.BoxAuthenticated,
+    db_service: dependencies.Database,
+    now: dependencies.Now,
 ) -> structures.PlayerLoginResponse:
-	"""Authenticate player and issue JWT token.
+    """Authenticate player and issue JWT token.
 
-	Validates player credentials (phone number + PIN) and generates a JWT token
-	for authenticated API access. Uses phone number lookup to retrieve player ID
-	(secure, non-deterministic UUIDs).
+    Validates player credentials (phone number + PIN) and generates a JWT token
+    for authenticated API access. Uses phone number lookup to retrieve player ID
+    (secure, non-deterministic UUIDs).
 
-	Box authentication is required via API key to prevent unauthorized login attempts.
+    Box authentication is required via API key to prevent unauthorized login attempts.
 
-	Security features:
-	- Rate limiting: Max 5 attempts per IP per minute
-	- Account lockout: Max 5 failed attempts per phone in 30min window
-	- Timing-safe validation: Prevents account enumeration
-	- Generic error messages: Doesn't reveal which part failed
+    Security features:
+    - Rate limiting: Max 5 attempts per IP per minute
+    - Account lockout: Max 5 failed attempts per phone in 30min window
+    - Timing-safe validation: Prevents account enumeration
+    - Generic error messages: Doesn't reveal which part failed
 
-	Args:
-		credentials: Player phone number, PIN, and box ID
-		authenticated_box: Box authenticated via API key
-		db_service: Database session
-		now: Current timestamp
+    Args:
+            credentials: Player phone number, PIN, and box ID
+            authenticated_box: Box authenticated via API key
+            db_service: Database session
+            now: Current timestamp
 
-	Returns:
-		200: JWT token with expiration time
-		401: Invalid credentials (phone number or PIN incorrect)
-		403: Box ID mismatch or account locked out
-		500: Internal server error
-	"""
-	# Verify box ID matches authenticated box
-	if credentials.box_id != authenticated_box.id:
-		logger.warning(
-			"player_login_box_mismatch",
-			requested_box_id=str(credentials.box_id),
-			authenticated_box_id=str(authenticated_box.id),
-		)
-		raise HTTPException(
-			status_code=status.HTTP_403_FORBIDDEN,
-			detail={
-				"code": structures.ErrorCode.VALIDATION_ERROR,
-				"message": "Box ID in credentials does not match authenticated box.",
-				"details": {
-					"requested_box_id": str(credentials.box_id),
-					"authenticated_box_id": str(authenticated_box.id),
-				},
-			},
-		)
+    Returns:
+            200: JWT token with expiration time
+            401: Invalid credentials (phone number or PIN incorrect)
+            403: Box ID mismatch or account locked out
+            500: Internal server error
+    """
+    # Verify box ID matches authenticated box
+    if credentials.box_id != authenticated_box.id:
+        logger.warning(
+            "player_login_box_mismatch",
+            requested_box_id=str(credentials.box_id),
+            authenticated_box_id=str(authenticated_box.id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "message": "Box ID in credentials does not match authenticated box.",
+                "details": {
+                    "requested_box_id": str(credentials.box_id),
+                    "authenticated_box_id": str(authenticated_box.id),
+                },
+            },
+        )
 
-	# Normalize phone number for lookup (allows flexible input formats)
-	try:
-		normalized_phone = auth.validate_and_normalize_phone(credentials.phone_number)
-	except ValueError:
-		# Invalid phone format - treat as failed login (don't reveal it's invalid format)
-		normalized_phone = credentials.phone_number  # Use as-is, will fail lookup
+    # Normalize phone number for lookup (allows flexible input formats)
+    try:
+        normalized_phone = auth.validate_and_normalize_phone(credentials.phone_number)
+    except ValueError:
+        # Invalid phone format - treat as failed login (don't reveal it's invalid format)
+        normalized_phone = credentials.phone_number  # Use as-is, will fail lookup
 
-	# Look up player by normalized phone number
-	player_result = await db_service.session.execute(
-		select(db.defs.Player).where(db.defs.Player.phone_number == normalized_phone)
-	)
-	player = player_result.scalar_one_or_none()
+    # Look up player by normalized phone number
+    player_result = await db_service.session.execute(
+        select(db.defs.Player).where(db.defs.Player.phone_number == normalized_phone)
+    )
+    player = player_result.scalar_one_or_none()
 
-	# Check if player exists (arcade context: clear error messages)
-	if not player:
-		logger.warning(
-			"player_login_failed_not_registered",
-			phone_number_prefix=credentials.phone_number[:4] + "****" if len(credentials.phone_number) > 4 else "****",
-		)
-		raise HTTPException(
-			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail={
-				"code": structures.ErrorCode.VALIDATION_ERROR,
-				"message": "Account not registered - please create one",
-			},
-		)
+    # Check if player exists (arcade context: clear error messages)
+    if not player:
+        logger.warning(
+            "player_login_failed_not_registered",
+            phone_number_prefix=credentials.phone_number[:4] + "****"
+            if len(credentials.phone_number) > 4
+            else "****",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "message": "Account not registered - please create one",
+            },
+        )
 
-	# Verify PIN
-	is_valid_pin = auth.verify_player_pin(credentials.pin, player.pin_hash)
-	if not is_valid_pin:
-		logger.warning(
-			"player_login_failed_wrong_pin",
-			phone_number_prefix=credentials.phone_number[:4] + "****" if len(credentials.phone_number) > 4 else "****",
-		)
-		raise HTTPException(
-			status_code=status.HTTP_401_UNAUTHORIZED,
-			detail={
-				"code": structures.ErrorCode.VALIDATION_ERROR,
-				"message": "Incorrect PIN - please try again",
-			},
-		)
+    # Verify PIN
+    is_valid_pin = auth.verify_player_pin(credentials.pin, player.pin_hash)
+    if not is_valid_pin:
+        logger.warning(
+            "player_login_failed_wrong_pin",
+            phone_number_prefix=credentials.phone_number[:4] + "****"
+            if len(credentials.phone_number) > 4
+            else "****",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "message": "Incorrect PIN - please try again",
+            },
+        )
 
-	# Use actual player.id (random UUID assigned at registration)
-	access_token, access_exp = auth.create_player_token(player.id, credentials.box_id)
+    # Use actual player.id (random UUID assigned at registration)
+    access_token, access_exp = auth.create_player_token(player.id, credentials.box_id)
 
-	logger.info(
-		"player_authenticated",
-		player_id=str(player.id),
-		box_id=str(credentials.box_id),
-		token_expires_at=access_exp.isoformat(),
-	)
+    logger.info(
+        "player_authenticated",
+        player_id=str(player.id),
+        box_id=str(credentials.box_id),
+        token_expires_at=access_exp.isoformat(),
+    )
 
-	return structures.PlayerLoginResponse(
-		access_token=access_token,
-		player_id=player.id,
-		username=player.tag,
-		expires_at=access_exp,
-	)
+    return structures.PlayerLoginResponse(
+        access_token=access_token,
+        player_id=player.id,
+        username=player.tag,
+        expires_at=access_exp,
+    )
 
 
 @router.post("/auth/logout", status_code=200, tags=["Auth"])
 @limiter.limit("20/minute")  # Max 20 logout attempts per IP per minute
 async def logout_player(
-	request: Request,  # Required for rate limiter
-	player_id: dependencies.AuthenticatedPlayer,
+    request: Request,  # Required for rate limiter
+    player_id: dependencies.AuthenticatedPlayer,
 ) -> dict:
-	"""Logout player (client-side).
+    """Logout player (client-side).
 
-	Requires valid JWT token in Authorization header.
-	Client should forget the token locally. Token will naturally expire after 2 hours.
+    Requires valid JWT token in Authorization header.
+    Client should forget the token locally. Token will naturally expire after 2 hours.
 
-	Arcade-optimized approach:
-	- No server-side token revocation (unnecessary complexity)
-	- 2-hour token expiry + 10-minute idle timeout provides adequate security
-	- Simpler deployment (no revocation database table, no cleanup jobs)
+    Arcade-optimized approach:
+    - No server-side token revocation (unnecessary complexity)
+    - 2-hour token expiry + 10-minute idle timeout provides adequate security
+    - Simpler deployment (no revocation database table, no cleanup jobs)
 
-	Returns:
-		200: Successfully logged out
-		401: Invalid or missing token
-	"""
-	logger.info("player_logged_out", player_id=str(player_id))
+    Returns:
+            200: Successfully logged out
+            401: Invalid or missing token
+    """
+    logger.info("player_logged_out", player_id=str(player_id))
 
-	return {
-		"message": "Successfully logged out. Token will expire in 2 hours.",
-		"player_id": str(player_id)
-	}
+    return {
+        "message": "Successfully logged out. Token will expire in 2 hours.",
+        "player_id": str(player_id),
+    }
 
 
 @router.post("/", status_code=201)
@@ -353,7 +357,7 @@ async def register_player(
             detail={
                 "code": structures.ErrorCode.UNIQUE_CONSTRAINT,
                 "message": "Player creation failed due to a constraint violation.",
-                "details": {"error": str(e.orig) if hasattr(e, 'orig') else str(e)},
+                "details": {"error": str(e.orig) if hasattr(e, "orig") else str(e)},
             },
         )
 
@@ -466,8 +470,7 @@ async def check_username_available(
     is_available = existing_player is None
 
     return structures.UsernameAvailabilityResponse(
-        username=username,
-        is_available=is_available
+        username=username, is_available=is_available
     )
 
 
@@ -502,10 +505,9 @@ async def get_player_credits(
     )
     """
 
-    result = await db_service.get_many_raw(sql, {
-        "player_id": player_id.hex,
-        "location_id": location_id
-    })
+    result = await db_service.get_many_raw(
+        sql, {"player_id": player_id.hex, "location_id": location_id}
+    )
 
     credits = result.scalar() or 0
 
@@ -517,7 +519,5 @@ async def get_player_credits(
     )
 
     return structures.PlayerCreditsResponse(
-        player_id=player_id,
-        location_id=location_id,
-        credits=credits
+        player_id=player_id, location_id=location_id, credits=credits
     )

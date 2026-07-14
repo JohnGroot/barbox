@@ -88,7 +88,9 @@ def is_valid_event_type(event_type: str) -> bool:
     return False
 
 
-def validate_event_payload(event_type: str, payload: dict[str, Any]) -> tuple[bool, str | None, dict | None]:
+def validate_event_payload(
+    event_type: str, payload: dict[str, Any]
+) -> tuple[bool, str | None, dict | None]:
     """
     Validate event payload against its schema.
 
@@ -114,7 +116,9 @@ def validate_event_payload(event_type: str, payload: dict[str, Any]) -> tuple[bo
         validated = payload_model.model_validate(payload)
         return True, None, validated.model_dump()
     except ValidationError as e:
-        error_details = "; ".join([f"{err['loc'][0]}: {err['msg']}" for err in e.errors()])
+        error_details = "; ".join(
+            [f"{err['loc'][0]}: {err['msg']}" for err in e.errors()]
+        )
         return False, f"Payload validation failed: {error_details}", None
 
 

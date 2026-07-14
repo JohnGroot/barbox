@@ -29,4 +29,6 @@ async def get_racing_leaderboard(
     Returns:
         Racing leaderboard with player rankings
     """
-    return await service.get_racing_leaderboard(db_service, track_id, metric, laps, limit)
+    return await service.get_racing_leaderboard(
+        db_service, track_id, metric, laps, limit
+    )

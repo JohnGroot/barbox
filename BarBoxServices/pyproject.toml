@@ -33,10 +33,11 @@ dev = [
 select = ["ALL"]
 ignore = [
     "A002",  # shadowed builtin
-    'D',     # XXX enable this!
-    'D107',  # __init__ docstring
-    'TD002', # TODO author
-    'TD003', # TODO issue link
+    "D",     # module/class/function docstrings stay optional (decided, not deferred)
+    "D107",  # __init__ docstring
+    "TD002", # TODO author
+    "TD003", # TODO issue link
+    "COM812", # conflicts with the formatter (ruff's own recommendation)
 ]
 fixable = ["ALL"]
 

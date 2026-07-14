@@ -80,7 +80,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 await conn.run_sync(Base.metadata.drop_all)
 
             await conn.run_sync(Base.metadata.create_all)
-        logger.info(f"Database ready in {settings.env} mode (drop_on_startup={settings.drop_db_on_startup})")
+        logger.info(
+            f"Database ready in {settings.env} mode (drop_on_startup={settings.drop_db_on_startup})"
+        )
 
     # Auto-seed test data in development mode for consistent editor/test experience
     if settings.is_dev_mode():
@@ -98,7 +100,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                 logger.info(
                     "dev_mode_auto_seed_completed",
                     status=result["status"],
-                    message="Test data auto-seeded on startup"
+                    message="Test data auto-seeded on startup",
                 )
             except Exception as e:
                 logger.warning(
@@ -185,11 +187,15 @@ else:
 origins = settings.cors_origins.split(",") if settings.cors_origins != "*" else ["*"]
 
 app.add_middleware(
-	CORSMiddleware,
-	allow_origins=origins,
-	allow_credentials=settings.cors_allow_credentials,
-	allow_methods=settings.cors_allow_methods.split(",") if settings.cors_allow_methods != "*" else ["*"],
-	allow_headers=settings.cors_allow_headers.split(",") if settings.cors_allow_headers != "*" else ["*"],
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=settings.cors_allow_methods.split(",")
+    if settings.cors_allow_methods != "*"
+    else ["*"],
+    allow_headers=settings.cors_allow_headers.split(",")
+    if settings.cors_allow_headers != "*"
+    else ["*"],
 )
 
 
@@ -220,29 +226,29 @@ async def add_request_id_middleware(request: Request, call_next):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-	"""
-	Global exception handler to log all unhandled errors.
-	Prevents crashes from propagating as timeouts/empty responses.
-	"""
-	request_id = getattr(request.state, "request_id", "unknown")
-	logger.error(
-		"unhandled_exception",
-		request_id=request_id,
-		path=request.url.path,
-		method=request.method,
-		error=str(exc),
-		error_type=type(exc).__name__,
-		exc_info=True,  # Include full traceback
-	)
+    """
+    Global exception handler to log all unhandled errors.
+    Prevents crashes from propagating as timeouts/empty responses.
+    """
+    request_id = getattr(request.state, "request_id", "unknown")
+    logger.error(
+        "unhandled_exception",
+        request_id=request_id,
+        path=request.url.path,
+        method=request.method,
+        error=str(exc),
+        error_type=type(exc).__name__,
+        exc_info=True,  # Include full traceback
+    )
 
-	return JSONResponse(
-		status_code=500,
-		content={
-			"code": "INTERNAL_ERROR",
-			"message": "An internal error occurred",
-			"request_id": request_id,
-		},
-	)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "code": "INTERNAL_ERROR",
+            "message": "An internal error occurred",
+            "request_id": request_id,
+        },
+    )
 
 
 @app.get("/alive")
@@ -262,7 +268,7 @@ async def health_check() -> dict:
     if not _ready_event.is_set():
         raise HTTPException(
             status_code=503,
-            detail="Service unavailable - application is still initializing"
+            detail="Service unavailable - application is still initializing",
         )
 
     return {"status": "alive"}

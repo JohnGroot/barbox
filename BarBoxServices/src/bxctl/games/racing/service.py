@@ -87,7 +87,9 @@ async def get_racing_leaderboard(
                 ORDER BY metric_value ASC
                 LIMIT :limit
                 """
-                result = await db.get_many_raw(sql, {"track_id": track_id, "limit": limit})
+                result = await db.get_many_raw(
+                    sql, {"track_id": track_id, "limit": limit}
+                )
             else:
                 # Filter by specific lap count
                 # Use host_player_id for single-player games
@@ -137,8 +139,7 @@ async def get_racing_leaderboard(
         # Handle UUID conversion errors
         logger.error("invalid_player_id_format", error=str(e), exc_info=True)
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid player ID format in database: {str(e)}"
+            status_code=400, detail=f"Invalid player ID format in database: {str(e)}"
         )
     except Exception as e:
         # Handle SQL and other errors
@@ -149,9 +150,8 @@ async def get_racing_leaderboard(
             metric=metric,
             laps=laps,
             limit=limit,
-            exc_info=True
+            exc_info=True,
         )
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to query leaderboard: {str(e)}"
+            status_code=500, detail=f"Failed to query leaderboard: {str(e)}"
         )

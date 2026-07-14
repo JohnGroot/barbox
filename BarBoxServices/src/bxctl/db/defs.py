@@ -68,13 +68,21 @@ class Player(Base):
 
 class BoxSession(Base):
     box_id: Mapped[BoxFk]
-    host_player_id: Mapped[Annotated[UUID, fk_to(Player)] | None]  # Primary player who created session (nullable for practice mode)
-    player_ids: Mapped[PlayerIdArray]  # All players (single-player: ["uuid"], multi-player: ["uuid1", "uuid2", ...])
-    game_tag: Mapped[str]  # Game type identifier (e.g., "carrom", "racing", "mining", "lobby")
+    host_player_id: Mapped[
+        Annotated[UUID, fk_to(Player)] | None
+    ]  # Primary player who created session (nullable for practice mode)
+    player_ids: Mapped[
+        PlayerIdArray
+    ]  # All players (single-player: ["uuid"], multi-player: ["uuid1", "uuid2", ...])
+    game_tag: Mapped[
+        str
+    ]  # Game type identifier (e.g., "carrom", "racing", "mining", "lobby")
     session_type: Mapped[str]  # Session type: "lobby" | "game" | "practice"
     start_time: Mapped[datetime]
     end_time: Mapped[datetime | None]
-    events: Mapped[list["BoxSessionEvent"]] = relationship(back_populates="session", init=False, default_factory=list)
+    events: Mapped[list["BoxSessionEvent"]] = relationship(
+        back_populates="session", init=False, default_factory=list
+    )
 
 
 class BoxSessionEvent(Base):
@@ -82,11 +90,14 @@ class BoxSessionEvent(Base):
     type: Mapped[str]
     timestamp: Mapped[datetime]
     payload: Mapped[JsonObject]
-    session: Mapped["BoxSession"] = relationship(back_populates="events", init=False, default=None)
+    session: Mapped["BoxSession"] = relationship(
+        back_populates="events", init=False, default=None
+    )
 
 
 class MiningLocation(Base):
     """Registered mining locations with balanced gem type assignment."""
+
     venue_name: Mapped[str] = mapped_column(unique=True, index=True)
     gem_type: Mapped[str]  # "ruby", "sapphire", "emerald", "diamond", "amethyst"
     display_name: Mapped[str]
@@ -99,11 +110,14 @@ class StripePaymentIntent(Base):
     This table is the authoritative record of all Stripe payments.
     Credits are derived from confirmed payments via credit/earn events.
     """
+
     created_at: Mapped[datetime]
 
     # Stripe identifiers (unique, indexed for lookups)
     stripe_session_id: Mapped[str] = mapped_column(String, unique=True, index=True)
-    stripe_payment_intent_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    stripe_payment_intent_id: Mapped[str] = mapped_column(
+        String, unique=True, index=True
+    )
 
     # BarBox identifiers (NO session FK - payments are independent of session lifecycle)
     player_id: Mapped[Annotated[UUID, fk_to(Player)]]
@@ -117,14 +131,18 @@ class StripePaymentIntent(Base):
 
     # Payment method tracking
     payment_method: Mapped[str]  # 'checkout_session'
-    payment_method_type: Mapped[str | None]  # 'card', 'apple_pay', 'google_pay' (analytics)
+    payment_method_type: Mapped[
+        str | None
+    ]  # 'card', 'apple_pay', 'google_pay' (analytics)
 
     # Status tracking
     status: Mapped[str]  # 'pending', 'processing', 'succeeded', 'failed', 'refunded'
     completed_at: Mapped[datetime | None]
 
     # Reconciliation links (nullable - set after credit event issued)
-    credit_event_id: Mapped[UUID | None]  # References BoxSessionEvent for reconciliation
+    credit_event_id: Mapped[
+        UUID | None
+    ]  # References BoxSessionEvent for reconciliation
     credited_to_session_id: Mapped[UUID | None]  # Audit trail only (not FK)
     credited_at: Mapped[datetime | None]  # When credits were issued
 
@@ -145,6 +163,7 @@ class StripeWebhookEvent(Base):
     Prevents duplicate credit issuance from webhook retries.
     Uses INSERT ON CONFLICT pattern for atomic idempotency claims.
     """
+
     created_at: Mapped[datetime]
 
     # Stripe webhook identifiers

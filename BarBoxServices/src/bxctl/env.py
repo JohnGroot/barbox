@@ -55,9 +55,15 @@ class _Settings(BaseSettings):
 
     # Stripe Configuration
     stripe_secret_key: str = ""  # Stripe API secret key (REQUIRED in production)
-    stripe_webhook_secret: str = ""  # Stripe webhook signing secret (REQUIRED in production)
-    stripe_success_url: str = "https://barbox.app/payment/success"  # Post-payment redirect
-    stripe_cancel_url: str = "https://barbox.app/payment/cancel"  # Payment cancellation redirect
+    stripe_webhook_secret: str = (
+        ""  # Stripe webhook signing secret (REQUIRED in production)
+    )
+    stripe_success_url: str = (
+        "https://barbox.app/payment/success"  # Post-payment redirect
+    )
+    stripe_cancel_url: str = (
+        "https://barbox.app/payment/cancel"  # Payment cancellation redirect
+    )
 
     # Stripe Price IDs (created via Stripe Dashboard or CLI)
     stripe_price_5_credits: str = ""  # $5 pack: 5,000 credits

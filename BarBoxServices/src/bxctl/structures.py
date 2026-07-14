@@ -38,6 +38,7 @@ class BoxDetail(Identifiable):
 
 class BoxDetailWithAPIKey(Identifiable, Named, Tagged):
     """Box details with API key - only returned on box creation."""
+
     api_key: str
     warning: str = "Save this API key securely - it will not be shown again"
 
@@ -55,6 +56,7 @@ class PlayerDetail(Identifiable, Tagged):
 
 class PlayerLoginRequest(BaseModel):
     """Player authentication request."""
+
     phone_number: str
     pin: str
     box_id: UUID
@@ -62,12 +64,13 @@ class PlayerLoginRequest(BaseModel):
 
 class PlayerLoginResponse(BaseModel):
     """Player authentication response with JWT access token (arcade-optimized)."""
+
     access_token: str
     player_id: UUID
     username: str  # Player's display name (tag)
     expires_at: Annotated[
         datetime,
-        PlainSerializer(lambda v: v.isoformat().replace('+00:00', 'Z')),
+        PlainSerializer(lambda v: v.isoformat().replace("+00:00", "Z")),
     ]
 
 
@@ -153,6 +156,7 @@ class Score(SessionEventBase):
 
 class BoxSessionDetail(Identifiable):
     """Minimal session response for creation endpoints"""
+
     game_tag: str
 
 
@@ -168,7 +172,9 @@ class BoxSession(Identifiable):
         Field(default_factory=lambda: [BeginPlay()]),
     ]
 
+
 # ============= CORE PLAYER STRUCTURES =============
+
 
 class UsernameAvailabilityResponse(BaseModel):
     username: str
@@ -183,12 +189,14 @@ class PlayerCreditsResponse(BaseModel):
 
 class MachinePlayerContribution(BaseModel):
     """Individual player contribution to machine credit pot"""
+
     player_id: UUID
     amount: int
 
 
 class MachineCreditsResponse(BaseModel):
     """Machine credit pot balance and player contributions"""
+
     box_id: UUID
     game_tag: str
     balance: int
@@ -197,23 +205,31 @@ class MachineCreditsResponse(BaseModel):
 
 class MachineCreditsDepositRequest(BaseModel):
     """Request body for depositing credits to machine pot"""
+
     box_id: UUID
     player_id: UUID
-    amount: Annotated[int, Field(gt=0, description="Credits to deposit (must be positive)")]
+    amount: Annotated[
+        int, Field(gt=0, description="Credits to deposit (must be positive)")
+    ]
     lobby_session_id: UUID
 
 
 class MachineCreditsConsumeRequest(BaseModel):
     """Request body for consuming credits from machine pot"""
+
     box_id: UUID
-    amount: Annotated[int, Field(gt=0, description="Credits to consume (must be positive)")]
+    amount: Annotated[
+        int, Field(gt=0, description="Credits to consume (must be positive)")
+    ]
     game_session_id: UUID
 
 
 # ============= ERROR HANDLING STRUCTURES =============
 
+
 class ErrorCode(str):
     """Standard error codes for structured error responses"""
+
     # Validation errors
     VALIDATION_ERROR = "VALIDATION_ERROR"
     INVALID_INPUT = "INVALID_INPUT"
@@ -233,6 +249,7 @@ class ErrorCode(str):
 
 class ErrorDetail(BaseModel):
     """Structured error response model"""
+
     code: str  # ErrorCode value
     message: str  # Human-readable error message
     details: dict[str, Any] | None = None  # Additional context
@@ -241,6 +258,7 @@ class ErrorDetail(BaseModel):
 
 class ValidationErrorDetail(BaseModel):
     """Validation-specific error details"""
+
     field: str
     message: str
     value: Any | None = None
@@ -248,17 +266,20 @@ class ValidationErrorDetail(BaseModel):
 
 class ValidationResult(BaseModel):
     """Result of validation check"""
+
     valid: bool
     errors: list[ValidationErrorDetail] = []
 
 
 # ============= STRIPE PAYMENT STRUCTURES =============
 
+
 class CheckoutSessionRequest(BaseModel):
     """Request to create a Stripe Checkout Session for credit purchase.
 
     Stripe API: https://docs.stripe.com/api/checkout/sessions/create
     """
+
     pack_id: str  # Credit pack identifier: pack_5, pack_10, pack_25, pack_50, pack_100
 
 
@@ -267,6 +288,7 @@ class CheckoutSessionResponse(BaseModel):
 
     Stripe API: https://docs.stripe.com/api/checkout/sessions/object
     """
+
     session_id: str  # Stripe Checkout Session ID
     session_url: str  # URL to redirect/display as QR code
 
@@ -277,6 +299,7 @@ class CheckoutStatusResponse(BaseModel):
     Used by clients to poll for payment completion instead of
     polling credit balance (which is expensive and brittle).
     """
+
     session_id: str  # Stripe Checkout Session ID
     status: Literal["pending", "completed", "failed"]
     credits_granted: int | None = None  # Total credits (base + bonus) if completed
@@ -291,11 +314,14 @@ class StripePriceMetadata(BaseModel):
 
     Stripe API: https://docs.stripe.com/api/prices/object#price_object-metadata
     """
+
     credits: int = Field(gt=0, description="Base credits (must be positive)")
     bonus_credits: int = Field(ge=0, default=0, description="Bonus credits (default 0)")
 
     @classmethod
-    def from_stripe_metadata(cls, metadata: dict[str, str] | None) -> "StripePriceMetadata":
+    def from_stripe_metadata(
+        cls, metadata: dict[str, str] | None
+    ) -> "StripePriceMetadata":
         """Parse Stripe metadata dict into validated model.
 
         Args:
@@ -315,6 +341,7 @@ class StripePriceMetadata(BaseModel):
 
 class PaymentMismatch(BaseModel):
     """A payment record that may have issues."""
+
     payment_id: UUID
     stripe_session_id: str
     player_id: UUID
@@ -331,7 +358,10 @@ class PaymentMismatch(BaseModel):
 
 class ReconciliationReport(BaseModel):
     """Report of payment/credit mismatches for admin review."""
-    payments_without_credits: list[PaymentMismatch]  # Payment succeeded but no credit event
+
+    payments_without_credits: list[
+        PaymentMismatch
+    ]  # Payment succeeded but no credit event
     orphan_credit_events: list[dict[str, Any]]  # Credit events without payment record
     total_missing_credits: int  # Sum of credits that should have been issued
     report_generated_at: Annotated[
@@ -342,6 +372,7 @@ class ReconciliationReport(BaseModel):
 
 class RetryResult(BaseModel):
     """Result of manually retrying credit issuance for a payment."""
+
     success: bool
     credits_issued: int
     payment_intent_id: UUID

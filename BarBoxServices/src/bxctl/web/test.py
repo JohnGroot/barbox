@@ -20,22 +20,25 @@ logger = get_logger()
 
 
 class MockWebhookRequest(BaseModel):
-	"""Test-only webhook request with primitive fields (no Stripe structures).
+    """Test-only webhook request with primitive fields (no Stripe structures).
 
-	WARNING: This model is used by the /test/payments/webhook-mock endpoint
-	which issues real credits. Only available in dev/test environments.
+    WARNING: This model is used by the /test/payments/webhook-mock endpoint
+    which issues real credits. Only available in dev/test environments.
 
-	Uses primitive types to avoid coupling test code to Stripe SDK structures.
-	"""
-	event_id: str = Field(description="Test event ID (must start with 'evt_test_')")
-	session_id: str = Field(description="Checkout session ID")
-	payment_intent_id: str = Field(description="Payment intent ID")
-	player_id: UUID = Field(description="Player receiving credits")
-	box_id: UUID = Field(description="Box where purchase was made")
-	credits: int = Field(gt=0, description="Base credits to issue (must be positive)")
-	bonus_credits: int = Field(ge=0, default=0, description="Bonus credits (non-negative)")
-	amount_cents: int = Field(gt=0, description="Payment amount in cents")
-	pack_id: str = Field(description="Credit pack identifier (pack_5, pack_10, etc.)")
+    Uses primitive types to avoid coupling test code to Stripe SDK structures.
+    """
+
+    event_id: str = Field(description="Test event ID (must start with 'evt_test_')")
+    session_id: str = Field(description="Checkout session ID")
+    payment_intent_id: str = Field(description="Payment intent ID")
+    player_id: UUID = Field(description="Player receiving credits")
+    box_id: UUID = Field(description="Box where purchase was made")
+    credits: int = Field(gt=0, description="Base credits to issue (must be positive)")
+    bonus_credits: int = Field(
+        ge=0, default=0, description="Bonus credits (non-negative)"
+    )
+    amount_cents: int = Field(gt=0, description="Payment amount in cents")
+    pack_id: str = Field(description="Credit pack identifier (pack_5, pack_10, etc.)")
 
 
 async def _seed_test_box_and_players(
@@ -68,7 +71,7 @@ async def _seed_test_box_and_players(
         logger.info(
             "test_box_already_exists",
             box_id=str(test_box_id),
-            message="Skipping test data seeding - already exists"
+            message="Skipping test data seeding - already exists",
         )
         return {
             "status": "skipped",
@@ -173,17 +176,20 @@ async def reset_database(
         if settings.is_dev_mode():
             try:
                 seed_result = await _seed_test_box_and_players(db_service, now)
-                logger.info("auto_seed_after_reset_completed", result=seed_result["status"])
+                logger.info(
+                    "auto_seed_after_reset_completed", result=seed_result["status"]
+                )
             except Exception as e:
                 logger.warning(
                     "auto_seed_after_reset_failed",
                     error=str(e),
-                    message="Database reset succeeded but auto-seeding failed. Call POST /test/seed manually."
+                    message="Database reset succeeded but auto-seeding failed. Call POST /test/seed manually.",
                 )
 
         return {
             "status": "success",
-            "message": "Database reset successfully" + (" (auto-seeded)" if seed_result else ""),
+            "message": "Database reset successfully"
+            + (" (auto-seeded)" if seed_result else ""),
             "environment": settings.env,
             "auto_seeded": seed_result is not None,
         }
@@ -301,8 +307,9 @@ async def mock_webhook(
 
     # Check for idempotency by session_id (simpler than real webhook's event_id check)
     existing_payment = await db_service.session.execute(
-        select(db.defs.StripePaymentIntent)
-        .where(db.defs.StripePaymentIntent.stripe_session_id == request.session_id)
+        select(db.defs.StripePaymentIntent).where(
+            db.defs.StripePaymentIntent.stripe_session_id == request.session_id
+        )
     )
     if existing_payment.scalar_one_or_none():
         logger.info("test_webhook_already_processed", session_id=request.session_id)
@@ -341,5 +348,3 @@ async def mock_webhook(
                 "message": str(e),
             },
         ) from e
-
-

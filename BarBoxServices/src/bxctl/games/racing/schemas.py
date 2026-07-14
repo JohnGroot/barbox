@@ -21,8 +21,10 @@ EventType = RacingEventType
 
 # ============= EVENT PAYLOADS =============
 
+
 class CheckpointData(BaseModel):
     """Checkpoint data for racing events."""
+
     index: int
     time: float
     gap: float
@@ -30,6 +32,7 @@ class CheckpointData(BaseModel):
 
 class RacingLapCompletePayload(BaseModel):
     """Payload for racing/lap_complete event."""
+
     lap_num: int
     lap_time: float
     checkpoints: list[CheckpointData]
@@ -37,6 +40,7 @@ class RacingLapCompletePayload(BaseModel):
 
 class RacingRaceFinishPayload(BaseModel):
     """Payload for racing/race_finish event."""
+
     track_id: str
     total_time: float
     total_laps: int
@@ -46,8 +50,10 @@ class RacingRaceFinishPayload(BaseModel):
 
 # ============= API RESPONSE MODELS =============
 
+
 class RacingLeaderboardEntry(BaseModel):
     """Single entry in Racing leaderboard."""
+
     player_id: UUID
     username: str
     metric_value: float  # lap time or race time
@@ -57,6 +63,7 @@ class RacingLeaderboardEntry(BaseModel):
 
 class RacingLeaderboardResponse(BaseModel):
     """Racing leaderboard response."""
+
     track_id: str
     metric: str  # "best_lap" or "best_race"
     leaderboard: list[RacingLeaderboardEntry]
