@@ -183,6 +183,56 @@ def signed_sum_sql(column: str, earn_type: str, spend_type: str) -> str:
     )"""
 
 
+def uuid_join_leaderboard_sql(
+    event_type: str,
+    value_json_path: str,
+    *,
+    extra_select: str = "",
+    extra_where: str = "",
+) -> str:
+    """
+    Build a "best single numeric metric per player" leaderboard query for the
+    box_session_event -> box_session (host_player_id) -> player join-key
+    strategy (raw UUID join, `bs.host_player_id = p.id`). This is Racing's
+    shape specifically - Carrom/Nines/Mining use different join-key
+    strategies (de-hyphenated UUID, phone_number, no player join at all) and
+    aren't forced into this shape; see games/CLAUDE.md and
+    docs/architecture-roadmap.md WS4 item 1 for why.
+
+    Args:
+        event_type: box_session_event.type to filter on
+        value_json_path: JSON path for the metric value, e.g. "'$.lap_time'"
+        extra_select: additional ", column" SELECT fragment (e.g. lap_times)
+        extra_where: additional "AND ..." WHERE fragment for extra filters
+                     (the caller supplies matching bind params)
+
+    Returns:
+        SQL string binding :track_id and :limit; callers add any extra bind
+        params referenced by extra_where.
+    """
+    username_expr = (
+        "COALESCE(p.tag, json_extract(bse.payload, '$.username'), "
+        "'Player ' || SUBSTR(bs.host_player_id, 1, 8))"
+    )
+    return f"""
+    SELECT
+        bs.host_player_id,
+        {username_expr} as username,
+        MIN(CAST(json_extract(bse.payload, {value_json_path}) AS REAL)) as metric_value,
+        MAX(bse.timestamp) as entry_date
+        {extra_select}
+    FROM box_session_event bse
+    JOIN box_session bs ON bse.session_id = bs.id
+    LEFT JOIN player p ON bs.host_player_id = p.id
+    WHERE bse.type = '{event_type}'
+    AND json_extract(bse.payload, '$.track_id') = :track_id
+    {extra_where}
+    GROUP BY bs.host_player_id, {username_expr}
+    ORDER BY metric_value ASC
+    LIMIT :limit
+    """
+
+
 def safe_parse_leaderboard[T](
     rows: Any,
     parser_fn: Any,
