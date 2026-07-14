@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using BarBox.Core.Utils;
 
 namespace BarBox.Core.Autoloads;
 
@@ -205,7 +206,7 @@ public partial class SessionManager : AutoloadBase
 			};
 
 			var loginResult = await _eventService.PostAsync<PlayerLoginRequest, PlayerLoginResponse>(
-				"/player/auth/login",
+				ApiPaths.Player.Login,
 				loginRequest,
 				expectedStatusCode: 200
 			);
@@ -510,7 +511,7 @@ public partial class SessionManager : AutoloadBase
 
 				// Pass playerId to include Authorization header
 				var revokeResult = await _eventService.PostAsync<object, object>(
-					"/player/auth/logout",
+					ApiPaths.Player.Logout,
 					logoutRequest,
 					expectedStatusCode: 200,
 					playerId: session.PlayerId
@@ -782,7 +783,7 @@ public partial class SessionManager : AutoloadBase
 	private async Task<Result<bool>> QueryUsernameAvailableAsync(string username)
 	{
 		var result = await _backend.QueryAsync<UsernameAvailabilityResponse>(
-			$"/player/username/{Uri.EscapeDataString(username)}/available",
+			ApiPaths.Player.UsernameAvailable(username),
 			null
 		);
 
@@ -810,7 +811,7 @@ public partial class SessionManager : AutoloadBase
 			OriginId = originBoxId.ToString()
 		};
 
-		var result = await _backend.PostAsync<PlayerCreateRequest, PlayerValidationResponse>("/player/validate", request, 200);
+		var result = await _backend.PostAsync<PlayerCreateRequest, PlayerValidationResponse>(ApiPaths.Player.Validate, request, 200);
 
 		if (result.IsSuccess(out var response))
 		{
@@ -851,7 +852,7 @@ public partial class SessionManager : AutoloadBase
 			OriginId = originBoxId.ToString()
 		};
 
-		var result = await _backend.PostAsync<PlayerCreateRequest, PlayerDetailResponse>("/player/", request, 201);
+		var result = await _backend.PostAsync<PlayerCreateRequest, PlayerDetailResponse>(ApiPaths.Player.Create, request, 201);
 
 		if (result.IsSuccess(out var _))
 		{

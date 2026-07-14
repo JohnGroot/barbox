@@ -3,6 +3,7 @@ using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BarBox.Core.Utils;
 using BarBox.Games.Racing;
 
 /// <summary>
@@ -271,7 +272,7 @@ public class RacingEventService : GameEventServiceBase
 			queryParams["laps"] = laps.Value.ToString();
 
 		return await QueryBackendAsync(
-			"/game/racing/leaderboard",
+			ApiPaths.Racing.Leaderboard,
 			queryParams,
 			jsonDict => ParseLeaderboardData(jsonDict, metric)
 		);

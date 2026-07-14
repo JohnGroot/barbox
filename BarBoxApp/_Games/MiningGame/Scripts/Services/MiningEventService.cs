@@ -3,6 +3,7 @@ using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BarBox.Core.Utils;
 using BarBox.Games.MiningGame;
 
 namespace BarBox.Games.MiningGame;
@@ -174,7 +175,7 @@ public class MiningEventService : GameEventServiceBase
 		if (string.IsNullOrEmpty(venueName))
 			return Result.Failure<MiningLocationConfig>(ValidationMessages.Required("Venue name"));
 
-		var endpoint = $"/game/mining/location/register?venue_name={Uri.EscapeDataString(venueName)}";
+		var endpoint = ApiPaths.Mining.RegisterLocation(venueName);
 		var result = await _eventService.PostAsync<object, MiningLocationConfig>(endpoint, new { }, expectedStatusCode: 200);
 		return MapBackendError(result);
 	}
@@ -197,7 +198,7 @@ public class MiningEventService : GameEventServiceBase
 
 		var queryParams = new Dictionary<string, string> { ["location_id"] = locationId };
 		return await QueryBackendAsync(
-			$"/game/mining/player/{playerId}/state",
+			ApiPaths.Mining.PlayerState(playerId),
 			queryParams,
 			ParseStateData
 		);

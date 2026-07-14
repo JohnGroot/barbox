@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using BarBox.Core.Utils;
 
 namespace BarBox.Core.Autoloads;
 
@@ -86,7 +87,7 @@ public partial class SessionEventService : AutoloadBase
 			await _backend.EnsureConnectedAsync();
 
 			// Build URL with required game_tag
-			var url = $"/box/{boxId}/session/{sessionId}?game_tag={Uri.EscapeDataString(gameTag)}";
+			var url = ApiPaths.Box.Session(boxId, sessionId, gameTag);
 
 			// Add player_ids for multiplayer
 			if (playerIds != null && playerIds.Count > 1)
@@ -194,7 +195,7 @@ public partial class SessionEventService : AutoloadBase
 
 			await _backend.EnsureConnectedAsync();
 
-			var url = $"/box/session/{sessionId}/close";
+			var url = ApiPaths.Box.CloseSession(sessionId);
 			var headers = _backend.BuildHeaders().ToArray();
 
 #if DEBUG_HTTP_LIFECYCLE
@@ -265,7 +266,7 @@ public partial class SessionEventService : AutoloadBase
 
 			await _backend.EnsureConnectedAsync();
 
-			var url = $"/box/{boxId}/lobby/session";
+			var url = ApiPaths.Box.LobbySession(boxId);
 			var headers = _backend.BuildHeaders(playerId);
 			headers.Add($"Player-Id: {playerId}");
 

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using BarBox.Core.Autoloads;
 using BarBox.Core.Gameplay;
+using BarBox.Core.Utils;
 using Godot;
 using LightResults;
 
@@ -240,7 +241,7 @@ public partial class NinesGame : GameController
 			// Query backend for last jackpot win timestamp
 			var queryParams = new Dictionary<string, string> { { "venue_name", venueName } };
 			var queryResult = await _eventService.QueryAsync<NinesJackpotResponse>(
-				$"/game/nines/jackpot/{venueName}",
+				ApiPaths.Nines.Jackpot(venueName),
 				queryParams);
 
 			if (queryResult.IsSuccess(out var response) && response != null)
