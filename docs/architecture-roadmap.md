@@ -107,7 +107,7 @@ roadmap):
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | **DONE (2026-07-13)** — all 5 items, see §3 notes |
 | WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | **DONE (2026-07-13)** — all 4 items, see §3 notes |
 | WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
-| WS5 | Backend infra: machine-credits TOCTOU fix, Alembic, dead deps, formatting | none; TOCTOU fix may be pulled forward anytime | Low/Med | Not started |
+| WS5 | Backend infra: machine-credits TOCTOU fix, Alembic, dead deps, formatting | none; TOCTOU fix may be pulled forward anytime | Low/Med | **DONE (2026-07-14)** — all 4 items, see §3 notes |
 | WS6 | Deferred until a second consumer appears: leaderboard widget, countdown, lobby, `_Games/_Template` | trigger-based | — | Intentionally deferred |
 
 **Sequencing rationale:**
@@ -479,21 +479,50 @@ Independent of app work; each item is its own commit + Hurl-green.
 
 ### WS5 — Backend infra
 
-1. **Machine-credits TOCTOU** (`web/machine_credits.py:236-247`): consume is
+**DONE (2026-07-14)** — all 4 items:
+
+1. ~~**Machine-credits TOCTOU** (`web/machine_credits.py:236-247`): consume is
    check-then-insert — two concurrent consumes can both pass the balance
    check and overdraw. Serialize the check (transaction/row lock) or enforce
    with a DB constraint. **This is a money bug — may be pulled forward ahead
-   of everything.**
-2. **Alembic baseline.** Schema is `Base.metadata.create_all` only
+   of everything.**~~ **DONE 2026-07-14.** Single-process deployment
+   (`fly.toml` `min_machines_running = 1`, no `--workers`, and
+   `start_backend.sh` refuses concurrent starts) made an in-process
+   `asyncio.Lock` keyed by `(game_tag, box_id)` sufficient — SQLite has no
+   row-level locking to reach for instead. Guards the balance check and the
+   consume-event insert in one critical section.
+2. ~~**Alembic baseline.** Schema is `Base.metadata.create_all` only
    (`web/main.py:48`) on a persistent prod SQLite volume; `alembic` is a
    declared-but-unused dep (`pyproject.toml:30`). Add the baseline + wire
    into deploy **before** any further schema churn (WS4's items don't change
-   schema; anything that does waits for this).
-3. **Drop dead deps**: `dramatiq[redis,watch]`, `pottery`
+   schema; anything that does waits for this).~~ **DONE 2026-07-14.** Added
+   `alembic/` (async template) with one baseline migration reflecting the
+   current 7-table schema; `alembic` moved from dev-only to a runtime dep
+   since production now runs migrations at boot. Production `lifespan`
+   (`web/main.py`) now calls `alembic upgrade head` instead of `create_all`;
+   dev/test keep `create_all`/`drop_all` for fast local iteration (no
+   migration authoring needed for local schema changes). The existing prod
+   volume predates `alembic_version` tracking, so first boot on this
+   revision detects that case (tables exist, no `alembic_version` table) and
+   stamps at head instead of upgrading — verified locally against both a
+   fresh DB and a pre-existing `create_all` DB.
+3. ~~**Drop dead deps**: `dramatiq[redis,watch]`, `pottery`
    (`pyproject.toml:8,13`) — zero imports in `src/`; `env.py:41` `redis_url`
-   is unused.
-4. **Formatting**: backend mixes tab- and 4-space-indented files; enforce via
-   Ruff/`.editorconfig`; resolve the disabled `'D'` docstring rule note.
+   is unused.~~ **DONE 2026-07-14.** Removed both packages and the
+   `redis_url` setting, plus its stale mentions in `.env.example` and
+   `docs/FLY_IO_DEPLOYMENT_GUIDE.md`.
+4. ~~**Formatting**: backend mixes tab- and 4-space-indented files; enforce
+   via Ruff/`.editorconfig`; resolve the disabled `'D'` docstring rule
+   note.~~ **DONE 2026-07-14.** Ran `ruff format` across `src/`/`alembic/`
+   (24 files, whitespace-only) and added `.editorconfig` to hold the line.
+   Resolved the `'D'` TODO as a deliberate decision (docstrings stay
+   optional) rather than leaving it open. Added `scripts/lint.sh`
+   (`ruff format --check` + `ruff check` + `ty check`) for local use — `ruff
+   check`'s full `select=["ALL"]` and `ty check` both surface a backlog of
+   pre-existing findings unrelated to this item; fixing that backlog is a
+   separate, much larger effort and intentionally out of scope here. `ruff
+   format --check` is clean and the script treats a regression there as
+   real.
 
 ### WS6 — Deferred (trigger-based, do NOT build speculatively)
 
