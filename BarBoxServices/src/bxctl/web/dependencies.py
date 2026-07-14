@@ -40,6 +40,49 @@ RequestId = Annotated[str, Depends(_get_request_id)]
 # Box Authentication (Deterministic API Key)
 
 
+async def _verify_box_api_key_header(box_id: UUID, x_box_api_key: str | None) -> None:
+    """Shared 401 checks for all box-auth flavors: header presence, then key
+    validity via deterministic derivation (HMAC(server_secret, box_id))."""
+    if not x_box_api_key:
+        logger.warning("box_auth_missing_api_key", box_id=str(box_id))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-Box-API-Key header",
+        )
+
+    if not auth.verify_box_api_key(x_box_api_key, box_id):
+        logger.warning("box_auth_invalid_key", box_id=str(box_id))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+        )
+
+
+async def _fetch_box_or_404(
+    box_id: UUID, db_service: "db.service.CRUD", not_found_message: str
+) -> db.defs.Box:
+    """Shared box lookup + 404 for the two auth flavors where a missing box
+    means "not registered yet" (as opposed to the session-scoped flavor,
+    where a missing box behind a valid session is a data-integrity error,
+    not a registration gap - that one stays a 500, handled by its caller)."""
+    result = await db_service.session.execute(
+        select(db.defs.Box).where(db.defs.Box.id == box_id)
+    )
+    box = result.scalar_one_or_none()
+
+    if not box:
+        logger.warning("box_auth_box_not_found", box_id=str(box_id))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "BOX_NOT_FOUND",
+                "message": not_found_message,
+                "details": {"box_id": str(box_id)},
+            },
+        )
+
+    return box
+
+
 async def _get_authenticated_box_by_session(
     session_id: UUID,  # From path parameter (for session-scoped endpoints)
     x_box_api_key: Annotated[str | None, Header()] = None,
@@ -63,14 +106,6 @@ async def _get_authenticated_box_by_session(
     Raises:
             HTTPException: 404 if session not found, 401 if API key missing or invalid
     """
-    # Check if API key header is present
-    if not x_box_api_key:
-        logger.warning("box_auth_missing_api_key", session_id=str(session_id))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-Box-API-Key header",
-        )
-
     # Fetch session to get box_id
     from bxctl.db.defs import BoxSession
 
@@ -90,16 +125,7 @@ async def _get_authenticated_box_by_session(
             },
         )
 
-    # Verify API key by deriving expected key from box_id
-    if not auth.verify_box_api_key(x_box_api_key, session.box_id):
-        logger.warning(
-            "box_auth_invalid_key",
-            session_id=str(session_id),
-            box_id=str(session.box_id),
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
-        )
+    await _verify_box_api_key_header(session.box_id, x_box_api_key)
 
     # Fetch and return the box
     box_result = await db_service.session.execute(
@@ -149,37 +175,17 @@ async def _get_authenticated_box(
     Raises:
             HTTPException: 404 if box not found, 401 if API key missing or invalid
     """
-    # Check if API key header is present
-    if not x_box_api_key:
-        logger.warning("box_auth_missing_api_key", box_id=str(box_id))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-Box-API-Key header",
-        )
-
-    # Verify API key by deriving expected key from box_id (no DB lookup needed for auth)
-    if not auth.verify_box_api_key(x_box_api_key, box_id):
-        logger.warning("box_auth_invalid_key", box_id=str(box_id))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
-        )
+    await _verify_box_api_key_header(box_id, x_box_api_key)
 
     # Fetch box from database (to return box details, not for auth)
-    result = await db_service.session.execute(
-        select(db.defs.Box).where(db.defs.Box.id == box_id)
+    box = await _fetch_box_or_404(
+        box_id,
+        db_service,
+        not_found_message=(
+            f"Box '{box_id}' does not exist in the database. "
+            "Please register the box first using PUT /box/{box_id} before creating sessions."
+        ),
     )
-    box = result.scalar_one_or_none()
-
-    if not box:
-        logger.warning("box_auth_box_not_found", box_id=str(box_id))
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "BOX_NOT_FOUND",
-                "message": f"Box '{box_id}' does not exist in the database. Please register the box first using PUT /box/{{box_id}} before creating sessions.",
-                "details": {"box_id": str(box_id)},
-            },
-        )
 
     logger.info("box_authenticated", box_id=str(box_id))
     return box
@@ -218,36 +224,17 @@ async def _get_authenticated_box_from_header(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-Box-ID header"
         )
 
-    if not x_box_api_key:
-        logger.warning("box_auth_missing_api_key", box_id=str(x_box_id))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-Box-API-Key header",
-        )
-
-    # Verify API key by deriving expected key from box_id
-    if not auth.verify_box_api_key(x_box_api_key, x_box_id):
-        logger.warning("box_auth_invalid_key", box_id=str(x_box_id))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
-        )
+    await _verify_box_api_key_header(x_box_id, x_box_api_key)
 
     # Fetch box from database
-    result = await db_service.session.execute(
-        select(db.defs.Box).where(db.defs.Box.id == x_box_id)
+    box = await _fetch_box_or_404(
+        x_box_id,
+        db_service,
+        not_found_message=(
+            f"Box '{x_box_id}' does not exist in the database. "
+            "Please register the box first using PUT /box/{box_id}."
+        ),
     )
-    box = result.scalar_one_or_none()
-
-    if not box:
-        logger.warning("box_auth_box_not_found", box_id=str(x_box_id))
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "BOX_NOT_FOUND",
-                "message": f"Box '{x_box_id}' does not exist in the database. Please register the box first using PUT /box/{{box_id}}.",
-                "details": {"box_id": str(x_box_id)},
-            },
-        )
 
     logger.info("box_authenticated_via_header", box_id=str(box.id))
     return box
