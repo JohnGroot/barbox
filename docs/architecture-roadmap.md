@@ -106,7 +106,7 @@ roadmap):
 | WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | **DONE (2026-07-13)** — all 5 increments, see §3 notes |
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | **DONE (2026-07-13)** — all 5 items, see §3 notes |
 | WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | **DONE (2026-07-13)** — all 4 items, see §3 notes |
-| WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | Not started |
+| WS4 | Backend dedup (leaderboard SQL, auth deps, payments service layer, error envelope, ApiPaths) | none — parallel-safe with WS1–3 | Medium | **DONE (2026-07-14)** — all 6 items, see §3 notes |
 | WS5 | Backend infra: machine-credits TOCTOU fix, Alembic, dead deps, formatting | none; TOCTOU fix may be pulled forward anytime | Low/Med | **DONE (2026-07-14)** — all 4 items, see §3 notes |
 | WS6 | Deferred until a second consumer appears: leaderboard widget, countdown, lobby, `_Games/_Template` | trigger-based | — | Intentionally deferred |
 
@@ -445,37 +445,72 @@ Priority order within the workstream. Money first.
 
 ### WS4 — Backend dedup
 
-Independent of app work; each item is its own commit + Hurl-green.
+**DONE (2026-07-14)** — all 6 items:
 
-1. **Leaderboard SQL builder** in `games/common.py`. The
+1. ~~**Leaderboard SQL builder** in `games/common.py`. The
    `box_session_event ⋈ box_session … json_extract … LEFT JOIN player`
    skeleton is duplicated ~12×: `racing/service.py:40,74,94`,
    `carrom/service.py:31,81`, `nines/service.py:30`,
    `mining/service.py:39,50,61,129,189,242`, plus `web/player.py:483`,
    `web/machine_credits.py:41,67`. The copies genuinely differ in **join-key
    strategy** (UUID vs de-hyphenated UUID vs phone_number) — parameterize the
-   builder by that strategy rather than forcing one shape.
-2. **Signed-credit SUM helper.** The `SUM(CASE WHEN type='…earn' THEN + …
+   builder by that strategy rather than forcing one shape.~~ **DONE
+   2026-07-14.** Added `games.common.uuid_join_leaderboard_sql()` for the
+   raw-UUID join-key strategy and rewrote Racing's 3 near-identical queries
+   (best_lap, best_race with/without a laps filter) to use it — those were
+   genuine copies differing only by event type, the aggregated JSON field,
+   and an optional extra WHERE clause. Carrom (de-hyphenated UUID
+   reformatting, two directions), Nines (phone_number join), and Mining
+   (no player join at all — pure per-player aggregation) use genuinely
+   different join-key strategies per the investigation and were **not**
+   forced into this shape; left as-is.
+2. ~~**Signed-credit SUM helper.** The `SUM(CASE WHEN type='…earn' THEN + …
    'spend' THEN -)` shape is duplicated at `web/player.py:486` and
-   `web/machine_credits.py:44` (different event names, same skeleton).
-3. **Collapse the 3 box-auth dependencies.**
+   `web/machine_credits.py:44` (different event names, same skeleton).~~
+   **DONE 2026-07-14.** Added `games.common.signed_sum_sql()`; both callers
+   now build their SUM/CASE fragment from it, keeping their own
+   FROM/JOIN/WHERE (which genuinely differ: player-scoped vs
+   box+game-scoped).
+3. ~~**Collapse the 3 box-auth dependencies.**
    `web/dependencies.py:42/116/182` are three copies of
-   header→`verify_box_api_key`→fetch→404. Parameterize into one.
-4. **Extract `payments/service.py`.** `web/payments.py` (895 lines) holds
+   header→`verify_box_api_key`→fetch→404. Parameterize into one.~~ **DONE
+   2026-07-14.** Extracted `_verify_box_api_key_header()` (shared 401
+   checks, used by all 3) and `_fetch_box_or_404()` (shared fetch+404, used
+   by the path- and header-based flavors — the session-scoped flavor's
+   missing-box case is a 500 data-integrity error, not a registration gap,
+   and correctly stays separate).
+4. ~~**Extract `payments/service.py`.** `web/payments.py` (895 lines) holds
    business logic in the router (`_issue_credits_for_payment:99`,
    `get_or_create_credit_session:251`, admin reconciliation `:726+`). Split
-   to match the games-module service/router convention.
-5. **Standardize the error envelope** on `structures.ErrorDetail`
+   to match the games-module service/router convention.~~ **DONE
+   2026-07-14.** `web/payments.py` → `web/payments/{service,router}.py`.
+   `service.py` holds `issue_credits_for_payment`,
+   `get_or_create_credit_session`, `build_reconciliation_report`,
+   `retry_credit_issuance`, `CREDIT_PACKS`/`get_stripe_client`/
+   `get_stripe_price_id`; `router.py` keeps checkout creation and webhook
+   handling as endpoint-level Stripe-SDK glue (deliberately not extracted
+   further — that orchestration isn't a reusable business rule). `main.py`
+   and `test.py` updated for the new import shape.
+5. ~~**Standardize the error envelope** on `structures.ErrorDetail`
    (`structures.py:~208`); today some handlers return structured
    `{code,message,details}`, others bare `detail="string"`
    (`dependencies.py:70,96,146`, `machine_credits.py:240`), and payments adds
-   an ad-hoc `retryable` field — fold it into the model or drop it.
-6. **App-side `ApiPaths` constants class.** Backend paths are scattered
+   an ad-hoc `retryable` field — fold it into the model or drop it.~~ **DONE
+   2026-07-14.** Added `ErrorDetail.retryable`; box-auth 401s and the
+   machine-credits insufficient-balance 400 now use the `{code, message}`
+   dict shape; payments' invented string codes and the new
+   `INSUFFICIENT_CREDITS`/`UNAUTHORIZED` codes are now `ErrorCode` members.
+   The Stripe webhook's internal signature/payload 400s were left as bare
+   strings — those go to Stripe's retry logic, not the app, and weren't
+   part of this item's citation.
+6. ~~**App-side `ApiPaths` constants class.** Backend paths are scattered
    string literals across `EventService.cs`, `SessionManager.cs`, the game
    event services, and `NinesGame.cs`. One constants class makes
    App↔Services path sync greppable and durable (this is what would have
    prevented the Nines `/game/` prefix 404). Coordinate with WS1 — do this
-   after the split so paths land in their final owners.
+   after the split so paths land in their final owners.~~ **DONE
+   2026-07-14.** Added `_Core/Scripts/_Utils/ApiPaths.cs`, grouped to mirror
+   the backend's router prefixes; all 12 cited literal call sites updated.
 
 ### WS5 — Backend infra
 
