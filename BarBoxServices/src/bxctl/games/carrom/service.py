@@ -44,20 +44,25 @@ async def get_carrom_leaderboard(
             JOIN box_session_event bse ON bse.session_id = bs.id
             WHERE bse.type = 'carrom/round_finish'
               AND bs.game_tag = 'carrom'
+        ),
+        player_round_scores AS (
+            SELECT
+                ps.player_id,
+                ps.timestamp,
+                -- Extract this player's score once; reused in SUM and the
+                -- NOT NULL filter below to avoid double-evaluating json_extract
+                json_extract(ps.payload, '$.scores."' || ps.player_id_formatted || '"') as player_score
+            FROM player_scores ps
         )
         SELECT
-            ps.player_id,
-            COALESCE(p.tag, 'Player ' || SUBSTR(ps.player_id, 1, 8)) as username,
-            SUM(
-                CAST(
-                    json_extract(ps.payload, '$.scores."' || ps.player_id_formatted || '"') AS INTEGER
-                )
-            ) as total_score,
-            MAX(ps.timestamp) as entry_date
-        FROM player_scores ps
-        LEFT JOIN player p ON ps.player_id = p.id
-        WHERE json_extract(ps.payload, '$.scores."' || ps.player_id_formatted || '"') IS NOT NULL
-        GROUP BY ps.player_id, COALESCE(p.tag, 'Player ' || SUBSTR(ps.player_id, 1, 8))
+            prs.player_id,
+            COALESCE(p.tag, 'Player ' || SUBSTR(prs.player_id, 1, 8)) as username,
+            SUM(CAST(prs.player_score AS INTEGER)) as total_score,
+            MAX(prs.timestamp) as entry_date
+        FROM player_round_scores prs
+        LEFT JOIN player p ON prs.player_id = p.id
+        WHERE prs.player_score IS NOT NULL
+        GROUP BY prs.player_id, COALESCE(p.tag, 'Player ' || SUBSTR(prs.player_id, 1, 8))
         ORDER BY total_score DESC
         LIMIT :limit
         """

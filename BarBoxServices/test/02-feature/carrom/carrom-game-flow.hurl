@@ -112,12 +112,17 @@ X-Box-API-Key: {{box-api-key}}
 }
 HTTP 201
 
-# Query total_score leaderboard
+# Query total_score leaderboard - player 1 scored 25+22=47, player 2 scored 24
+# Assert exact scores and DESC ordering to guard the leaderboard ranking
 GET http://127.0.0.1:8000/game/carrom/leaderboard?metric=total_score&limit=10
 HTTP 200
 [Asserts]
 jsonpath "$.metric" == "total_score"
 jsonpath "$.leaderboard" count == 2
+jsonpath "$.leaderboard[0].player_id" == "{{player1-id}}"
+jsonpath "$.leaderboard[0].total_score" == 47
+jsonpath "$.leaderboard[1].player_id" == "{{player2-id}}"
+jsonpath "$.leaderboard[1].total_score" == 24
 
 # Query total_wins leaderboard - player 1 should have 2 wins, player 2 should have 1 win
 GET http://127.0.0.1:8000/game/carrom/leaderboard?metric=total_wins&limit=10
