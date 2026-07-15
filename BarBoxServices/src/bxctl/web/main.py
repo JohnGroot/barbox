@@ -1,5 +1,6 @@
 import asyncio
 import pathlib
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -221,6 +222,41 @@ async def add_request_id_middleware(request: Request, call_next):
 
     # Add request ID to response headers
     response.headers["X-Request-Id"] = request_id
+
+    return response
+
+
+# Requests slower than this are logged as a warning. 500ms is generous for a
+# SQLite-backed API serving touchscreen terminals (most endpoints are simple
+# CRUD/lookup queries) - it flags genuine outliers without being noisy on
+# every request that happens to cross an arbitrary tight bound.
+SLOW_REQUEST_THRESHOLD_S = 0.5
+
+
+@app.middleware("http")
+async def add_process_time_middleware(request: Request, call_next):
+    """Time request handling and record it for logging and monitoring.
+
+    Process time is:
+    - Measured around call_next() for the full request/response cycle
+    - Included in the X-Process-Time response header
+    - Logged as a warning when it exceeds SLOW_REQUEST_THRESHOLD_S
+    """
+    start_time = time.perf_counter()
+
+    response = await call_next(request)
+
+    process_time = time.perf_counter() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+
+    if process_time > SLOW_REQUEST_THRESHOLD_S:
+        logger.warning(
+            "slow_request",
+            request_id=getattr(request.state, "request_id", "unknown"),
+            path=request.url.path,
+            method=request.method,
+            process_time=process_time,
+        )
 
     return response
 
