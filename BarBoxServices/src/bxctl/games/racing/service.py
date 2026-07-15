@@ -37,10 +37,18 @@ async def get_racing_leaderboard(
             # Aggregate best lap times from racing/lap_complete events
             # LEFT JOIN player to handle cases where player hasn't been registered yet
             # Use host_player_id for single-player games
-            sql = common.uuid_join_leaderboard_sql(
-                "racing/lap_complete", "'$.lap_time'"
+            event_type = "racing/lap_complete"
+            value_json_path = "$.lap_time"
+            sql = common.uuid_join_leaderboard_sql()
+            result = await db.get_many_raw(
+                sql,
+                {
+                    "track_id": track_id,
+                    "limit": limit,
+                    "event_type": event_type,
+                    "value_json_path": value_json_path,
+                },
             )
-            result = await db.get_many_raw(sql, {"track_id": track_id, "limit": limit})
 
             # Parse leaderboard with per-entry error handling
             def parse_row(row):
@@ -58,25 +66,39 @@ async def get_racing_leaderboard(
             # LEFT JOIN player to handle cases where player hasn't been registered yet
             # Use host_player_id for single-player games
             extra_select = ", json_extract(bse.payload, '$.lap_times') as lap_times"
+            event_type = "racing/race_finish"
+            value_json_path = "$.total_time"
 
             if laps is None:
                 # If laps not specified, get best overall time regardless of lap count
-                sql = common.uuid_join_leaderboard_sql(
-                    "racing/race_finish", "'$.total_time'", extra_select=extra_select
-                )
+                sql = common.uuid_join_leaderboard_sql(extra_select=extra_select)
                 result = await db.get_many_raw(
-                    sql, {"track_id": track_id, "limit": limit}
+                    sql,
+                    {
+                        "track_id": track_id,
+                        "limit": limit,
+                        "event_type": event_type,
+                        "value_json_path": value_json_path,
+                    },
                 )
             else:
                 # Filter by specific lap count
                 sql = common.uuid_join_leaderboard_sql(
-                    "racing/race_finish",
-                    "'$.total_time'",
                     extra_select=extra_select,
-                    extra_where="AND CAST(json_extract(bse.payload, '$.total_laps') AS INTEGER) = :laps",
+                    extra_where=(
+                        "AND CAST(json_extract(bse.payload, '$.total_laps') "
+                        "AS INTEGER) = :laps"
+                    ),
                 )
                 result = await db.get_many_raw(
-                    sql, {"track_id": track_id, "laps": laps, "limit": limit}
+                    sql,
+                    {
+                        "track_id": track_id,
+                        "laps": laps,
+                        "limit": limit,
+                        "event_type": event_type,
+                        "value_json_path": value_json_path,
+                    },
                 )
 
             # Parse leaderboard with per-entry error handling

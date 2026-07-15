@@ -183,12 +183,14 @@ def signed_sum_sql(column: str, earn_type: str, spend_type: str) -> str:
     )"""
 
 
+_ORDER_DIRECTIONS = frozenset({"ASC", "DESC"})
+
+
 def uuid_join_leaderboard_sql(
-    event_type: str,
-    value_json_path: str,
     *,
     extra_select: str = "",
     extra_where: str = "",
+    direction: str = "ASC",
 ) -> str:
     """
     Build a "best single numeric metric per player" leaderboard query for the
@@ -199,17 +201,35 @@ def uuid_join_leaderboard_sql(
     aren't forced into this shape; see games/CLAUDE.md and
     docs/architecture-roadmap.md WS4 item 1 for why.
 
+    `event_type` (box_session_event.type to filter on) and `value_json_path`
+    (JSON path for the metric value, e.g. "$.lap_time") are both genuine
+    VALUES here - one is compared in a WHERE clause, the other is a function
+    argument to json_extract - neither is a SQL identifier, so both are
+    bind-paramable. Like `track_id` and `limit`, they are therefore not
+    accepted as function arguments: the returned SQL references them as
+    :event_type / :value_json_path, and the caller supplies the actual values
+    in the params dict passed to db.get_many_raw, same as every other bind
+    param this builder references.
+
     Args:
-        event_type: box_session_event.type to filter on
-        value_json_path: JSON path for the metric value, e.g. "'$.lap_time'"
         extra_select: additional ", column" SELECT fragment (e.g. lap_times)
         extra_where: additional "AND ..." WHERE fragment for extra filters
                      (the caller supplies matching bind params)
+        direction: ORDER BY direction for metric_value, "ASC" or "DESC"
+                    (default "ASC", preserving prior hardcoded behavior).
+                    ORDER BY direction is a SQL keyword, not a value, so it
+                    can't be a bind param - it's validated against an
+                    allowlist and interpolated directly instead.
 
     Returns:
-        SQL string binding :track_id and :limit; callers add any extra bind
-        params referenced by extra_where.
+        SQL string binding :track_id, :limit, :event_type, and
+        :value_json_path; callers add any extra bind params referenced by
+        extra_where.
     """
+    if direction not in _ORDER_DIRECTIONS:
+        msg = f"Invalid ORDER BY direction: {direction!r}"
+        raise ValueError(msg)
+
     username_expr = (
         "COALESCE(p.tag, json_extract(bse.payload, '$.username'), "
         "'Player ' || SUBSTR(bs.host_player_id, 1, 8))"
@@ -218,17 +238,17 @@ def uuid_join_leaderboard_sql(
     SELECT
         bs.host_player_id,
         {username_expr} as username,
-        MIN(CAST(json_extract(bse.payload, {value_json_path}) AS REAL)) as metric_value,
+        MIN(CAST(json_extract(bse.payload, :value_json_path) AS REAL)) as metric_value,
         MAX(bse.timestamp) as entry_date
         {extra_select}
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
     LEFT JOIN player p ON bs.host_player_id = p.id
-    WHERE bse.type = '{event_type}'
+    WHERE bse.type = :event_type
     AND json_extract(bse.payload, '$.track_id') = :track_id
     {extra_where}
-    GROUP BY bs.host_player_id, {username_expr}
-    ORDER BY metric_value ASC
+    GROUP BY bs.host_player_id, username
+    ORDER BY metric_value {direction}
     LIMIT :limit
     """
 
