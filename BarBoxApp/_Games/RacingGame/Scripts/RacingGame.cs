@@ -635,6 +635,10 @@ public partial class RacingGame : GameController
 		var currentPhoneNumber = GetCurrentPlayerPhoneNumber();
 		if (currentPhoneNumber != null)
 		{
+			// Intentionally NOT routed through _pendingSaveQueue: this fires once
+			// per race (not once per lap), and race completion is already the
+			// natural, acceptable synchronous flush point the queue defers to
+			// above - there's no repeated hot-path hitch here to decouple.
 			// Pass captured data to async method to prevent race condition
 			_ = SaveGlobalHighScore(currentPhoneNumber, totalTime, lapTimes, checkpoints);
 		}

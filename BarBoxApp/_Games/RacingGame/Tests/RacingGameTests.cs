@@ -134,6 +134,23 @@ public class RacingGameTests : GameSessionTestBase
 	/// lap 2 ever starts, so nothing else would trigger a flush. Session
 	/// teardown must still flush the lap-1 save - mirrors RacingGame.
 	/// OnGameTeardown calling _pendingSaveQueue.Flush() as its first step.
+	///
+	/// NOTE: this exercises the queue and the real backend save call
+	/// (EmitLapCompleteAsync) directly, not the signal wiring inside RacingGame
+	/// itself (OnTimingSystemLapCompleted enqueuing, OnGameTeardown flushing).
+	/// Driving that wiring end-to-end would require a real RacingGame node with:
+	/// an active SessionManager login, a live TimeTrial backend session (which
+	/// itself requires credit-spend confirmation and a loaded LocationManager
+	/// config - see the RacingMode.TimeTrial branch that calls
+	/// StartBackendSessionAsync), and actual checkpoint-trigger physics
+	/// collisions, since EmitLapCompleteAsync rejects empty checkpoint data and
+	/// checkpoints only populate via real trigger crossings. No test in this
+	/// codebase drives Racing through physics-triggered checkpoints (even
+	/// RacingTimingSystemTests calls the internal checkpoint/lap methods
+	/// directly), so that prerequisite chain is a pre-existing gap in this
+	/// harness, not one introduced here. The RacingGame-side wiring (the two
+	/// call sites at OnTimingSystemLapCompleted and OnGameTeardown) is
+	/// therefore verified by code review, not by an automated test.
 	/// </summary>
 	[Test]
 	public async Task PendingSaveQueue_LapOneCompletesThenQuitsBeforeLapTwo_PersistsLapOneTime()

@@ -9,6 +9,17 @@ namespace BarBox.Games.Racing.Tests;
 /// Unit tests for RacingPendingSaveQueue - the deferred-flush queue that keeps
 /// lap-boundary backend saves off the frame that triggered them, while
 /// guaranteeing they still fire on an early quit before the next flush.
+///
+/// NOTE: these tests exercise the queue in isolation via `new
+/// RacingPendingSaveQueue()`, not the wiring between RacingGame's signal
+/// handlers and this queue (the enqueue call in OnTimingSystemLapCompleted,
+/// the flush call in OnGameTeardown). Exercising that wiring would require
+/// instantiating a real RacingGame node through a logged-in session, an
+/// active TimeTrial backend session, and actual checkpoint-trigger physics
+/// collisions - see the longer note on
+/// RacingGameTests.PendingSaveQueue_LapOneCompletesThenQuitsBeforeLapTwo_PersistsLapOneTime
+/// for why that's out of reach of this test harness. The RacingGame-side
+/// wiring is verified by code review, not by an automated test.
 /// </summary>
 public class RacingPendingSaveQueueTests : TestClass
 {
