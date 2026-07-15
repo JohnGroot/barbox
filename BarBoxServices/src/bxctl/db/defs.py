@@ -94,6 +94,13 @@ class BoxSessionEvent(Base):
         back_populates="events", init=False, default=None
     )
 
+    # Composite index for hot event-lookup queries (leaderboards, credit
+    # checks) that filter on both columns; type first since it's the more
+    # selective predicate across callers.
+    __table_args__ = (
+        Index("ix_box_session_event_type_session_id", "type", "session_id"),
+    )
+
 
 class MiningLocation(Base):
     """Registered mining locations with balanced gem type assignment."""
