@@ -14,6 +14,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy import inspect as sa_inspect
+import structlog
 from structlog import get_logger
 
 from bxctl import env
@@ -214,16 +215,22 @@ async def add_request_id_middleware(request: Request, call_next):
     request_id = str(uuid4())
     request.state.request_id = request_id
 
-    # Bind request_id to logger context for all logs in this request
-    logger.bind(request_id=request_id)
+    # Bind request_id to logger context for all logs in this request.
+    # contextvars.bind_contextvars (unlike logger.bind) propagates automatically
+    # into every structlog call on this task, so it must be cleared in a
+    # finally block - otherwise a leaked value could attach the wrong
+    # request_id to a later, unrelated request on the same worker.
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+    try:
+        # Process the request
+        response = await call_next(request)
 
-    # Process the request
-    response = await call_next(request)
+        # Add request ID to response headers
+        response.headers["X-Request-Id"] = request_id
 
-    # Add request ID to response headers
-    response.headers["X-Request-Id"] = request_id
-
-    return response
+        return response
+    finally:
+        structlog.contextvars.clear_contextvars()
 
 
 # Requests slower than this are logged as a warning. 500ms is generous for a
