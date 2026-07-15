@@ -114,8 +114,8 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public bool IsOnTrack(Vector2 position)
 	{
-		// First check if on main track surface
-		if (_trackDefinition?.IsValidTrackPoint(position) == true)
+		// First check if on main track surface (spatial-index-accelerated path)
+		if (_trackDefinition?.IsValidTrackPointFast(position) == true)
 			return true;
 
 		// Then check if on a kerb zone (counts as on-track)

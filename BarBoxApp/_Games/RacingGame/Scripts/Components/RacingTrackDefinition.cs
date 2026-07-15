@@ -28,8 +28,9 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	private float _cachedHalfWidthSq;
 	private bool _cachedClosed;
 
-	// Spatial acceleration structure for on/off-track queries (additive path, validated
-	// against the full-scan IsValidTrackPoint via regression test; not yet used live).
+	// Spatial acceleration structure backing the per-frame on/off-track query path
+	// (IsValidTrackPointFast). Bit-identical to the full-scan IsValidTrackPoint, which is
+	// retained as the ground-truth comparator for the regression test.
 	private readonly RacingTrackSpatialIndex _spatialIndex = new RacingTrackSpatialIndex();
 
 	// Cached references to avoid repeated GetNode calls
@@ -151,8 +152,8 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	/// <summary>
 	/// Spatial-index-accelerated equivalent of <see cref="IsValidTrackPoint"/>. Returns the
 	/// same on/off-track classification via a single grid-cell lookup instead of a full
-	/// segment scan. Additive path introduced for validation; live call sites still use
-	/// <see cref="IsValidTrackPoint"/> until the migration step.
+	/// segment scan. This is the live per-frame validation path; <see cref="IsValidTrackPoint"/>
+	/// is retained as the full-scan ground-truth comparator for the regression test.
 	/// </summary>
 	public bool IsValidTrackPointFast(Vector2 point)
 	{

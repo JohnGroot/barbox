@@ -21,6 +21,15 @@ public interface IRacingTrackDefinition
 	bool IsValidTrackPoint(Vector2 point);
 
 	/// <summary>
+	/// Spatial-index-accelerated equivalent of <see cref="IsValidTrackPoint"/>, returning the
+	/// same on/off-track classification via a single grid-cell lookup instead of a full segment
+	/// scan. This is the per-frame validation path.
+	/// </summary>
+	/// <param name="point">The point to check</param>
+	/// <returns>True if the point is on valid track surface</returns>
+	bool IsValidTrackPointFast(Vector2 point);
+
+	/// <summary>
 	/// Get the world position of the starting line
 	/// </summary>
 	Vector2 GetStartLinePosition();

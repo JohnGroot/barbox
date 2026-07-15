@@ -776,4 +776,79 @@ public class RacingTrackValidationSystemTests : TestClass
 
 		trackDef.QueueFree();
 	}
+
+	// Same 8 car-bounds sample offsets + rotation the validation system uses internally,
+	// mirrored here to build a faithful full-scan baseline for the live-path timing below.
+	private static readonly Vector2[] _boundsUnitOffsets =
+	{
+		new(-1, -1), new(1, -1), new(1, 1), new(-1, 1),
+		new(0, -1), new(1, 0), new(0, 1), new(-1, 0),
+	};
+
+	private static Vector2 RotateOffset(Vector2 point, float rotation)
+	{
+		float cos = Mathf.Cos(rotation);
+		float sin = Mathf.Sin(rotation);
+		return new Vector2(point.X * cos - point.Y * sin, point.X * sin + point.Y * cos);
+	}
+
+	[Test]
+	public void LiveOffTrackClassification_ValidationTimingComparison()
+	{
+		// Before/after Validation-cost comparison at the ACTUAL live call site: the per-frame
+		// off-track classification (IsCarCompletelyOffTrack, invoked by UpdateOffTrackPenalties),
+		// which now routes IsOnTrack through the spatial index. The car is placed completely off
+		// track so all 9 sample points are evaluated - the worst-case Validation frame the switch
+		// targets. "after" = live fast path; "before" = the same 9-point sampling via the full-scan
+		// IsValidTrackPoint (old IsOnTrack routing). Debug-build only, no timing assertion.
+		if (!OS.IsDebugBuild())
+			return;
+
+		float width = 60f;
+		var loop = BuildOvalLoop(new Vector2(500, 350), 300f, 180f, 48);
+		var trackDef = CreateTrackWithLine(loop, width, closed: true);
+		_validationSystem.Initialize(trackDef, trackDef.GetTrackCurve());
+		_validationSystem.SetZoneManager(null);
+
+		var carCenter = new Vector2(500, 350); // loop interior -> completely off track
+		float carRotation = 0.5f;
+		var carSize = new Vector2(40, 20);
+		var halfSize = carSize / 2.0f;
+
+		// Sanity: this position must genuinely exercise the full 9-point (completely-off) path.
+		_validationSystem.IsCarCompletelyOffTrack(carCenter, carRotation, carSize).ShouldBeTrue();
+
+		const int Iterations = 20000;
+		var sw = new System.Diagnostics.Stopwatch();
+
+		// Before: full-scan routing (mirror the internal sampling, call IsValidTrackPoint per point).
+		sw.Restart();
+		for (int it = 0; it < Iterations; it++)
+		{
+			if (!trackDef.IsValidTrackPoint(carCenter))
+			{
+				for (int i = 0; i < _boundsUnitOffsets.Length; i++)
+				{
+					var scaled = new Vector2(_boundsUnitOffsets[i].X * halfSize.X, _boundsUnitOffsets[i].Y * halfSize.Y);
+					var world = carCenter + RotateOffset(scaled, carRotation);
+					if (trackDef.IsValidTrackPoint(world)) break;
+				}
+			}
+		}
+		sw.Stop();
+		double oldMs = sw.Elapsed.TotalMilliseconds;
+
+		// After: live spatial-index path through the real validation-system entry point.
+		sw.Restart();
+		for (int it = 0; it < Iterations; it++)
+			_ = _validationSystem.IsCarCompletelyOffTrack(carCenter, carRotation, carSize);
+		sw.Stop();
+		double newMs = sw.Elapsed.TotalMilliseconds;
+
+		GD.Print($"[A1b] Live off-track Validation cost over {Iterations} completely-off-track frames " +
+			$"({loop.Length} segments): full-scan={oldMs:F2}ms, spatial-index={newMs:F2}ms, " +
+			$"per-frame old={oldMs / Iterations * 1000.0:F3}us new={newMs / Iterations * 1000.0:F3}us");
+
+		trackDef.QueueFree();
+	}
 }
