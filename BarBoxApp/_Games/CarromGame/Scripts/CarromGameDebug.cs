@@ -486,6 +486,8 @@ public partial class CarromGame : GameController
 		monitor.SetMetric("Pieces", $"{_pieceFactory?.GetAllPieces().Count ?? 0}");
 		monitor.SetMetric("Phase", _gameStateManager?.GetCurrentStateName() ?? "N/A");
 		monitor.SetMetric("Mode", _carromGameMode.ToString());
+		monitor.SetMetric("Piece Physics", $"{CarromPiece.DebugPhysicsFrameTotalMs:F2}ms");
+		monitor.SetMetric("Physics Monitor", $"{CarromPhysicsMonitor.DebugElapsedMs:F2}ms");
 	}
 
 	private void ClearDebugMetrics()

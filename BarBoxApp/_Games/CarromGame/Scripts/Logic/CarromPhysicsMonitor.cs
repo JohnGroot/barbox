@@ -30,6 +30,11 @@ public partial class CarromPhysicsMonitor : Node
 	private int _physicsFramesSinceStart = 0;
 	private CarromPieceFactory _pieceFactory;
 
+	// Debug timing
+	private static readonly bool _isDebugBuild = OS.IsDebugBuild();
+	private System.Diagnostics.Stopwatch _debugStopwatch;
+	public static double DebugElapsedMs { get; private set; }
+
 	// ================================================================
 	// INITIALIZATION
 	// ================================================================
@@ -87,8 +92,22 @@ public partial class CarromPhysicsMonitor : Node
 		if (_physicsFramesSinceStart < MinimumSettlementFrames)
 			return;
 
+		if (_isDebugBuild)
+		{
+			_debugStopwatch ??= new System.Diagnostics.Stopwatch();
+			_debugStopwatch.Restart();
+		}
+
 		// Check all pieces every physics frame
-		if (AreAllPiecesStopped())
+		bool allStopped = AreAllPiecesStopped();
+
+		if (_isDebugBuild)
+		{
+			_debugStopwatch.Stop();
+			DebugElapsedMs = _debugStopwatch.Elapsed.TotalMilliseconds;
+		}
+
+		if (allStopped)
 		{
 			StopMonitoring();
 			EmitSignal(SignalName.AllPiecesStopped);

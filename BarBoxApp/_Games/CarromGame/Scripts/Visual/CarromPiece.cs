@@ -57,7 +57,13 @@ public partial class CarromPiece : RigidBody2D
 	private float _minVelocityThreshold = 1.0f;
 	private float _angularMinThreshold = 0.1f;
 	private float _maxVelocityLimit = 2000.0f;
-	private float _maxAngularVelocity = 50.0f;  
+	private float _maxAngularVelocity = 50.0f;
+
+	// Debug timing - aggregates _PhysicsProcess cost across all piece instances per physics frame
+	private static readonly bool _isDebugBuild = OS.IsDebugBuild();
+	private System.Diagnostics.Stopwatch _debugPhysicsStopwatch;
+	private static ulong _debugPhysicsFrame;
+	public static double DebugPhysicsFrameTotalMs { get; private set; }  
 	private float _velocityAlertThreshold = 1800.0f;
 	
 	// Realistic physics constants - now using PhysicsConfig values
@@ -370,11 +376,18 @@ public partial class CarromPiece : RigidBody2D
 	/// </summary>
 	public override void _PhysicsProcess(double delta)
 	{
+		if (_isDebugBuild)
+		{
+			_debugPhysicsStopwatch ??= new System.Diagnostics.Stopwatch();
+			_debugPhysicsStopwatch.Restart();
+		}
+
 		if (PhysicsConfig == null || !PhysicsConfig.EnablePowderEffectFriction)
 		{
+			RecordDebugPhysicsElapsed();
 			return; // Use built-in damping when powder effect disabled
 		}
-		
+
 		Vector2 currentPosition = GlobalPosition;
 		_cachedSpeed = LinearVelocity.Length(); // Cache speed calculation
 		
@@ -424,6 +437,28 @@ public partial class CarromPiece : RigidBody2D
 		
 		// Update trail if enabled
 		UpdateTrail();
+
+		RecordDebugPhysicsElapsed();
+	}
+
+	/// <summary>
+	/// Records this call's contribution to the current physics frame's total
+	/// CarromPiece._PhysicsProcess cost, for the debug performance overlay.
+	/// </summary>
+	private void RecordDebugPhysicsElapsed()
+	{
+		if (!_isDebugBuild)
+			return;
+
+		_debugPhysicsStopwatch.Stop();
+
+		ulong frame = Engine.GetPhysicsFrames();
+		if (frame != _debugPhysicsFrame)
+		{
+			_debugPhysicsFrame = frame;
+			DebugPhysicsFrameTotalMs = 0.0;
+		}
+		DebugPhysicsFrameTotalMs += _debugPhysicsStopwatch.Elapsed.TotalMilliseconds;
 	}
 
 	/// <summary>
