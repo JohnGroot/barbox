@@ -42,6 +42,9 @@ public partial class RacingZoneManager : Node
 	// Reusable list for position queries (GC optimization: avoids per-call allocation)
 	private readonly List<RacingZone> _positionQueryResult = [];
 
+	// Reusable list for body zone queries (GC optimization: avoids per-call allocation)
+	private readonly List<RacingZone> _bodyZonesQueryResult = [];
+
 	// ================================================================
 	// FRICTIONLESS STATE
 	// ================================================================
@@ -427,11 +430,14 @@ public partial class RacingZoneManager : Node
 	/// </summary>
 	public IReadOnlyList<RacingZone> GetZonesForBody(Node2D body)
 	{
+		_bodyZonesQueryResult.Clear();
+
 		if (_bodyZones.TryGetValue(body, out var zones))
 		{
-			return zones.ToList();
+			_bodyZonesQueryResult.AddRange(zones);
 		}
-		return [];
+
+		return _bodyZonesQueryResult;
 	}
 
 	/// <summary>

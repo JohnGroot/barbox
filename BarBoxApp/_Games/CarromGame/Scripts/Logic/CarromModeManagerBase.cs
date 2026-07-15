@@ -424,16 +424,6 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	}
 
 	// ================================================================
-	// TEMPLATE METHOD PATTERN - SETTLEMENT PROCESSING
-	// ================================================================
-	
-	public override void _Process(double delta)
-	{
-		// No longer need timer-based settlement processing
-		// Settlement is now immediate and synchronous
-	}
-
-	// ================================================================
 	// PRIVATE HELPER METHODS
 	// ================================================================
 	

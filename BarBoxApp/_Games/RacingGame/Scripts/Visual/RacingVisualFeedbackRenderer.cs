@@ -252,17 +252,17 @@ namespace BarBox.Games.Racing
 	{
 		if (trail == null) return;
 
-		for (int i = trail.Count - 1; i >= 0; i--)
+		// Trails are added chronologically (oldest first), so scan from the front
+		// and stop at the first non-expired point.
+		int expiredCount = 0;
+		while (expiredCount < trail.Count && currentTime - trail[expiredCount].timestamp > TrailLifetime)
 		{
-			var age = currentTime - trail[i].timestamp;
-			if (age > TrailLifetime)
-			{
-				trail.RemoveAt(i);
-			}
-			else
-			{
-				break; // Since trails are added chronologically, we can stop here
-			}
+			expiredCount++;
+		}
+
+		if (expiredCount > 0)
+		{
+			trail.RemoveRange(0, expiredCount);
 		}
 	}
 

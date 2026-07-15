@@ -227,6 +227,10 @@ public partial class RacingGame : GameController
 	private System.Diagnostics.Stopwatch _debugValidationStopwatch;
 	private static readonly bool _isDebugBuild = OS.IsDebugBuild();
 
+	// Debug metric throttle (GC optimization: skip SetMetric string interpolation on most frames)
+	private int _debugMetricFrameCounter = 0;
+	private const int DEBUG_METRIC_UPDATE_INTERVAL = 3;
+
 	// ================================================================
 	// PRIVATE Fields - UI SYSTEM
 	// ================================================================
@@ -543,12 +547,16 @@ public partial class RacingGame : GameController
 			if (_isDebugBuild)
 			{
 				_debugValidationStopwatch.Stop();
-				var monitor = DebugPerformanceMonitor.Instance;
-				if (monitor != null)
+				if (++_debugMetricFrameCounter >= DEBUG_METRIC_UPDATE_INTERVAL)
 				{
-					monitor.SetMetric("Validation", $"{_debugValidationStopwatch.Elapsed.TotalMilliseconds:F2}ms");
-					monitor.SetMetric("Off-track", _trackValidationSystem.IsCurrentlyOffTrack ? "YES" : "no");
-					monitor.SetMetric("Zones", $"{_zoneManager.ZoneCount}");
+					_debugMetricFrameCounter = 0;
+					var monitor = DebugPerformanceMonitor.Instance;
+					if (monitor != null)
+					{
+						monitor.SetMetric("Validation", $"{_debugValidationStopwatch.Elapsed.TotalMilliseconds:F2}ms");
+						monitor.SetMetric("Off-track", _trackValidationSystem.IsCurrentlyOffTrack ? "YES" : "no");
+						monitor.SetMetric("Zones", $"{_zoneManager.ZoneCount}");
+					}
 				}
 			}
 		}
