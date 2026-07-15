@@ -68,6 +68,40 @@ namespace BarBox.Games.Racing
 		private Vector2 _cachedLapProgressPos;
 		private Vector2 _cachedCountdownPos;
 
+		// Speed text + measured size cache - recomputed only when the displayed integer speed changes
+		private int _cachedSpeedInt = int.MinValue;
+		private string _cachedSpeedText;
+		private Vector2 _cachedSpeedTextSize;
+
+		// GetStringSize caches, keyed by the values that determine the measured text
+		private Vector2? _cachedLapLabelSize;
+		private int _cachedLapValueLap = int.MinValue;
+		private int _cachedLapValueTarget = int.MinValue;
+		private string _cachedLapValueText;
+		private Vector2 _cachedLapValueSize;
+		private int _cachedCountdownNumberValue = int.MinValue;
+		private int _cachedCountdownNumberFontSize = int.MinValue;
+		private string _cachedCountdownNumberText;
+		private Vector2 _cachedCountdownNumberSize;
+		private int _cachedGoTextFontSize = int.MinValue;
+		private Vector2 _cachedGoTextSize;
+
+		// Dirty-flag tracking for QueueRedraw - mirrors the RacingUIState.StateEquals
+		// diff pattern: only redraw when the values that feed _Draw actually changed.
+		private bool _hasDrawnOnce = false;
+		private float _lastDrawnSpeed;
+		private float _lastDrawnSpeedPercent;
+		private float _lastDrawnLapProgress;
+		private float _lastDrawnGlowIntensity;
+		private int _lastDrawnCurrentLap;
+		private int _lastDrawnTargetLaps;
+		private bool _lastDrawnIsPracticeMode;
+		private bool _lastDrawnIsCountdownVisible;
+		private int _lastDrawnCountdownNumber;
+		private float _lastDrawnCountdownProgress;
+		private float _lastDrawnCountdownPulseScale;
+		private float _lastDrawnCountdownAnimTime;
+
 		// Game state
 		private float _currentSpeed = 0.0f;
 		private float _maxSpeed = 100.0f;
@@ -194,11 +228,53 @@ namespace BarBox.Games.Racing
 			// Global glow pulse for visual interest
 			_glowIntensity = 0.8f + 0.2f * Mathf.Sin(_pulseTime * 3.0f);
 
-			// Queue redraw for smooth animations
-			if (ShouldRender)
+			// Queue redraw only when something visible actually changed
+			if (ShouldRender && HasVisualStateChanged())
 			{
 				QueueRedraw();
 			}
+		}
+
+		/// <summary>
+		/// Compare current animated/state values against what was last drawn.
+		/// Follows the same diff-based philosophy as RacingUIState.StateEquals.
+		/// </summary>
+		private bool HasVisualStateChanged()
+		{
+			if (!_hasDrawnOnce) return true;
+
+			return Math.Abs(_currentSpeed - _lastDrawnSpeed) > 0.01f
+				|| Math.Abs(_currentSpeedPercent - _lastDrawnSpeedPercent) > 0.0005f
+				|| Math.Abs(_currentLapProgress - _lastDrawnLapProgress) > 0.0005f
+				|| Math.Abs(_glowIntensity - _lastDrawnGlowIntensity) > 0.001f
+				|| _currentLap != _lastDrawnCurrentLap
+				|| _targetLaps != _lastDrawnTargetLaps
+				|| _isPracticeMode != _lastDrawnIsPracticeMode
+				|| _isCountdownVisible != _lastDrawnIsCountdownVisible
+				|| _countdownNumber != _lastDrawnCountdownNumber
+				|| Math.Abs(_countdownProgress - _lastDrawnCountdownProgress) > 0.0005f
+				|| Math.Abs(_countdownPulseScale - _lastDrawnCountdownPulseScale) > 0.0005f
+				|| (_isCountdownVisible && Math.Abs(_countdownAnimTime - _lastDrawnCountdownAnimTime) > 0.0001f);
+		}
+
+		/// <summary>
+		/// Snapshot the values that drove this draw call, for the next dirty check.
+		/// </summary>
+		private void RecordDrawnState()
+		{
+			_hasDrawnOnce = true;
+			_lastDrawnSpeed = _currentSpeed;
+			_lastDrawnSpeedPercent = _currentSpeedPercent;
+			_lastDrawnLapProgress = _currentLapProgress;
+			_lastDrawnGlowIntensity = _glowIntensity;
+			_lastDrawnCurrentLap = _currentLap;
+			_lastDrawnTargetLaps = _targetLaps;
+			_lastDrawnIsPracticeMode = _isPracticeMode;
+			_lastDrawnIsCountdownVisible = _isCountdownVisible;
+			_lastDrawnCountdownNumber = _countdownNumber;
+			_lastDrawnCountdownProgress = _countdownProgress;
+			_lastDrawnCountdownPulseScale = _countdownPulseScale;
+			_lastDrawnCountdownAnimTime = _countdownAnimTime;
 		}
 
 		// ================================================================
@@ -234,6 +310,8 @@ namespace BarBox.Games.Racing
 			{
 				DrawCountdown(_cachedCountdownPos);
 			}
+
+			RecordDrawnState();
 		}
 
 		/// <summary>
@@ -279,11 +357,17 @@ namespace BarBox.Games.Racing
 			DrawLine(needleStart, needleEnd, Colors.Black, 5.0f); // Shadow/outline
 			DrawLine(needleStart, needleEnd, Colors.White, 3.0f); // Main needle
 
-			// Speed text in center - use cached font
+			// Speed text in center - use cached font, string, and measured size
 			var speedInt = (int)(_currentSpeed * 0.1f);
 			var fontSize = 24;
-			var speedText = speedInt.ToString();
-			var textSize = _cachedFont.GetStringSize(speedText, HorizontalAlignment.Center, -1, fontSize);
+			if (speedInt != _cachedSpeedInt)
+			{
+				_cachedSpeedInt = speedInt;
+				_cachedSpeedText = speedInt.ToString();
+				_cachedSpeedTextSize = _cachedFont.GetStringSize(_cachedSpeedText, HorizontalAlignment.Center, -1, fontSize);
+			}
+			var speedText = _cachedSpeedText;
+			var textSize = _cachedSpeedTextSize;
 			var textPos = position + (Vector2.Left * textSize * 0.5f);
 
 			// Main text
@@ -320,13 +404,23 @@ namespace BarBox.Games.Racing
 				DrawArc(position, LapRadius, startAngle, endAngle, 32, lapColor, LapThickness);
 			}
 
-			// Lap text - use cached font
+			// Lap text - use cached font, string, and measured size
 			var fontSize = 18;
 			var lapLabel = "LAP";
-			var lapValue = $"{_currentLap}/{_targetLaps}";
 
-			var lapLabelSize = _cachedFont.GetStringSize(lapLabel, HorizontalAlignment.Center, -1, fontSize);
-			var lapValueSize = _cachedFont.GetStringSize(lapValue, HorizontalAlignment.Center, -1, fontSize);
+			// "LAP" and its font size never change, so this is measured once and reused
+			_cachedLapLabelSize ??= _cachedFont.GetStringSize(lapLabel, HorizontalAlignment.Center, -1, fontSize);
+			var lapLabelSize = _cachedLapLabelSize.Value;
+
+			if (_currentLap != _cachedLapValueLap || _targetLaps != _cachedLapValueTarget)
+			{
+				_cachedLapValueLap = _currentLap;
+				_cachedLapValueTarget = _targetLaps;
+				_cachedLapValueText = $"{_currentLap}/{_targetLaps}";
+				_cachedLapValueSize = _cachedFont.GetStringSize(_cachedLapValueText, HorizontalAlignment.Center, -1, fontSize);
+			}
+			var lapValue = _cachedLapValueText;
+			var lapValueSize = _cachedLapValueSize;
 			var lineHeight = lapLabelSize.Y;
 			var totalHeight = lineHeight * 2;
 
@@ -372,12 +466,19 @@ namespace BarBox.Games.Racing
 				DrawArc(position, CountdownRadius, -Mathf.Pi * 0.5f, -Mathf.Pi * 0.5f + progressAngle, 32, CountdownColor, CountdownThickness);
 			}
 
-			// Countdown number with pulse scale - use cached font
+			// Countdown number with pulse scale - use cached font, string, and measured size
 			if (_countdownNumber > 0)
 			{
 				var fontSize = (int)(72 * _countdownPulseScale);
-				var numberText = _countdownNumber.ToString();
-				var textSize = _cachedFont.GetStringSize(numberText, HorizontalAlignment.Center, -1, fontSize);
+				if (_countdownNumber != _cachedCountdownNumberValue || fontSize != _cachedCountdownNumberFontSize)
+				{
+					_cachedCountdownNumberValue = _countdownNumber;
+					_cachedCountdownNumberFontSize = fontSize;
+					_cachedCountdownNumberText = _countdownNumber.ToString();
+					_cachedCountdownNumberSize = _cachedFont.GetStringSize(_cachedCountdownNumberText, HorizontalAlignment.Center, -1, fontSize);
+				}
+				var numberText = _cachedCountdownNumberText;
+				var textSize = _cachedCountdownNumberSize;
 				var textPos = position - textSize * 0.5f;
 				textPos.Y += textSize.Y * 0.75f; // Adjust for baseline positioning
 
@@ -394,10 +495,15 @@ namespace BarBox.Games.Racing
 			}
 			else
 			{
-				// "GO!" text - use cached font
+				// "GO!" text - use cached font and measured size ("GO!" itself never changes)
 				var fontSize = (int)(60 * _countdownPulseScale);
 				var goText = "GO!";
-				var textSize = _cachedFont.GetStringSize(goText, HorizontalAlignment.Center, -1, fontSize);
+				if (fontSize != _cachedGoTextFontSize)
+				{
+					_cachedGoTextFontSize = fontSize;
+					_cachedGoTextSize = _cachedFont.GetStringSize(goText, HorizontalAlignment.Center, -1, fontSize);
+				}
+				var textSize = _cachedGoTextSize;
 				var textPos = position - textSize * 0.5f;
 				textPos.Y += textSize.Y * 0.75f; // Adjust for baseline positioning
 
