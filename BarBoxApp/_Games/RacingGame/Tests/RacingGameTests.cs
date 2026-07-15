@@ -128,6 +128,78 @@ public class RacingGameTests : GameSessionTestBase
 	}
 
 	/// <summary>
+	/// Reproduces the rage-quit hazard RacingPendingSaveQueue exists to prevent:
+	/// lap 1 completes (queuing its backend save instead of firing it
+	/// synchronously on the lap-crossing frame) and the player quits before
+	/// lap 2 ever starts, so nothing else would trigger a flush. Session
+	/// teardown must still flush the lap-1 save - mirrors RacingGame.
+	/// OnGameTeardown calling _pendingSaveQueue.Flush() as its first step.
+	/// </summary>
+	[Test]
+	public async Task PendingSaveQueue_LapOneCompletesThenQuitsBeforeLapTwo_PersistsLapOneTime()
+	{
+		// Arrange
+		if (_racingEventService == null || _testSessionId == Guid.Empty)
+		{
+			TestHelpers.LogTestInfo("Skipping - Session not created");
+			return;
+		}
+
+		var trackId = $"pending_queue_test_{Guid.NewGuid():N}";
+		var lap1Time = 11.111f;
+		var lap1Checkpoints = CreateTestCheckpoints(lap1Time);
+		var queue = new RacingPendingSaveQueue();
+		var lap1Succeeded = false;
+		string lap1Error = null;
+
+		// Lap 1 completes: capture happens synchronously (cheap), the actual
+		// backend save is queued instead of started immediately.
+		queue.Enqueue(async () =>
+		{
+			var result = await _racingEventService.EmitLapCompleteAsync(trackId, 1, lap1Time, lap1Checkpoints);
+			if (result.IsSuccess(out var _))
+				lap1Succeeded = true;
+			else if (result.IsFailure(out var error))
+				lap1Error = error.Message;
+		});
+
+		// Act - player quits here, before lap 2 ever starts. Nothing else
+		// enqueues or flushes; only the teardown-equivalent flush below can
+		// still save lap 1.
+		await queue.FlushAsync();
+
+		// Assert - the save actually reached the backend, not just that a
+		// delegate was invoked. Read the session back (rather than the
+		// best_lap leaderboard, which aggregates by track_id but the
+		// racing/lap_complete payload schema on the backend doesn't retain
+		// track_id - a pre-existing backend gap unrelated to this queue) and
+		// confirm the lap_complete event with lap 1's time actually landed.
+		lap1Succeeded.ShouldBeTrue($"Lap 1 save must persist even though the player quit before lap 2: {lap1Error}");
+
+		var sessionJsonResult = await _eventService.QueryRawAsync($"/box/session/{_testSessionId}");
+		sessionJsonResult.IsSuccess(out var sessionJson).ShouldBeTrue("Should be able to read the session back to confirm the event landed");
+
+		var sessionDict = Json.ParseString(sessionJson).AsGodotDictionary();
+		var events = sessionDict["events"].AsGodotArray();
+
+		var foundLap1Event = false;
+		foreach (var evt in events)
+		{
+			var evtDict = evt.AsGodotDictionary();
+			if (evtDict["type"].AsString() != "racing/lap_complete")
+				continue;
+
+			var payload = evtDict["payload"].AsGodotDictionary();
+			if (payload.ContainsKey("lap_time") && System.Math.Abs(payload["lap_time"].AsSingle() - lap1Time) < 0.001f)
+			{
+				foundLap1Event = true;
+				break;
+			}
+		}
+		foundLap1Event.ShouldBeTrue($"Expected a racing/lap_complete event with lap_time {lap1Time}s to be persisted in session {_testSessionId}");
+	}
+
+	/// <summary>
 	/// Creates test checkpoint data with sequential indices and monotonically increasing times
 	/// </summary>
 	private static CheckpointTime[] CreateTestCheckpoints(float lapTime, int checkpointCount = 4)

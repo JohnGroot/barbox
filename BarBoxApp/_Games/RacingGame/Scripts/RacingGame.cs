@@ -194,6 +194,11 @@ public partial class RacingGame : GameController
 	private RacingEventService _racingEventService;
 	private SessionEventService _eventService;
 
+	// Lap-boundary backend saves are queued here so their async chain doesn't
+	// run synchronously on the lap-crossing frame; flushed every frame, at
+	// race completion, and on teardown (see RacingPendingSaveQueue).
+	private readonly RacingPendingSaveQueue _pendingSaveQueue = new();
+
 	// ================================================================
 	// PRIVATE FIELDS - TRACK AND WORLD SYSTEMS
 	// ================================================================
@@ -313,6 +318,11 @@ public partial class RacingGame : GameController
 	/// </summary>
 	protected override void OnGameTeardown()
 	{
+		// Critical: flush any lap-boundary saves that haven't fired yet.
+		// Without this, a player who quits between the lap-crossing frame and
+		// the next _Process flush would silently lose that lap's save.
+		_pendingSaveQueue.Flush();
+
 		// Save partial race data when exiting (fire-and-forget)
 		if (IsRaceActive() && GetRacingMode() == RacingMode.TimeTrial)
 		{
@@ -521,6 +531,10 @@ public partial class RacingGame : GameController
 
 	public override void _Process(double delta)
 	{
+		// Drain any lap-boundary saves queued last frame - keeps the async
+		// chain off the exact frame that queued them (see _pendingSaveQueue).
+		_pendingSaveQueue.Flush();
+
 		// Handle direct input for arc positioning fix
 		HandleDirectInput();
 
@@ -586,7 +600,14 @@ public partial class RacingGame : GameController
 		var currentPhoneNumber = GetCurrentPlayerPhoneNumber();
 		if (currentPhoneNumber != null)
 		{
-			_ = SaveBestLapTime(currentPhoneNumber, lapTime);
+			// Capture lap state IMMEDIATELY (cheap - no I/O) so the queued save
+			// still reflects this lap once flushed, since currentLap/checkpoints
+			// change again as soon as the next lap starts. The actual backend
+			// call (JSON serialize, retry/backoff) is deferred to a later flush
+			// so it doesn't run synchronously on this lap-crossing frame.
+			var currentLap = GetPlayerCurrentLap(currentPhoneNumber);
+			var checkpoints = GetPlayerCheckpointTimes(currentPhoneNumber);
+			_pendingSaveQueue.Enqueue(() => SaveBestLapTime(currentPhoneNumber, lapTime, currentLap, checkpoints));
 		}
 
 		// Emit signal for external integrations (GameHost) at high level
@@ -598,6 +619,12 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void OnTimingSystemRaceCompleted(string playerId, float totalTime)
 	{
+		// Race completion is a natural, already-synchronous flush point - make
+		// sure the final lap's queued save (just enqueued by the LapCompleted
+		// signal that preceded this one) starts now rather than waiting for
+		// next frame's drain.
+		_pendingSaveQueue.Flush();
+
 		// CRITICAL: Capture lap data IMMEDIATELY before async operation
 		// This prevents race condition where ResetRacingData() clears lap times
 		// before the async SaveGlobalHighScore completes
@@ -785,8 +812,11 @@ public partial class RacingGame : GameController
 	/// <summary>
 	/// Emit lap complete event to backend
 	/// Individual lap times are tracked via events and aggregated by backend
+	/// Accepts pre-captured lap/checkpoint data - the caller queues this call
+	/// and captures state at the lap-crossing moment, since currentLap and
+	/// checkpoints change again as soon as the next lap starts
 	/// </summary>
-	private async Task SaveBestLapTime(string playerId, float lapTime)
+	private async Task SaveBestLapTime(string playerId, float lapTime, int currentLap, CheckpointTime[] checkpoints)
 	{
 		if (string.IsNullOrEmpty(playerId) || lapTime <= 0.0f) return;
 
@@ -796,9 +826,6 @@ public partial class RacingGame : GameController
 		// Fire-and-forget lap complete event emission
 		try
 		{
-			var currentLap = GetPlayerCurrentLap(playerId);
-			var checkpoints = GetPlayerCheckpointTimes(playerId);
-
 			// Emit lap complete event with track ID
 			var result = await _racingEventService.EmitLapCompleteAsync(_currentTrackId, currentLap, lapTime, checkpoints);
 
