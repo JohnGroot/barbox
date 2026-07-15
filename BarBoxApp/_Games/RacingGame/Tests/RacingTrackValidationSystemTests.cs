@@ -570,4 +570,210 @@ public class RacingTrackValidationSystemTests : TestClass
 
 		trackDef.QueueFree();
 	}
+
+	// ================================================================
+	// SPATIAL INDEX REGRESSION TESTS (Task A1a)
+	//
+	// Assert the additive spatial-index path (IsValidTrackPointFast) is
+	// bit-identical to the live full-scan path (IsValidTrackPoint) across a
+	// scripted full-lap replay. Tolerance: exact boolean equality - the grid
+	// applies the same per-segment distance test as the scan over a proven
+	// superset of relevant segments, so results must match with no tolerance.
+	// ================================================================
+
+	// Build a closed oval loop, offset from the origin, with straights + curved
+	// corners. An elongated oval also brings opposite straights within a moderate
+	// distance of each other, exercising the "nearby but wrong-side" segment case.
+	private static Vector2[] BuildOvalLoop(Vector2 center, float radiusX, float radiusY, int pointCount)
+	{
+		var pts = new Vector2[pointCount];
+		for (int i = 0; i < pointCount; i++)
+		{
+			float a = Mathf.Tau * i / pointCount;
+			pts[i] = center + new Vector2(Mathf.Cos(a) * radiusX, Mathf.Sin(a) * radiusY);
+		}
+		return pts;
+	}
+
+	// Walk the closed loop's centerline and emit scripted car positions: on-center,
+	// just inside/outside the half-width band, exactly on the boundary, and far off.
+	// This drives both on-track and off-track classifications and straddles the
+	// on/off boundary at many positions and orientations around the lap.
+	private static System.Collections.Generic.List<Vector2> ScriptLapPositions(
+		Vector2[] loop, float halfWidth, int subStepsPerSegment)
+	{
+		var positions = new System.Collections.Generic.List<Vector2>();
+		var lateralOffsets = new[]
+		{
+			0f,
+			halfWidth - 1f,   // just inside -> on track
+			halfWidth + 1f,   // just outside -> off track
+			halfWidth,        // exactly on boundary
+			halfWidth * 3f,   // clearly off track
+		};
+
+		int n = loop.Length;
+		for (int i = 0; i < n; i++)
+		{
+			Vector2 a = loop[i];
+			Vector2 b = loop[(i + 1) % n];
+			Vector2 tangent = (b - a);
+			if (tangent.LengthSquared() < 0.0001f)
+				continue;
+			tangent = tangent.Normalized();
+			Vector2 normal = new Vector2(-tangent.Y, tangent.X);
+
+			for (int s = 0; s < subStepsPerSegment; s++)
+			{
+				float t = (float)s / subStepsPerSegment;
+				Vector2 onLine = a.Lerp(b, t);
+
+				foreach (var off in lateralOffsets)
+				{
+					positions.Add(onLine + normal * off);
+					positions.Add(onLine - normal * off);
+				}
+			}
+		}
+		return positions;
+	}
+
+	[Test]
+	public void SpatialIndex_MatchesFullScan_AcrossScriptedLap()
+	{
+		float width = 60f;
+		float halfWidth = width / 2f;
+		var loop = BuildOvalLoop(new Vector2(500, 350), 300f, 180f, 32);
+		var trackDef = CreateTrackWithLine(loop, width, closed: true);
+
+		var scripted = ScriptLapPositions(loop, halfWidth, subStepsPerSegment: 6);
+		scripted.Count.ShouldBeGreaterThan(1000); // meaningful lap coverage
+
+		int onTrackCount = 0;
+		int offTrackCount = 0;
+		int mismatches = 0;
+
+		foreach (var p in scripted)
+		{
+			bool oldResult = trackDef.IsValidTrackPoint(p);
+			bool newResult = trackDef.IsValidTrackPointFast(p);
+
+			if (oldResult != newResult)
+				mismatches++;
+
+			if (oldResult) onTrackCount++;
+			else offTrackCount++;
+		}
+
+		// Bit-identical classification at every sampled position.
+		mismatches.ShouldBe(0);
+
+		// The lap must genuinely exercise BOTH classifications (not all-on / all-off),
+		// otherwise a trivially-agreeing stub would pass.
+		onTrackCount.ShouldBeGreaterThan(0);
+		offTrackCount.ShouldBeGreaterThan(0);
+
+		trackDef.QueueFree();
+	}
+
+	[Test]
+	public void SpatialIndex_MatchesFullScan_OnOpenMultiSegmentTrack()
+	{
+		// Open (non-closed) track with sharp corners and start/end (no wraparound).
+		float width = 40f;
+		var points = new[]
+		{
+			new Vector2(-200, -100),
+			new Vector2(100, -100),
+			new Vector2(100, 150),
+			new Vector2(400, 150),
+			new Vector2(400, -50),
+		};
+		var trackDef = CreateTrackWithLine(points, width, closed: false);
+
+		var scripted = ScriptLapPositions(points, width / 2f, subStepsPerSegment: 8);
+		// Also probe the exact endpoints and just beyond them (open-track ends).
+		scripted.Add(points[0]);
+		scripted.Add(points[^1]);
+		scripted.Add(points[0] + new Vector2(-30, 0));
+		scripted.Add(points[^1] + new Vector2(0, -30));
+
+		int mismatches = 0;
+		foreach (var p in scripted)
+		{
+			if (trackDef.IsValidTrackPoint(p) != trackDef.IsValidTrackPointFast(p))
+				mismatches++;
+		}
+		mismatches.ShouldBe(0);
+
+		trackDef.QueueFree();
+	}
+
+	[Test]
+	public void SpatialIndex_MatchesFullScan_OnDenseGridSweep()
+	{
+		// Exhaustive sweep over the track's bounding region catches any point whose
+		// true closest segment lies in a neighboring cell - the key completeness risk.
+		float width = 50f;
+		var loop = BuildOvalLoop(new Vector2(0, 0), 220f, 140f, 24);
+		var trackDef = CreateTrackWithLine(loop, width, closed: true);
+
+		int mismatches = 0;
+		int sampleCount = 0;
+		for (float x = -320f; x <= 320f; x += 3.5f)
+		{
+			for (float y = -240f; y <= 240f; y += 3.5f)
+			{
+				var p = new Vector2(x, y);
+				if (trackDef.IsValidTrackPoint(p) != trackDef.IsValidTrackPointFast(p))
+					mismatches++;
+				sampleCount++;
+			}
+		}
+
+		mismatches.ShouldBe(0);
+		sampleCount.ShouldBeGreaterThan(10000);
+
+		trackDef.QueueFree();
+	}
+
+	[Test]
+	public void SpatialIndex_Validation_TimingComparison()
+	{
+		// Capture a before/after Validation-cost comparison for the new query path
+		// standalone (it is not yet wired into live frames). Debug-build only, mirrors
+		// the RacingGame Stopwatch + OS.IsDebugBuild timing idiom. No assertion on
+		// timing - environment-dependent; correctness is covered by the tests above.
+		if (!OS.IsDebugBuild())
+			return;
+
+		float width = 60f;
+		var loop = BuildOvalLoop(new Vector2(500, 350), 300f, 180f, 48);
+		var trackDef = CreateTrackWithLine(loop, width, closed: true);
+		var scripted = ScriptLapPositions(loop, width / 2f, subStepsPerSegment: 6);
+
+		const int Iterations = 20;
+		var sw = new System.Diagnostics.Stopwatch();
+
+		sw.Restart();
+		for (int it = 0; it < Iterations; it++)
+			foreach (var p in scripted)
+				_ = trackDef.IsValidTrackPoint(p);
+		sw.Stop();
+		double oldMs = sw.Elapsed.TotalMilliseconds;
+
+		sw.Restart();
+		for (int it = 0; it < Iterations; it++)
+			foreach (var p in scripted)
+				_ = trackDef.IsValidTrackPointFast(p);
+		sw.Stop();
+		double newMs = sw.Elapsed.TotalMilliseconds;
+
+		int queries = scripted.Count * Iterations;
+		GD.Print($"[A1a] Validation timing over {queries} queries " +
+			$"({loop.Length} segments): full-scan={oldMs:F2}ms, spatial-index={newMs:F2}ms, " +
+			$"per-query old={oldMs / queries * 1000.0:F3}us new={newMs / queries * 1000.0:F3}us");
+
+		trackDef.QueueFree();
+	}
 }

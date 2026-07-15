@@ -28,6 +28,10 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	private float _cachedHalfWidthSq;
 	private bool _cachedClosed;
 
+	// Spatial acceleration structure for on/off-track queries (additive path, validated
+	// against the full-scan IsValidTrackPoint via regression test; not yet used live).
+	private readonly RacingTrackSpatialIndex _spatialIndex = new RacingTrackSpatialIndex();
+
 	// Cached references to avoid repeated GetNode calls
 	private RacingLineTrigger _startLineCache;
 	private RacingLineTrigger _finishLineCache;
@@ -94,6 +98,10 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		_cachedHalfWidthSq = halfWidth * halfWidth;
 		_cachedClosed = TrackLine.Closed;
 
+		// Build the spatial index over the same local-space point set/width used by
+		// IsValidTrackPoint, so the fast path is a drop-in equivalent.
+		_spatialIndex.Build(_cachedPoints, halfWidth, _cachedClosed);
+
 		// Clear cached references to ensure fresh node lookups
 		ClearCache();
 
@@ -138,6 +146,22 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		var trackLineLocalPoint = TrackLine.ToLocal(point);
 
 		return LineUtils.IsPointNearCachedLine(trackLineLocalPoint, _cachedPoints, _cachedHalfWidthSq, _cachedClosed);
+	}
+
+	/// <summary>
+	/// Spatial-index-accelerated equivalent of <see cref="IsValidTrackPoint"/>. Returns the
+	/// same on/off-track classification via a single grid-cell lookup instead of a full
+	/// segment scan. Additive path introduced for validation; live call sites still use
+	/// <see cref="IsValidTrackPoint"/> until the migration step.
+	/// </summary>
+	public bool IsValidTrackPointFast(Vector2 point)
+	{
+		if (_cachedPoints == null || TrackLine == null || !_spatialIndex.IsBuilt)
+			return false;
+
+		var trackLineLocalPoint = TrackLine.ToLocal(point);
+
+		return _spatialIndex.IsPointNear(trackLineLocalPoint);
 	}
 
 	public Vector2 GetStartLinePosition()
