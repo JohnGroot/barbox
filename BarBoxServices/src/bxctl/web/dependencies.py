@@ -113,15 +113,19 @@ async def _get_authenticated_box_by_session(
     Raises:
             HTTPException: 404 if session not found, 401 if API key missing or invalid
     """
-    # Fetch session to get box_id
+    # Fetch session and its box in one round trip (outer join: the box side
+    # is None either because the session itself doesn't exist, or - a data
+    # integrity error - because the session references a box that's gone).
     from bxctl.db.defs import BoxSession
 
     result = await db_service.session.execute(
-        select(BoxSession).where(BoxSession.id == session_id)
+        select(BoxSession, db.defs.Box)
+        .outerjoin(db.defs.Box, db.defs.Box.id == BoxSession.box_id)
+        .where(BoxSession.id == session_id)
     )
-    session = result.scalar_one_or_none()
+    row = result.one_or_none()
 
-    if not session:
+    if row is None:
         logger.warning("box_auth_session_not_found", session_id=str(session_id))
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -132,13 +136,9 @@ async def _get_authenticated_box_by_session(
             },
         )
 
-    await _verify_box_api_key_header(session.box_id, x_box_api_key)
+    session, box = row
 
-    # Fetch and return the box
-    box_result = await db_service.session.execute(
-        select(db.defs.Box).where(db.defs.Box.id == session.box_id)
-    )
-    box = box_result.scalar_one_or_none()
+    await _verify_box_api_key_header(session.box_id, x_box_api_key)
 
     if not box:
         logger.error(
@@ -151,7 +151,7 @@ async def _get_authenticated_box_by_session(
             detail="Session references non-existent box",
         )
 
-    logger.info(
+    logger.debug(
         "box_authenticated_via_session", box_id=str(box.id), session_id=str(session_id)
     )
     return box
@@ -194,7 +194,7 @@ async def _get_authenticated_box(
         ),
     )
 
-    logger.info("box_authenticated", box_id=str(box_id))
+    logger.debug("box_authenticated", box_id=str(box_id))
     return box
 
 
@@ -247,7 +247,7 @@ async def _get_authenticated_box_from_header(
         ),
     )
 
-    logger.info("box_authenticated_via_header", box_id=str(box.id))
+    logger.debug("box_authenticated_via_header", box_id=str(box.id))
     return box
 
 
