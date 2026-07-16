@@ -35,7 +35,7 @@ fly auth login
 fly version
 ```
 
-### Required Files to Create
+### Deployment Files (Reference)
 1. `Dockerfile` - Container image definition
 2. `.dockerignore` - Exclude unnecessary files from build
 3. `fly.toml` - Fly.io configuration
@@ -43,7 +43,7 @@ fly version
 
 ---
 
-## Phase 1: Create Deployment Files
+## Phase 1: Deployment Files (Reference)
 
 ### File 1: `Dockerfile`
 
@@ -246,6 +246,7 @@ fly secrets set \
   JWT_ALGORITHM=HS256 \
   JWT_ACCESS_TOKEN_HOURS=2 \
   BCRYPT_ROUNDS=12 \
+  BOX_REGISTRATION_SECRET="$(openssl rand -base64 32)" \
   CORS_ORIGINS=* \
   CORS_ALLOW_CREDENTIALS=true \
   CORS_ALLOW_METHODS=* \
@@ -259,6 +260,15 @@ fly secrets set \
 - Production uses Fly.io secrets (not `.env` files)
 - `SQLITE_PATH=/data/app.db` for Fly.io persistent volume
 - Generate unique `JWT_SECRET_KEY` for each environment
+- `BOX_REGISTRATION_SECRET` gates only *new* box_id registration — set it once
+  fleet-wide and configure it into each kiosk's `.env.local` as
+  `BARBOX_REGISTRATION_SECRET`. **Leave it configured permanently, not just
+  for first boot**: sending it on every registration call is harmless (the
+  backend ignores it once the box already exists), and keeping it in place
+  is what lets a box self-heal — reprovision its key — if its DB row is ever
+  lost (backup restore, migration issue, accidental delete) without an
+  on-site visit. Removing it after first boot would silently break that
+  recovery path.
 
 ---
 
@@ -307,9 +317,10 @@ fly volumes list
 # Generate strong JWT secret
 JWT_SECRET=$(openssl rand -base64 64)
 
-# Set ALL production secrets (JWT + Stripe)
+# Set ALL production secrets (JWT + Stripe + box registration)
 fly secrets set \
   JWT_SECRET_KEY="$JWT_SECRET" \
+  BOX_REGISTRATION_SECRET="$(openssl rand -base64 32)" \
   STRIPE_SECRET_KEY="sk_live_YOUR_LIVE_KEY" \
   STRIPE_WEBHOOK_SECRET="whsec_YOUR_WEBHOOK_SECRET" \
   STRIPE_PRICE_5_CREDITS="price_..." \

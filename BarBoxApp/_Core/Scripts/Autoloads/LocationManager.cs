@@ -19,6 +19,7 @@ public partial class LocationManager : AutoloadBase
 	private string _venueName;
 	private string _backendUrl;
 	private string _boxApiKey;
+	private string _registrationSecret;
 	private bool _isConfigLoaded = false;
 
 	// Public typed accessors
@@ -110,6 +111,7 @@ public partial class LocationManager : AutoloadBase
 		_boxId = LoadBoxId();
 		_backendUrl = LoadBackendUrl();
 		_boxApiKey = LoadBoxApiKey();
+		_registrationSecret = LoadRegistrationSecret();
 		_isConfigLoaded = true;
 	}
 
@@ -278,6 +280,22 @@ public partial class LocationManager : AutoloadBase
 	}
 
 	/// <summary>
+	/// Pre-shared secret required only when this box's PUT /box/{box_id} call
+	/// hits the backend's create path (a box_id the backend hasn't seen yet).
+	/// Not a hard boot requirement like BARBOX_API_KEY - if unset, an
+	/// already-registered box keeps working fine, since its calls always hit
+	/// the unauthenticated recovery path instead.
+	/// Operators: keep this configured in .env.local permanently, not just
+	/// for first boot - sending it is harmless once the box is registered,
+	/// and removing it would silently break this box's ability to
+	/// self-recreate if its backend row is ever lost (DB restore, migration).
+	/// </summary>
+	private string LoadRegistrationSecret()
+	{
+		return System.Environment.GetEnvironmentVariable("BARBOX_REGISTRATION_SECRET") ?? "";
+	}
+
+	/// <summary>
 	/// Get venue name for venue-scoped data
 	/// </summary>
 	public string GetVenueName() => _venueName;
@@ -379,11 +397,18 @@ public partial class LocationManager : AutoloadBase
 			Tag = locationName
 		};
 
-		// Use PUT for idempotent box registration
+		// Use PUT for idempotent box registration. The registration secret is
+		// only required if boxId doesn't exist yet - already-registered boxes
+		// ignore this header entirely, so it's safe to always send it here.
+		var extraHeaders = string.IsNullOrEmpty(_registrationSecret)
+			? null
+			: new[] { $"X-Registration-Secret: {_registrationSecret}" };
+
 		var result = await backend.PutAsync<BoxCreateRequest, BoxDetailResponse>(
 			$"/box/{boxId}",
 			request,
-			200
+			200,
+			extraHeaders: extraHeaders
 		);
 
 		if (result.IsSuccess(out var response))

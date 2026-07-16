@@ -29,6 +29,7 @@ export PYTHONPATH="$PROJECT_ROOT/test:$PYTHONPATH"
 echo "Seeding test boxes..."
 curl -s -X PUT "http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000001" \
 	-H "Content-Type: application/json" \
+	-H "X-Registration-Secret: dev-registration-secret-UNSAFE-change-in-production" \
 	-d '{
 		"id": "00000000-0000-0000-0000-000000000001",
 		"name": "Test Box 1",
@@ -37,6 +38,7 @@ curl -s -X PUT "http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000001" 
 
 curl -s -X PUT "http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000002" \
 	-H "Content-Type: application/json" \
+	-H "X-Registration-Secret: dev-registration-secret-UNSAFE-change-in-production" \
 	-d '{
 		"id": "00000000-0000-0000-0000-000000000002",
 		"name": "Test Box 2",
@@ -45,6 +47,7 @@ curl -s -X PUT "http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000002" 
 
 curl -s -X PUT "http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000003" \
 	-H "Content-Type: application/json" \
+	-H "X-Registration-Secret: dev-registration-secret-UNSAFE-change-in-production" \
 	-d '{
 		"id": "00000000-0000-0000-0000-000000000003",
 		"name": "Test Box 3",

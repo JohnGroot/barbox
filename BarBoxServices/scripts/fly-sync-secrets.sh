@@ -41,7 +41,7 @@ while IFS='=' read -r key value || [ -n "$key" ]; do
     value=$(echo "$value" | xargs)
 
     # Only sync specific prefixes (secrets that should be in Fly.io)
-    if [[ "$key" =~ ^(STRIPE_|JWT_|BCRYPT_) ]]; then
+    if [[ "$key" =~ ^(STRIPE_|JWT_|BCRYPT_|BOX_REGISTRATION_SECRET) ]]; then
         echo "  Setting $key..."
         SECRETS="$SECRETS $key=$value"
     fi
@@ -55,5 +55,5 @@ if [ -n "$SECRETS" ]; then
     echo "OK: Secrets synced to $APP"
 else
     echo "No matching secrets found in .env"
-    echo "Looking for: STRIPE_*, JWT_*, BCRYPT_*"
+    echo "Looking for: STRIPE_*, JWT_*, BCRYPT_*, BOX_REGISTRATION_SECRET"
 fi

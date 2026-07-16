@@ -64,6 +64,44 @@ async def _verify_box_api_key_header(box_id: UUID, x_box_api_key: str | None) ->
         )
 
 
+async def verify_registration_secret_header(x_registration_secret: str | None) -> None:
+    """Shared 401 checks for minting a key for a new box_id: header presence,
+    then secret validity via constant-time compare. Does NOT gate the
+    idempotent "box already exists, return its key" recovery path."""
+    if not x_registration_secret:
+        logger.warning("box_registration_missing_secret")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": structures.ErrorCode.UNAUTHORIZED,
+                "message": "Missing X-Registration-Secret header",
+            },
+        )
+
+    if not auth.verify_registration_secret(x_registration_secret):
+        logger.warning("box_registration_invalid_secret")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": structures.ErrorCode.UNAUTHORIZED,
+                "message": "Invalid registration secret",
+            },
+        )
+
+
+async def _verify_new_box_registration(
+    x_registration_secret: Annotated[str | None, Header()] = None,
+) -> None:
+    """Route-level dependency for endpoints that always mint a new box_id
+    (e.g. POST /box/). PUT /box/{box_id}'s conditional create-or-recover
+    endpoint checks the secret inline instead, since only its create branch
+    needs it."""
+    await verify_registration_secret_header(x_registration_secret)
+
+
+RegistrationSecretRequired = Annotated[None, Depends(_verify_new_box_registration)]
+
+
 async def _fetch_box_or_404(
     box_id: UUID, db_service: "db.service.CRUD", not_found_message: str
 ) -> db.defs.Box:

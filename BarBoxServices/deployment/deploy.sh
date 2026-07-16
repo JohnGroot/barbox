@@ -477,6 +477,21 @@ ssh "$TARGET" bash << ENV_EOF
 			echo "[INFO] JWT secret regenerated"
 		fi
 
+		# Ensure it has a secure box registration secret (required at boot when
+		# ENV=prod - a missing/dev- value here crashes the backend on startup,
+		# not just box registration)
+		if grep -q "^BOX_REGISTRATION_SECRET=dev-" "\$BACKEND_ENV" 2>/dev/null; then
+			echo "[WARN] Insecure box registration secret detected, regenerating..."
+			REG_SECRET=\$(openssl rand -base64 32 | tr -d '\n')
+			sed -i.bak "s/^BOX_REGISTRATION_SECRET=.*/BOX_REGISTRATION_SECRET=\$REG_SECRET/" "\$BACKEND_ENV"
+			echo "[INFO] Box registration secret regenerated"
+		elif ! grep -q "^BOX_REGISTRATION_SECRET=" "\$BACKEND_ENV" 2>/dev/null; then
+			echo "[INFO] Adding box registration secret to existing .env..."
+			REG_SECRET=\$(openssl rand -base64 32 | tr -d '\n')
+			echo "BOX_REGISTRATION_SECRET=\$REG_SECRET" >> "\$BACKEND_ENV"
+			echo "[INFO] Box registration secret added"
+		fi
+
 		# Ensure Stripe keys are present
 		if ! grep -q "^STRIPE_SECRET_KEY=" "\$BACKEND_ENV" 2>/dev/null; then
 			echo "[INFO] Adding Stripe configuration to existing .env..."
@@ -498,6 +513,7 @@ STRIPE_EOF
 	else
 		echo "[INFO] Creating backend .env..."
 		JWT_SECRET=\$(openssl rand -base64 64 | tr -d '\n')
+		REG_SECRET=\$(openssl rand -base64 32 | tr -d '\n')
 
 		cat > "\$BACKEND_ENV" << EOF
 # BarBox Backend Configuration
@@ -509,6 +525,7 @@ JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_HOURS=2
 SQLITE_PATH=app.db
 BCRYPT_ROUNDS=12
+BOX_REGISTRATION_SECRET=\$REG_SECRET
 
 # Stripe Configuration (test keys)
 STRIPE_SECRET_KEY=sk_test_YOUR_STRIPE_TEST_KEY_HERE
@@ -631,9 +648,15 @@ REG_START_EOF
 			BOX_ID=\$(grep "^BARBOX_BOX_ID=" $FRONTEND_ENV_PATH | cut -d'=' -f2)
 			BOX_NAME=\$(grep "^BARBOX_BOX_NAME=" $FRONTEND_ENV_PATH | cut -d'=' -f2)
 
+			# This box_id is always new (freshly uuidgen'd in Phase 4), so the
+			# backend's create path requires X-Registration-Secret - read it
+			# from the same backend .env this loopback call is targeting.
+			REG_SECRET=\$(grep "^BOX_REGISTRATION_SECRET=" $TARGET_PATH/BarBoxServices/.env | cut -d'=' -f2)
+
 			# Call registration endpoint (PUT /box/{box_id} always returns API key with deterministic keys)
 			RESPONSE=\$(curl -s -X PUT "http://127.0.0.1:8000/box/\$BOX_ID" \\
 				-H "Content-Type: application/json" \\
+				-H "X-Registration-Secret: \$REG_SECRET" \\
 				-d "{\\"id\\": \\"\$BOX_ID\\", \\"name\\": \\"\$BOX_NAME\\", \\"tag\\": \\"\$(hostname)\\"}")
 
 			# Extract API key from response

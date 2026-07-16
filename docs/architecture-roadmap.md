@@ -102,7 +102,7 @@ roadmap):
 
 | # | Workstream | Depends on | Risk | Status |
 |---|-----------|------------|------|--------|
-| WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | PARTIALLY DONE — see Appendix B |
+| WS0 | Security remediation (operational, out-of-band) | — | med (keys rotated) | **DONE (2026-07-15)** — all code-level items resolved, see Appendix B |
 | WS1 | EventService split (5 increments, spec in Appendix A) | — | High (inc ①), low after | **DONE (2026-07-13)** — all 5 increments, see §3 notes |
 | WS2 | New-game DX: one identity, one discovery idiom, registry hygiene, drift guards, docs | WS1 (rename settles names) | Low | **DONE (2026-07-13)** — all 5 items, see §3 notes |
 | WS3 | Game SDK v1: credit confirmation UI + credit shapes, ToastService, PlayerRoster, GameTestFixture | WS1 inc ② for the credit items | Medium | **DONE (2026-07-13)** — all 4 items, see §3 notes |
@@ -612,10 +612,10 @@ steps, and onboarding errors`).
 | ~~`README.md:112-129` "Adding a New Game"~~ | — | **DONE 2026-07-13** (WS2 item 5) |
 | ~~`BarBoxApp/agent_docs/game-development-patterns.md` lifecycle/context sections, `architectural-tenets.md`~~ | — | **DONE 2026-07-13** (WS2 item 5). `autoload-service-patterns.md` reviewed, no changes needed — its examples are autoload-to-autoload, not `_Games/` code. |
 | ~~`docs/adding-a-game.md` (new)~~ | — | **DONE 2026-07-13** (WS2 item 5) |
-| `docs/architecture/sessions.md` — still shows games calling `CreateActivitySessionAsync`/`CloseActivitySessionAsync` directly | nothing — anytime | Predates `GameController.StartBackendSessionAsync`; found during WS2 item 5, out of that item's scope |
+| ~~`docs/architecture/sessions.md` — still shows games calling `CreateActivitySessionAsync`/`CloseActivitySessionAsync` directly~~ | — | **DONE 2026-07-15.** Rewrote the key-methods list, both game-integration code examples, the Common Patterns session-lifecycle example, and two Troubleshooting bullets to reflect `GameController.StartBackendSessionAsync` + automatic base-class close. |
 | ~~Any doc naming `EventService` / its methods~~ | — | **DONE 2026-07-13** — renamed to `SessionEventService` in README.md, `BarBoxApp/docs/API.md`, `agent_docs/box-identity-guide.md`, `agent_docs/architectural-tenets.md`, `docs/architecture/sessions.md`. `agent_docs/httpclient-patterns.md`'s "Use for: BackendManager, EventService" line is skipped — it's stale beyond a rename (HttpClient now lives on `BackendClient`, not the session/emit class) and belongs with the WS2 item 5 autoload-doc pass below. `*EventService.cs` mentions in `_Games/CLAUDE.md`/`game-development-patterns.md` are the per-game convention (`MiningEventService`, etc.), unrelated to this rename — left untouched. |
 | `BarBoxServices/docs/STRIPE_PAYMENT_INTEGRATION_PLAN.md` | nothing — anytime | Reframe from "plan" to "implemented reference" (Stripe is live in `web/payments.py`) |
-| `BarBoxServices/docs/FLY_IO_DEPLOYMENT_GUIDE.md` Phase 1 | nothing — anytime | Reframe "files to create" → "files that exist" (status note added 2026-07-13; full reframe pending) |
+| ~~`BarBoxServices/docs/FLY_IO_DEPLOYMENT_GUIDE.md` Phase 1~~ | — | **DONE 2026-07-15.** Retitled "Required Files to Create"/"Phase 1: Create Deployment Files" to reference-style headers, completing the reframe the 2026-07-13 status note started. Also added `BOX_REGISTRATION_SECRET` to the `fly secrets set` examples (WS0 item above). |
 
 **Standing rule:** any workstream that changes a documented contract updates
 the affected docs in the same commit series. Doc drift is a bug.
@@ -791,7 +791,7 @@ auth cycle broken.
 
 ---
 
-## Appendix B — ⚠️ SECURITY (out-of-band; keys rotated, code items remain)
+## Appendix B — ⚠️ SECURITY (out-of-band; keys rotated, code items resolved 2026-07-15)
 
 > Carried from the prior audit doc. Operational, not code-cleanup; recorded
 > here so it is not lost. **Not part of any coding workstream.**
@@ -820,19 +820,34 @@ optional hygiene, not urgent.
 
 **Still open (code-level):**
 
-- `POST /box/` and `PUT /box/{box_id}` are **unauthenticated and return the
-  derived api_key** (`web/box.py:21,75-100`; PUT recovery path `:195-258`
-  deliberately "always returns key for recovery/re-deployment"). Anyone who
-  can reach the API can mint a valid box key — **this is now the main
-  exposure**. Add auth (or at minimum a registration secret) to box
-  registration — small, code-level; can ride along with WS4.
+- ~~`POST /box/` and `PUT /box/{box_id}` are **unauthenticated and return the
+  derived api_key**~~ — **DONE 2026-07-15.** Both now require an
+  `X-Registration-Secret` header (`BOX_REGISTRATION_SECRET` env var,
+  `env.py`) — but only when minting a key for a box_id that doesn't exist
+  yet: `create_box` (POST, always creation) gates the whole endpoint;
+  `register_box` (PUT) checks the secret inline only in its "box doesn't
+  exist - create it" branch (`web/box.py`), leaving the idempotent recovery
+  branch ("box already exists, return its key") unauthenticated exactly as
+  documented — confirmed already-registered boxes never need this and
+  require zero App/config changes, since their `PUT` calls always hit the
+  recovery branch. `LocationManager.cs`/`BackendClient.cs` on the App side
+  send the secret (`BARBOX_REGISTRATION_SECRET`) when configured, but it's
+  only actually required for provisioning a brand-new box_id. **Operators
+  should keep it configured permanently** (not remove it after first boot)
+  — sending it is harmless once a box exists, and keeping it in place
+  preserves self-heal-after-DB-loss (backup restore, migration issue) without
+  an on-site visit; `deployment/deploy.sh`'s own local self-registration flow
+  now generates/reads `BOX_REGISTRATION_SECRET` from the backend's `.env` the
+  same way it already does for `JWT_SECRET_KEY`, and `scripts/seed-test-data.sh`
+  sends it too, since both call the same create path.
 - ~~`.env.example` "test keys are safe to commit" guidance~~ — **removed
   2026-07-13** (commit `a386ab5`).
-- The `JWT_SECRET_KEY` default remains
-  `"dev-secret-UNSAFE-change-in-production"` (`env.py:45`) — an environment
-  missing the env var silently falls back to a public value, which would also
-  make box keys publicly derivable. Consider making production boot fail on
-  the default.
+- ~~The `JWT_SECRET_KEY` default remains
+  `"dev-secret-UNSAFE-change-in-production"`~~ — **already resolved**, found
+  during 2026-07-15 doc-accuracy pass: `env.py`'s `model_post_init` (added
+  prior to this roadmap being written) already raises `ValueError` at boot if
+  `is_production()` and the key starts with `"dev-"`. This item was stale;
+  no code change was needed, just correcting the doc.
 
 ---
 

@@ -12,6 +12,7 @@ HTTP 200
 
 # Test 1: Create a box and receive API key
 POST http://127.0.0.1:8000/box/
+X-Registration-Secret: dev-registration-secret-UNSAFE-change-in-production
 Content-Type: application/json
 {
   "id": "00000000-0000-0000-0000-000000000099",
@@ -31,6 +32,7 @@ box_api_key: jsonpath "$.api_key"
 
 # Test 2: Verify we can't create a duplicate box
 POST http://127.0.0.1:8000/box/
+X-Registration-Secret: dev-registration-secret-UNSAFE-change-in-production
 Content-Type: application/json
 {
   "id": "00000000-0000-0000-0000-000000000099",

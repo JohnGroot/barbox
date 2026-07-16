@@ -8,6 +8,7 @@ HTTP 200
 
 # Step 2: Create box
 POST http://127.0.0.1:8000/box/
+X-Registration-Secret: dev-registration-secret-UNSAFE-change-in-production
 Content-Type: application/json
 {
   "id": "a206c3ee-733d-48a5-8906-a653f1b9f7ce",
@@ -228,6 +229,7 @@ jsonpath "$.game_tag" == "racing"
 
 # Step 19: Create second box to test box isolation
 POST http://127.0.0.1:8000/box/
+X-Registration-Secret: dev-registration-secret-UNSAFE-change-in-production
 Content-Type: application/json
 {
   "id": "b206c3ee-733d-48a5-8906-a653f1b9f7ce",

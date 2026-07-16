@@ -67,6 +67,22 @@ def verify_box_api_key(provided_key: str, box_id: UUID) -> bool:
     return hmac.compare_digest(provided_key, expected_key)
 
 
+def verify_registration_secret(provided: str) -> bool:
+    """Verify the pre-shared secret required to register a new box_id.
+
+    Uses constant-time comparison to prevent timing attacks. Only relevant
+    for minting a key for a box_id that doesn't exist yet - idempotent
+    recovery of an existing box's key doesn't call this.
+
+    Args:
+            provided: Secret from the X-Registration-Secret header
+
+    Returns:
+            True if provided secret matches the configured secret, False otherwise
+    """
+    return hmac.compare_digest(provided, _settings.box_registration_secret)
+
+
 # Player PIN Functions
 
 

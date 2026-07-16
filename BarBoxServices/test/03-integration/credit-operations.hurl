@@ -3,6 +3,7 @@
 
 # Setup: Create test box
 POST http://127.0.0.1:8000/box/
+X-Registration-Secret: dev-registration-secret-UNSAFE-change-in-production
 {
   "id": "{{newUuid}}",
   "name": "Test Box Credits",

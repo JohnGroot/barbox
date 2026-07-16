@@ -22,11 +22,15 @@ async def create_box(
     new_box: structures.BoxCreate,
     db_service: dependencies.Database,
     now: dependencies.Now,
+    _registration_auth: dependencies.RegistrationSecretRequired,
 ) -> structures.BoxDetailWithAPIKey:
     """Create a new box and return API key.
 
     The API key is deterministically derived from the box ID, so it can
     always be retrieved by calling PUT /box/{box_id}.
+
+    Requires the X-Registration-Secret header, since this always mints a key
+    for a box_id that doesn't exist yet.
 
     Validates that:
     - Box ID is unique
@@ -34,6 +38,7 @@ async def create_box(
 
     Returns:
         201: Box created successfully with API key
+        401: Missing or invalid X-Registration-Secret header
         409: Box already exists (duplicate ID or tag)
         500: Internal server error
 
@@ -144,6 +149,7 @@ async def register_box(
     box_data: structures.BoxCreate,
     db_service: dependencies.Database,
     now: dependencies.Now,
+    x_registration_secret: Annotated[str | None, Header()] = None,
 ) -> structures.BoxDetailWithAPIKey:
     """
     Idempotent box registration - creates if not exists, always returns API key.
@@ -151,12 +157,15 @@ async def register_box(
     This endpoint is safe to call multiple times with the same box_id.
     Used by clients to ensure box exists and retrieve the API key.
 
-    **Authentication**: Not required (needed for initial box setup).
+    **Authentication**: Not required for recovering an *existing* box's key
+    (needed for reinstalls). Required (X-Registration-Secret header) only
+    when the box_id doesn't exist yet, to prevent minting keys for
+    arbitrary chosen box_ids.
 
     The API key is deterministically derived from the box ID, so:
-    - First call: Creates the box and returns API key
-    - Subsequent calls: Returns the same API key (idempotent)
-    - Reinstalls: Just call this endpoint again to get the key
+    - First call: Creates the box and returns API key (requires X-Registration-Secret)
+    - Subsequent calls: Returns the same API key (idempotent, no auth needed)
+    - Reinstalls: Just call this endpoint again to get the key (no auth needed)
 
     **Name/Tag Handling**:
     - Name and tag are set on first registration and cannot be updated
@@ -168,10 +177,12 @@ async def register_box(
         box_data: Box creation data (id, name, tag)
         db_service: Database service
         now: Current timestamp
+        x_registration_secret: Required only when box_id doesn't exist yet
 
     Returns:
         200: BoxDetailWithAPIKey with deterministic API key and warning if applicable
         400: Box ID in path does not match request body
+        401: box_id doesn't exist and X-Registration-Secret is missing/invalid
         500: Internal server error
     """
     # Verify path box_id matches request body
@@ -234,7 +245,10 @@ async def register_box(
             warning=warning,
         )
 
-    # Box doesn't exist - create it
+    # Box doesn't exist - creating one mints a new key, so require the
+    # registration secret. The recovery branch above never reaches here.
+    await dependencies.verify_registration_secret_header(x_registration_secret)
+
     try:
         box_data_dict = box_data.model_dump() | {
             "created_at": now,

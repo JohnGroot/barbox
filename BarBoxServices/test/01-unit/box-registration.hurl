@@ -7,8 +7,10 @@
 # 4. Validates box_id in path matches request body
 
 # Test 1: Register new box (first call) - should create and return API key with "Save" warning
+# Requires X-Registration-Secret since box_id doesn't exist yet
 PUT http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000099
 Content-Type: application/json
+X-Registration-Secret: dev-registration-secret-UNSAFE-change-in-production
 {
   "id": "00000000-0000-0000-0000-000000000099",
   "name": "Test Registration Box",
@@ -26,6 +28,7 @@ jsonpath "$.warning" startsWith "Save"
 api-key: jsonpath "$.api_key"
 
 # Test 2: Register same box again (idempotent) - should return SAME API key with "already registered" warning
+# No X-Registration-Secret header - proves the recovery path stays unauthenticated
 PUT http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000099
 Content-Type: application/json
 {
@@ -74,8 +77,10 @@ jsonpath "$.detail.code" == "VALIDATION_ERROR"
 jsonpath "$.detail.message" contains "does not match"
 
 # Test 5: Register another box to verify uniqueness
+# Requires X-Registration-Secret since this box_id doesn't exist yet either
 PUT http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000088
 Content-Type: application/json
+X-Registration-Secret: dev-registration-secret-UNSAFE-change-in-production
 {
   "id": "00000000-0000-0000-0000-000000000088",
   "name": "Second Test Box",
@@ -91,6 +96,7 @@ jsonpath "$.api_key" != {{api-key}}
 jsonpath "$.warning" startsWith "Save"
 
 # Test 6: Verify second box can also be re-registered with same API key
+# No X-Registration-Secret header - recovery path stays unauthenticated
 PUT http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000088
 Content-Type: application/json
 {
@@ -103,3 +109,45 @@ HTTP 200
 jsonpath "$.id" == "00000000-0000-0000-0000-000000000088"
 jsonpath "$.api_key" exists
 jsonpath "$.warning" == "Box already registered"
+
+# Test 7: Register a brand-new box_id with no X-Registration-Secret - should be rejected
+PUT http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000077
+Content-Type: application/json
+{
+  "id": "00000000-0000-0000-0000-000000000077",
+  "name": "Unauthorized Box",
+  "tag": "unauthorized-box"
+}
+HTTP 401
+[Asserts]
+jsonpath "$.detail.code" == "UNAUTHORIZED"
+jsonpath "$.detail.message" contains "X-Registration-Secret"
+
+# Test 8: Same new box_id with a wrong secret - should also be rejected
+PUT http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000077
+Content-Type: application/json
+X-Registration-Secret: wrong-secret
+{
+  "id": "00000000-0000-0000-0000-000000000077",
+  "name": "Unauthorized Box",
+  "tag": "unauthorized-box"
+}
+HTTP 401
+[Asserts]
+jsonpath "$.detail.code" == "UNAUTHORIZED"
+jsonpath "$.detail.message" contains "Invalid registration secret"
+
+# Test 9: Same new box_id with the correct secret - should succeed
+PUT http://127.0.0.1:8000/box/00000000-0000-0000-0000-000000000077
+Content-Type: application/json
+X-Registration-Secret: dev-registration-secret-UNSAFE-change-in-production
+{
+  "id": "00000000-0000-0000-0000-000000000077",
+  "name": "Unauthorized Box",
+  "tag": "unauthorized-box"
+}
+HTTP 200
+[Asserts]
+jsonpath "$.id" == "00000000-0000-0000-0000-000000000077"
+jsonpath "$.api_key" exists
+jsonpath "$.warning" startsWith "Save"

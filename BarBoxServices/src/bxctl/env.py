@@ -22,6 +22,10 @@ class _Settings(BaseSettings):
     - JWT_ALGORITHM: JWT signing algorithm, defaults to "HS256"
     - JWT_EXPIRATION_HOURS: JWT token expiration in hours, defaults to 24
     - BCRYPT_ROUNDS: Bcrypt hashing cost factor, defaults to 12
+    - BOX_REGISTRATION_SECRET: Pre-shared secret gating new box_id
+      registration (REQUIRED in production). Only checked when minting a key
+      for a box_id that doesn't exist yet - idempotent recovery of an
+      existing box's key stays unauthenticated by design.
     - STRIPE_SECRET_KEY: Stripe API secret key (REQUIRED in production)
     - STRIPE_WEBHOOK_SECRET: Stripe webhook signing secret (REQUIRED in production)
     - STRIPE_SUCCESS_URL: Post-payment redirect URL
@@ -46,6 +50,9 @@ class _Settings(BaseSettings):
 
     # Bcrypt Configuration
     bcrypt_rounds: int = 12
+
+    # Box Registration Configuration
+    box_registration_secret: str = "dev-registration-secret-UNSAFE-change-in-production"
 
     # CORS Configuration
     cors_origins: str = "*"  # Comma-separated list of allowed origins, or "*" for all
@@ -99,6 +106,14 @@ class _Settings(BaseSettings):
             raise ValueError(
                 "Production environment requires secure JWT_SECRET_KEY environment variable. "
                 "Generate one with: openssl rand -base64 64"
+            )
+        if self.is_production() and (
+            not self.box_registration_secret
+            or self.box_registration_secret.startswith("dev-")
+        ):
+            raise ValueError(
+                "Production environment requires secure BOX_REGISTRATION_SECRET environment variable. "
+                "Generate one with: openssl rand -base64 32"
             )
         if self.is_production() and not self.stripe_secret_key:
             raise ValueError(

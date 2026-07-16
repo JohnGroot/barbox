@@ -366,11 +366,13 @@ public partial class BackendClient : AutoloadBase
 	/// Execute PUT request against backend API with JSON body
 	/// </summary>
 	/// <param name="playerId">Optional. If provided, includes player JWT token in Authorization header.</param>
+	/// <param name="extraHeaders">Optional. Additional raw header lines appended after the standard JSON headers.</param>
 	public async Task<Result<TResponse>> PutAsync<TRequest, TResponse>(
 		string endpoint,
 		TRequest requestBody,
 		int expectedStatusCode = 200,
-		Guid? playerId = null
+		Guid? playerId = null,
+		IEnumerable<string> extraHeaders = null
 	) where TResponse : class
 	{
 		if (!IsReady)
@@ -382,7 +384,10 @@ public partial class BackendClient : AutoloadBase
 
 			var json = JsonSerializer.Serialize(requestBody, JsonOptions);
 
-			var headers = BuildJsonHeaders(playerId).ToArray();
+			var headerList = BuildJsonHeaders(playerId);
+			if (extraHeaders != null)
+				headerList.AddRange(extraHeaders);
+			var headers = headerList.ToArray();
 
 			var error = _httpClient.Request(HttpClient.Method.Put, endpoint, headers, json);
 			if (error != Godot.Error.Ok)
