@@ -54,7 +54,8 @@ def get_stripe_client() -> StripeClient:
 # Credit pack definitions (1,000 credits = $1 USD)
 # NOTE: This is REFERENCE DATA ONLY for pack validation and lookup.
 # The SOURCE OF TRUTH for credit amounts is Stripe Price metadata,
-# which is fetched during webhook processing via StripePriceMetadata.from_stripe_metadata().
+# which is fetched during webhook processing via
+# StripePriceMetadata.from_stripe_metadata().
 CREDIT_PACKS = {
     "pack_5": {"credits": 5000, "bonus": 0, "amount_cents": 500},
     "pack_10": {"credits": 10000, "bonus": 0, "amount_cents": 1000},
@@ -80,7 +81,8 @@ def get_stripe_price_id(pack_id: str) -> str:
     return price_map.get(pack_id, "")
 
 
-async def issue_credits_for_payment(
+# explicit payment fields beat an opaque params object
+async def issue_credits_for_payment(  # noqa: PLR0913
     *,
     event_id: str,
     session_id: str,
@@ -207,7 +209,6 @@ async def issue_credits_for_payment(
             amount_cents=amount_cents,
             payment_intent_id=str(internal_payment_id),
         )
-        return {"status": "success", "credits_added": total_credits}
 
     except Exception as e:
         logger.exception(
@@ -236,6 +237,8 @@ async def issue_credits_for_payment(
                 )
 
         raise
+    else:
+        return {"status": "success", "credits_added": total_credits}
 
 
 async def get_or_create_credit_session(
@@ -399,7 +402,10 @@ async def retry_credit_issuance(
             success=False,
             credits_issued=0,
             payment_intent_id=payment_id,
-            error=f"Payment {payment_id} already has credit event {payment.credit_event_id}",
+            error=(
+                f"Payment {payment_id} already has credit event "
+                f"{payment.credit_event_id}"
+            ),
         )
 
     if payment.status != "succeeded":
@@ -407,7 +413,9 @@ async def retry_credit_issuance(
             success=False,
             credits_issued=0,
             payment_intent_id=payment_id,
-            error=f"Payment {payment_id} has status '{payment.status}', not 'succeeded'",
+            error=(
+                f"Payment {payment_id} has status '{payment.status}', not 'succeeded'"
+            ),
         )
 
     # Create credit session

@@ -1,5 +1,7 @@
 """Business logic and database queries for Racing game."""
 
+from typing import Any
+
 from fastapi import HTTPException
 from structlog import get_logger
 
@@ -9,6 +11,10 @@ from bxctl.games import common
 from . import schemas
 
 logger = get_logger(__name__)
+
+# Number of columns in the base leaderboard row (player_id, username,
+# metric_value, entry_date) before any extra_select columns like lap_times.
+_BASE_LEADERBOARD_COLUMNS = 4
 
 
 async def get_racing_leaderboard(
@@ -51,7 +57,7 @@ async def get_racing_leaderboard(
             )
 
             # Parse leaderboard with per-entry error handling
-            def parse_row(row):
+            def parse_row(row: tuple[Any, ...]) -> schemas.RacingLeaderboardEntry:
                 return schemas.RacingLeaderboardEntry(
                     player_id=common.parse_uuid_safe(row[0]),
                     username=common.parse_username_safe(row[1]),
@@ -102,13 +108,17 @@ async def get_racing_leaderboard(
                 )
 
             # Parse leaderboard with per-entry error handling
-            def parse_row(row):
+            def parse_row(row: tuple[Any, ...]) -> schemas.RacingLeaderboardEntry:
                 return schemas.RacingLeaderboardEntry(
                     player_id=common.parse_uuid_safe(row[0]),
                     username=common.parse_username_safe(row[1]),
                     metric_value=row[2],
                     entry_date=row[3],
-                    lap_times=common.parse_float_list(row[4]) if len(row) > 4 else None,
+                    lap_times=(
+                        common.parse_float_list(row[4])
+                        if len(row) > _BASE_LEADERBOARD_COLUMNS
+                        else None
+                    ),
                 )
 
             leaderboard = common.safe_parse_leaderboard(result.tuples(), parse_row)

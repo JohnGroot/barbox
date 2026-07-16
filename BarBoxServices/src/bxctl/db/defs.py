@@ -50,8 +50,8 @@ def fk_to(model: type[Base]) -> MappedColumn[Any]:
 class Box(Base):
     name: Mapped[str]
     tag: Mapped[str]
-    # API key is now deterministically derived from box_id using HMAC(server_secret, box_id)
-    # No storage needed - key can be regenerated on demand
+    # API key is now deterministically derived from box_id using
+    # HMAC(server_secret, box_id). No storage needed - key can be regenerated on demand
     created_at: Mapped[datetime]
     last_seen: Mapped[datetime | None]
 

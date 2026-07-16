@@ -2,13 +2,14 @@
 
 import json
 from typing import Any
+from uuid import UUID
 
 from structlog import get_logger
 
 logger = get_logger(__name__)
 
 
-def parse_json_field(value: Any) -> list | dict | None:
+def parse_json_field(value: Any) -> list | dict | None:  # noqa: ANN401  # raw SQL value
     """
     Parse JSON field from SQL result, handling SQLite's json_extract() behavior.
 
@@ -59,7 +60,7 @@ def parse_json_field(value: Any) -> list | dict | None:
     return None
 
 
-def parse_float_list(value: Any) -> list[float] | None:
+def parse_float_list(value: Any) -> list[float] | None:  # noqa: ANN401  # raw SQL value
     """
     Parse a list of floats from SQL result.
 
@@ -100,7 +101,7 @@ def parse_float_list(value: Any) -> list[float] | None:
         return None
 
 
-def parse_uuid_safe(value: Any) -> Any:
+def parse_uuid_safe(value: Any) -> UUID:  # noqa: ANN401  # raw SQL value
     """
     Parse UUID from SQL result with fallback to zero UUID.
 
@@ -118,8 +119,6 @@ def parse_uuid_safe(value: Any) -> Any:
         >>> parse_uuid_safe("invalid")
         UUID('00000000-0000-0000-0000-000000000000')
     """
-    from uuid import UUID
-
     if value is None:
         return UUID("00000000-0000-0000-0000-000000000000")
 
@@ -130,7 +129,7 @@ def parse_uuid_safe(value: Any) -> Any:
         return UUID("00000000-0000-0000-0000-000000000000")
 
 
-def parse_username_safe(value: Any) -> str:
+def parse_username_safe(value: Any) -> str:  # noqa: ANN401  # raw SQL value
     """
     Parse username from SQL result with fallback to "Unknown".
 
@@ -253,12 +252,12 @@ def uuid_join_leaderboard_sql(
     GROUP BY bs.host_player_id, username
     ORDER BY metric_value {direction}
     LIMIT :limit
-    """
+    """  # noqa: S608  # direction is allowlist-checked above; rest are bind params
 
 
 def safe_parse_leaderboard[T](
-    rows: Any,
-    parser_fn: Any,
+    rows: Any,  # noqa: ANN401  # iterable of raw SQL result rows, shape varies per caller
+    parser_fn: Any,  # noqa: ANN401  # callable signature varies per caller's row shape
 ) -> list[T]:
     """
     Parse leaderboard entries with per-entry error handling.

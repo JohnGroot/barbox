@@ -31,7 +31,8 @@ async def get_jackpot_state(
     SELECT
         bse.timestamp as win_timestamp,
         json_extract(bse.payload, '$.player_id') as winner_id,
-        CAST(json_extract(bse.payload, '$.jackpot_amount') AS INTEGER) as jackpot_amount,
+        CAST(json_extract(bse.payload, '$.jackpot_amount') AS INTEGER)
+            as jackpot_amount,
         p.tag as winner_name
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id

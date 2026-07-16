@@ -1,5 +1,7 @@
 """Business logic and database queries for Carrom game."""
 
+from typing import Any
+
 from bxctl.db import service as db_service
 from bxctl.games import common
 
@@ -59,7 +61,8 @@ async def get_carrom_leaderboard(
             MAX(prs.timestamp) as entry_date
         FROM player_round_scores prs
         LEFT JOIN player p ON prs.player_id = p.id
-        GROUP BY prs.player_id, COALESCE(p.tag, 'Player ' || SUBSTR(prs.player_id, 1, 8))
+        GROUP BY prs.player_id,
+            COALESCE(p.tag, 'Player ' || SUBSTR(prs.player_id, 1, 8))
         ORDER BY total_score DESC
         LIMIT :limit
         """
@@ -67,7 +70,7 @@ async def get_carrom_leaderboard(
         result = await db.get_many_raw(sql, {"limit": limit})
 
         # Parse leaderboard with per-entry error handling
-        def parse_row(row):
+        def parse_row(row: tuple[Any, ...]) -> schemas.CarromLeaderboardEntry:
             return schemas.CarromLeaderboardEntry(
                 player_id=common.parse_uuid_safe(row[0]),
                 username=common.parse_username_safe(row[1]),
@@ -115,7 +118,7 @@ async def get_carrom_leaderboard(
         result = await db.get_many_raw(sql, {"limit": limit})
 
         # Parse leaderboard with per-entry error handling
-        def parse_row(row):
+        def parse_row(row: tuple[Any, ...]) -> schemas.CarromLeaderboardEntry:
             return schemas.CarromLeaderboardEntry(
                 player_id=common.parse_uuid_safe(row[0]),
                 username=common.parse_username_safe(row[1]),

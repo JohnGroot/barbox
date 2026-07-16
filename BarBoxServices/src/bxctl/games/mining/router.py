@@ -47,10 +47,12 @@ async def reset_player_mining_state(
     location_id: str,
     db_service: dependencies.Database,
 ) -> dict:
-    """Reset a player's mining state at a specific location by deleting location-scoped events.
+    """Reset a player's mining state at a specific location by deleting
+    location-scoped events.
 
-    This is a surgical reset that only affects mining game data for the specified player
-    at the specified location. Other locations, other game data, and the player account remain intact.
+    This is a surgical reset that only affects mining game data for the
+    specified player at the specified location. Other locations, other game
+    data, and the player account remain intact.
 
     Data Deleted (per-location):
     - Upgrade purchases at this location
@@ -130,7 +132,9 @@ async def reset_player_mining_state(
 
         return {
             "status": "success",
-            "message": f"Mining state reset for player {player_id} at location {location_id}",
+            "message": (
+                f"Mining state reset for player {player_id} at location {location_id}"
+            ),
             "deleted_events": deleted_count,
             "player_id": str(player_id),
             "location_id": location_id,
@@ -143,7 +147,7 @@ async def reset_player_mining_state(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "OPERATION_FAILED", "message": str(e)},
-        )
+        ) from e
 
 
 # ============= LOCATION REGISTRATION =============
@@ -176,7 +180,7 @@ async def register_location(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "REGISTRATION_FAILED", "message": str(e)},
-        )
+        ) from e
 
 
 @router.get("/locations")

@@ -104,7 +104,11 @@ class _Settings(BaseSettings):
         """
         return self.is_dev_mode() and self.drop_db_on_startup
 
-    def model_post_init(self, context: Any, /) -> None:  # noqa: ANN401  # pydantic API
+    def model_post_init(
+        self,
+        context: Any,  # noqa: ANN401, ARG002  # pydantic hook signature
+        /,
+    ) -> None:
         """Validate critical settings after initialization"""
         if self.is_production() and self.jwt_secret_key.startswith("dev-"):
             msg = (

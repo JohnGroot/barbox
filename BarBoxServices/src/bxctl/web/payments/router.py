@@ -76,7 +76,10 @@ async def create_checkout_session(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": structures.ErrorCode.VALIDATION_ERROR,
-                "message": f"Invalid pack_id: {request.pack_id}. Valid options: {list(service.CREDIT_PACKS.keys())}",
+                "message": (
+                    f"Invalid pack_id: {request.pack_id}. "
+                    f"Valid options: {list(service.CREDIT_PACKS.keys())}"
+                ),
                 "retryable": False,
             },
         )
@@ -89,7 +92,9 @@ async def create_checkout_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "code": structures.ErrorCode.INTERNAL_ERROR,
-                "message": f"Stripe Price ID not configured for pack: {request.pack_id}",
+                "message": (
+                    f"Stripe Price ID not configured for pack: {request.pack_id}"
+                ),
                 "retryable": False,
             },
         )
@@ -110,7 +115,8 @@ async def create_checkout_session(
         ) from e
 
     # Create Checkout Session with SINGLE selected pack
-    # NOTE: No local database record created here - payment record created on webhook only
+    # NOTE: No local database record created here - payment record created
+    # on webhook only
     # Use asyncio.to_thread to avoid blocking the async event loop
     # Wrapped with timeout to prevent indefinite hangs during Stripe outages
     try:
@@ -134,7 +140,7 @@ async def create_checkout_session(
             ),
             timeout=STRIPE_API_TIMEOUT_SECONDS,
         )
-    except TimeoutError:
+    except TimeoutError as e:
         logger.exception("stripe_api_timeout", operation="checkout_session_create")
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
@@ -143,7 +149,7 @@ async def create_checkout_session(
                 "message": "Payment service timed out, please try again",
                 "retryable": True,
             },
-        )
+        ) from e
     except StripeAPIConnectionError as e:
         logger.exception("stripe_connection_failed", error=str(e))
         raise HTTPException(
@@ -252,7 +258,8 @@ async def get_checkout_status(
 
 
 @router.post("/webhook")
-async def stripe_webhook(
+# decomposition tracked in docs/architecture-roadmap.md
+async def stripe_webhook(  # noqa: C901, PLR0911, PLR0912, PLR0915
     request: Request,
     db_service: dependencies.Database,
     now: dependencies.Now,
@@ -461,9 +468,9 @@ async def stripe_webhook(
         await db_service.session.commit()
         return {"status": "invalid_price_metadata", "event_id": event.id}
 
-    credits = price_metadata.credits
+    credit_amount = price_metadata.credits
     bonus = price_metadata.bonus_credits
-    logger.info("webhook_credits_extracted", credits=credits, bonus=bonus)
+    logger.info("webhook_credits_extracted", credits=credit_amount, bonus=bonus)
 
     # 4. Process payment and create credit event using extracted pure function
     try:
@@ -473,7 +480,7 @@ async def stripe_webhook(
             payment_intent_id=session_data.payment_intent or "",
             player_id=player_id,
             box_id=box_id,
-            credits=credits,
+            credits=credit_amount,
             bonus_credits=bonus,
             amount_cents=session_data.amount_total,
             pack_id=pack_id or "",
@@ -485,11 +492,6 @@ async def stripe_webhook(
             now=now,
             webhook_event_id=webhook_event_id,
         )
-
-        elapsed_ms = (perf_counter() - start_time) * 1000
-        logger.info("webhook_completed", elapsed_ms=round(elapsed_ms, 2))
-        return result
-
     except Exception as e:
         logger.exception(
             "webhook_processing_failed",
@@ -501,6 +503,10 @@ async def stripe_webhook(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Processing failed",
         ) from e
+    else:
+        elapsed_ms = (perf_counter() - start_time) * 1000
+        logger.info("webhook_completed", elapsed_ms=round(elapsed_ms, 2))
+        return result
 
 
 # Admin endpoints (localhost only)

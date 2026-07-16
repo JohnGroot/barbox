@@ -34,7 +34,8 @@ async def _get_player_mining_inventory(
     WITH gem_extractions AS (
         SELECT
             json_extract(bse.payload, '$.gem_type') as gem_type,
-            SUM(CAST(json_extract(bse.payload, '$.quantity') AS INTEGER)) as total_extracted,
+            SUM(CAST(json_extract(bse.payload, '$.quantity') AS INTEGER))
+                as total_extracted,
             MAX(bse.timestamp) as last_extraction
         FROM box_session_event bse
         JOIN box_session bs ON bse.session_id = bs.id
@@ -45,7 +46,8 @@ async def _get_player_mining_inventory(
     gem_spending_credits AS (
         SELECT
             json_extract(bse.payload, '$.gem_type') as gem_type,
-            SUM(CAST(json_extract(bse.payload, '$.gems_spent') AS INTEGER)) as total_spent,
+            SUM(CAST(json_extract(bse.payload, '$.gems_spent') AS INTEGER))
+                as total_spent,
             MAX(bse.timestamp) as last_spend
         FROM box_session_event bse
         JOIN box_session bs ON bse.session_id = bs.id
@@ -67,12 +69,14 @@ async def _get_player_mining_inventory(
     )
     SELECT
         e.gem_type,
-        COALESCE(e.total_extracted, 0) - COALESCE(c.total_spent, 0) - COALESCE(u.total_spent, 0) as net_quantity,
+        COALESCE(e.total_extracted, 0) - COALESCE(c.total_spent, 0)
+            - COALESCE(u.total_spent, 0) as net_quantity,
         MAX(e.last_extraction, c.last_spend, u.last_spend) as last_updated
     FROM gem_extractions e
     LEFT JOIN gem_spending_credits c ON e.gem_type = c.gem_type
     LEFT JOIN gem_spending_upgrades u ON e.gem_type = u.gem_type
-    WHERE COALESCE(e.total_extracted, 0) - COALESCE(c.total_spent, 0) - COALESCE(u.total_spent, 0) > 0
+    WHERE COALESCE(e.total_extracted, 0) - COALESCE(c.total_spent, 0)
+        - COALESCE(u.total_spent, 0) > 0
     GROUP BY e.gem_type
     """
 
@@ -183,8 +187,9 @@ async def _get_player_mining_timestamp(
     """
 
     # Get last extraction time from mining/extract_complete events
-    # COALESCE fallback: payload timestamp (new events) → event timestamp (legacy support)
-    # Kept for backwards compatibility with events that lack last_extraction_time field
+    # COALESCE fallback: payload timestamp (new events) -> event timestamp
+    # (legacy support). Kept for backwards compatibility with events that
+    # lack the last_extraction_time field
     sql = """
     SELECT COALESCE(
         json_extract(bse.payload, '$.last_extraction_time'),
@@ -204,11 +209,8 @@ async def _get_player_mining_timestamp(
     )
     row = result.first()
 
-    if row and row[0]:
-        last_mining_time = datetime.fromisoformat(row[0])
-    else:
-        # No extraction history - return None to let client decide default
-        last_mining_time = None
+    # No extraction history - return None to let client decide default
+    last_mining_time = datetime.fromisoformat(row[0]) if row and row[0] else None
 
     return schemas.MiningTimestampResponse(
         player_id=player_id,
@@ -223,8 +225,9 @@ async def _get_player_mining_metadata(
     location_id: str,
 ) -> schemas.MiningMetadataResponse:
     """
-    Get player mining metadata for a specific location (first-time bonus status, statistics).
-    First-time bonus and event statistics are tracked per-location.
+    Get player mining metadata for a specific location (first-time bonus
+    status, statistics). First-time bonus and event statistics are tracked
+    per-location.
 
     Args:
         db: Database CRUD service
@@ -232,7 +235,8 @@ async def _get_player_mining_metadata(
         location_id: Location identifier (venue name)
 
     Returns:
-        Player mining metadata for this location including bonus status and event counts
+        Player mining metadata for this location including bonus status and
+        event counts
     """
 
     # Get metadata about player's mining activity at this location
@@ -241,7 +245,8 @@ async def _get_player_mining_metadata(
         COUNT(*) as total_events,
         MIN(bse.timestamp) as first_event_time,
         MAX(bse.timestamp) as last_event_time,
-        SUM(CASE WHEN bse.type = 'mining/first_time_bonus' THEN 1 ELSE 0 END) as bonus_count
+        SUM(CASE WHEN bse.type = 'mining/first_time_bonus' THEN 1 ELSE 0 END)
+            as bonus_count
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
     WHERE bs.host_player_id = :player_id
@@ -425,7 +430,7 @@ async def register_or_get_location(
             display_name=display_name,
         )
 
-    except IntegrityError:
+    except IntegrityError as e:
         # Race condition: another request registered this venue simultaneously
         # Rollback and return the existing record
         await db.session.rollback()
@@ -438,7 +443,7 @@ async def register_or_get_location(
             )
         # Should not happen, but handle gracefully
         msg = f"Failed to register or retrieve location: {venue_name}"
-        raise ValueError(msg)
+        raise ValueError(msg) from e
 
 
 async def get_all_locations(

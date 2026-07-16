@@ -45,14 +45,16 @@ NO_PAYLOAD_EVENTS: set[str] = {
 
 
 def _check_payload_model_coverage() -> None:
-    """Fail fast if a game event type has neither a payload model nor a NO_PAYLOAD_EVENTS entry."""
+    """Fail fast if a game event type has neither a payload model nor a
+    NO_PAYLOAD_EVENTS entry.
+    """
     all_event_types = {event for events in _EVENT_REGISTRY.values() for event in events}
     unaccounted = all_event_types - EVENT_PAYLOAD_MODELS.keys() - NO_PAYLOAD_EVENTS
     if unaccounted:
         msg = (
-            f"Event type(s) {sorted(unaccounted)} have no entry in EVENT_PAYLOAD_MODELS "
-            "or NO_PAYLOAD_EVENTS in games/validation.py. Add a payload model or explicitly "
-            "allowlist as no-payload."
+            f"Event type(s) {sorted(unaccounted)} have no entry in "
+            "EVENT_PAYLOAD_MODELS or NO_PAYLOAD_EVENTS in games/validation.py. "
+            "Add a payload model or explicitly allowlist as no-payload."
         )
         raise RuntimeError(msg)
 
