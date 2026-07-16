@@ -4,7 +4,7 @@ from typing import Any, get_args
 
 from pydantic import ValidationError
 
-from bxctl.structures import CoreEventType, GAMES
+from bxctl.structures import GAMES, CoreEventType
 
 # Build event type registry dynamically from GAMES registry
 # Uses canonical EventType alias from each game's schemas module
@@ -49,11 +49,12 @@ def _check_payload_model_coverage() -> None:
     all_event_types = {event for events in _EVENT_REGISTRY.values() for event in events}
     unaccounted = all_event_types - EVENT_PAYLOAD_MODELS.keys() - NO_PAYLOAD_EVENTS
     if unaccounted:
-        raise RuntimeError(
+        msg = (
             f"Event type(s) {sorted(unaccounted)} have no entry in EVENT_PAYLOAD_MODELS "
             "or NO_PAYLOAD_EVENTS in games/validation.py. Add a payload model or explicitly "
             "allowlist as no-payload."
         )
+        raise RuntimeError(msg)
 
 
 _check_payload_model_coverage()

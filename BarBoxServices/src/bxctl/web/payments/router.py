@@ -15,17 +15,26 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from stripe import (
     APIConnectionError as StripeAPIConnectionError,
+)
+from stripe import (
     AuthenticationError as StripeAuthenticationError,
+)
+from stripe import (
     InvalidRequestError as StripeInvalidRequestError,
+)
+from stripe import (
     RateLimitError as StripeRateLimitError,
+)
+from stripe import (
     StripeError,
 )
 from structlog import get_logger
 
 from bxctl import env, structures
 from bxctl.db import defs
+from bxctl.web import dependencies
+
 from . import service
-from .. import dependencies
 
 # Timeout for Stripe API calls to prevent indefinite hangs during outages
 STRIPE_API_TIMEOUT_SECONDS = 30
@@ -125,8 +134,8 @@ async def create_checkout_session(
             ),
             timeout=STRIPE_API_TIMEOUT_SECONDS,
         )
-    except asyncio.TimeoutError:
-        logger.error("stripe_api_timeout", operation="checkout_session_create")
+    except TimeoutError:
+        logger.exception("stripe_api_timeout", operation="checkout_session_create")
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail={
@@ -136,7 +145,7 @@ async def create_checkout_session(
             },
         )
     except StripeAPIConnectionError as e:
-        logger.error("stripe_connection_failed", error=str(e))
+        logger.exception("stripe_connection_failed", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
@@ -157,7 +166,7 @@ async def create_checkout_session(
             },
         ) from e
     except StripeInvalidRequestError as e:
-        logger.error("stripe_invalid_request", error=str(e))
+        logger.exception("stripe_invalid_request", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
@@ -167,7 +176,7 @@ async def create_checkout_session(
             },
         ) from e
     except StripeAuthenticationError as e:
-        logger.error("stripe_auth_failed", error=str(e))
+        logger.exception("stripe_auth_failed", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
@@ -177,7 +186,7 @@ async def create_checkout_session(
             },
         ) from e
     except StripeError as e:
-        logger.error(
+        logger.exception(
             "stripe_checkout_creation_failed", error=str(e), error_type=type(e).__name__
         )
         raise HTTPException(
@@ -284,7 +293,7 @@ async def stripe_webhook(
             tolerance=300,  # 5 minute replay window
         )
     except stripe.error.SignatureVerificationError as e:
-        logger.error(
+        logger.exception(
             "webhook_signature_invalid",
             error=str(e),
             client_ip=request.client.host if request.client else "unknown",
@@ -294,7 +303,7 @@ async def stripe_webhook(
             detail="Invalid signature",
         ) from e
     except ValueError as e:
-        logger.error("webhook_payload_invalid", error=str(e))
+        logger.exception("webhook_payload_invalid", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid payload",
@@ -350,10 +359,10 @@ async def stripe_webhook(
             timeout=STRIPE_API_TIMEOUT_SECONDS,
         )
         logger.info("webhook_session_retrieved", session_id=session_data.id)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         # We've already claimed idempotency, so return 200 to prevent Stripe retries.
         # Event stays as processed=False and can be investigated/retried via admin.
-        logger.error(
+        logger.exception(
             "stripe_api_timeout",
             operation="webhook_session_retrieve",
             session_id=session_data.id,
@@ -372,7 +381,7 @@ async def stripe_webhook(
         }
     except StripeAPIConnectionError as e:
         # Same pattern: claimed idempotency, return 200, mark error for investigation
-        logger.error(
+        logger.exception(
             "webhook_session_retrieval_connection_failed",
             session_id=session_data.id,
             error=str(e),
@@ -389,7 +398,7 @@ async def stripe_webhook(
             "webhook_id": str(webhook_event_id),
         }
     except StripeError as e:
-        logger.error(
+        logger.exception(
             "webhook_session_retrieval_failed", session_id=session_data.id, error=str(e)
         )
         await db_service.session.execute(
@@ -421,7 +430,7 @@ async def stripe_webhook(
         box_id = UUID(session_data.metadata["box_id"])
         pack_id = session_data.metadata.get("pack_id")
     except (KeyError, ValueError) as e:
-        logger.error(
+        logger.exception(
             "webhook_invalid_metadata", session_id=session_data.id, error=str(e)
         )
         await db_service.session.execute(
@@ -441,7 +450,9 @@ async def stripe_webhook(
             price.metadata
         )
     except (ValueError, TypeError) as e:
-        logger.error("webhook_price_invalid_metadata", price_id=price.id, error=str(e))
+        logger.exception(
+            "webhook_price_invalid_metadata", price_id=price.id, error=str(e)
+        )
         await db_service.session.execute(
             update(defs.StripeWebhookEvent)
             .where(defs.StripeWebhookEvent.id == webhook_event_id)
@@ -480,7 +491,7 @@ async def stripe_webhook(
         return result
 
     except Exception as e:
-        logger.error(
+        logger.exception(
             "webhook_processing_failed",
             event_id=event.id,
             error=str(e),

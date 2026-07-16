@@ -23,11 +23,14 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "ty>=0.0.1a16",
+    # ty is pre-1.0; keep the floor at the locked version so diagnostics stay reproducible
+    "ty>=0.0.1a22",
     "ruff>=0.12.5",
-    "mypy>=1.17.0",
     "ipython>=9.4.0",
 ]
+
+[tool.ty.environment]
+python-version = "3.13"
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -40,6 +43,10 @@ ignore = [
     "COM812", # conflicts with the formatter (ruff's own recommendation)
 ]
 fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+# Alembic's script directory is not a package by design (no __init__.py)
+"alembic/**" = ["INP001"]
 
 [tool.ruff.format]
 docstring-code-format = true

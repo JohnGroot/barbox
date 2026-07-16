@@ -9,6 +9,8 @@ from sqlalchemy import select
 from structlog import get_logger
 
 from bxctl import db, structures
+from bxctl.db.defs import BoxSession
+
 from . import auth
 
 logger = get_logger()
@@ -131,7 +133,7 @@ async def _fetch_box_or_404(
 async def _get_authenticated_box_by_session(
     session_id: UUID,  # From path parameter (for session-scoped endpoints)
     x_box_api_key: Annotated[str | None, Header()] = None,
-    db_service: Database = None,  # type: ignore
+    db_service: Database = None,
 ) -> db.defs.Box:
     """Verify box API key for session-scoped operations.
 
@@ -154,8 +156,6 @@ async def _get_authenticated_box_by_session(
     # Fetch session and its box in one round trip (outer join: the box side
     # is None either because the session itself doesn't exist, or - a data
     # integrity error - because the session references a box that's gone).
-    from bxctl.db.defs import BoxSession
-
     result = await db_service.session.execute(
         select(BoxSession, db.defs.Box)
         .outerjoin(db.defs.Box, db.defs.Box.id == BoxSession.box_id)
@@ -198,7 +198,7 @@ async def _get_authenticated_box_by_session(
 async def _get_authenticated_box(
     box_id: UUID,  # From path parameter
     x_box_api_key: Annotated[str | None, Header()] = None,
-    db_service: Database = None,  # type: ignore
+    db_service: Database = None,
 ) -> db.defs.Box:
     """Verify box API key using deterministic derivation.
 
@@ -228,7 +228,8 @@ async def _get_authenticated_box(
         db_service,
         not_found_message=(
             f"Box '{box_id}' does not exist in the database. "
-            "Please register the box first using PUT /box/{box_id} before creating sessions."
+            "Please register the box first using PUT /box/{box_id} "
+            "before creating sessions."
         ),
     )
 
@@ -245,7 +246,7 @@ BoxAuthenticatedWithPath = Annotated[db.defs.Box, Depends(_get_authenticated_box
 async def _get_authenticated_box_from_header(
     x_box_id: Annotated[UUID | None, Header()] = None,
     x_box_api_key: Annotated[str | None, Header()] = None,
-    db_service: Database = None,  # type: ignore
+    db_service: Database = None,
 ) -> db.defs.Box:
     """Verify box API key when box_id comes from header (not path).
 
@@ -261,7 +262,8 @@ async def _get_authenticated_box_from_header(
             Authenticated Box model
 
     Raises:
-            HTTPException: 401 if headers missing or API key invalid, 404 if box not found
+            HTTPException: 401 if headers missing or API key invalid,
+            404 if box not found
     """
     if not x_box_id:
         logger.warning("box_auth_missing_box_id_header")
@@ -297,7 +299,7 @@ BoxAuthenticated = Annotated[db.defs.Box, Depends(_get_authenticated_box_from_he
 
 async def _get_authenticated_player(
     authorization: Annotated[str | None, Header()] = None,
-    db_service: Database = None,  # type: ignore
+    db_service: Database = None,  # noqa: ARG001  # reserved for revocation checks
 ) -> UUID:
     """Extract and validate player from JWT.
 
@@ -333,7 +335,7 @@ async def _get_authenticated_player(
     except JWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}",
+            detail=f"Invalid token: {e!s}",
             headers={"WWW-Authenticate": "Bearer"},
         ) from e
 

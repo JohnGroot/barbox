@@ -1,6 +1,7 @@
 """Machine credit management endpoints
 
-Per box+game credit pools - credits transferred to machines persist until consumed by game start.
+Per box+game credit pools - credits transferred to machines persist until
+consumed by game start.
 """
 
 import asyncio
@@ -13,6 +14,7 @@ from structlog import get_logger
 
 from bxctl import structures
 from bxctl.db import defs
+
 from . import dependencies
 
 logger = get_logger()
@@ -43,7 +45,8 @@ async def get_machine_credits(
 
     Example:
             GET /machine-credits/carrom?box_id={box_id}
-            → {"box_id": "...", "game_tag": "carrom", "balance": 8, "contributions": [...]}
+            → {"box_id": "...", "game_tag": "carrom", "balance": 8,
+               "contributions": [...]}
     """
 
     # Aggregate machine_credit/deposit and machine_credit/consume events in a
@@ -120,7 +123,8 @@ async def deposit_machine_credits(
 
     Args:
             game_tag: Game type identifier
-            request: Deposit request containing box_id, player_id, amount, lobby_session_id
+            request: Deposit request containing box_id, player_id, amount,
+                    lobby_session_id
 
     Returns:
             Updated machine credit pot balance and contributions
@@ -240,7 +244,10 @@ async def consume_machine_credits(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
                     "code": structures.ErrorCode.INSUFFICIENT_CREDITS,
-                    "message": f"Insufficient machine credits: have {current.balance}, need {request.amount}",
+                    "message": (
+                        f"Insufficient machine credits: have {current.balance},"
+                        f" need {request.amount}"
+                    ),
                 },
             )
 

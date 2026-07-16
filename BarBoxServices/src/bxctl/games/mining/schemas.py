@@ -6,7 +6,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-
 # ============= CONSTANTS =============
 
 GEM_TYPES = ["ruby", "sapphire", "emerald", "diamond", "amethyst"]
@@ -135,7 +134,8 @@ class MiningLocationResponse(BaseModel):
     @classmethod
     def validate_gem_type(cls, v: str) -> str:
         if v not in GEM_TYPES:
-            raise ValueError(f"Invalid gem type: {v}. Must be one of {GEM_TYPES}")
+            msg = f"Invalid gem type: {v}. Must be one of {GEM_TYPES}"
+            raise ValueError(msg)
         return v
 
 

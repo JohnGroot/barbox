@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.attributes import set_committed_value
@@ -67,7 +67,8 @@ async def create_box(
             detail={
                 "code": structures.ErrorCode.DUPLICATE_RESOURCE,
                 "message": (
-                    f"Box already exists with {'ID' if existing_box.id == new_box.id else 'tag'} "
+                    "Box already exists with "
+                    f"{'ID' if existing_box.id == new_box.id else 'tag'} "
                     f"'{new_box.id if existing_box.id == new_box.id else new_box.tag}'."
                 ),
                 "details": {
@@ -110,7 +111,7 @@ async def create_box(
 
     except IntegrityError as e:
         # Catch any database constraint violations that weren't caught above
-        logger.error(
+        logger.exception(
             "box_creation_integrity_error",
             error=str(e),
             box_id=str(new_box.id),
@@ -123,11 +124,11 @@ async def create_box(
                 "message": "Box creation failed due to a constraint violation.",
                 "details": {"error": str(e.orig) if hasattr(e, "orig") else str(e)},
             },
-        )
+        ) from e
 
     except Exception as e:
         # Catch unexpected errors
-        logger.error(
+        logger.exception(
             "box_creation_failed",
             error=str(e),
             error_type=type(e).__name__,
@@ -141,7 +142,7 @@ async def create_box(
                 "message": "An unexpected error occurred during box creation.",
                 "details": {"error_type": type(e).__name__},
             },
-        )
+        ) from e
 
 
 @router.put("/{box_id}", status_code=200)
@@ -228,7 +229,8 @@ async def register_box(
             )
             warning = (
                 f"Box exists with different name/tag. "
-                f"Returning existing: name='{existing_box.name}', tag='{existing_box.tag}'"
+                f"Returning existing: name='{existing_box.name}', "
+                f"tag='{existing_box.tag}'"
             )
         else:
             warning = "Box already registered"
@@ -277,7 +279,7 @@ async def register_box(
 
     except IntegrityError as e:
         # Catch any database constraint violations
-        logger.error(
+        logger.exception(
             "box_registration_integrity_error",
             error=str(e),
             box_id=str(box_id),
@@ -290,11 +292,11 @@ async def register_box(
                 "message": "Box registration failed due to a constraint violation.",
                 "details": {"error": str(e.orig) if hasattr(e, "orig") else str(e)},
             },
-        )
+        ) from e
 
     except Exception as e:
         # Catch unexpected errors
-        logger.error(
+        logger.exception(
             "box_registration_failed",
             error=str(e),
             error_type=type(e).__name__,
@@ -308,7 +310,7 @@ async def register_box(
                 "message": "An unexpected error occurred during box registration.",
                 "details": {"error_type": type(e).__name__},
             },
-        )
+        ) from e
 
 
 @router.post("/{box_id}/lobby/session", status_code=status.HTTP_201_CREATED)
@@ -371,7 +373,7 @@ async def create_lobby_session(
 
 
 @router.put("/{box_id}/session/{session_id}", status_code=status.HTTP_202_ACCEPTED)
-async def create_box_session(
+async def create_box_session(  # noqa: PLR0913  # FastAPI dependency injection
     box_id: UUID,
     session_id: UUID,
     game_tag: Annotated[str, Query()],  # Required: Game type identifier
@@ -401,7 +403,8 @@ async def create_box_session(
     - player_ids will be set to [player_id]
 
     For multiplayer games (Carrom):
-    - Pass player_ids as JSON array via query parameter: ?player_ids=["uuid1","uuid2","uuid3"]
+    - Pass player_ids as JSON array via query parameter:
+      ?player_ids=["uuid1","uuid2","uuid3"]
     - Pass game_tag as query parameter: ?game_tag=carrom
     - First player in array becomes host_player_id
 
@@ -429,11 +432,12 @@ async def create_box_session(
         try:
             player_id_list = json.loads(player_ids)
             if not isinstance(player_id_list, list) or len(player_id_list) == 0:
-                raise ValueError("player_ids must be a non-empty array")
+                msg = "player_ids must be a non-empty array"
+                raise ValueError(msg)  # noqa: TRY301  # caught below for fallback
             host_id = UUID(player_id_list[0])  # First player is host
             session_type = "game"
         except (json.JSONDecodeError, ValueError, IndexError) as e:
-            logger.error("invalid_player_ids", error=str(e), player_ids=player_ids)
+            logger.exception("invalid_player_ids", error=str(e), player_ids=player_ids)
             # Fall back to single player from header
             if player_id is not None:
                 player_id_list = [str(player_id)]
@@ -444,17 +448,16 @@ async def create_box_session(
                 player_id_list = []
                 host_id = None
                 session_type = "practice"
+    # Single-player: Use player from header
+    elif player_id is not None:
+        player_id_list = [str(player_id)]
+        host_id = player_id
+        session_type = "game"
     else:
-        # Single-player: Use player from header
-        if player_id is not None:
-            player_id_list = [str(player_id)]
-            host_id = player_id
-            session_type = "game"
-        else:
-            # Practice mode
-            player_id_list = []
-            host_id = None
-            session_type = "practice"
+        # Practice mode
+        player_id_list = []
+        host_id = None
+        session_type = "practice"
 
     logger.info(
         "creating_session",
@@ -485,7 +488,7 @@ async def create_box_session(
 async def add_session_event(
     event: structures.SessionEventBase,
     session_id: UUID,
-    authenticated_box: dependencies.BoxAuthenticatedBySession,
+    authenticated_box: dependencies.BoxAuthenticatedBySession,  # noqa: ARG001  # auth gate only
     db_service: dependencies.Database,
     now: dependencies.Now,
 ) -> structures.Identifiable:
@@ -535,7 +538,9 @@ async def add_session_event(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
                 "code": structures.ErrorCode.VALIDATION_ERROR,
-                "message": f"Invalid payload for event type '{event.type}': {error_msg}",
+                "message": (
+                    f"Invalid payload for event type '{event.type}': {error_msg}"
+                ),
                 "details": {"event_type": event.type},
             },
         )
@@ -566,7 +571,9 @@ async def add_session_event(
         },
     )
 
-    # Explicitly commit before returning to ensure event is visible to subsequent queries
+    # Explicitly commit before returning to ensure the event is visible to
+    # subsequent queries
+
     await db_service.session.commit()
 
     logger.info(
@@ -582,7 +589,7 @@ async def add_session_event(
 @router.post("/session/{session_id}/close", status_code=status.HTTP_200_OK)
 async def close_box_session(
     session_id: UUID,
-    authenticated_box: dependencies.BoxAuthenticatedBySession,
+    authenticated_box: dependencies.BoxAuthenticatedBySession,  # noqa: ARG001  # auth gate only
     db_service: dependencies.Database,
     now: dependencies.Now,
 ) -> structures.Identifiable:
@@ -596,8 +603,6 @@ async def close_box_session(
     Headers:
         X-Box-API-Key: Box API key for authentication
     """
-    from sqlalchemy import update
-
     logger.info("closing_session", session_id=str(session_id))
 
     await db_service.session.execute(
@@ -614,7 +619,7 @@ async def close_box_session(
 async def get_box_session(
     session_id: UUID,
     db_service: dependencies.Database,
-    include_events: bool = Query(False),
+    include_events: Annotated[bool, Query()] = False,  # noqa: FBT002  # FastAPI query param
 ) -> structures.BoxSession:
     query = select(db.defs.BoxSession).where(db.defs.BoxSession.id == session_id)
     if include_events:

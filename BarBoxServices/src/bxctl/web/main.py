@@ -1,29 +1,31 @@
 import asyncio
 import pathlib
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from uuid import uuid4
 
-from alembic import command as alembic_command
+import structlog
 from alembic.config import Config as AlembicConfig
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy import inspect as sa_inspect
-import structlog
 from structlog import get_logger
 
-from bxctl import env
+from alembic import command as alembic_command
+from bxctl import db, env
 from bxctl.db.connectivity import engine
 from bxctl.db.defs import Base
 from bxctl.structures import GAMES
 
 from . import box, machine_credits, player, test
 from .payments import router as payments_router
+from .test import _seed_test_box_and_players
 
 logger = get_logger()
 
@@ -84,16 +86,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
             await conn.run_sync(Base.metadata.create_all)
         logger.info(
-            f"Database ready in {settings.env} mode (drop_on_startup={settings.drop_db_on_startup})"
+            "database_ready",
+            env=settings.env,
+            drop_on_startup=settings.drop_db_on_startup,
         )
 
     # Auto-seed test data in development mode for consistent editor/test experience
     if settings.is_dev_mode():
-        from datetime import UTC, datetime
-
-        from bxctl import db
-        from bxctl.web.test import _seed_test_box_and_players
-
         async with db.connectivity.db_session() as session:
             db_service = db.service.CRUD(session)
             now = datetime.now(tz=UTC)
@@ -105,11 +104,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                     status=result["status"],
                     message="Test data auto-seeded on startup",
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001  # best-effort; log and continue
                 logger.warning(
                     "dev_mode_auto_seed_failed",
                     error=str(e),
-                    message="Failed to auto-seed test data - use POST /test/seed if needed",
+                    message=(
+                        "Failed to auto-seed test data - use POST /test/seed if needed"
+                    ),
                 )
 
     # Signal that application is fully initialized and ready to serve traffic
@@ -167,7 +168,10 @@ tags_metadata = [
     },
     {
         "name": "Testing",
-        "description": "Development and testing utilities (not available in production environments)",
+        "description": (
+            "Development and testing utilities "
+            "(not available in production environments)"
+        ),
     },
 ]
 
@@ -184,7 +188,7 @@ if settings.is_production():
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     logger.info("Rate limiting enabled for production environment")
 else:
-    logger.info(f"Rate limiting disabled for {settings.env} environment")
+    logger.info("rate_limiting_disabled", env=settings.env)
 
 # Configure CORS middleware
 origins = settings.cors_origins.split(",") if settings.cors_origins != "*" else ["*"]
@@ -203,7 +207,9 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def add_request_id_middleware(request: Request, call_next):
+async def add_request_id_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     """Add request ID to all requests for tracking and logging.
 
     The request ID is:
@@ -241,7 +247,9 @@ SLOW_REQUEST_THRESHOLD_S = 0.5
 
 
 @app.middleware("http")
-async def add_process_time_middleware(request: Request, call_next):
+async def add_process_time_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     """Time request handling and record it for logging and monitoring.
 
     Process time is:
@@ -269,20 +277,19 @@ async def add_process_time_middleware(request: Request, call_next):
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     Global exception handler to log all unhandled errors.
     Prevents crashes from propagating as timeouts/empty responses.
     """
     request_id = getattr(request.state, "request_id", "unknown")
-    logger.error(
+    logger.exception(
         "unhandled_exception",
         request_id=request_id,
         path=request.url.path,
         method=request.method,
         error=str(exc),
         error_type=type(exc).__name__,
-        exc_info=True,  # Include full traceback
     )
 
     return JSONResponse(
@@ -330,5 +337,5 @@ for router in routers:
     app.include_router(router)
 
 # Game routers - auto-registered from GAMES registry
-for game_name, game_data in GAMES.items():
+for game_data in GAMES.values():
     app.include_router(game_data["router"].router)

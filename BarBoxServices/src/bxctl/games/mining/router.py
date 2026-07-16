@@ -137,7 +137,7 @@ async def reset_player_mining_state(
         }
 
     except Exception as e:
-        logger.error(
+        logger.exception(
             "mining_state_reset_failed", player_id=str(player_id), error=str(e)
         )
         raise HTTPException(
@@ -170,7 +170,7 @@ async def register_location(
     try:
         return await service.register_or_get_location(db_service, venue_name)
     except ValueError as e:
-        logger.error(
+        logger.exception(
             "location_registration_failed", venue_name=venue_name, error=str(e)
         )
         raise HTTPException(

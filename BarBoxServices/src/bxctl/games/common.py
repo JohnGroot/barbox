@@ -2,6 +2,7 @@
 
 import json
 from typing import Any
+
 from structlog import get_logger
 
 logger = get_logger(__name__)
@@ -46,7 +47,7 @@ def parse_json_field(value: Any) -> list | dict | None:
         try:
             return json.loads(value)
         except (json.JSONDecodeError, ValueError, TypeError) as e:
-            logger.error("json_parse_failed", value=str(value)[:100], error=str(e))
+            logger.exception("json_parse_failed", value=str(value)[:100], error=str(e))
             return None
 
     # Unexpected type - log warning
@@ -93,7 +94,9 @@ def parse_float_list(value: Any) -> list[float] | None:
     try:
         return [float(x) for x in parsed]
     except (ValueError, TypeError) as e:
-        logger.error("float_conversion_failed", value=str(parsed)[:100], error=str(e))
+        logger.exception(
+            "float_conversion_failed", value=str(parsed)[:100], error=str(e)
+        )
         return None
 
 
@@ -286,7 +289,7 @@ def safe_parse_leaderboard[T](
             entry = parser_fn(row)
             entries.append(entry)
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "leaderboard_entry_parse_failed", row=str(row)[:200], error=str(e)
             )
             # Continue processing remaining rows instead of crashing

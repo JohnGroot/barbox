@@ -4,14 +4,14 @@ These endpoints are ONLY available in dev/test modes and will return 404 in prod
 """
 
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text
+from sqlalchemy import select
 from structlog import get_logger
 
-from bxctl import db, env, structures
+from bxctl import db, env
 
 from . import auth, dependencies
 from .payments import service as payments_service
@@ -180,11 +180,14 @@ async def reset_database(
                 logger.info(
                     "auto_seed_after_reset_completed", result=seed_result["status"]
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001  # seed failure is non-fatal
                 logger.warning(
                     "auto_seed_after_reset_failed",
                     error=str(e),
-                    message="Database reset succeeded but auto-seeding failed. Call POST /test/seed manually.",
+                    message=(
+                        "Database reset succeeded but auto-seeding failed. "
+                        "Call POST /test/seed manually."
+                    ),
                 )
 
         return {
@@ -196,11 +199,11 @@ async def reset_database(
         }
 
     except Exception as e:
-        logger.error("database_reset_failed", error=str(e))
+        logger.exception("database_reset_failed", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "OPERATION_FAILED", "message": str(e)},
-        )
+        ) from e
 
 
 @router.post("/seed", status_code=200)
@@ -228,11 +231,11 @@ async def seed_test_data(
         return await _seed_test_box_and_players(db_service, now)
 
     except Exception as e:
-        logger.error("test_seed_failed", error=str(e))
+        logger.exception("test_seed_failed", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "OPERATION_FAILED", "message": str(e)},
-        )
+        ) from e
 
 
 @router.get("/environment", status_code=200)
@@ -318,7 +321,7 @@ async def mock_webhook(
 
     # Call pure business logic (same function used by real webhook)
     try:
-        result = await payments_service.issue_credits_for_payment(
+        return await payments_service.issue_credits_for_payment(
             event_id=request.event_id,
             session_id=request.session_id,
             payment_intent_id=request.payment_intent_id,
@@ -334,9 +337,8 @@ async def mock_webhook(
             now=now,
             webhook_event_id=None,  # No StripeWebhookEvent for test
         )
-        return result
     except Exception as e:
-        logger.error(
+        logger.exception(
             "test_webhook_failed",
             event_id=request.event_id,
             error=str(e),

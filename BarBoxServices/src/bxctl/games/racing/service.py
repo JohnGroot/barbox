@@ -124,21 +124,20 @@ async def get_racing_leaderboard(
 
     except ValueError as e:
         # Handle UUID conversion errors
-        logger.error("invalid_player_id_format", error=str(e), exc_info=True)
+        logger.exception("invalid_player_id_format", error=str(e))
         raise HTTPException(
-            status_code=400, detail=f"Invalid player ID format in database: {str(e)}"
-        )
+            status_code=400, detail=f"Invalid player ID format in database: {e!s}"
+        ) from e
     except Exception as e:
         # Handle SQL and other errors
-        logger.error(
+        logger.exception(
             "leaderboard_query_failed",
             error=str(e),
             track_id=track_id,
             metric=metric,
             laps=laps,
             limit=limit,
-            exc_info=True,
         )
         raise HTTPException(
-            status_code=500, detail=f"Failed to query leaderboard: {str(e)}"
-        )
+            status_code=500, detail=f"Failed to query leaderboard: {e!s}"
+        ) from e

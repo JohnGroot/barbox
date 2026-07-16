@@ -104,7 +104,7 @@ type SessionEventType = (
 
 
 def _check_session_event_type_coverage() -> None:
-    """Fail fast if a registered game's EventType isn't reachable through SessionEventType.
+    """Fail fast if a registered game's EventType isn't in SessionEventType.
 
     Adding a game to GAMES without also adding its schemas.EventType to the
     SessionEventType union above would otherwise only surface as a runtime
@@ -119,11 +119,12 @@ def _check_session_event_type_coverage() -> None:
         game_events = set(get_args(game_data["schemas"].EventType))
         missing = game_events - covered
         if missing:
-            raise RuntimeError(
-                f"Game '{game_name}' event type(s) {sorted(missing)} are not reachable "
-                "through SessionEventType in structures.py. Add the game's EventType to "
-                "the SessionEventType union."
+            msg = (
+                f"Game '{game_name}' event type(s) {sorted(missing)} are not "
+                "reachable through SessionEventType in structures.py. Add the "
+                "game's EventType to the SessionEventType union."
             )
+            raise RuntimeError(msg)
 
 
 _check_session_event_type_coverage()
@@ -229,6 +230,8 @@ class MachineCreditsConsumeRequest(BaseModel):
 
 class ErrorCode(str):
     """Standard error codes for structured error responses"""
+
+    __slots__ = ()
 
     # Validation errors
     VALIDATION_ERROR = "VALIDATION_ERROR"
@@ -343,7 +346,8 @@ class StripePriceMetadata(BaseModel):
             ValueError: If credits is missing or not a positive integer
         """
         if not metadata or "credits" not in metadata:
-            raise ValueError("Price metadata missing required 'credits' field")
+            msg = "Price metadata missing required 'credits' field"
+            raise ValueError(msg)
 
         return cls(
             credits=int(metadata["credits"]),

@@ -23,7 +23,7 @@ from structlog import get_logger
 
 from bxctl import env, structures
 from bxctl.db import defs
-from .. import dependencies
+from bxctl.web import dependencies
 
 logger = get_logger()
 
@@ -45,7 +45,8 @@ def get_stripe_client() -> StripeClient:
     if not hasattr(_stripe_client_local, "client"):
         settings = env.acquire()
         if not settings.stripe_secret_key:
-            raise ValueError("STRIPE_SECRET_KEY not configured")
+            msg = "STRIPE_SECRET_KEY not configured"
+            raise ValueError(msg)
         _stripe_client_local.client = StripeClient(api_key=settings.stripe_secret_key)
     return _stripe_client_local.client
 
@@ -209,7 +210,7 @@ async def issue_credits_for_payment(
         return {"status": "success", "credits_added": total_credits}
 
     except Exception as e:
-        logger.error(
+        logger.exception(
             "credit_issuance_failed",
             event_id=event_id,
             error=str(e),
@@ -227,7 +228,7 @@ async def issue_credits_for_payment(
                 )
                 await db_service.session.commit()
             except Exception as recording_error:
-                logger.error(
+                logger.exception(
                     "webhook_error_recording_failed",
                     event_id=event_id,
                     original_error=str(e),

@@ -6,7 +6,6 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-
 from bxctl import env as bxctl_env
 from bxctl.db.defs import Base
 
@@ -25,11 +24,6 @@ if config.config_file_name is not None:
 config.set_main_option("sqlalchemy.url", bxctl_env.acquire().db_url)
 
 target_metadata = Base.metadata
-
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
 
 
 def run_migrations_offline() -> None:

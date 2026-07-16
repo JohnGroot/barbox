@@ -1,13 +1,11 @@
-from datetime import UTC, datetime, timedelta
-from uuid import UUID, uuid4
+from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from structlog import get_logger
-from typing import Annotated
 
 from bxctl import db, env, structures
 from bxctl.games import common
@@ -21,6 +19,9 @@ logger = get_logger()
 # Computed once at module load to avoid expensive hashing on every failed login
 _DUMMY_PIN_HASH = auth.hash_player_pin("0000")
 
+# Number of leading phone digits kept visible when masking numbers in logs
+PHONE_LOG_PREFIX_LENGTH = 4
+
 # Rate limiter for authentication endpoints
 # Disabled in dev/test environments to avoid interfering with integration tests
 settings = env.acquire()
@@ -30,11 +31,11 @@ limiter = Limiter(key_func=get_remote_address, enabled=settings.is_production())
 @router.post("/auth/login", status_code=200, tags=["Auth"])
 @limiter.limit("5/minute")  # Max 5 login attempts per IP per minute
 async def authenticate_player(
-    request: Request,  # Required for rate limiter
+    request: Request,  # noqa: ARG001  # slowapi limiter requires it
     credentials: structures.PlayerLoginRequest,
     authenticated_box: dependencies.BoxAuthenticated,
     db_service: dependencies.Database,
-    now: dependencies.Now,
+    now: dependencies.Now,  # noqa: ARG001  # injected timestamp, unused here
 ) -> structures.PlayerLoginResponse:
     """Authenticate player and issue JWT token.
 
@@ -85,7 +86,8 @@ async def authenticate_player(
     try:
         normalized_phone = auth.validate_and_normalize_phone(credentials.phone_number)
     except ValueError:
-        # Invalid phone format - treat as failed login (don't reveal it's invalid format)
+        # Invalid phone format - treat as failed login (don't reveal that the
+        # format itself is invalid)
         normalized_phone = credentials.phone_number  # Use as-is, will fail lookup
 
     # Look up player by normalized phone number
@@ -98,9 +100,11 @@ async def authenticate_player(
     if not player:
         logger.warning(
             "player_login_failed_not_registered",
-            phone_number_prefix=credentials.phone_number[:4] + "****"
-            if len(credentials.phone_number) > 4
-            else "****",
+            phone_number_prefix=(
+                credentials.phone_number[:PHONE_LOG_PREFIX_LENGTH] + "****"
+                if len(credentials.phone_number) > PHONE_LOG_PREFIX_LENGTH
+                else "****"
+            ),
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -115,9 +119,11 @@ async def authenticate_player(
     if not is_valid_pin:
         logger.warning(
             "player_login_failed_wrong_pin",
-            phone_number_prefix=credentials.phone_number[:4] + "****"
-            if len(credentials.phone_number) > 4
-            else "****",
+            phone_number_prefix=(
+                credentials.phone_number[:PHONE_LOG_PREFIX_LENGTH] + "****"
+                if len(credentials.phone_number) > PHONE_LOG_PREFIX_LENGTH
+                else "****"
+            ),
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -148,7 +154,7 @@ async def authenticate_player(
 @router.post("/auth/logout", status_code=200, tags=["Auth"])
 @limiter.limit("20/minute")  # Max 20 logout attempts per IP per minute
 async def logout_player(
-    request: Request,  # Required for rate limiter
+    request: Request,  # noqa: ARG001  # slowapi limiter requires it
     player_id: dependencies.AuthenticatedPlayer,
 ) -> dict:
     """Logout player (client-side).
@@ -176,7 +182,7 @@ async def logout_player(
 @router.post("/", status_code=201)
 @limiter.limit("10/minute")  # Max 10 registration attempts per IP per minute
 async def register_player(
-    request: Request,  # Required for rate limiter
+    request: Request,  # noqa: ARG001  # slowapi limiter requires it
     new_player: structures.PlayerCreate,
     authenticated_box: dependencies.BoxAuthenticated,
     db_service: dependencies.Database,
@@ -211,7 +217,9 @@ async def register_player(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": structures.ErrorCode.VALIDATION_ERROR,
-                "message": "Player ID cannot be all zeros. Please generate a valid UUID.",
+                "message": (
+                    "Player ID cannot be all zeros. Please generate a valid UUID."
+                ),
                 "details": {
                     "field": "id",
                     "value": str(new_player.id),
@@ -255,7 +263,10 @@ async def register_player(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": structures.ErrorCode.FK_VIOLATION,
-                "message": f"Origin box '{new_player.origin_id}' does not exist. Please ensure the box is registered first.",
+                "message": (
+                    f"Origin box '{new_player.origin_id}' does not exist. "
+                    "Please ensure the box is registered first."
+                ),
                 "details": {
                     "field": "origin_id",
                     "value": str(new_player.origin_id),
@@ -318,7 +329,9 @@ async def register_player(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "code": structures.ErrorCode.DUPLICATE_RESOURCE,
-                "message": f"Player already exists with {conflict_field} '{conflict_value}'.",
+                "message": (
+                    f"Player already exists with {conflict_field} '{conflict_value}'."
+                ),
                 "details": {
                     "conflict_field": conflict_field,
                     "conflict_value": conflict_value,
@@ -343,11 +356,10 @@ async def register_player(
             username=new_player.tag,
             origin_id=str(new_player.origin_id),
         )
-        return result
 
     except IntegrityError as e:
         # Catch any database constraint violations that weren't caught above
-        logger.error(
+        logger.exception(
             "player_creation_integrity_error",
             error=str(e),
             player_id=str(new_player.id),
@@ -360,11 +372,11 @@ async def register_player(
                 "message": "Player creation failed due to a constraint violation.",
                 "details": {"error": str(e.orig) if hasattr(e, "orig") else str(e)},
             },
-        )
+        ) from e
 
     except Exception as e:
         # Catch unexpected errors
-        logger.error(
+        logger.exception(
             "player_creation_failed",
             error=str(e),
             error_type=type(e).__name__,
@@ -378,7 +390,9 @@ async def register_player(
                 "message": "An unexpected error occurred during player creation.",
                 "details": {"error_type": type(e).__name__},
             },
-        )
+        ) from e
+
+    return result
 
 
 @router.post("/validate", status_code=200)
@@ -484,9 +498,12 @@ async def get_player_credits(
     """Get player's credit balance for a specific location"""
 
     # Aggregate credits from credit/earn and credit/spend events
+    signed_sum = common.signed_sum_sql(
+        "bse.payload, '$.amount'", "credit/earn", "credit/spend"
+    )
     sql = f"""
     SELECT
-        {common.signed_sum_sql("bse.payload, '$.amount'", "credit/earn", "credit/spend")} as credits
+        {signed_sum} as credits
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
     WHERE bs.host_player_id = :player_id
@@ -495,21 +512,21 @@ async def get_player_credits(
         json_extract(bse.payload, '$.location_id') = :location_id
         OR json_extract(bse.payload, '$.global') = 1
     )
-    """
+    """  # noqa: S608  # only a trusted SQL fragment is interpolated; values are bound
 
     result = await db_service.get_many_raw(
         sql, {"player_id": player_id.hex, "location_id": location_id}
     )
 
-    credits = result.scalar() or 0
+    credit_balance = result.scalar() or 0
 
     logger.info(
         "credit_balance_query",
         player_id=str(player_id),
         location_id=location_id,
-        credits=credits,
+        credits=credit_balance,
     )
 
     return structures.PlayerCreditsResponse(
-        player_id=player_id, location_id=location_id, credits=credits
+        player_id=player_id, location_id=location_id, credits=credit_balance
     )

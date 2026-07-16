@@ -94,8 +94,7 @@ async def _get_player_mining_inventory(
             row_timestamp = datetime.fromisoformat(row_timestamp_str).replace(
                 tzinfo=UTC
             )
-            if row_timestamp > last_updated:
-                last_updated = row_timestamp
+            last_updated = max(last_updated, row_timestamp)
 
     return schemas.MiningInventoryResponse(
         player_id=player_id,
@@ -156,8 +155,7 @@ async def _get_player_mining_upgrades(
             row_timestamp = datetime.fromisoformat(row_timestamp_str).replace(
                 tzinfo=UTC
             )
-            if row_timestamp > last_updated:
-                last_updated = row_timestamp
+            last_updated = max(last_updated, row_timestamp)
 
     return schemas.MiningUpgradesResponse(
         player_id=player_id,
@@ -362,7 +360,7 @@ async def get_gem_type_distribution(
     result = await db.get_many_raw(sql, {})
 
     # Initialize all gem types to 0
-    distribution = {gem: 0 for gem in schemas.GEM_TYPES}
+    distribution = dict.fromkeys(schemas.GEM_TYPES, 0)
 
     # Update with actual counts
     for row in result.tuples():
@@ -439,7 +437,8 @@ async def register_or_get_location(
                 display_name=existing.display_name,
             )
         # Should not happen, but handle gracefully
-        raise ValueError(f"Failed to register or retrieve location: {venue_name}")
+        msg = f"Failed to register or retrieve location: {venue_name}"
+        raise ValueError(msg)
 
 
 async def get_all_locations(
@@ -469,7 +468,7 @@ async def get_all_locations(
     ]
 
     # Calculate distribution
-    distribution = {gem: 0 for gem in schemas.GEM_TYPES}
+    distribution = dict.fromkeys(schemas.GEM_TYPES, 0)
     for loc in locations:
         if loc.gem_type in distribution:
             distribution[loc.gem_type] += 1

@@ -1,5 +1,5 @@
 from functools import cache
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -44,15 +44,16 @@ class _Settings(BaseSettings):
     drop_db_on_startup: bool = False
 
     # JWT Configuration
-    jwt_secret_key: str = "dev-secret-UNSAFE-change-in-production"
+    jwt_secret_key: str = "dev-secret-UNSAFE-change-in-production"  # noqa: S105  # dev only
     jwt_algorithm: str = "HS256"
     jwt_access_token_hours: int = 2  # Arcade session token (covers continuous play)
 
     # Bcrypt Configuration
     bcrypt_rounds: int = 12
 
-    # Box Registration Configuration
-    box_registration_secret: str = "dev-registration-secret-UNSAFE-change-in-production"
+    # Box Registration Configuration ("dev-" defaults are rejected in
+    # production by model_post_init below)
+    box_registration_secret: str = "dev-registration-secret-UNSAFE-change-in-production"  # noqa: S105  # dev only
 
     # CORS Configuration
     cors_origins: str = "*"  # Comma-separated list of allowed origins, or "*" for all
@@ -97,32 +98,43 @@ class _Settings(BaseSettings):
         return self.env == "local"
 
     def should_drop_database(self) -> bool:
-        """Check if database should be dropped on startup (only in dev mode with explicit flag)"""
+        """Check if database should be dropped on startup.
+
+        Only in dev mode with an explicit flag.
+        """
         return self.is_dev_mode() and self.drop_db_on_startup
 
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, context: Any, /) -> None:  # noqa: ANN401  # pydantic API
         """Validate critical settings after initialization"""
         if self.is_production() and self.jwt_secret_key.startswith("dev-"):
-            raise ValueError(
-                "Production environment requires secure JWT_SECRET_KEY environment variable. "
+            msg = (
+                "Production environment requires secure JWT_SECRET_KEY "
+                "environment variable. "
                 "Generate one with: openssl rand -base64 64"
             )
+            raise ValueError(msg)
         if self.is_production() and (
             not self.box_registration_secret
             or self.box_registration_secret.startswith("dev-")
         ):
-            raise ValueError(
-                "Production environment requires secure BOX_REGISTRATION_SECRET environment variable. "
+            msg = (
+                "Production environment requires secure BOX_REGISTRATION_SECRET "
+                "environment variable. "
                 "Generate one with: openssl rand -base64 32"
             )
+            raise ValueError(msg)
         if self.is_production() and not self.stripe_secret_key:
-            raise ValueError(
-                "Production environment requires STRIPE_SECRET_KEY environment variable."
+            msg = (
+                "Production environment requires STRIPE_SECRET_KEY "
+                "environment variable."
             )
+            raise ValueError(msg)
         if self.is_production() and not self.stripe_webhook_secret:
-            raise ValueError(
-                "Production environment requires STRIPE_WEBHOOK_SECRET environment variable."
+            msg = (
+                "Production environment requires STRIPE_WEBHOOK_SECRET "
+                "environment variable."
             )
+            raise ValueError(msg)
 
 
 @cache

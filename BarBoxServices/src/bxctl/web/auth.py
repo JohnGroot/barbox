@@ -110,7 +110,7 @@ def verify_player_pin(pin: str, stored_hash: str) -> bool:
     """
     try:
         return bcrypt.checkpw(pin.encode(), stored_hash.encode())
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # any bcrypt failure = login fails, not 500
         logger.warning("pin_verification_failed", error=str(e))
         return False
 
@@ -172,8 +172,7 @@ def decode_player_jwt(token: str) -> dict:
             JWTError: If token is invalid, expired, or malformed
     """
     try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-        return payload
+        return jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
     except JWTError as e:
         logger.warning("jwt_decode_failed", error=str(e), error_type=type(e).__name__)
         raise
@@ -204,15 +203,13 @@ def validate_and_normalize_phone(phone_number: str, default_region: str = "US") 
 
         # Validate that it's a possible number
         if not phonenumbers.is_possible_number(parsed):
-            raise ValueError(
-                f"Phone number '{phone_number}' is not a possible phone number"
-            )
+            msg = f"Phone number '{phone_number}' is not a possible phone number"
+            raise ValueError(msg)
 
         # Validate that it's a valid number
         if not phonenumbers.is_valid_number(parsed):
-            raise ValueError(
-                f"Phone number '{phone_number}' is not a valid phone number"
-            )
+            msg = f"Phone number '{phone_number}' is not a valid phone number"
+            raise ValueError(msg)
 
         # Format in E.164 format (+15551234567)
         normalized = phonenumbers.format_number(
@@ -221,11 +218,12 @@ def validate_and_normalize_phone(phone_number: str, default_region: str = "US") 
 
         logger.debug("phone_normalized", original=phone_number, normalized=normalized)
 
-        return normalized
-
     except phonenumbers.NumberParseException as e:
         logger.warning("phone_validation_failed", phone=phone_number, error=str(e))
-        raise ValueError(f"Invalid phone number format: {str(e)}") from e
+        msg = f"Invalid phone number format: {e!s}"
+        raise ValueError(msg) from e
+    else:
+        return normalized
 
 
 def is_valid_phone_number(phone_number: str, default_region: str = "US") -> bool:
@@ -240,6 +238,7 @@ def is_valid_phone_number(phone_number: str, default_region: str = "US") -> bool
     """
     try:
         validate_and_normalize_phone(phone_number, default_region)
-        return True
     except ValueError:
         return False
+    else:
+        return True
