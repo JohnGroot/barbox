@@ -150,9 +150,6 @@ async def reset_player_mining_state(
         ) from e
 
 
-# ============= LOCATION REGISTRATION =============
-
-
 @router.post("/location/register")
 async def register_location(
     venue_name: str,

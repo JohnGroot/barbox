@@ -6,13 +6,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-# ============= CONSTANTS =============
-
 GemType = Literal["ruby", "sapphire", "emerald", "diamond", "amethyst"]
 GEM_TYPES: list[GemType] = ["ruby", "sapphire", "emerald", "diamond", "amethyst"]
 
-
-# ============= EVENT TYPES =============
 
 MiningEventType = Literal[
     "mining/extract_complete",
@@ -23,9 +19,6 @@ MiningEventType = Literal[
 
 # Canonical event type name for generic access
 EventType = MiningEventType
-
-
-# ============= EVENT PAYLOADS =============
 
 
 class MiningExtractCompletePayload(BaseModel):
@@ -59,9 +52,6 @@ class MiningFirstTimeBonusPayload(BaseModel):
 
     location_id: str  # Venue name where bonus was granted
     bonus_gems: dict[str, int]  # {gem_type: quantity} granted as bonus
-
-
-# ============= API RESPONSE MODELS =============
 
 
 class MiningInventoryResponse(BaseModel):
@@ -119,9 +109,6 @@ class MiningStateResponse(BaseModel):
         datetime | None
     )  # None = no extraction history - LOCATION-SPECIFIC
     metadata: MiningMetadataResponse  # LOCATION-SPECIFIC (bonus status per location)
-
-
-# ============= LOCATION REGISTRATION MODELS =============
 
 
 class MiningLocationResponse(BaseModel):

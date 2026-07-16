@@ -46,7 +46,6 @@ async def create_box(
     For idempotent box registration, use PUT /box/{box_id} instead.
     """
 
-    # Check if box already exists (either by ID or tag)
     existing_box_result = await db_service.session.execute(
         select(db.defs.Box).where(
             (db.defs.Box.id == new_box.id) | (db.defs.Box.tag == new_box.tag)
@@ -80,7 +79,6 @@ async def create_box(
             },
         )
 
-    # Derive deterministic API key from box ID
     api_key = auth.derive_box_api_key(new_box.id)
 
     # Create box (no hash storage needed - key is derived on demand)
@@ -110,7 +108,6 @@ async def create_box(
         )
 
     except IntegrityError as e:
-        # Catch any database constraint violations that weren't caught above
         logger.exception(
             "box_creation_integrity_error",
             error=str(e),
@@ -127,7 +124,6 @@ async def create_box(
         ) from e
 
     except Exception as e:
-        # Catch unexpected errors
         logger.exception(
             "box_creation_failed",
             error=str(e),
@@ -187,7 +183,6 @@ async def register_box(
         401: box_id doesn't exist and X-Registration-Secret is missing/invalid
         500: Internal server error
     """
-    # Verify path box_id matches request body
     if box_id != box_data.id:
         logger.warning(
             "box_registration_id_mismatch",
@@ -206,10 +201,8 @@ async def register_box(
             },
         )
 
-    # Derive deterministic API key from box ID (always the same for a given box_id)
     api_key = auth.derive_box_api_key(box_id)
 
-    # Check if box already exists
     existing_box_result = await db_service.session.execute(
         select(db.defs.Box).where(db.defs.Box.id == box_id)
     )
@@ -217,7 +210,6 @@ async def register_box(
 
     if existing_box is not None:
         # Box already exists - return with api_key for recovery/re-deployment scenarios
-        # Check if client provided different name/tag and warn
         if existing_box.name != box_data.name or existing_box.tag != box_data.tag:
             logger.warning(
                 "box_registration_mismatch",
@@ -244,7 +236,7 @@ async def register_box(
             id=existing_box.id,
             name=existing_box.name,
             tag=existing_box.tag,
-            api_key=api_key,  # Always return key for recovery/re-deployment
+            api_key=api_key,
             warning=warning,
         )
 
@@ -278,7 +270,6 @@ async def register_box(
         )
 
     except IntegrityError as e:
-        # Catch any database constraint violations
         logger.exception(
             "box_registration_integrity_error",
             error=str(e),
@@ -295,7 +286,6 @@ async def register_box(
         ) from e
 
     except Exception as e:
-        # Catch unexpected errors
         logger.exception(
             "box_registration_failed",
             error=str(e),
@@ -337,7 +327,6 @@ async def create_lobby_session(
         X-Box-API-Key: Box API key for authentication
         Authorization: Bearer <player_jwt_token>
     """
-    # Verify box_id matches authenticated box
     if box_id != authenticated_box.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -347,7 +336,7 @@ async def create_lobby_session(
             },
         )
 
-    session_id = uuid4()  # Server-generated session ID
+    session_id = uuid4()
 
     logger.info(
         "creating_lobby_session",
@@ -412,7 +401,6 @@ async def create_box_session(  # noqa: PLR0913  # FastAPI dependency injection
         X-Box-API-Key: Box API key for authentication
         Player-Id: (Optional) Player UUID for logged-in play
     """
-    # Verify box_id matches authenticated box
     if box_id != authenticated_box.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -503,7 +491,6 @@ async def add_session_event(
     Headers:
         X-Box-API-Key: Box API key for authentication
     """
-    # Validate event type
     if not game_validation.is_valid_event_type(event.type):
         logger.warning(
             "invalid_event_type",
@@ -522,7 +509,6 @@ async def add_session_event(
             },
         )
 
-    # Validate payload if schema exists
     is_valid, error_msg, validated_payload = game_validation.validate_event_payload(
         event.type, event.payload
     )
@@ -545,12 +531,10 @@ async def add_session_event(
             },
         )
 
-    # Use validated payload if available, otherwise original
     final_payload = (
         validated_payload if validated_payload is not None else event.payload
     )
 
-    # Log credit event payloads for debugging
     if event.type in ("credit/earn", "credit/spend"):
         logger.info(
             "credit_event_payload",

@@ -22,14 +22,13 @@ _DUMMY_PIN_HASH = auth.hash_player_pin("0000")
 # Number of leading phone digits kept visible when masking numbers in logs
 PHONE_LOG_PREFIX_LENGTH = 4
 
-# Rate limiter for authentication endpoints
 # Disabled in dev/test environments to avoid interfering with integration tests
 settings = env.acquire()
 limiter = Limiter(key_func=get_remote_address, enabled=settings.is_production())
 
 
 @router.post("/auth/login", status_code=200, tags=["Auth"])
-@limiter.limit("5/minute")  # Max 5 login attempts per IP per minute
+@limiter.limit("5/minute")
 async def authenticate_player(
     request: Request,  # noqa: ARG001  # slowapi limiter requires it
     credentials: structures.PlayerLoginRequest,
@@ -63,7 +62,6 @@ async def authenticate_player(
             403: Box ID mismatch or account locked out
             500: Internal server error
     """
-    # Verify box ID matches authenticated box
     if credentials.box_id != authenticated_box.id:
         logger.warning(
             "player_login_box_mismatch",
@@ -90,7 +88,6 @@ async def authenticate_player(
         # format itself is invalid)
         normalized_phone = credentials.phone_number  # Use as-is, will fail lookup
 
-    # Look up player by normalized phone number
     player_result = await db_service.session.execute(
         select(db.defs.Player).where(db.defs.Player.phone_number == normalized_phone)
     )
@@ -114,7 +111,6 @@ async def authenticate_player(
             },
         )
 
-    # Verify PIN
     is_valid_pin = auth.verify_player_pin(credentials.pin, player.pin_hash)
     if not is_valid_pin:
         logger.warning(
@@ -152,7 +148,7 @@ async def authenticate_player(
 
 
 @router.post("/auth/logout", status_code=200, tags=["Auth"])
-@limiter.limit("20/minute")  # Max 20 logout attempts per IP per minute
+@limiter.limit("20/minute")
 async def logout_player(
     request: Request,  # noqa: ARG001  # slowapi limiter requires it
     player_id: dependencies.AuthenticatedPlayer,
@@ -180,7 +176,7 @@ async def logout_player(
 
 
 @router.post("/", status_code=201)
-@limiter.limit("10/minute")  # Max 10 registration attempts per IP per minute
+@limiter.limit("10/minute")
 async def register_player(
     request: Request,  # noqa: ARG001  # slowapi limiter requires it
     new_player: structures.PlayerCreate,
@@ -207,7 +203,6 @@ async def register_player(
     Headers:
         X-Box-API-Key: Box API key for authentication
     """
-    # Validate player ID is not empty/zero GUID
     if new_player.id == UUID("00000000-0000-0000-0000-000000000000"):
         logger.warning(
             "player_registration_empty_guid",
@@ -227,7 +222,6 @@ async def register_player(
             },
         )
 
-    # Verify origin_id matches authenticated box
     if new_player.origin_id != authenticated_box.id:
         logger.warning(
             "player_registration_box_mismatch",
@@ -246,7 +240,6 @@ async def register_player(
             },
         )
 
-    # Validate that origin box exists before attempting to create player
     box_result = await db_service.session.execute(
         select(db.defs.Box).where(db.defs.Box.id == new_player.origin_id)
     )
@@ -274,7 +267,6 @@ async def register_player(
             },
         )
 
-    # Validate and normalize phone number
     try:
         normalized_phone = auth.validate_and_normalize_phone(new_player.phone_number)
     except ValueError as e:
@@ -295,7 +287,6 @@ async def register_player(
             },
         ) from e
 
-    # Check if player already exists (ID, username, or phone number)
     existing_player_result = await db_service.session.execute(
         select(db.defs.Player).where(
             (db.defs.Player.id == new_player.id)
@@ -306,7 +297,6 @@ async def register_player(
     existing_player = existing_player_result.scalar_one_or_none()
 
     if existing_player is not None:
-        # Determine conflict type
         if existing_player.id == new_player.id:
             conflict_field = "id"
             conflict_value = str(new_player.id)
@@ -339,10 +329,8 @@ async def register_player(
             },
         )
 
-    # Hash PIN before storing
     pin_hash = auth.hash_player_pin(new_player.pin)
 
-    # Attempt to create player with normalized phone
     try:
         result = await db_service.create(
             target=db.defs.Player,
@@ -358,7 +346,6 @@ async def register_player(
         )
 
     except IntegrityError as e:
-        # Catch any database constraint violations that weren't caught above
         logger.exception(
             "player_creation_integrity_error",
             error=str(e),
@@ -375,7 +362,6 @@ async def register_player(
         ) from e
 
     except Exception as e:
-        # Catch unexpected errors
         logger.exception(
             "player_creation_failed",
             error=str(e),
@@ -411,7 +397,6 @@ async def validate_player_creation(
     """
     errors: list[structures.ValidationErrorDetail] = []
 
-    # Check if origin box exists
     box_result = await db_service.session.execute(
         select(db.defs.Box).where(db.defs.Box.id == new_player.origin_id)
     )
@@ -426,7 +411,6 @@ async def validate_player_creation(
             )
         )
 
-    # Check if player ID already exists
     existing_id_result = await db_service.session.execute(
         select(db.defs.Player).where(db.defs.Player.id == new_player.id)
     )
@@ -441,7 +425,6 @@ async def validate_player_creation(
             )
         )
 
-    # Check if username already exists
     existing_tag_result = await db_service.session.execute(
         select(db.defs.Player).where(db.defs.Player.tag == new_player.tag)
     )
@@ -476,7 +459,6 @@ async def check_username_available(
 ) -> structures.UsernameAvailabilityResponse:
     """Check if username is available for registration"""
 
-    # Query for existing player with this username
     result = await db_service.session.execute(
         select(db.defs.Player).where(db.defs.Player.tag == username)
     )
@@ -497,7 +479,6 @@ async def get_player_credits(
 ) -> structures.PlayerCreditsResponse:
     """Get player's credit balance for a specific location"""
 
-    # Aggregate credits from credit/earn and credit/spend events
     signed_sum = common.signed_sum_sql(
         "bse.payload, '$.amount'", "credit/earn", "credit/spend"
     )

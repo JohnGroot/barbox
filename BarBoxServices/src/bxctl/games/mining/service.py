@@ -20,13 +20,6 @@ async def _get_player_mining_inventory(
     """
     Get player's global mining inventory aggregated from events.
     Calculates: (extracted gems - spent gems from credits/upgrades)
-
-    Args:
-        db: Database CRUD service
-        player_id: Player UUID
-
-    Returns:
-        Player's gem inventory with quantities by gem type
     """
 
     # Aggregate gems extracted and spent using CTEs
@@ -82,7 +75,6 @@ async def _get_player_mining_inventory(
 
     result = await db.get_many_raw(sql, {"player_id": player_id.hex})
 
-    # Build gems dictionary
     gems = {}
     last_updated = datetime.now(UTC)
 
@@ -115,14 +107,6 @@ async def _get_player_mining_upgrades(
     """
     Get player's upgrade levels for a specific location.
     Upgrades are location-scoped - each venue has independent upgrade progression.
-
-    Args:
-        db: Database CRUD service
-        player_id: Player UUID
-        location_id: Location identifier (venue name)
-
-    Returns:
-        Player's upgrade levels for this location
     """
 
     # Aggregate upgrades from mining/upgrade_purchase events filtered by location
@@ -143,7 +127,6 @@ async def _get_player_mining_upgrades(
         sql, {"player_id": player_id.hex, "location_id": location_id}
     )
 
-    # Build upgrades dictionary
     upgrades = {}
     last_updated = datetime.now(UTC)
 
@@ -175,15 +158,8 @@ async def _get_player_mining_timestamp(
     location_id: str,
 ) -> schemas.MiningTimestampResponse:
     """
-    Get last mining timestamp for player at specific location.
-
-    Args:
-        db: Database CRUD service
-        player_id: Player UUID
-        location_id: Location identifier
-
-    Returns:
-        Last mining time for offline progress calculation
+    Get last mining timestamp for player at specific location, used for
+    offline progress calculation.
     """
 
     # Get last extraction time from mining/extract_complete events
@@ -228,15 +204,6 @@ async def _get_player_mining_metadata(
     Get player mining metadata for a specific location (first-time bonus
     status, statistics). First-time bonus and event statistics are tracked
     per-location.
-
-    Args:
-        db: Database CRUD service
-        player_id: Player UUID
-        location_id: Location identifier (venue name)
-
-    Returns:
-        Player mining metadata for this location including bonus status and
-        event counts
     """
 
     # Get metadata about player's mining activity at this location
@@ -288,17 +255,8 @@ async def get_player_state(
     """
     Get complete player mining state in single query.
     Combines inventory, upgrades, timestamp, and metadata.
-
-    Args:
-        db: Database CRUD service
-        player_id: Player UUID
-        location_id: Location identifier for timestamp
-
-    Returns:
-        Unified state response with all player mining data
     """
 
-    # Call all internal query methods in parallel using asyncio.gather
     (
         inventory_response,
         upgrades_response,
@@ -321,9 +279,6 @@ async def get_player_state(
     )
 
 
-# ============= LOCATION REGISTRATION =============
-
-
 async def get_location_by_venue_name(
     db: db_service.CRUD,
     venue_name: str,
@@ -332,7 +287,6 @@ async def get_location_by_venue_name(
     Get a mining location by venue name.
 
     Args:
-        db: Database CRUD service
         venue_name: Venue identifier (e.g., "best_intentions")
 
     Returns:
@@ -350,12 +304,6 @@ async def get_gem_type_distribution(
 ) -> dict[str, int]:
     """
     Get count of locations per gem type for balanced assignment.
-
-    Args:
-        db: Database CRUD service
-
-    Returns:
-        Dictionary mapping gem type to location count
     """
     sql = """
     SELECT gem_type, COUNT(*) as count
@@ -364,10 +312,8 @@ async def get_gem_type_distribution(
     """
     result = await db.get_many_raw(sql, {})
 
-    # Initialize all gem types to 0
     distribution: dict[str, int] = dict.fromkeys(schemas.GEM_TYPES, 0)
 
-    # Update with actual counts
     for row in result.tuples():
         gem_type, count = row[0], row[1]
         if gem_type in distribution:
@@ -389,11 +335,7 @@ async def register_or_get_location(
     Handles race conditions via IntegrityError catch and re-query.
 
     Args:
-        db: Database CRUD service
         venue_name: Venue identifier (e.g., "best_intentions")
-
-    Returns:
-        MiningLocationResponse with venue details and assigned gem type
     """
     # Check existing first (common case - fast path)
     existing = await get_location_by_venue_name(db, venue_name)
@@ -411,10 +353,8 @@ async def register_or_get_location(
     distribution = await get_gem_type_distribution(db)
     gem_type = min(schemas.GEM_TYPES, key=lambda g: distribution.get(g, 0))
 
-    # Generate display name from venue_name
     display_name = venue_name.replace("_", " ").title()
 
-    # Create new location using db.create() pattern with explicit id
     try:
         await db.create(
             target=defs.MiningLocation,
@@ -435,7 +375,6 @@ async def register_or_get_location(
 
     except IntegrityError as e:
         # Race condition: another request registered this venue simultaneously
-        # Rollback and return the existing record
         await db.session.rollback()
         existing = await get_location_by_venue_name(db, venue_name)
         if existing:
@@ -457,18 +396,11 @@ async def get_all_locations(
 ) -> schemas.MiningLocationListResponse:
     """
     Get all registered mining locations with gem distribution stats.
-
-    Args:
-        db: Database CRUD service
-
-    Returns:
-        List of all locations with gem type distribution counts
     """
     stmt = select(defs.MiningLocation).order_by(defs.MiningLocation.venue_name)
     result = await db.session.execute(stmt)
     locations = result.scalars().all()
 
-    # Build response list
     location_responses = [
         schemas.MiningLocationResponse(
             venue_name=loc.venue_name,
@@ -478,7 +410,6 @@ async def get_all_locations(
         for loc in locations
     ]
 
-    # Calculate distribution
     distribution: dict[str, int] = dict.fromkeys(schemas.GEM_TYPES, 0)
     for loc in locations:
         if loc.gem_type in distribution:

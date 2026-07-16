@@ -6,8 +6,6 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-# ============= EVENT TYPES =============
-
 RacingEventType = Literal[
     "racing/lap_complete",
     "racing/checkpoint",
@@ -16,9 +14,6 @@ RacingEventType = Literal[
 
 # Canonical event type name for generic access
 EventType = RacingEventType
-
-
-# ============= EVENT PAYLOADS =============
 
 
 class CheckpointData(BaseModel):
@@ -45,9 +40,6 @@ class RacingRaceFinishPayload(BaseModel):
     total_laps: int
     lap_times: list[float]
     checkpoints: list[CheckpointData] | None = None
-
-
-# ============= API RESPONSE MODELS =============
 
 
 class RacingLeaderboardEntry(BaseModel):

@@ -5,17 +5,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-# ============= EVENT TYPES =============
-
-NinesEventType = Literal[
-    "nines/jackpot_won",  # Player won the jackpot
-]
+NinesEventType = Literal["nines/jackpot_won",]
 
 # Canonical event type name for generic access
 EventType = NinesEventType
-
-
-# ============= EVENT PAYLOADS =============
 
 
 class NinesJackpotWonPayload(BaseModel):
@@ -25,9 +18,6 @@ class NinesJackpotWonPayload(BaseModel):
     player_id: str = Field(description="Player who won the jackpot")
     jackpot_amount: int = Field(description="Credits won")
     timestamp: str = Field(description="ISO 8601 timestamp of win")
-
-
-# ============= API RESPONSE MODELS =============
 
 
 class NinesJackpotResponse(BaseModel):

@@ -190,9 +190,6 @@ class BoxSession(Identifiable):
     ]
 
 
-# ============= CORE PLAYER STRUCTURES =============
-
-
 class UsernameAvailabilityResponse(BaseModel):
     username: str
     is_available: bool
@@ -239,9 +236,6 @@ class MachineCreditsConsumeRequest(BaseModel):
         int, Field(gt=0, description="Credits to consume (must be positive)")
     ]
     game_session_id: UUID
-
-
-# ============= ERROR HANDLING STRUCTURES =============
 
 
 class ErrorCode(str):
@@ -300,9 +294,6 @@ class ValidationResult(BaseModel):
 
     valid: bool
     errors: list[ValidationErrorDetail] = []
-
-
-# ============= STRIPE PAYMENT STRUCTURES =============
 
 
 class CheckoutSessionRequest(BaseModel):

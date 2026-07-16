@@ -6,8 +6,6 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-# ============= EVENT TYPES =============
-
 CarromEventType = Literal[
     "carrom/round_start",
     "carrom/piece_pocketed",
@@ -18,18 +16,12 @@ CarromEventType = Literal[
 EventType = CarromEventType
 
 
-# ============= EVENT PAYLOADS =============
-
-
 class CarromRoundFinishPayload(BaseModel):
     """Payload for carrom/round_finish event."""
 
     mode: Literal["practice", "competitive"]
     winner: str  # player_id
     scores: dict[str, int]  # {player_id: score}
-
-
-# ============= API RESPONSE MODELS =============
 
 
 class CarromLeaderboardEntry(BaseModel):
