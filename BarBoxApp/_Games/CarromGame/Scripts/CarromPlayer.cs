@@ -26,10 +26,10 @@ public partial class CarromPlayer : BasePlayer
 	public int PiecesPocketed { get; set; } = 0;
 
 	[Export]
-	public bool HasQueen { get; set; } = false; // Whether player has pocketed the queen
+	public bool HasQueen { get; set; } = false;
 
 	[Export]
-	public bool QueenCovered { get; set; } = false; // Whether queen is properly covered
+	public bool QueenCovered { get; set; } = false;
 
 	// Player statistics
 	private int _totalShots = 0;
@@ -37,7 +37,7 @@ public partial class CarromPlayer : BasePlayer
 	private int _fouls = 0;
 	private List<PieceType> _pocketedPieces = [];
 
-	// Queen covering state (CRITICAL FIX for same-turn covering rule)
+	// Queen covering state (same-turn covering rule)
 	private bool _pocketedQueenThisTurn = false;
 	private bool _needsQueenCovering = false;
 
@@ -47,9 +47,6 @@ public partial class CarromPlayer : BasePlayer
 		ResetGameStats();
 	}
 
-	/// <summary>
-	/// Reset game-specific statistics
-	/// </summary>
 	public virtual void ResetGameStats()
 	{
 		PiecesPocketed = 0;
@@ -79,9 +76,6 @@ public partial class CarromPlayer : BasePlayer
 		EmitSignal(SignalName.PieceAssignmentChanged);
 	}
 
-	/// <summary>
-	/// Record a shot taken by the player
-	/// </summary>
 	public virtual void RecordShot()
 	{
 		_totalShots++;
@@ -93,21 +87,20 @@ public partial class CarromPlayer : BasePlayer
 	/// </summary>
 	public virtual void RecordPocketedPiece(PieceType pieceType)
 	{
-		// CRITICAL FIX: Validate piece type BEFORE modifying any state
+		// Validate the piece type before mutating any state - a bad piece must
+		// not partially update the pocketed list or queen-cover tracking.
 		if (AssignedPieceType == PieceType.Striker)
 		{
 			GD.PrintErr($"[CarromPlayer] Cannot pocket pieces - no assigned piece type for player {PlayerId}");
 			return;
 		}
 
-		// Validate that this is a legal piece type to pocket
 		if (pieceType == PieceType.Striker)
 		{
 			GD.PrintErr($"[CarromPlayer] Striker should never be recorded as pocketed for player {PlayerId}");
 			return;
 		}
 
-		// NOW safe to modify state after validation
 		_pocketedPieces.Add(pieceType);
 
 		if (pieceType == PieceType.Red)
@@ -122,7 +115,6 @@ public partial class CarromPlayer : BasePlayer
 			PiecesPocketed++;
 			_validPockets++;
 
-			// OFFICIAL RULE: Queen covering must happen immediately after queen in same turn
 			if (_needsQueenCovering)
 			{
 				QueenCovered = true;
@@ -148,9 +140,6 @@ public partial class CarromPlayer : BasePlayer
 		// which is called by the mode manager's ApplyFoulPenalty() when appropriate
 	}
 
-	/// <summary>
-	/// Check if player has won the game
-	/// </summary>
 	public virtual bool HasWon()
 	{
 		// In standard carrom, player wins by pocketing all assigned pieces
@@ -166,9 +155,6 @@ public partial class CarromPlayer : BasePlayer
 		return 9; // Standard carrom has 9 pieces per player
 	}
 
-	/// <summary>
-	/// Get remaining pieces needed to win
-	/// </summary>
 	public virtual int GetRemainingPieces()
 	{
 		return Mathf.Max(0, GetRequiredPieces() - PiecesPocketed);
@@ -180,8 +166,6 @@ public partial class CarromPlayer : BasePlayer
 	/// </summary>
 	public virtual bool CanPocketQueen()
 	{
-		// OFFICIAL RULE FIX: Player can pocket queen at any time during the game
-		// The covering eligibility (having at least one assigned piece) is checked separately
 		return !HasQueen;
 	}
 
@@ -190,13 +174,9 @@ public partial class CarromPlayer : BasePlayer
 	/// </summary>
 	public virtual bool CanCoverQueen()
 	{
-		// Must have pocketed at least one assigned piece to be eligible to cover queen
 		return PiecesPocketed > 0;
 	}
 
-	/// <summary>
-	/// Get player's shooting accuracy
-	/// </summary>
 	public virtual float GetAccuracy()
 	{
 		if (_totalShots == 0)
@@ -207,9 +187,6 @@ public partial class CarromPlayer : BasePlayer
 		return (float)_validPockets / _totalShots;
 	}
 
-	/// <summary>
-	/// Get player's foul rate
-	/// </summary>
 	public virtual float GetFoulRate()
 	{
 		if (_totalShots == 0)
@@ -220,9 +197,6 @@ public partial class CarromPlayer : BasePlayer
 		return (float)_fouls / _totalShots;
 	}
 
-	/// <summary>
-	/// Get list of all pieces pocketed by this player
-	/// </summary>
 	public virtual List<PieceType> GetPocketedPieces()
 	{
 		return [.. _pocketedPieces];
@@ -262,20 +236,13 @@ public partial class CarromPlayer : BasePlayer
 			}
 		}
 
-		// No pieces available to return
 		return null;
 	}
 
-	/// <summary>
-	/// Check if player has any pieces that can be returned for foul penalty
-	/// </summary>
 	public virtual bool CanReturnPiece()
 	{
-		// Can return if player has pocketed assigned pieces or uncovered queen
 		return PiecesPocketed > 0 || (HasQueen && !QueenCovered);
 	}
-
-	// Public accessors for game statistics
 
 	/// <summary>
 	/// Handle end of turn - check if queen needs to be returned to center
@@ -285,15 +252,12 @@ public partial class CarromPlayer : BasePlayer
 	{
 		bool queenNeedsReturning = false;
 
-		// Check if queen was pocketed this turn but not covered
 		if (_pocketedQueenThisTurn && _needsQueenCovering)
 		{
-			// Queen was not covered in this turn - must be returned to center
 			HasQueen = false;
 			QueenCovered = false;
 			queenNeedsReturning = true;
 
-			// Remove queen from pocketed pieces list
 			for (int i = _pocketedPieces.Count - 1; i >= 0; i--)
 			{
 				if (_pocketedPieces[i] == PieceType.Red)
@@ -306,16 +270,12 @@ public partial class CarromPlayer : BasePlayer
 			GD.Print($"[CarromPlayer] {PlayerId} did not cover queen - returning to center");
 		}
 
-		// Reset turn state
 		_pocketedQueenThisTurn = false;
 		_needsQueenCovering = false;
 
 		return queenNeedsReturning;
 	}
 
-	/// <summary>
-	/// Start new turn - reset turn-specific state
-	/// </summary>
 	public virtual void StartNewTurn()
 	{
 		_pocketedQueenThisTurn = false;

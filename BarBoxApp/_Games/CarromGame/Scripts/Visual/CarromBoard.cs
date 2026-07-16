@@ -37,7 +37,7 @@ public partial class CarromBoard : Node2D
 	public bool ShowCollisionDebug { get; set; } = false;
 
 	[Export]
-	public Color CollisionDebugColor { get; set; } = new Color(1.0f, 0.0f, 0.0f, 0.5f); // Red with 50% alpha
+	public Color CollisionDebugColor { get; set; } = new Color(1.0f, 0.0f, 0.0f, 0.5f);
 
 	[ExportCategory("Physics Configuration")]
 	[Export]
@@ -48,7 +48,6 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	public float GetBaselineDistanceFromEdge() => BaselineDistanceFromEdge;
 
-	// Physics and collision setup
 	private StaticBody2D _boardPhysics;
 	private List<CarromPocket> _pockets = [];
 	private Vector2[] _pocketPositions;
@@ -56,7 +55,6 @@ public partial class CarromBoard : Node2D
 	private Vector2[] _cornerArrowEnds = new Vector2[4];
 	private bool _needsRedraw = true;
 
-	// PERFORMANCE CACHE: Physics query result caching
 	private struct PhysicsQueryCache
 	{
 		public Vector2 Position;
@@ -68,14 +66,13 @@ public partial class CarromBoard : Node2D
 	}
 
 	private PhysicsQueryCache _obstructionCache;
-	private const float CACHE_DURATION = 0.1f; // OPTIMIZATION: Cache for 100ms (~6 frames at 60fps)
+	private const float CACHE_DURATION = 0.1f; // Cache for 100ms (~6 frames at 60fps)
 
-	// GC OPTIMIZATION: Cached physics query objects for IsPositionObstructed
+	// Cached physics query objects for IsPositionObstructed
 	private CircleShape2D _queryCircleShape;
 	private PhysicsShapeQueryParameters2D _queryParams;
 	private readonly Godot.Collections.Array<Rid> _queryExcludeBuffer = new();
 
-	// Debug collision visualization
 	private struct CollisionDebugInfo
 	{
 		public Vector2 Position;
@@ -85,7 +82,6 @@ public partial class CarromBoard : Node2D
 
 	private List<CollisionDebugInfo> _debugCollisionShapes = [];
 
-	// Curved border geometry for visual drawing
 	private const int CORNER_ARC_SEGMENTS = 48;
 
 	// Board layout constants based on official Carrom Laws (indiancarrom.co.in)
@@ -115,9 +111,6 @@ public partial class CarromBoard : Node2D
 	private const float PIECE_DIAMETER_CM = 3.1f; // Mid-range of official 3.02-3.18cm diameter
 	private const float PIECE_THICKNESS_CM = 0.8f; // Mid-range of official 0.70-0.90cm thickness
 
-	// Physics constants - now using PhysicsConfig values
-
-	// Computed properties using official Carrom Law specifications
 	public float ScaleFactor => BoardSize / A_BOARD_SIZE_REFERENCE;
 
 	public float BorderWidth => B_BORDER_WIDTH_CM * ScaleFactor;
@@ -164,13 +157,13 @@ public partial class CarromBoard : Node2D
 
 	public float BaselineStrikerDiameter => BaselineCapRadius * 2; // Official striker diameter for baseline calculations
 
-	public float ThickLineDistanceFromCenter => BoardHalfSize - BaselineDistance; // Distance from center to thick exterior baseline
+	public float ThickLineDistanceFromCenter => BoardHalfSize - BaselineDistance;
 
-	public float ThinLineDistanceFromCenter => BoardHalfSize - BaselineDistance - BaselineStrikerDiameter; // Distance from center to thin interior baseline
+	public float ThinLineDistanceFromCenter => BoardHalfSize - BaselineDistance - BaselineStrikerDiameter;
 
-	public float BaselineCenterDistanceFromCenter => (ThickLineDistanceFromCenter + ThinLineDistanceFromCenter) / 2; // Distance from center to baseline center
+	public float BaselineCenterDistanceFromCenter => (ThickLineDistanceFromCenter + ThinLineDistanceFromCenter) / 2;
 
-	public float BaselineDistanceFromEdge => BaselineDistance + (BaselineStrikerDiameter / 2); // Distance from board edge to baseline center
+	public float BaselineDistanceFromEdge => BaselineDistance + (BaselineStrikerDiameter / 2);
 
 	public override void _Ready()
 	{
@@ -180,25 +173,22 @@ public partial class CarromBoard : Node2D
 		SetupBoardPhysics();
 		SetupPockets();
 		CalculatePocketPositions();
-		QueueRedraw(); // Trigger initial draw
+		QueueRedraw();
 	}
 
 	private void SetupBoardPhysics()
 	{
-		// Clear debug shapes from previous setup
 		_debugCollisionShapes.Clear();
 
 		_boardPhysics = new StaticBody2D();
-		_boardPhysics.Position = Vector2.Zero; // Ensure physics body is also centered
+		_boardPhysics.Position = Vector2.Zero;
 		AddChild(_boardPhysics);
 
-		// Setup physics material using centralized config
 		if (PhysicsConfig != null)
 		{
 			_boardPhysics.PhysicsMaterialOverride = PhysicsConfig.CreateBoardMaterial();
 		}
 
-		// Create border collision shapes
 		CreateBorderCollisions();
 	}
 
@@ -218,7 +208,6 @@ public partial class CarromBoard : Node2D
 		collisionShape.Position = position;
 		_boardPhysics.AddChild(collisionShape);
 
-		// Store debug info
 		if (ShowCollisionDebug)
 		{
 			_debugCollisionShapes.Add(new CollisionDebugInfo
@@ -235,8 +224,6 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	private void CreateSolidBorderCollision()
 	{
-		// Use solid rectangular borders for reliable collision at all velocities
-		// Works for both curved and rectangular visual borders
 		float totalBorder = BorderWidth + LineWidth;
 
 		// Top border
@@ -294,7 +281,7 @@ public partial class CarromBoard : Node2D
 	private void CalculatePocketPositions()
 	{
 		// Pockets are positioned at corners - C dimension (4.45cm) defines both diameter and edge-to-edge distance
-		float pocketCenterOffset = PocketRadius; // Distance from board edge to pocket center
+		float pocketCenterOffset = PocketRadius;
 
 		_pocketPositions =
 		[
@@ -304,7 +291,6 @@ public partial class CarromBoard : Node2D
 			new Vector2(BoardHalfSize - pocketCenterOffset, BoardHalfSize - pocketCenterOffset) // Bottom-right corner
 		];
 
-		// Position the pocket nodes
 		for (int i = 0; i < _pockets.Count && i < _pocketPositions.Length; i++)
 		{
 			_pockets[i].Position = _pocketPositions[i];
@@ -326,12 +312,11 @@ public partial class CarromBoard : Node2D
 		DrawBoard();
 		DrawBorders();
 		DrawBaselines();
-		DrawOfficialArrows(); // Official 4 arrows pointing toward pockets
+		DrawOfficialArrows();
 		DrawCenterCircle();
 		DrawPockets();
 		DrawCirclesBetweenBaselines();
 
-		// Draw collision debug shapes if enabled
 		if (ShowCollisionDebug)
 		{
 			DrawCollisionDebugShapes();
@@ -362,7 +347,6 @@ public partial class CarromBoard : Node2D
 		Vector2 fullSize = Vector2.One * BoardSize;
 		Vector2 halfSizeVector = Vector2.One * BoardHalfSize;
 
-		// Outer border
 		Rect2 outerBorder = new Rect2(
 			-halfSizeVector - (Vector2.One * BorderWidth),
 			fullSize + (Vector2.One * BorderWidth * 2));
@@ -372,7 +356,6 @@ public partial class CarromBoard : Node2D
 		Rect2 innerBoard = new Rect2(-halfSizeVector, fullSize);
 		DrawRect(innerBoard, BoardColor);
 
-		// Inner border line
 		var points = new[]
 		{
 			new Vector2(-BoardHalfSize, -BoardHalfSize),
@@ -395,7 +378,6 @@ public partial class CarromBoard : Node2D
 		float totalBorder = BorderWidth + LineWidth;
 		float innerRadius = PocketRadius;
 
-		// Calculate corner centers for interior curves
 		float cornerOffset = BoardHalfSize - innerRadius;
 		Vector2[] cornerCenters =
 		[
@@ -405,7 +387,6 @@ public partial class CarromBoard : Node2D
 			new Vector2(-cornerOffset, cornerOffset) // Bottom-left
 		];
 
-		// Draw outer border (simple rectangle)
 		float outerSize = BoardHalfSize + totalBorder;
 		Rect2 outerBorder = new Rect2(new Vector2(-outerSize, -outerSize), new Vector2(outerSize * 2, outerSize * 2));
 		DrawRect(outerBorder, EdgeColor);
@@ -442,10 +423,8 @@ public partial class CarromBoard : Node2D
 		var topLeftArc = GenerateCornerArc(cornerCenters[0], innerRadius, Mathf.Pi, 3 * Mathf.Pi / 2, CORNER_ARC_SEGMENTS);
 		innerBoundaryPoints.AddRange(topLeftArc.Skip(1));
 
-		// Draw board surface inside curved border
 		DrawColoredPolygon([.. innerBoundaryPoints], BoardColor);
 
-		// Draw inner border line to match visual style
 		for (int i = 0; i < innerBoundaryPoints.Count; i++)
 		{
 			Vector2 current = innerBoundaryPoints[i];
@@ -460,10 +439,8 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	private void DrawBaselines()
 	{
-		// Use computed properties for consistent baseline positioning across the entire codebase
 		// F dimension: 10.15cm from board edge to EXTERIOR (thick) line of baseline
 
-		// Draw all 4 baselines with proper 6-element structure using computed properties
 		// Bottom baseline (player 0) - horizontal baseline at bottom
 		DrawProperBaseline(new Vector2(0, BaselineCenterDistanceFromCenter), true, 0, ThickLineDistanceFromCenter, ThinLineDistanceFromCenter);
 
@@ -485,7 +462,6 @@ public partial class CarromBoard : Node2D
 		// Draw center ring using L dimension (ring that fits all pieces)
 		DrawArc(Vector2.Zero, CenterRingRadius, 0, Mathf.Tau, 64, LineColor, LineWidth, true);
 
-		// Draw 8-sided star within the center circle
 		DrawEightSidedStar();
 
 		// Draw center dot using K dimension (where queen goes)
@@ -494,13 +470,11 @@ public partial class CarromBoard : Node2D
 
 	private void DrawEightSidedStar()
 	{
-		// Calculate star dimensions based on center ring radius
-		float outerRadius = CenterRingRadius; // Star fits within the center ring
-		float innerRadius = outerRadius * 0.2f; // Inner radius for star points
+		float outerRadius = CenterRingRadius;
+		float innerRadius = outerRadius * 0.2f;
 
 		Vector2[] starPoints = new Vector2[16]; // 8 outer points + 8 inner points
 
-		// Generate 8-sided star points
 		for (int i = 0; i < 8; i++)
 		{
 			float outerAngle = (i * Mathf.Tau) / 8f;
@@ -517,7 +491,6 @@ public partial class CarromBoard : Node2D
 				Mathf.Sin(innerAngle) * innerRadius);
 		}
 
-		// Draw the star outline
 		for (int i = 0; i < starPoints.Length; i++)
 		{
 			Vector2 currentPoint = starPoints[i];
@@ -528,13 +501,11 @@ public partial class CarromBoard : Node2D
 
 	private void DrawPockets()
 	{
-		// Ensure pocket positions are calculated before drawing
 		if (_pocketPositions == null)
 		{
 			CalculatePocketPositions();
 		}
 
-		// Safety check in case calculation failed
 		if (_pocketPositions == null || _pocketPositions.Length == 0)
 		{
 			return;
@@ -542,7 +513,6 @@ public partial class CarromBoard : Node2D
 
 		foreach (Vector2 pocketPos in _pocketPositions)
 		{
-			// Outer pocket ring
 			DrawCircle(pocketPos, PocketRadius, PocketColor, true, -1f, true);
 
 			// Inner pocket hole (darker) - use centralized config if available
@@ -561,20 +531,15 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	private void DrawCirclesBetweenBaselines()
 	{
-		// Inner playing area is defined by the 4 baseline inner lines, not an arbitrary square
-		// Calculate positions of the 4 baseline inner lines
 		float baselineDistance = BaselineDistance; // F: 10.15cm from frame
 		float innerOffset = (BaselineBottomLineThickness / 2) + CornerLineThickness;
 		float halfBaselineLength = BaselineLength / 2;
 
-		// Calculate inner boundary positions (defined by baseline inner lines)
 		float boardHalfSize = BoardSize / 2;
 		float innerBoundaryY = boardHalfSize - baselineDistance - innerOffset; // Top of bottom baseline inner line
 		float innerBoundaryX = boardHalfSize - baselineDistance - innerOffset; // Left of right baseline inner line
 
 		// Draw the 4 inner boundary lines (these ARE the baseline inner lines, so they're drawn in DrawBaselines)
-		// This method is now primarily for reference - the actual inner area is defined by baseline inner lines
-		// We can draw connecting lines at the corners if needed for visual clarity
 
 		// Optional: Draw corner connecting lines (very thin) to complete the inner boundary
 		var cornerPoints = new[]
@@ -603,7 +568,6 @@ public partial class CarromBoard : Node2D
 	{
 		foreach (var shape in _debugCollisionShapes)
 		{
-			// Draw rotated rectangle
 			var transform = new Transform2D(shape.Rotation, shape.Position);
 			Vector2 halfSize = shape.Size * 0.5f;
 
@@ -622,10 +586,8 @@ public partial class CarromBoard : Node2D
 				corners[i] = transform * corners[i];
 			}
 
-			// Draw filled rectangle
 			DrawColoredPolygon(corners, CollisionDebugColor);
 
-			// Draw outline
 			for (int i = 0; i < corners.Length; i++)
 			{
 				int nextIndex = (i + 1) % corners.Length;
@@ -642,11 +604,8 @@ public partial class CarromBoard : Node2D
 		// Official specification: "Two straight lines of 47 cm each in length...
 		// The base lines shall be closed by circles of 3.18 cm in diameter at both ends."
 		// This means: 47cm = straight line length, endcaps are added at both ends
-
-		// float lineLength = BaselineLength; // 47cm straight line portion
-		// float endcapRadius = BaselineCapRadius; // 1.59cm radius (3.18cm diameter / 2)
 		float halfLineLength = HalfBaseLineLength; // 23.5cm from center to line end
-		float endcapCenterOffset = halfLineLength; // Position endcap center beyond line end
+		float endcapCenterOffset = halfLineLength;
 
 		Vector2 leftEndPos = baselineCenter + (isHorizontal ? new Vector2(-endcapCenterOffset, 0) : new Vector2(0, -endcapCenterOffset));
 		Vector2 rightEndPos = baselineCenter + (isHorizontal ? new Vector2(endcapCenterOffset, 0) : new Vector2(0, endcapCenterOffset));
@@ -741,9 +700,6 @@ public partial class CarromBoard : Node2D
 		float arrowMaxLength = I_CORNER_LINE_LENGTH_CM * ScaleFactor; // 26.70cm max
 		float pocketClearance = J_CORNER_LINE_POCKET_DISTANCE_CM * ScaleFactor; // 5.00cm from pocket
 
-		// Calculate arrow positions - they start from positions between base circles
-		// and point toward the 4 corner pockets at 45-degree angles
-
 		// Arrow start positions - positioned between baselines, not on them
 		Vector2[] arrowStarts =
 		[
@@ -753,7 +709,6 @@ public partial class CarromBoard : Node2D
 			new Vector2(BoardHalfSize * 0.3f, BoardHalfSize * 0.3f) // Bottom-right quadrant
 		];
 
-		// Arrow directions - pointing toward corners at 45-degree angles
 		Vector2[] arrowDirections =
 		[
 			new Vector2(-1, -1).Normalized(), // Top-left
@@ -762,15 +717,12 @@ public partial class CarromBoard : Node2D
 			new Vector2(1, 1).Normalized() // Bottom-right
 		];
 
-		// Get pocket positions with safety check
 		Vector2[] pocketPositions = GetPocketPositions();
 		if (pocketPositions.Length < 4)
 		{
-			// Skip drawing arrows if pocket positions not available
 			return;
 		}
 
-		// Draw the 4 official arrows and store positions
 		for (int i = 0; i < 4; i++)
 		{
 			Vector2 arrowStart = arrowStarts[i];
@@ -787,14 +739,11 @@ public partial class CarromBoard : Node2D
 			_cornerArrowStarts[i] = arrowStart;
 			_cornerArrowEnds[i] = arrowEnd;
 
-			// Draw the arrow line
 			DrawLine(arrowStart, arrowEnd, LineColor, CornerLineThickness, true);
 
-			// Draw filled triangle tip pointing toward pocket
 			Vector2 directionToPocket = (pocketPos - arrowEnd).Normalized();
 			DrawTriangleTip(arrowEnd, directionToPocket, false);
 
-			// Draw corner arc at the center-end (start position) of the arrow
 			DrawCornerArrowArc(arrowStart, arrowDirection);
 		}
 	}
@@ -813,7 +762,6 @@ public partial class CarromBoard : Node2D
 
 		Vector2 normalizedDirection = pointDirection.Normalized();
 
-		// Calculate equilateral triangle vertices
 		// For equilateral triangle: height = side_length * sqrt(3) / 2
 		float triangleHeight = triangleSideLength * Mathf.Sqrt(3) / 2;
 
@@ -831,12 +779,10 @@ public partial class CarromBoard : Node2D
 			tipPoint = basePosition + (normalizedDirection * triangleHeight);
 		}
 
-		// Base vertices (perpendicular to direction, equidistant from center)
 		Vector2 perpendicular = normalizedDirection.Rotated(Mathf.Pi / 2);
 		Vector2 baseLeft = baseCenter + (perpendicular * (triangleSideLength / 2));
 		Vector2 baseRight = baseCenter - (perpendicular * (triangleSideLength / 2));
 
-		// Draw filled equilateral triangle
 		Vector2[] trianglePoints = [tipPoint, baseLeft, baseRight];
 		DrawColoredPolygon(trianglePoints, LineColor);
 	}
@@ -849,7 +795,6 @@ public partial class CarromBoard : Node2D
 		// M dimension from diagram defines corner arc width: 6.35cm
 		float arcRadius = (M_CORNER_ARC_WIDTH_CM / 2) * ScaleFactor; // Half of M dimension for radius
 
-		// Calculate arc angles based on opposite of arrow direction
 		// Arc should face back toward the arrow start, not toward the pocket
 		Vector2 oppositeDirection = -arrowDirection;
 		float centerAngle = oppositeDirection.Angle();
@@ -857,24 +802,19 @@ public partial class CarromBoard : Node2D
 		float startAngle = centerAngle - arcSpan; // 45 degrees before opposite direction
 		float endAngle = centerAngle + arcSpan;   // 45 degrees after opposite direction
 
-		// Calculate arc center position
 		Vector2 arcCenter = arrowStart - (oppositeDirection.Normalized() * arcRadius);
 
-		// Draw the corner arc centered at arrow start position, facing back toward start
 		DrawArc(arcCenter, arcRadius, startAngle, endAngle, 32, LineColor, CornerLineThickness, true);
 
-		// Draw triangle arrow tips at the two ends of the arc (where corner lines start)
 		Vector2 arcStartPoint = arcCenter + (new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle)) * arcRadius);
 		Vector2 arcEndPoint = arcCenter + (new Vector2(Mathf.Cos(endAngle), Mathf.Sin(endAngle)) * arcRadius);
 
-		// Calculate tangent directions at arc endpoints to point toward board corners
 		// Each triangle should point in the direction that extends toward the nearest board corner
 
 		// Calculate base tangent directions (counter-clockwise)
 		Vector2 baseTangentStart = new Vector2(-Mathf.Sin(startAngle), Mathf.Cos(startAngle));
 		Vector2 baseTangentEnd = new Vector2(-Mathf.Sin(endAngle), Mathf.Cos(endAngle));
 
-		// Determine which direction points more toward the corners
 		Vector2 nearestCorner = new Vector2(
 			arrowDirection.X > 0 ? BoardHalfSize : -BoardHalfSize,
 			arrowDirection.Y > 0 ? BoardHalfSize : -BoardHalfSize);
@@ -891,7 +831,6 @@ public partial class CarromBoard : Node2D
 		float endDotBackward = (-baseTangentEnd).Dot(endToCorner);
 		Vector2 endTangent = endDotForward > endDotBackward ? baseTangentEnd : -baseTangentEnd;
 
-		// Draw triangular arrow tips at arc endpoints
 		DrawTriangleTip(arcStartPoint, startTangent, false);
 		DrawTriangleTip(arcEndPoint, endTangent, false);
 	}
@@ -907,7 +846,6 @@ public partial class CarromBoard : Node2D
 			playerIndex = 0;
 		}
 
-		// Use computed properties for consistent positioning
 		return playerIndex switch
 		{
 			0 => new Vector2(0, BaselineCenterDistanceFromCenter),     // Bottom (Player 1)
@@ -937,7 +875,7 @@ public partial class CarromBoard : Node2D
 		for (int i = 0; i < positions.Length; i++)
 		{
 			float t = (i / (float)(positions.Length - 1)) - 0.5f; // -0.5 to 0.5
-			float offset = t * BaselineLength; // Use full proportional baseline length
+			float offset = t * BaselineLength;
 
 			if (isHorizontalBaseline)
 			{
@@ -960,7 +898,6 @@ public partial class CarromBoard : Node2D
 		Vector2 baselineCenter = GetBaselinePosition(playerIndex);
 		bool isHorizontalBaseline = playerIndex <= 1; // Players 0,1 use horizontal baselines
 
-		// Calculate baseline geometry
 		float halfBaselineLength = HalfBaseLineLength;
 		Vector2 baselineStart, baselineEnd;
 		if (isHorizontalBaseline)
@@ -976,17 +913,14 @@ public partial class CarromBoard : Node2D
 			baselineEnd = baselineCenter + new Vector2(0, halfBaselineLength);
 		}
 
-		// Project position onto baseline line segment
 		Vector2 baselineVector = baselineEnd - baselineStart;
 		Vector2 positionVector = globalPosition - baselineStart;
 
 		// Calculate projection parameter (0.0 = start, 1.0 = end)
 		float projectionParam = positionVector.Dot(baselineVector) / baselineVector.LengthSquared();
 
-		// Clamp to baseline segment bounds
 		projectionParam = Mathf.Clamp(projectionParam, 0.0f, 1.0f);
 
-		// Calculate final projected position
 		Vector2 projectedPosition = baselineStart + (baselineVector * projectionParam);
 
 		return projectedPosition;
@@ -1016,13 +950,11 @@ public partial class CarromBoard : Node2D
 
 	public Vector2[] GetPocketPositions()
 	{
-		// Ensure pocket positions are calculated
 		if (_pocketPositions == null)
 		{
 			CalculatePocketPositions();
 		}
 
-		// Additional safety check in case calculation failed
 		if (_pocketPositions == null)
 		{
 			GD.PrintErr("[CarromBoard] Failed to calculate pocket positions, returning empty array");
@@ -1047,16 +979,12 @@ public partial class CarromBoard : Node2D
 	/// </summary>
 	public void SetPocketPhysicsConfig(CarromPhysicsConfig physicsConfig)
 	{
-		// Update board physics config reference
 		PhysicsConfig = physicsConfig;
 
-		// Update board physics material if already initialized
 		if (_boardPhysics != null && physicsConfig != null)
 		{
 			_boardPhysics.PhysicsMaterialOverride = physicsConfig.CreateBoardMaterial();
 		}
-
-		// Pockets no longer need physics config - they use simplified constants
 	}
 
 	/// <summary>
@@ -1068,7 +996,6 @@ public partial class CarromBoard : Node2D
 	/// <returns>True if position is obstructed, false if clear</returns>
 	public bool IsPositionObstructed(Vector2 position, float radius, CarromPiece excludePiece = null)
 	{
-		// Check if position is within board bounds
 		if (!IsOnBoard(position))
 		{
 			return true;
@@ -1093,7 +1020,7 @@ public partial class CarromBoard : Node2D
 			return false;
 		}
 
-		// GC OPTIMIZATION: Reuse cached query objects instead of allocating per call
+		// Reuse cached query objects instead of allocating per call
 		_queryCircleShape ??= new CircleShape2D();
 		_queryCircleShape.Radius = radius;
 
@@ -1102,7 +1029,7 @@ public partial class CarromBoard : Node2D
 		_queryParams.Transform = new Transform2D(0, position);
 		_queryParams.CollisionMask = 1; // Collision layer for pieces
 
-		// CRITICAL: Always clear before conditionally adding to prevent stale exclusions
+		// Always clear before conditionally adding to prevent stale exclusions
 		_queryExcludeBuffer.Clear();
 		if (excludePiece != null && IsInstanceValid(excludePiece))
 		{
@@ -1111,7 +1038,6 @@ public partial class CarromBoard : Node2D
 
 		_queryParams.Exclude = _queryExcludeBuffer;
 
-		// Check for collisions
 		var results = spaceState.IntersectShape(_queryParams);
 		bool isObstructed = results.Count > 0;
 
@@ -1138,20 +1064,16 @@ public partial class CarromBoard : Node2D
 	/// <returns>Valid position on baseline, or null if no valid position found</returns>
 	public Vector2? FindNearestValidPositionOnBaseline(Vector2 targetPosition, int playerIndex, float pieceRadius, CarromPiece excludePiece = null)
 	{
-		// First, project target position onto baseline
 		Vector2 baselinePosition = GetClosestPositionOnBaseline(targetPosition, playerIndex);
 
-		// Check if projected position is already valid
 		if (!IsPositionObstructed(baselinePosition, pieceRadius, excludePiece))
 		{
 			return baselinePosition;
 		}
 
-		// Get baseline geometry for search
 		Vector2 baselineCenter = GetBaselinePosition(playerIndex);
 		bool isHorizontalBaseline = playerIndex <= 1; // Players 0,1 use horizontal baselines
 
-		// Calculate baseline bounds
 		float halfBaselineLength = HalfBaseLineLength;
 		Vector2 baselineStart, baselineEnd, searchDirection;
 
@@ -1170,11 +1092,10 @@ public partial class CarromBoard : Node2D
 
 		// Search outward from projected position in both directions
 		float searchStep = pieceRadius * 0.1f; // Search in steps of half piece radius
-		float maxSearchDistance = halfBaselineLength; // Don't search beyond baseline bounds
+		float maxSearchDistance = halfBaselineLength;
 
 		for (float distance = searchStep; distance <= maxSearchDistance; distance += searchStep)
 		{
-			// Search in both directions along baseline
 			Vector2[] candidatePositions = [
 				baselinePosition + (searchDirection * distance),
 				baselinePosition - (searchDirection * distance)
@@ -1182,7 +1103,6 @@ public partial class CarromBoard : Node2D
 
 			foreach (var candidate in candidatePositions)
 			{
-				// Check if candidate is within baseline bounds
 				if (isHorizontalBaseline)
 				{
 					if (candidate.X >= baselineStart.X && candidate.X <= baselineEnd.X)
@@ -1206,7 +1126,6 @@ public partial class CarromBoard : Node2D
 			}
 		}
 
-		// No valid position found on baseline
 		return null;
 	}
 
@@ -1221,26 +1140,22 @@ public partial class CarromBoard : Node2D
 	{
 		Vector2 centerPosition = GetCenterPosition();
 
-		// Check if center is already valid
 		if (!IsPositionObstructed(centerPosition, pieceRadius, excludePiece))
 		{
 			return centerPosition;
 		}
 
-		// Spiral search outward from center
-		float searchStep = pieceRadius; // Search in steps of piece radius
+		float searchStep = pieceRadius;
 		float maxSearchRadius = BoardHalfSize * 0.7f; // Don't search too close to edges
-		int maxSpirals = 8; // Number of directions in spiral
+		int maxSpirals = 8;
 
 		for (float radius = searchStep; radius <= maxSearchRadius; radius += searchStep)
 		{
-			// Check positions in a circle around center
 			for (int i = 0; i < maxSpirals; i++)
 			{
 				float angle = (i * Mathf.Tau) / maxSpirals;
 				Vector2 candidate = centerPosition + (new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius);
 
-				// Ensure candidate is on board
 				if (IsOnBoard(candidate) && !IsPositionObstructed(candidate, pieceRadius, excludePiece))
 				{
 					return candidate;

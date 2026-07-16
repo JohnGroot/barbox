@@ -11,43 +11,24 @@ namespace BarBox.Games.Carrom;
 [GlobalClass]
 public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 {
-	// ================================================================
-	// SHARED SIGNALS (mode managers can add their own)
-	// ================================================================
 	[Signal]
 	public delegate void ModeSetupCompleteEventHandler();
 
 	[Signal]
 	public delegate void ModeResetRequestedEventHandler();
 
-	// ================================================================
-	// SHARED DEPENDENCIES
-	// ================================================================
 	protected CarromBoard _board;
 	protected CarromInputController _inputController;
 	protected CarromPhysicsConfig _physicsConfig;
 	protected CarromPieceFactory _pieceFactory;
 
-	// ================================================================
-	// SHARED STATE
-	// ================================================================
 	protected CarromPiece _striker;
 	protected bool _isActive = false;
-
-	// Settlement state management is now handled entirely by GameStateManager
-	// Mode managers no longer control settlement timing or concurrency
 
 	// Memory management tracking
 	private List<Timer> _activeTimers = [];
 	private bool _isDisposed = false;
 
-	// ================================================================
-	// ABSTRACT METHODS (must be implemented by subclasses)
-	// ================================================================
-
-	/// <summary>
-	/// Create and position pieces specific to this mode
-	/// </summary>
 	protected abstract void CreateModeSpecificPieces();
 
 	/// <summary>
@@ -55,29 +36,13 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	/// </summary>
 	protected abstract List<CarromPiece> GetManagedPieces();
 
-	/// <summary>
-	/// Clear all mode-specific pieces
-	/// </summary>
 	protected abstract void ClearModeSpecificPieces();
 
-	/// <summary>
-	/// Handle mode-specific settlement behavior
-	/// </summary>
 	protected abstract void ExecuteModeSpecificSettlement();
 
-	/// <summary>
-	/// Check if win condition is met for the given player
-	/// </summary>
 	public abstract bool CheckWinCondition(string playerId);
 
-	/// <summary>
-	/// Determine if current turn should continue
-	/// </summary>
 	public abstract bool ShouldContinueTurn(string playerId);
-
-	// ================================================================
-	// VIRTUAL METHODS (default implementations that can be overridden)
-	// ================================================================
 
 	/// <summary>
 	/// Handle piece being pocketed (default: trigger settlement check)
@@ -103,20 +68,16 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			return;
 		}
 
-		// Use shared collision detection logic
 		Vector2 validPosition = FindValidStrikerBaselinePosition();
 		_striker.GlobalPosition = validPosition;
 
-		// Clear movement
 		_striker.LinearVelocity = Vector2.Zero;
 		_striker.AngularVelocity = 0.0f;
 	}
 
 	/// <summary>
-	/// Find a valid baseline position for striker with collision detection
-	/// Shared logic used by both positioning and restoration operations
+	/// Shared logic used by both positioning and restoration operations.
 	/// </summary>
-	/// <returns>Valid position on baseline, guaranteed to be non-null</returns>
 	private Vector2 FindValidStrikerBaselinePosition()
 	{
 		if (_board == null)
@@ -124,18 +85,14 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			return Vector2.Zero;
 		}
 
-		// Get default baseline position
 		var baselinePosition = _board.ToGlobal(_board.GetBaselinePosition(0));
 		float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
 
-		// Check for collisions with other pieces
 		if (!_board.IsPositionObstructed(baselinePosition, strikerRadius, _striker))
 		{
-			// Original position is clear - use it
 			return baselinePosition;
 		}
 
-		// Find alternative position on baseline to avoid collision
 		var validPosition = _board.FindNearestValidPositionOnBaseline(
 			baselinePosition, 0, strikerRadius, _striker);
 
@@ -145,14 +102,12 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			return validPosition.Value;
 		}
 
-		// Fallback to original position with warning
 		GD.PrintErr($"[{GetType().Name}] Could not find valid striker position, using baseline center");
 		return baselinePosition;
 	}
 
 	/// <summary>
-	/// Ensure striker is restored from pocketed state with comprehensive validation and retry logic
-	/// Now includes collision detection to prevent overlapping with other pieces
+	/// Ensure striker is restored from pocketed state with comprehensive validation and retry logic.
 	/// </summary>
 	protected void EnsureStrikerRestored()
 	{
@@ -161,39 +116,27 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			return;
 		}
 
-		// Check if striker needs restoration
 		bool needsRestoration = !_striker.Visible || _striker.Freeze;
 		if (!needsRestoration)
 		{
 			return;
 		}
 
-		// Calculate target baseline position with collision detection
 		Vector2 targetPosition = CalculateValidStrikerBaselinePosition();
 
-		// Attempt restoration with the validated position
 		_striker.Reset(targetPosition);
 
-		// Validate restoration succeeded
 		if (!ValidateStrikerRestoration(targetPosition))
 		{
 			AttemptFallbackRestoration(targetPosition);
 		}
 	}
 
-	/// <summary>
-	/// Calculate a valid baseline position for striker restoration with collision detection
-	/// Uses shared collision detection logic from FindValidStrikerBaselinePosition()
-	/// </summary>
 	private Vector2 CalculateValidStrikerBaselinePosition()
 	{
-		// Delegate to shared collision detection logic
 		return FindValidStrikerBaselinePosition();
 	}
 
-	/// <summary>
-	/// Validate that striker restoration was successful
-	/// </summary>
 	private bool ValidateStrikerRestoration(Vector2 expectedPosition)
 	{
 		if (!IsStrikerValid())
@@ -201,20 +144,17 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			return false;
 		}
 
-		// Check visibility was restored
 		if (!_striker.Visible)
 		{
 			return false;
 		}
 
-		// Check freeze state was cleared
 		if (_striker.Freeze)
 		{
 			return false;
 		}
 
-		// Check position is reasonable (within tolerance)
-		float positionTolerance = 50.0f; // Allow 50 pixel tolerance
+		float positionTolerance = 50.0f;
 		float actualDistance = _striker.GlobalPosition.DistanceTo(expectedPosition);
 		if (actualDistance > positionTolerance)
 		{
@@ -224,9 +164,6 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		return true;
 	}
 
-	/// <summary>
-	/// Attempt fallback restoration if initial restoration failed
-	/// </summary>
 	private void AttemptFallbackRestoration(Vector2 targetPosition)
 	{
 		// Attempt 1: Try basic Reset() without position
@@ -240,9 +177,6 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		_striker.AngularVelocity = 0.0f;
 	}
 
-	/// <summary>
-	/// Validate piece operations (can be overridden for mode-specific validation)
-	/// </summary>
 	protected virtual bool ValidatePieceAndPhase(CarromPiece piece, string operation)
 	{
 		if (piece == null || !GodotObject.IsInstanceValid(piece))
@@ -250,25 +184,13 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			return false;
 		}
 
-		// Admin operations are always allowed in the new architecture
 		return true;
 	}
 
-	/// <summary>
-	/// Handle mode-specific piece pocketing logic (can be overridden)
-	/// </summary>
 	protected virtual void HandlePiecePocketed(CarromPiece piece)
 	{
-		// Default: no special handling, subclasses implement as needed
 	}
 
-	// ================================================================
-	// CONCRETE METHODS (shared implementations - ICarromModeManager)
-	// ================================================================
-
-	/// <summary>
-	/// Initialize the mode manager with required dependencies
-	/// </summary>
 	public void Initialize(CarromBoard board, CarromInputController inputController, CarromPhysicsConfig physicsConfig)
 	{
 		_board = board;
@@ -312,32 +234,22 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	/// </summary>
 	public virtual void ProcessSettlement()
 	{
-		// Simply execute mode-specific settlement logic
-		// State machine controls all timing and transitions
 		ExecuteModeSpecificSettlement();
 	}
 
-	/// <summary>
-	/// Get the current striker piece
-	/// </summary>
 	public CarromPiece GetStriker()
 	{
 		return _striker;
 	}
 
-	/// <summary>
-	/// Check if all pieces have stopped moving - simplified without settlement context
-	/// </summary>
 	public bool AreAllPiecesStopped()
 	{
-		// Simplified settlement detection without complex context tracking
 		var allPieces = GetManagedPieces();
 		var movingPieces = new List<string>();
 		var ignoredPieces = new List<string>();
 		int totalVisible = 0;
 		int totalStopped = 0;
 
-		// Check managed pieces with detailed tracking
 		foreach (var piece in allPieces)
 		{
 			if (!GodotObject.IsInstanceValid(piece))
@@ -353,7 +265,6 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 
 			totalVisible++;
 
-			// Simplified: no complex context checking needed with brute force approach
 			if (!piece.IsStopped())
 			{
 				var velocity = piece.LinearVelocity.Length();
@@ -366,7 +277,6 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			}
 		}
 
-		// Check striker with context awareness
 		bool strikerStopped = IsStrikerStoppedWithContext();
 		if (!strikerStopped && IsStrikerValid())
 		{
@@ -380,9 +290,6 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		return allStopped;
 	}
 
-	/// <summary>
-	/// Check if striker has stopped with settlement context awareness
-	/// </summary>
 	private bool IsStrikerStoppedWithContext()
 	{
 		if (!IsStrikerValid())
@@ -396,13 +303,9 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			return true;
 		}
 
-		// Simplified: no complex context checking needed
 		return _striker.IsStopped();
 	}
 
-	/// <summary>
-	/// Get all active pieces in this mode
-	/// </summary>
 	public List<CarromPiece> GetActivePieces()
 	{
 		var allPieces = new List<CarromPiece>(GetManagedPieces());
@@ -414,9 +317,6 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		return allPieces;
 	}
 
-	/// <summary>
-	/// Clean up mode resources
-	/// </summary>
 	public void CleanupMode()
 	{
 		CancelPendingOperations();
@@ -425,22 +325,12 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		_isActive = false;
 	}
 
-	/// <summary>
-	/// Check if the mode is currently active/initialized
-	/// </summary>
 	public bool IsActive => _isActive;
 
-	/// <summary>
-	/// Mark a piece as recently restored - no longer needed with brute force settlement
-	/// </summary>
 	public void MarkRecentRestoration(CarromPiece piece)
 	{
-		// No longer needed with simplified settlement detection
 	}
 
-	// ================================================================
-	// PRIVATE HELPER METHODS
-	// ================================================================
 	private void ConfigurePhysicsScaling()
 	{
 		if (_board != null && _physicsConfig != null)
@@ -505,115 +395,85 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Input state is now automatically managed by GameStateManager
-	/// No manual input control needed - state machine handles input availability
+	/// Input availability is managed by GameStateManager; no manual control needed here.
 	/// </summary>
 	private void DisableInputDuringSettlement()
 	{
-		// Input is automatically disabled during settlement by state machine
 	}
 
 	/// <summary>
-	/// Input state is now automatically managed by GameStateManager
-	/// No manual input control needed - state machine handles input availability
+	/// Input availability is managed by GameStateManager; no manual control needed here.
 	/// </summary>
 	private void EnableInputAfterSettlement()
 	{
-		// Input is automatically enabled when ready by state machine
 	}
 
 	private void CancelPendingOperations()
 	{
-		// No longer need timer-based operations
 		CancelModeSpecificOperations();
 	}
 
 	/// <summary>
-	/// Finalize setup after piece creation (can be overridden)
+	/// Finalize setup after piece creation.
 	/// </summary>
 	protected virtual void FinalizeSetup()
 	{
 	}
 
-	/// <summary>
-	/// Clear mode-specific state during cleanup (can be overridden)
-	/// </summary>
 	protected virtual void ClearModeSpecificState()
 	{
 	}
 
-	/// <summary>
-	/// Cancel mode-specific pending operations (can be overridden)
-	/// </summary>
 	protected virtual void CancelModeSpecificOperations()
 	{
 	}
 
-	// ================================================================
-	// SETTLEMENT VALIDATION AND DEBUGGING
-	// ================================================================
-
 	/// <summary>
-	/// Validate that settlement operations completed successfully - SIMPLIFIED
-	/// CRITICAL FIX: Removed complex validation that was causing race conditions
+	/// Deliberately minimal: deeper settlement validation here raced with the
+	/// state machine's own checks and could lock the game.
 	/// </summary>
 	private bool ValidateSettlementSuccess()
 	{
-		// SIMPLIFIED: Only check basic striker validity, let state machine handle the rest
 		if (!IsStrikerValid())
 		{
 			return false;
 		}
 
-		// Basic visibility check
 		if (!_striker.Visible)
 		{
 			return false;
 		}
 
-		// REMOVED: Complex piece-by-piece validation that was causing timing issues
-		// The state machine's AreAllPiecesStopped() method handles this more reliably
 		return true;
 	}
 
 	/// <summary>
-	/// Settlement retry removed - was causing race conditions
+	/// No-op: settlement retry is handled by the state machine. Retrying here
+	/// as well raced with it and caused game locks — don't reintroduce.
 	/// </summary>
 	private void AttemptSettlementRetry()
 	{
-		// REMOVED: Complex retry logic was causing race conditions and game locks
-		// State machine now handles settlement detection more reliably
 	}
 
 	/// <summary>
-	/// Check if striker restoration caused pieces to start moving again - SIMPLIFIED
-	/// CRITICAL FIX: Removed complex movement detection that was causing race conditions
+	/// Always false: re-detecting piece movement after restoration raced with
+	/// the state machine and added settlement delays — don't reintroduce.
 	/// </summary>
 	private bool CheckPostRestorationSettlement()
 	{
-		// SIMPLIFIED: Let the state machine handle movement detection
-		// This complex per-piece movement checking was causing race conditions
-		return false; // Always return false to eliminate post-restoration settlement delays
+		return false;
 	}
 
 	/// <summary>
-	/// Post-restoration settlement scheduling removed to eliminate race conditions
+	/// Settlement scheduling is handled by the state machine; this only logs the transition.
 	/// </summary>
 	private void SchedulePostRestorationSettlement()
 	{
-		// REMOVED: This timer-based approach was causing race conditions
-		// The state machine now handles settlement detection more reliably without timers
 		GD.Print($"[{GetType().Name}] Settlement scheduled - state machine will handle transition");
 	}
 
-	/// <summary>
-	/// Force phase transition to break out of settlement loops
-	/// </summary>
 	private void ForcePhaseTransitionToBreakLoop()
 	{
-		// Clear all settlement state (no longer needed with state machine control)
-
-		// Force striker restoration if needed
 		if (IsStrikerValid() && (!_striker.Visible || _striker.Freeze))
 		{
 			EnsureStrikerRestored();
@@ -623,8 +483,8 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Create a timer that automatically cleans itself up after execution
-	/// CRITICAL FIX: Track timers to prevent orphaning
+	/// Create a timer that automatically cleans itself up after execution.
+	/// Tracks the timer to prevent orphaning.
 	/// </summary>
 	private Timer CreateAutoCleanupTimer(float waitTime, System.Action onTimeout)
 	{
@@ -642,19 +502,15 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			_activeTimers.Remove(timer);
 
 			onTimeout?.Invoke();
-			timer.QueueFree(); // Ensure timer is cleaned up
+			timer.QueueFree();
 		};
 
-		// Track timer to prevent orphaning
 		_activeTimers.Add(timer);
 		AddChild(timer);
 		timer.Start();
 		return timer;
 	}
 
-	/// <summary>
-	/// Create a piece using the centralized piece factory
-	/// </summary>
 	protected CarromPiece CreatePiece(PieceType type, Vector2 position)
 	{
 		if (_pieceFactory == null)
@@ -667,8 +523,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	}
 
 	/// <summary>
-	/// Comprehensive cleanup to prevent memory leaks
-	/// CRITICAL FIX: Clean up all timers and references
+	/// Cleans up all timers and references to prevent memory leaks.
 	/// </summary>
 	public override void _ExitTree()
 	{
@@ -677,10 +532,8 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			return;
 		}
 
-		// Clean up all active timers
 		CleanupAllTimers();
 
-		// Clear all references to prevent memory leaks
 		_board = null;
 		_inputController = null;
 		_physicsConfig = null;
@@ -693,9 +546,6 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		base._ExitTree();
 	}
 
-	/// <summary>
-	/// Clean up all tracked timers to prevent memory leaks
-	/// </summary>
 	private void CleanupAllTimers()
 	{
 		// ToList() avoids modification during iteration

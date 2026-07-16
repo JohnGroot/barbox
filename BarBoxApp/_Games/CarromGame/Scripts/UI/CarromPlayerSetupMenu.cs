@@ -55,11 +55,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	// Player slot tracking
 	private Dictionary<int, string> _slotToPhoneNumber = [];
 	private Dictionary<string, int> _creditsTransferredByPlayer = [];
-	private int _pendingLoginSlot = -1; // Track which slot is waiting for login
+	private int _pendingLoginSlot = -1;
 
-	/// <summary>
-	/// Individual player slot UI component
-	/// </summary>
 	private partial class PlayerSlotUI : VBoxContainer
 	{
 		private static readonly Vector2 SlotSize = new(250, 200);
@@ -97,7 +94,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			CustomMinimumSize = SlotSize;
 			AddThemeConstantOverride("separation", 10);
 
-			// Background panel
 			BackgroundPanel = new Panel();
 			BackgroundPanel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 			var bgStyle = new StyleBoxFlat();
@@ -114,7 +110,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			BackgroundPanel.AddThemeStyleboxOverride("panel", bgStyle);
 			AddChild(BackgroundPanel);
 
-			// Slot number label
 			SlotNumberLabel = new Label();
 			SlotNumberLabel.Text = $"Player {slotIndex + 1}";
 			SlotNumberLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -130,7 +125,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			PieceColorLabel.AddThemeFontSizeOverride("font_size", 12);
 			AddChild(PieceColorLabel);
 
-			// Player info label
 			PlayerInfoLabel = new Label();
 			PlayerInfoLabel.Text = "Empty Slot";
 			PlayerInfoLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -139,7 +133,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			PlayerInfoLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 			AddChild(PlayerInfoLabel);
 
-			// Credits label
 			CreditsLabel = new Label();
 			CreditsLabel.Text = string.Empty;
 			CreditsLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -162,21 +155,18 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_actionButtonsContainer.Visible = false;
 			AddChild(_actionButtonsContainer);
 
-			// Logout button
 			LogoutButton = new Button();
 			LogoutButton.Text = "Logout";
 			LogoutButton.CustomMinimumSize = new Vector2(70, 30);
 			TopMenuBar.ApplyStandardButtonStyle(LogoutButton);
 			_actionButtonsContainer.AddChild(LogoutButton);
 
-			// Buy credits button
 			BuyCreditsButton = new Button();
 			BuyCreditsButton.Text = "Buy";
 			BuyCreditsButton.CustomMinimumSize = new Vector2(60, 30);
 			TopMenuBar.ApplyStandardButtonStyle(BuyCreditsButton);
 			_actionButtonsContainer.AddChild(BuyCreditsButton);
 
-			// Transfer credit button
 			TransferCreditButton = new Button();
 			TransferCreditButton.Text = "Transfer";
 			TransferCreditButton.CustomMinimumSize = new Vector2(70, 30);
@@ -283,8 +273,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		private void CreateModalUI()
 		{
 			// CanvasLayer automatically fills the viewport, no anchor setup needed
-
-			// Semi-transparent background
 			_backgroundPanel = new Panel();
 			_backgroundPanel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 			var backgroundStyle = new StyleBoxFlat();
@@ -303,12 +291,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				}
 			};
 
-			// Centering container
 			var centerContainer = new CenterContainer();
 			centerContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 			AddChild(centerContainer);
 
-			// Modal panel
 			_modalPanel = new Panel();
 			_modalPanel.CustomMinimumSize = ModalSize;
 			_modalPanel.SetSize(ModalSize);
@@ -328,7 +314,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 			centerContainer.AddChild(_modalPanel);
 
-			// Content container with padding
 			var marginContainer = new MarginContainer();
 			marginContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 			marginContainer.AddThemeConstantOverride("margin_left", 20);
@@ -342,7 +327,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			contentContainer.AddThemeConstantOverride("separation", 15);
 			marginContainer.AddChild(contentContainer);
 
-			// Title
 			_titleLabel = new Label();
 			_titleLabel.Text = "Transfer Credits";
 			_titleLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -350,7 +334,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_titleLabel.AddThemeFontSizeOverride("font_size", 20);
 			contentContainer.AddChild(_titleLabel);
 
-			// Player name
 			_playerNameLabel = new Label();
 			_playerNameLabel.Text = "Player: ";
 			_playerNameLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -358,7 +341,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_playerNameLabel.AddThemeFontSizeOverride("font_size", 16);
 			contentContainer.AddChild(_playerNameLabel);
 
-			// Available credits
 			_availableCreditsLabel = new Label();
 			_availableCreditsLabel.Text = "Available: 0 credits";
 			_availableCreditsLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -366,17 +348,14 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_availableCreditsLabel.AddThemeFontSizeOverride("font_size", 14);
 			contentContainer.AddChild(_availableCreditsLabel);
 
-			// Separator
 			var separator1 = new HSeparator();
 			contentContainer.AddChild(separator1);
 
-			// Amount selection container
 			var amountContainer = new HBoxContainer();
 			amountContainer.Alignment = BoxContainer.AlignmentMode.Center;
 			amountContainer.AddThemeConstantOverride("separation", 20);
 			contentContainer.AddChild(amountContainer);
 
-			// Decrement button
 			_decrementButton = new Button();
 			_decrementButton.Text = "−";
 			_decrementButton.CustomMinimumSize = new Vector2(50, 50);
@@ -385,7 +364,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_decrementButton.Pressed += OnDecrementPressed;
 			amountContainer.AddChild(_decrementButton);
 
-			// Amount label
 			_amountLabel = new Label();
 			_amountLabel.Text = "1";
 			_amountLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -394,7 +372,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_amountLabel.AddThemeFontSizeOverride("font_size", 28);
 			amountContainer.AddChild(_amountLabel);
 
-			// Increment button
 			_incrementButton = new Button();
 			_incrementButton.Text = "+";
 			_incrementButton.CustomMinimumSize = new Vector2(50, 50);
@@ -403,7 +380,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_incrementButton.Pressed += OnIncrementPressed;
 			amountContainer.AddChild(_incrementButton);
 
-			// Status label
 			_statusLabel = new Label();
 			_statusLabel.Text = string.Empty;
 			_statusLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -412,17 +388,14 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_statusLabel.CustomMinimumSize = new Vector2(0, 20);
 			contentContainer.AddChild(_statusLabel);
 
-			// Separator
 			var separator2 = new HSeparator();
 			contentContainer.AddChild(separator2);
 
-			// Button container
 			var buttonContainer = new HBoxContainer();
 			buttonContainer.Alignment = BoxContainer.AlignmentMode.Center;
 			buttonContainer.AddThemeConstantOverride("separation", 15);
 			contentContainer.AddChild(buttonContainer);
 
-			// Cancel button
 			_cancelButton = new Button();
 			_cancelButton.Text = "Cancel";
 			_cancelButton.CustomMinimumSize = new Vector2(120, 40);
@@ -430,7 +403,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_cancelButton.Pressed += OnCancelPressed;
 			buttonContainer.AddChild(_cancelButton);
 
-			// Confirm button (primary style)
 			_confirmButton = new Button();
 			_confirmButton.Text = "Transfer 1 Credit";
 			_confirmButton.CustomMinimumSize = new Vector2(150, 40);
@@ -473,14 +445,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		public async Task<int?> ShowAsync(string phoneNumber, int slotIndex, string playerName, int availableCredits)
 		{
-			// Set state
 			_targetPhoneNumber = phoneNumber;
 			_targetSlotIndex = slotIndex;
 			_playerName = playerName;
 			_availableCredits = availableCredits;
 			_selectedAmount = MIN_TRANSFER_AMOUNT;
 
-			// Update UI
 			_playerNameLabel.Text = $"Player: {_playerName}";
 			_availableCreditsLabel.Text = $"Available: {_availableCredits:N0} Credits";
 			_amountLabel.Text = _selectedAmount.ToString("N0");
@@ -488,10 +458,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 			UpdateButtonStates();
 
-			// Create completion source
 			_completionSource = new TaskCompletionSource<int?>();
 
-			// Show modal
 			Visible = true;
 
 			return await _completionSource.Task;
@@ -504,21 +472,17 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		private void UpdateButtonStates()
 		{
-			// Update amount label
 			_amountLabel.Text = _selectedAmount.ToString("N0");
 
-			// Decrement button: disabled at minimum
 			_decrementButton.Disabled = _selectedAmount <= MIN_TRANSFER_AMOUNT;
 
 			// Increment button: disabled at maximum (min of MAX_TRANSFER or available credits)
 			int maxAmount = Math.Min(MAX_TRANSFER_PER_TRANSACTION, _availableCredits);
 			_incrementButton.Disabled = _selectedAmount >= maxAmount;
 
-			// Confirm button text and state
 			_confirmButton.Text = $"Transfer {_selectedAmount:N0} Credits";
 			_confirmButton.Disabled = _selectedAmount > _availableCredits || _selectedAmount < MIN_TRANSFER_AMOUNT;
 
-			// Status message
 			if (_selectedAmount >= MAX_TRANSFER_PER_TRANSACTION && _availableCredits > MAX_TRANSFER_PER_TRANSACTION)
 			{
 				_statusLabel.Text = $"Maximum {MAX_TRANSFER_PER_TRANSACTION:N0} credits per transfer";
@@ -564,14 +528,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				return;
 			}
 
-			// Complete the task with the selected amount
 			_completionSource?.SetResult(_selectedAmount);
 			HideModal();
 		}
 
 		private void OnCancelPressed()
 		{
-			// Complete the task with null (cancelled)
 			_completionSource?.SetResult(null);
 			HideModal();
 		}
@@ -586,7 +548,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		_uiManager = UIManager.GetInstance();
 		_creditService = CreditService.GetInstance();
 
-		// Create credit transfer modal
 		_creditTransferModal = new CreditTransferModal();
 		AddChild(_creditTransferModal);
 
@@ -603,7 +564,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_creditService.CreditsChanged += OnCreditsChanged;
 		}
 
-		// Start hidden
 		Visible = false;
 	}
 
@@ -613,26 +573,17 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		_costPerGame = costPerGame;
 
 		// DON'T clear state - preserve between popup open/close cycles
-		// _slotToPhoneNumber.Clear();  // ❌ Removed - keeps player slots
-		// _tableCredits = 0;            // ❌ Removed - keeps table credits
-		// _creditsTransferredByPlayer.Clear();  // ❌ Removed - keeps contributions
-
-		// Create UI if not already created
 		if (_modalPanel == null)
 		{
 			CreateModalUI();
 		}
 
-		// Update UI with current configuration
 		UpdateUI();
 
-		// Restore machine credits from backend (async)
 		RestoreMachineCreditsFromBackendAsync();
 
-		// Restore occupied slots from persisted data
 		RestoreOccupiedSlots();
 
-		// Auto-populate first slot if user is logged in
 		AutoPopulateFirstSlot();
 
 		Visible = true;
@@ -656,12 +607,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		var playerIds = new List<System.Guid>();
 
-		// Iterate through slots in order
 		for (int i = 0; i < _playerCount; i++)
 		{
 			if (_slotToPhoneNumber.TryGetValue(i, out var phoneNumber))
 			{
-				// Get session to retrieve player ID
 				var session = _sessionManager.GetSessionByPhone(phoneNumber);
 				if (session != null)
 				{
@@ -677,7 +626,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private void CreateModalUI()
 	{
-		// Semi-transparent background overlay
 		_modalBackground = new Panel();
 		_modalBackground.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 
@@ -690,7 +638,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		AddChild(_modalBackground);
 
-		// Create centering container
 		var centerContainer = new CenterContainer();
 		centerContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 		AddChild(centerContainer);
@@ -714,7 +661,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		centerContainer.AddChild(_modalPanel);
 
-		// Content container with padding
 		var marginContainer = new MarginContainer();
 		marginContainer.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 		marginContainer.AddThemeConstantOverride("margin_left", 25);
@@ -728,7 +674,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		_contentContainer.AddThemeConstantOverride("separation", 20);
 		marginContainer.AddChild(_contentContainer);
 
-		// Title
 		_titleLabel = new Label();
 		_titleLabel.Text = "Setup Competitive Match";
 		_titleLabel.HorizontalAlignment = HorizontalAlignment.Center;
@@ -736,13 +681,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		_titleLabel.AddThemeFontSizeOverride("font_size", 22);
 		_contentContainer.AddChild(_titleLabel);
 
-		// Player slots section
 		CreatePlayerSlotsSection();
 
-		// Table credits section
 		CreateTableCreditsSection();
 
-		// Action buttons section
 		CreateActionButtonsSection();
 	}
 
@@ -800,7 +742,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		_actionButtonsContainer.AddThemeConstantOverride("separation", 20);
 		_contentContainer.AddChild(_actionButtonsContainer);
 
-		// Exit button
 		_exitButton = new Button();
 		_exitButton.Text = "Exit";
 		_exitButton.CustomMinimumSize = new Vector2(120, 45);
@@ -808,7 +749,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		_exitButton.Pressed += OnExitPressed;
 		_actionButtonsContainer.AddChild(_exitButton);
 
-		// Start game button
 		_startGameButton = new Button();
 		_startGameButton.Text = "Start Game";
 		_startGameButton.CustomMinimumSize = new Vector2(150, 45);
@@ -852,7 +792,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private void UpdateUI()
 	{
-		// Update title based on player count
 		_titleLabel.Text = $"Setup {_playerCount}-Player Match";
 
 		// Update modal panel height based on player count
@@ -864,10 +803,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_modalPanel.SetSize(new Vector2(600, panelHeight));
 		}
 
-		// Update cost label
 		_costLabel.Text = $"Cost: {_costPerGame} Credit{(_costPerGame > 1 ? "s" : string.Empty)}";
 
-		// Clear existing player slots
 		foreach (var slot in _playerSlots)
 		{
 			slot.QueueFree();
@@ -875,17 +812,14 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		_playerSlots.Clear();
 
-		// Create player slots based on player count
 		for (int i = 0; i < _playerCount; i++)
 		{
 			var slot = new PlayerSlotUI(i);
 
-			// Set piece color for this slot
 			var pieceColor = GetPieceColorForSlot(i, _playerCount);
 			string colorText = pieceColor == PieceType.White ? "⚪ White Pieces" : "⚫ Black Pieces";
 			slot.PieceColorLabel.Text = colorText;
 
-			// Connect slot button signals
 			int slotIndex = i; // Capture for lambda
 			slot.LoginButton.Pressed += () => OnLoginButtonPressed(slotIndex);
 			slot.LogoutButton.Pressed += () => OnLogoutButtonPressed(slotIndex);
@@ -913,7 +847,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		}
 		else
 		{
-			// 4-player
 			return (slotIndex == 0 || slotIndex == 2) ? PieceType.White : PieceType.Black;
 		}
 	}
@@ -925,7 +858,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			return;
 		}
 
-		// Only auto-populate if slot 0 is not already occupied
 		if (_slotToPhoneNumber.ContainsKey(0))
 		{
 			return;
@@ -937,7 +869,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		{
 			var phoneNumber = currentSession.PhoneNumber;
 
-			// CHECK: If this user is already in another slot, remove them first
 			int existingSlot = -1;
 			foreach (var kvp in _slotToPhoneNumber)
 			{
@@ -948,12 +879,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				}
 			}
 
-			// Remove from existing slot if found
 			if (existingSlot >= 0 && existingSlot != 0)
 			{
 				_slotToPhoneNumber.Remove(existingSlot);
 
-				// Clear the old slot's UI
 				if (existingSlot < _playerSlots.Count)
 				{
 					_playerSlots[existingSlot].SetEmpty();
@@ -962,7 +891,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				GD.Print($"[CarromPlayerSetupMenu] Moved primary user from slot {existingSlot} to slot 0");
 			}
 
-			// Add primary user to first slot
 			_slotToPhoneNumber[0] = phoneNumber;
 
 			// Only initialize contribution to 0 if not already set (respect loaded data)
@@ -998,7 +926,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			return;
 		}
 
-		// Track slots and phone numbers to clear if user is no longer logged in
 		var slotsToRemove = new List<(int slotIndex, string phoneNumber)>();
 
 		foreach (var kvp in _slotToPhoneNumber)
@@ -1006,17 +933,14 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			int slotIndex = kvp.Key;
 			string phoneNumber = kvp.Value;
 
-			// Validate slot index
 			if (slotIndex < 0 || slotIndex >= _playerSlots.Count)
 			{
 				continue;
 			}
 
-			// Get user session
 			var session = _sessionManager.GetSessionByPhone(phoneNumber);
 			if (session != null)
 			{
-				// User is logged in - restore occupied state
 				// Fetch credits from CreditService (single source of truth)
 				int credits = 0;
 				if (_creditService != null)
@@ -1033,12 +957,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			}
 			else
 			{
-				// User is no longer logged in - mark for removal
 				slotsToRemove.Add((slotIndex, phoneNumber));
 			}
 		}
 
-		// Clear slots for logged out users
 		foreach (var (slotIndex, phoneNumber) in slotsToRemove)
 		{
 			_slotToPhoneNumber.Remove(slotIndex);
@@ -1053,7 +975,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	{
 		_tableCreditsAmountLabel.Text = $"{_tableCredits} Credit{(_tableCredits != 1 ? "s" : string.Empty)}";
 
-		// Color based on sufficiency
 		if (_tableCredits >= _costPerGame)
 		{
 			_tableCreditsAmountLabel.Modulate = Colors.LightGreen;
@@ -1066,13 +987,11 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private bool ValidatePlayerSlots()
 	{
-		// Check correct number of slots filled
 		if (_slotToPhoneNumber.Count != _playerCount)
 		{
 			return false;
 		}
 
-		// Validate each player has valid session
 		foreach (var kvp in _slotToPhoneNumber)
 		{
 			var session = _sessionManager?.GetSessionByPhone(kvp.Value);
@@ -1087,17 +1006,13 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private void UpdateStartGameButton()
 	{
-		// Validate sufficient credits
 		bool hasCredits = _tableCredits >= _costPerGame;
 
-		// Validate all required player slots are filled
 		bool slotsFilledCorrectly = ValidatePlayerSlots();
 
-		// Enable button only if BOTH conditions met
 		bool canStart = hasCredits && slotsFilledCorrectly;
 		_startGameButton.Disabled = !canStart;
 
-		// Update button text to provide feedback
 		if (!hasCredits)
 		{
 			_startGameButton.Text = $"Need {_costPerGame - _tableCredits} More Credits";
@@ -1131,16 +1046,14 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			return;
 		}
 
-		// Store which slot is waiting for login
 		_pendingLoginSlot = slotIndex;
 
-		// Show login modal
 		_uiManager.ShowLoginModal();
 	}
 
 	/// <summary>
 	/// Handle SessionManager's UserLoggedIn signal
-	/// Comprehensive fix: If _pendingLoginSlot is invalid, find first empty slot automatically
+	/// Falls back to the first empty slot if _pendingLoginSlot is invalid
 	/// </summary>
 	private async void OnUserLoggedIn(string phoneNumber)
 	{
@@ -1149,14 +1062,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			return;
 		}
 
-		// Get the user session
 		var session = _sessionManager.GetSessionByPhone(phoneNumber);
 		if (session == null)
 		{
 			return;
 		}
 
-		// Check if this user is already in another slot
 		if (_slotToPhoneNumber.Values.Contains(phoneNumber))
 		{
 			GD.Print($"User {phoneNumber} already in a slot");
@@ -1164,15 +1075,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			return;
 		}
 
-		// Determine which slot to assign this player to
 		int slotIndex = _pendingLoginSlot;
 
-		// If _pendingLoginSlot is invalid, find first empty slot as fallback
 		if (slotIndex < 0 || slotIndex >= _playerSlots.Count)
 		{
 			GD.Print($"Invalid pending login slot: {_pendingLoginSlot}, searching for empty slot");
 
-			// Find first slot without a phone number assigned
 			slotIndex = -1;
 			for (int i = 0; i < _playerSlots.Count; i++)
 			{
@@ -1184,7 +1092,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				}
 			}
 
-			// If still no valid slot, bail out
 			if (slotIndex < 0)
 			{
 				GD.PrintErr($"No empty slots available for {phoneNumber}");
@@ -1193,11 +1100,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			}
 		}
 
-		// Assign user to the determined slot
 		_slotToPhoneNumber[slotIndex] = phoneNumber;
 		_creditsTransferredByPlayer[phoneNumber] = 0;
 
-		// Update slot UI
 		if (slotIndex >= 0 && slotIndex < _playerSlots.Count)
 		{
 			// Fetch credits from CreditService (single source of truth)
@@ -1216,10 +1121,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			GD.Print($"Player {session.UserName} assigned to slot {slotIndex}");
 		}
 
-		// Clear pending slot
 		_pendingLoginSlot = -1;
 
-		// Update game start button state
 		UpdateStartGameButton();
 	}
 
@@ -1228,7 +1131,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	/// </summary>
 	private void OnUserLoggedOut(string phoneNumber)
 	{
-		// Find which slot this user was in
 		int slotIndex = -1;
 		foreach (var kvp in _slotToPhoneNumber)
 		{
@@ -1239,34 +1141,28 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			}
 		}
 
-		// If user was in a slot, clear it
 		if (slotIndex >= 0 && slotIndex < _playerSlots.Count)
 		{
-			// Remove from tracking dictionaries
 			_slotToPhoneNumber.Remove(slotIndex);
 			_creditsTransferredByPlayer.Remove(phoneNumber);
 
-			// Update UI to show empty slot
 			var slot = _playerSlots[slotIndex];
 			slot.SetEmpty();
 
 			GD.Print($"[CarromPlayerSetupMenu] User {phoneNumber} logged out - cleared slot {slotIndex}");
 
-			// Update start game button state
 			UpdateStartGameButton();
 		}
 	}
 
 	private void OnCreditsChanged(string playerId, int newBalance)
 	{
-		// Update UI for all slots - playerId is a GUID string, not phone number
-		// Find the slot with this player and update it
+		// playerId is a GUID string, not a phone number
 		if (!Guid.TryParse(playerId, out var playerGuid))
 		{
 			return;
 		}
 
-		// Find phone number for this player ID
 		foreach (var kvp in _slotToPhoneNumber)
 		{
 			var slotPhoneNumber = kvp.Value;
@@ -1289,7 +1185,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private async void UpdatePlayerSlotCredits(string phoneNumber)
 	{
-		// Find slot for this phone number and update credits display
 		foreach (var kvp in _slotToPhoneNumber)
 		{
 			if (kvp.Value == phoneNumber)
@@ -1327,12 +1222,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			return;
 		}
 
-		// Return transferred credits to player
 		if (_creditsTransferredByPlayer.TryGetValue(phoneNumber, out var transferredAmount))
 		{
 			if (transferredAmount > 0)
 			{
-				// Return credits to player's account via CreditService
 				var session = _sessionManager.GetSessionByPhone(phoneNumber);
 				if (session != null && _creditService != null)
 				{
@@ -1341,21 +1234,18 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 					{
 						_tableCredits -= transferredAmount;
 
-						// Decrement machine credits to reflect return
-						// TODO: Event-sourced - backend handles machine credits via events
+						// Event-sourced - backend handles machine credits via events
 					}
 				}
 			}
 		}
 
-		// Clear slot
 		_slotToPhoneNumber.Remove(slotIndex);
 		_creditsTransferredByPlayer.Remove(phoneNumber);
 
 		var slot = _playerSlots[slotIndex];
 		slot.SetEmpty();
 
-		// Logout user if they're the primary session
 		var currentSession = _sessionManager.GetPrimarySession();
 		if (currentSession != null && currentSession.PhoneNumber == phoneNumber)
 		{
@@ -1450,14 +1340,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				return;
 			}
 
-			// Show modal and get selected amount
 			var selectedAmount = await _creditTransferModal.ShowAsync(
 				phoneNumber,
 				slotIndex,
 				session.UserName,
 				availableCredits);
 
-			// If cancelled or invalid, return
 			if (!selectedAmount.HasValue || selectedAmount.Value < 1)
 			{
 				return;
@@ -1523,10 +1411,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			}
 
 			// Event-sourced - backend tracks machine credits
-			// Update local table credits cache
 			_tableCredits += selectedAmount.Value;
 
-			// Track how many credits this player has transferred
 			_creditsTransferredByPlayer.TryAdd(phoneNumber, 0);
 			_creditsTransferredByPlayer[phoneNumber] += selectedAmount.Value;
 
@@ -1559,13 +1445,11 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private async void OnStartGamePressed()
 	{
-		// Validate credits (existing check)
 		if (_tableCredits < _costPerGame)
 		{
 			return;
 		}
 
-		// Validate player slots
 		if (!ValidatePlayerSlots())
 		{
 			int needed = _playerCount - _slotToPhoneNumber.Count;
@@ -1592,7 +1476,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 			if (consumeResult.IsSuccess(out var machineState))
 			{
-				// Backend consumption successful - update local state
 				_tableCredits = machineState.Balance;
 
 				HideMenu();
@@ -1628,7 +1511,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 		int totalReturned = 0;
 
-		// Return transferred credits to each player
 		foreach (var kvp in _creditsTransferredByPlayer)
 		{
 			var phoneNumber = kvp.Key;
@@ -1636,7 +1518,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 			if (amount > 0)
 			{
-				// Return credits via CreditService
 				var session = _sessionManager?.GetSessionByPhone(phoneNumber);
 				if (session != null && _creditService != null)
 				{
@@ -1649,11 +1530,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			}
 		}
 
-		// Machine credit handling moved to backend (event-sourced)
+		// Event-sourced - backend tracks machine credits
 		_tableCredits = 0;
 		_creditsTransferredByPlayer.Clear();
 
-		// Clear persisted contribution tracking
 		await SavePlayerContributionsToMachineData();
 	}
 
@@ -1678,9 +1558,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		{
 			string phoneNumber = kvp.Value;
 
-			// Logout secondary players only (non-primary sessions)
-			// Primary user manages their own session lifecycle
-			// NOTE: Credits transferred to table are PERMANENT and are NOT returned
+			// Credits transferred to table are PERMANENT and are NOT returned
 			if (!string.IsNullOrEmpty(phoneNumber) && phoneNumber != primaryPhoneNumber)
 			{
 				await _sessionManager.LogoutUserAsync(phoneNumber);
@@ -1688,11 +1566,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			}
 		}
 
-		// Clear slot tracking (credits remain in machine pool permanently)
+		// Credits remain in machine pool permanently
 		_slotToPhoneNumber.Clear();
 		_creditsTransferredByPlayer.Clear();
 
-		// Clear persisted slot assignments (but machine credits remain untouched)
 		await SavePlayerContributionsToMachineData();
 	}
 
@@ -1741,7 +1618,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			{
 				_tableCredits = machineCredits.Balance;
 
-				// Restore player contributions
 				_creditsTransferredByPlayer.Clear();
 				foreach (var contribution in machineCredits.Contributions)
 				{
@@ -1752,7 +1628,6 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 						var sessionManager = SessionManager.GetInstance();
 						if (sessionManager != null)
 						{
-							// Check all active sessions to find matching player ID
 							var activePhones = sessionManager.GetActivePhoneNumbers();
 							foreach (var phone in activePhones)
 							{
@@ -1781,8 +1656,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private async Task SavePlayerContributionsToMachineData()
 	{
-		// Backend deposit is now handled directly in OnTransferCreditButtonPressed
-		// This method kept for compatibility but may be removed in future refactoring
+		// No-op: deposit is handled directly in OnTransferCreditButtonPressed; kept so existing call sites still compile
 		await Task.CompletedTask;
 		return;
 	}
@@ -1793,20 +1667,17 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		_slotToPhoneNumber.Clear();
 		_creditsTransferredByPlayer.Clear();
 
-		// Cleanup SessionManager signals
 		if (GodotObject.IsInstanceValid(_sessionManager))
 		{
 			_sessionManager.UserLoggedIn -= OnUserLoggedIn;
 			_sessionManager.UserLoggedOut -= OnUserLoggedOut;
 		}
 
-		// Cleanup CreditService signals
 		if (GodotObject.IsInstanceValid(_creditService))
 		{
 			_creditService.CreditsChanged -= OnCreditsChanged;
 		}
 
-		// Cleanup signals
 		if (GodotObject.IsInstanceValid(_modalBackground))
 		{
 			_modalBackground.GuiInput -= OnBackgroundInput;
