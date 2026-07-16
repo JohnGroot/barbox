@@ -106,9 +106,14 @@ class BoxSession(Base):  # Will be renamed to ActivitySession
 **Location**: `BarBoxApp/_Core/Scripts/Autoloads/SessionEventService.cs`
 
 **Key Methods**:
-- `CreateActivitySessionAsync(boxId, playerId, gameTag, playerIds)` - NEW
-- `CloseActivitySessionAsync(sessionId)` - NEW
 - `EmitEventAsync(eventType, payload)` - Stream events
+
+**Note**: ActivitySession create/close is no longer called directly on
+`SessionEventService`. `GameController.StartBackendSessionAsync` (base class,
+`BarBoxApp/_Core/Scripts/Gameplay/GameController.cs`) wraps
+`Platform.Events.CreateActivitySessionAsync` and owns the session id; close
+happens automatically in the base `_ExitTree`. See Game Integration Guide
+below.
 
 ### GameHost
 **Responsibility**: Game orchestration
@@ -142,42 +147,33 @@ Response: {"id": "session-uuid"}
 
 ## Game Integration Guide
 
+Every game subclasses `GameController` (`BarBoxApp/_Core/Scripts/Gameplay/GameController.cs`),
+which owns the ActivitySession lifecycle: `StartBackendSessionAsync` creates
+it and stores the id; the base `_ExitTree` closes it automatically after
+`OnGameTeardown` runs. A game only calls `StartBackendSessionAsync` when its
+own gameplay begins (timing varies — Racing/Carrom create lazily at match
+start) and never closes the session itself.
+
 ### Single-Player Game Pattern (Racing, Mining)
 
 ```csharp
-public partial class RacingGame : Node
+public partial class RacingGame : GameController
 {
-    private Guid _activitySessionId;
-    private SessionEventService _eventService;
-    private LocationManager _locationManager;
-    private SessionManager _sessionManager;
-
-    public override async void _Ready()
-    {
-        _eventService = SessionEventService.GetInstance();
-        _locationManager = LocationManager.GetAutoload();
-        _sessionManager = SessionManager.GetInstance();
-
-        await StartGameSessionAsync();
-    }
+    protected override string GetGameId() => "racing";
 
     private async Task StartGameSessionAsync()
     {
-        // Get current user
-        var userSession = _sessionManager.GetPrimaryUserSession();
+        var userSession = Platform.Session.GetPrimaryUserSession();
         if (userSession == null)
         {
             LogError("No user logged in");
             return;
         }
 
-        // Create ActivitySession
-        _activitySessionId = Guid.NewGuid();
-        var result = await _eventService.CreateActivitySessionAsync(
-            boxId: _locationManager.BoxId,
-            playerId: userSession.PlayerId,
-            gameTag: "racing",  // Required: identifies game type
-            playerIds: null     // Single-player
+        // Create + track the ActivitySession (base class owns the id and close)
+        var result = await StartBackendSessionAsync(
+            boxId: Platform.Location.BoxId,
+            playerId: userSession.PlayerId
         );
 
         if (!result.IsSuccess)
@@ -186,24 +182,15 @@ public partial class RacingGame : Node
             return;
         }
 
-        _activitySessionId = result.Value;
-
-        // Emit play/begin event
-        await _eventService.EmitEventAsync("play/begin", new { game = "racing" });
+        await Platform.Events.EmitEventAsync("play/begin", new { game = "racing" });
     }
 
     private async void OnGameEnd()
     {
-        // Emit play/finish event
-        await _eventService.EmitEventAsync("play/finish", new {
+        // Emit play/finish; session close happens automatically in _ExitTree
+        await Platform.Events.EmitEventAsync("play/finish", new {
             final_time = _raceTime
         });
-
-        // Close ActivitySession
-        if (_activitySessionId != Guid.Empty)
-        {
-            await _eventService.CloseActivitySessionAsync(_activitySessionId);
-        }
     }
 }
 ```
@@ -211,30 +198,25 @@ public partial class RacingGame : Node
 ### Multiplayer Game Pattern (Carrom)
 
 ```csharp
-public partial class CarromGame : Node
+public partial class CarromGame : GameController
 {
-    private Guid _activitySessionId;
+    protected override string GetGameId() => "carrom";
+
     private List<Guid> _playerIds = new();
 
     private async Task StartMultiplayerSessionAsync()
     {
         // Collect all logged-in players
-        var sessionManager = SessionManager.GetInstance();
-        foreach (var phoneNumber in sessionManager.GetActivePhoneNumbers())
+        foreach (var phoneNumber in Platform.Session.GetActivePhoneNumbers())
         {
-            var userSession = sessionManager.GetUserSession(phoneNumber);
+            var userSession = Platform.Session.GetUserSession(phoneNumber);
             if (userSession != null)
-            {
                 _playerIds.Add(userSession.PlayerId);
-            }
         }
 
-        // Create multiplayer ActivitySession
-        _activitySessionId = Guid.NewGuid();
-        var result = await _eventService.CreateActivitySessionAsync(
-            boxId: _locationManager.BoxId,
+        var result = await StartBackendSessionAsync(
+            boxId: Platform.Location.BoxId,
             playerId: _playerIds[0],  // Host player (first)
-            gameTag: "carrom",
             playerIds: _playerIds.Select(id => id.ToString()).ToList()
         );
 
@@ -244,10 +226,7 @@ public partial class CarromGame : Node
             return;
         }
 
-        _activitySessionId = result.Value;
-
-        // Emit play/begin with player info
-        await _eventService.EmitEventAsync("play/begin", new {
+        await Platform.Events.EmitEventAsync("play/begin", new {
             game = "carrom",
             mode = "competitive",
             player_count = _playerIds.Count
@@ -264,25 +243,12 @@ public partial class CarromGame : Node
 - [x] Frontend: Remove BoxSession creation from login
 - [x] Frontend: Remove `BackendSessionId` from UserSession
 - [x] Frontend: Extract CreditService from SessionManager
-
-### 🚧 In Progress
-- [ ] **Remove PlayerSession wrapper** (optional cleanup)
-  - PlayerSession is a thin wrapper around UserSession
-  - Games can use UserSession directly
-  - Requires updating: Carrom, Mining, Racing, GameHost
-
-### 📋 To Do (Per Game)
-1. **Update game to create ActivitySession on launch**
-   - Call `SessionEventService.CreateActivitySessionAsync()` with `game_tag`
-   - Store returned session ID
-
-2. **Update game to close ActivitySession on exit**
-   - Call `SessionEventService.CloseActivitySessionAsync(sessionId)`
-   - Emit `play/finish` event before closing
-
-3. **Update credit operations to use CreditService**
-   - Replace `userSession.Credits` with `CreditService.GetBalanceAsync()`
-   - Replace credit spend with `CreditService.SpendAsync()`
+- [x] Frontend: centralize ActivitySession create/close into
+  `GameController.StartBackendSessionAsync` + base `_ExitTree`; all four
+  games (Racing, Mining, Carrom, Nines) migrated onto it
+- [x] Frontend: all games route credit spend through `CreditService`'s
+  `SpendWithConfirmationAsync`/`SpendManyWithRollbackAsync`/`TransferToMachineAsync`
+  primitives instead of hand-rolled balance/spend logic
 
 ## Benefits of New Architecture
 
@@ -357,34 +323,19 @@ var spendResult = await creditService.SpendAsync(
 
 ### Session Lifecycle
 ```csharp
-public partial class MyGame : Node
+public partial class MyGame : GameController
 {
-    private Guid _sessionId;
+    protected override string GetGameId() => "my_game";
 
-    public override async void _Ready()
+    private async Task StartSessionAsync()
     {
-        await StartSessionAsync();
-    }
+        var userSession = Platform.Session.GetPrimaryUserSession();
+        if (userSession == null)
+            return;
 
-    public override void _ExitTree()
-    {
-        if (_sessionId != Guid.Empty)
-        {
-            // Fire-and-forget close (async void is intentional here)
-            _ = CloseSessionAsync();
-        }
-    }
-
-    private async Task CloseSessionAsync()
-    {
-        try
-        {
-            await _eventService.CloseActivitySessionAsync(_sessionId);
-        }
-        catch (Exception ex)
-        {
-            LogError($"Failed to close session: {ex.Message}");
-        }
+        // GameController stores the session id and closes it automatically
+        // in the base _ExitTree — no manual close call needed.
+        await StartBackendSessionAsync(Platform.Location.BoxId, userSession.PlayerId);
     }
 }
 ```
@@ -421,8 +372,9 @@ public partial class MyGame : Node
 - Check SessionEventService connectivity
 
 ### "Orphaned sessions in database"
-- Games must call `CloseActivitySessionAsync()` on exit
-- Implement `_ExitTree()` cleanup
+- `GameController`'s sealed `_ExitTree` closes the active session automatically
+  — a game only orphans a session if it never called `StartBackendSessionAsync`
+  in the first place, or bypassed `GameController` entirely
 - Backend cleanup job coming soon
 
 ## References
