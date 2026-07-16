@@ -10,14 +10,12 @@ namespace BarBox.Games.Racing;
 
 /// <summary>
 /// Manages all UI elements for racing games including overlays, status displays, and controls
-/// Extracted from RacingGame to follow single responsibility principle
 /// </summary>
 [GlobalClass]
 public partial class RacingUIManager : Node
 {
-	// ================================================================
-	// SIGNALS
-	// ================================================================
+	#region Signals
+
 	[Signal]
 	public delegate void TimeTrialRequestedEventHandler();
 
@@ -48,63 +46,53 @@ public partial class RacingUIManager : Node
 	[Signal]
 	public delegate void AddCreditsRequestedEventHandler();
 
-	// ================================================================
-	// EXPORT PROPERTIES
-	// ================================================================
+	#endregion
+
+	#region Exports
+
 	[ExportCategory("UI Settings")]
 	[Export]
 	public int TimeTrialCreditCost { get; set; } = 1;
 
-	// ================================================================
-	// CONSTANTS
-	// ================================================================
+	#endregion
+
+	#region Constants
 
 	// Total height reserved for TopMenuBar (100px) + ContextButtonBar (50px)
 	private const float TOP_MENU_HEIGHT = 150.0f;
 
-	// ================================================================
-	// PRIVATE FIELDS - UI COMPONENTS
-	// ================================================================
+	#endregion
 
-	// Main UI layer
+	#region Fields
+
 	private CanvasLayer _uiLayer;
 
-	// Arc-based HUD renderer
 	private RacingHUDArcRenderer _hudArcRenderer;
 
-	// Time trial timer display
 	private Control _timerDisplayContainer;
 	private Panel _timerBackground;
 	private Label _timerLabel;
 
-	// Control buttons
 	private Button _timeTrialButton;
 	private Button _restartButton;
 	private Button _tracksLeaderboardButton;
 
-	// Overlays
 	private Control _pauseOverlay;
 	private Control _countdownOverlay;
 	private Label _countdownLabel;
 
-	// Track selection data
 	private List<PackedScene> _trackScenes;
 	private int _currentTrackIndex = 0;
 
-	// Tracks & Leaderboard overlay data
 	private RacingTracksLeaderboardUI _tracksLeaderboardOverlay;
 	private Dictionary<string, TrackMetadata> _trackMetadataCache = [];
 
-	// Race complete overlay data
 	private RacingRaceCompleteUI _raceCompleteOverlay;
 
-	// Countdown state tracking
 	private bool _wasCountdownVisible = false;
 
-	// Race complete overlay visibility tracking
 	private bool _raceCompleteOverlayWasVisible = false;
 
-	// Backend service integration
 	private RacingEventService _racingEventService;
 
 	// Circuit breaker for leaderboard failures
@@ -115,13 +103,10 @@ public partial class RacingUIManager : Node
 	private bool _isLoadingRaceComplete = false;
 	private bool _isLoadingTracksLeaderboard = false;
 
-	// ================================================================
-	// NESTED CLASSES FOR TRACK & LEADERBOARD MANAGEMENT
-	// ================================================================
+	#endregion
 
-	/// <summary>
-	/// Track metadata for display and leaderboard organization
-	/// </summary>
+	#region Nested Classes
+
 	public class TrackMetadata
 	{
 		public string TrackId { get; set; } = string.Empty;
@@ -143,9 +128,6 @@ public partial class RacingUIManager : Node
 		public int RaceCount { get; set; } = 0;
 	}
 
-	/// <summary>
-	/// Individual leaderboard entry for display
-	/// </summary>
 	public class LeaderboardEntry
 	{
 		public string TrackId { get; set; } = string.Empty;
@@ -164,7 +146,6 @@ public partial class RacingUIManager : Node
 
 		public string Username { get; set; } = string.Empty;
 
-		// Rank for display purposes
 		public string DisplayRank { get; set; } = string.Empty;
 
 		public string FormattedTime => Time > 0f ? $"{Time:F3}s" : "No time";
@@ -172,9 +153,10 @@ public partial class RacingUIManager : Node
 		public string CategoryDisplay => $"Best Race ({Laps} laps)";
 	}
 
-	// ================================================================
-	// PUBLIC PROPERTIES
-	// ================================================================
+	#endregion
+
+	#region Public Properties
+
 	public bool IsPauseOverlayVisible => _pauseOverlay.Visible;
 
 	public bool IsGameOverOverlayVisible => _raceCompleteOverlay.IsVisible;
@@ -183,16 +165,16 @@ public partial class RacingUIManager : Node
 
 	public bool IsCountdownOverlayVisible => _countdownOverlay.Visible;
 
-	// ================================================================
-	// INITIALIZATION
-	// ================================================================
+	#endregion
+
+	#region Initialization
+
 	public void Initialize(List<PackedScene> trackScenes = null, int currentTrackIndex = 0, int timeTrialCreditCost = 1)
 	{
 		_trackScenes = trackScenes;
 		_currentTrackIndex = currentTrackIndex;
 		TimeTrialCreditCost = timeTrialCreditCost;
 
-		// Initialize singleton racing event service
 		_racingEventService = new RacingEventService(SessionEventService.GetInstance());
 
 		SetupUILayer();
@@ -220,21 +202,12 @@ public partial class RacingUIManager : Node
 		SetupBottomControls(mainUI);
 	}
 
-	/// <summary>
-	/// Setup the status bar with modern arc-based HUD elements
-	/// </summary>
-	/// <param name="parent">Parent container</param>
 	private void SetupStatusBar(Control parent)
 	{
-		// Create arc-based HUD renderer
 		_hudArcRenderer = new RacingHUDArcRenderer();
 		_uiLayer.AddChild(_hudArcRenderer);
 	}
 
-	/// <summary>
-	/// Setup the time trial timer display
-	/// </summary>
-	/// <param name="parent">Parent container</param>
 	private void SetupTimerDisplay(Control parent)
 	{
 		// Container for timer (centered above bottom bar)
@@ -250,14 +223,12 @@ public partial class RacingUIManager : Node
 		_timerDisplayContainer.Visible = false; // Hidden by default, shown during time trial
 		parent.AddChild(_timerDisplayContainer);
 
-		// Semi-transparent background panel
 		_timerBackground = new Panel();
 		_timerBackground.AnchorLeft = 0;
 		_timerBackground.AnchorTop = 0;
 		_timerBackground.AnchorRight = 1;
 		_timerBackground.AnchorBottom = 1;
 
-		// Create StyleBoxFlat for rounded corners and semi-transparent background
 		var styleBox = new StyleBoxFlat();
 		styleBox.BgColor = new Color(0.1f, 0.1f, 0.15f, 0.85f); // Dark semi-transparent
 		styleBox.CornerRadiusTopLeft = 8;
@@ -272,7 +243,6 @@ public partial class RacingUIManager : Node
 		_timerBackground.AddThemeStyleboxOverride("panel", styleBox);
 		_timerDisplayContainer.AddChild(_timerBackground);
 
-		// Timer label
 		_timerLabel = new Label();
 		_timerLabel.Text = "00:00.000"; // Leading zero for consistent width
 		_timerLabel.AnchorLeft = 0;
@@ -299,22 +269,17 @@ public partial class RacingUIManager : Node
 		opentypeFeatures["tnum"] = 1; // Tabular numbers - all digits same width
 		fontVariation.SetOpentypeFeatures(opentypeFeatures);
 
-		// Create LabelSettings for font styling
 		var labelSettings = new LabelSettings();
-		labelSettings.Font = fontVariation; // Use font variation with tabular figures
-		labelSettings.FontSize = 52; // Large, readable font
+		labelSettings.Font = fontVariation;
+		labelSettings.FontSize = 52;
 		labelSettings.FontColor = Colors.White;
 		labelSettings.OutlineSize = 4; // Add outline for better contrast
-		labelSettings.OutlineColor = new Color(0, 0, 0, 0.8f); // Dark outline
+		labelSettings.OutlineColor = new Color(0, 0, 0, 0.8f);
 		_timerLabel.LabelSettings = labelSettings;
 
 		_timerDisplayContainer.AddChild(_timerLabel);
 	}
 
-	/// <summary>
-	/// Setup the bottom control buttons
-	/// </summary>
-	/// <param name="parent">Parent container</param>
 	private void SetupBottomControls(Control parent)
 	{
 		var bottomBar = new HBoxContainer();
@@ -326,14 +291,11 @@ public partial class RacingUIManager : Node
 		bottomBar.Alignment = BoxContainer.AlignmentMode.Center;
 		parent.AddChild(bottomBar);
 
-		// Time trial button
 		SetupTimeTrialButton(bottomBar);
 		bottomBar.AddChild(new VSeparator());
 
-		// Restart button
 		SetupRestartButton(bottomBar);
 
-		// Tracks & Leaderboard button
 		if (_trackScenes != null && _trackScenes.Count > 0)
 		{
 			bottomBar.AddChild(new VSeparator());
@@ -341,13 +303,8 @@ public partial class RacingUIManager : Node
 		}
 	}
 
-	/// <summary>
-	/// Setup the time trial button
-	/// </summary>
-	/// <param name="parent">Parent container</param>
 	private void SetupTimeTrialButton(Container parent)
 	{
-		// Update button text to show credit cost if applicable
 		string timeTrialText = "Start Time Trial (3 Laps)";
 		if (TimeTrialCreditCost > 0 && !GameHost.ShouldBypassCredits())
 		{
@@ -359,10 +316,6 @@ public partial class RacingUIManager : Node
 		parent.AddChild(_timeTrialButton);
 	}
 
-	/// <summary>
-	/// Setup the restart button
-	/// </summary>
-	/// <param name="parent">Parent container</param>
 	private void SetupRestartButton(Container parent)
 	{
 		_restartButton = new Button() { Text = "Restart Practice" };
@@ -374,10 +327,6 @@ public partial class RacingUIManager : Node
 		parent.AddChild(_restartButton);
 	}
 
-	/// <summary>
-	/// Setup tracks & leaderboard button
-	/// </summary>
-	/// <param name="parent">Parent container</param>
 	private void SetupTracksLeaderboardButton(Container parent)
 	{
 		_tracksLeaderboardButton = new Button() { Text = "Tracks & Leaderboard" };
@@ -389,9 +338,6 @@ public partial class RacingUIManager : Node
 		parent.AddChild(_tracksLeaderboardButton);
 	}
 
-	/// <summary>
-	/// Setup all overlay UIs
-	/// </summary>
 	private void SetupOverlays()
 	{
 		SetupCountdownOverlay();
@@ -399,13 +345,10 @@ public partial class RacingUIManager : Node
 		SetupRaceCompleteOverlay();
 	}
 
-	// ================================================================
-	// OVERLAY MANAGEMENT
-	// ================================================================
+	#endregion
 
-	/// <summary>
-	/// Setup countdown overlay
-	/// </summary>
+	#region Overlay Management
+
 	private void SetupCountdownOverlay()
 	{
 		_countdownOverlay = new Control();
@@ -445,9 +388,6 @@ public partial class RacingUIManager : Node
 		_countdownOverlay.AddChild(_countdownLabel);
 	}
 
-	/// <summary>
-	/// Setup pause overlay
-	/// </summary>
 	private void SetupPauseOverlay()
 	{
 		_pauseOverlay = new Control();
@@ -502,15 +442,11 @@ public partial class RacingUIManager : Node
 		vbox.AddChild(mainMenuButton);
 	}
 
-	/// <summary>
-	/// Setup race complete overlay with comprehensive results display
-	/// </summary>
 	private void SetupRaceCompleteOverlay()
 	{
 		_raceCompleteOverlay = new RacingRaceCompleteUI();
 		_raceCompleteOverlay.CreateOverlay(_uiLayer);
 
-		// Connect button signals
 		_raceCompleteOverlay.TryAgainButton.Pressed += () =>
 		{
 			ResetUserIdleTimer();
@@ -530,9 +466,9 @@ public partial class RacingUIManager : Node
 		};
 	}
 
-	// ================================================================
-	// UI UPDATE METHODS
-	// ================================================================
+	#endregion
+
+	#region UI Updates
 
 	/// <summary>
 	/// Update status labels and arc HUD with current game state
@@ -547,7 +483,6 @@ public partial class RacingUIManager : Node
 	/// <param name="lapProgress">Current lap progress (0.0 to 1.0)</param>
 	public void UpdateStatusLabels(float carSpeed, RacingMode gameMode, int currentLap, int targetLaps, float timeDisplay, string timeLabel, float maxSpeed = 1800.0f, float lapProgress = 0.0f)
 	{
-		// Update arc-based HUD (primary display)
 		if (_hudArcRenderer != null && IsInstanceValid(_hudArcRenderer))
 		{
 			var timeText = $"{timeLabel}: {timeDisplay:F1}s";
@@ -556,10 +491,6 @@ public partial class RacingUIManager : Node
 		}
 	}
 
-	/// <summary>
-	/// Update all UI elements from complete game state - replaces individual update methods
-	/// </summary>
-	/// <param name="state">Complete racing game UI state</param>
 	public void UpdateFromState(RacingUIState state)
 	{
 		// Update everything, every time - let Godot handle rendering optimization
@@ -571,7 +502,6 @@ public partial class RacingUIManager : Node
 
 		SetPauseOverlayVisible(state.IsGamePaused);
 
-		// Use new race complete overlay with track information
 		if (state.ShowGameOverOverlay)
 		{
 			SetRaceCompleteOverlayVisible(true, state.FinalTime, state.CanAffordReplay, state.CurrentTrackId, TimeTrialCreditCost);
@@ -581,10 +511,8 @@ public partial class RacingUIManager : Node
 			SetRaceCompleteOverlayVisible(false);
 		}
 
-		// Update countdown display in arc renderer
 		UpdateCountdownArc(state.IsInCountdown, state.CountdownNumber, state.CountdownProgress);
 
-		// Update time trial timer display
 		UpdateTimerDisplay(state.GameMode == RacingMode.TimeTrial, state.TimeDisplay);
 	}
 
@@ -598,27 +526,19 @@ public partial class RacingUIManager : Node
 	/// <param name="isUserLoggedIn">Whether user is logged in (required for time trial)</param>
 	public void UpdateButtonStates(bool isTimeTrialInProgress, bool canStartTimeTrial, bool isInCountdown, bool isTimeTrial, bool isUserLoggedIn)
 	{
-		// Update time trial button - disabled during time trial or when not logged in
 		if (_timeTrialButton != null)
 		{
 			_timeTrialButton.Disabled = !canStartTimeTrial || isTimeTrialInProgress || !isUserLoggedIn;
 		}
 
-		// Update restart button - hide during time trials and countdown
 		if (_restartButton != null)
 		{
 			_restartButton.Visible = !isTimeTrialInProgress && !isInCountdown;
 		}
 
-		// Update track selection buttons - disable during time trial or countdown
 		UpdateTracksLeaderboardButton(isTimeTrial && isTimeTrialInProgress, isInCountdown);
 	}
 
-	/// <summary>
-	/// Update tracks & leaderboard button state
-	/// </summary>
-	/// <param name="isActiveTimeTrial">Whether time trial is active</param>
-	/// <param name="isInCountdown">Whether countdown is active</param>
 	public void UpdateTracksLeaderboardButton(bool isActiveTimeTrial, bool isInCountdown)
 	{
 		if (_tracksLeaderboardButton == null)
@@ -626,14 +546,14 @@ public partial class RacingUIManager : Node
 			return;
 		}
 
-		// Disable during active time trial or countdown
 		bool shouldDisable = isActiveTimeTrial || isInCountdown;
 		_tracksLeaderboardButton.Disabled = shouldDisable;
 	}
 
-	// ================================================================
-	// OVERLAY CONTROL
-	// ================================================================
+	#endregion
+
+	#region Overlay Control
+
 	public void SetPauseOverlayVisible(bool visible)
 	{
 		_pauseOverlay.Visible = visible;
@@ -644,28 +564,22 @@ public partial class RacingUIManager : Node
 		if (visible && !_raceCompleteOverlayWasVisible)
 		{
 			// Overlay transitioning from hidden to visible - load data once
-			// Update button states first
 			_raceCompleteOverlay.UpdateButtonStates(canAffordReplay, creditCost);
 
-			// Load high score data for this track
 			LoadRaceCompleteDataAsync(currentTrackId, finalTime);
 
 			_raceCompleteOverlay.ShowOverlay();
 		}
 		else if (!visible && _raceCompleteOverlayWasVisible)
 		{
-			// Overlay transitioning from visible to hidden
 			_raceCompleteOverlay.HideOverlay();
 		}
 
-		// Track visibility state for next call
 		_raceCompleteOverlayWasVisible = visible;
 	}
 
 	public void SetGameOverOverlayVisible(bool visible, float finalTime, bool canAffordReplay)
 	{
-		// Legacy method - now delegates to race complete overlay for time trials
-		// Keep the old simple overlay for non-time-trial modes if needed
 		if (visible)
 		{
 			SetRaceCompleteOverlayVisible(visible, finalTime, canAffordReplay, string.Empty, TimeTrialCreditCost);
@@ -681,7 +595,6 @@ public partial class RacingUIManager : Node
 		// Hide traditional overlay completely - arc renderer handles countdown
 		_countdownOverlay.Visible = false;
 
-		// Arc renderer handles the primary countdown display
 		if (_hudArcRenderer != null && IsInstanceValid(_hudArcRenderer))
 		{
 			if (!visible)
@@ -708,7 +621,6 @@ public partial class RacingUIManager : Node
 		{
 			if (isVisible)
 			{
-				// If countdown just became visible, start the countdown animation
 				if (!_wasCountdownVisible)
 				{
 					_hudArcRenderer.StartCountdown(countdownNumber, countdownProgress);
@@ -723,19 +635,16 @@ public partial class RacingUIManager : Node
 				_hudArcRenderer.HideCountdown();
 			}
 
-			// Track previous state
 			_wasCountdownVisible = isVisible;
 		}
 	}
 
 	private void UpdateTimerDisplay(bool isTimeTrial, float currentTime)
 	{
-		// Show timer only during time trial mode
 		_timerDisplayContainer.Visible = isTimeTrial;
 
 		if (isTimeTrial)
 		{
-			// Update timer text with formatted time
 			_timerLabel.Text = FormatLapTime(currentTime);
 		}
 	}
@@ -765,15 +674,13 @@ public partial class RacingUIManager : Node
 			var playerId = _currentPlayerId;
 			var trackName = GetTrackNameFromId(trackId);
 
-			// Load high score data from backend
 			var highScores = new List<LeaderboardEntry>();
 			int playerPosition = 0;
 			bool isNewHighScore = false;
 
 			if (playerId != null && _racingEventService != null)
 			{
-				// Get track lap count from metadata
-				int trackLaps = 3; // Default
+				int trackLaps = 3;
 				if (_trackMetadataCache.TryGetValue(trackId, out var trackMetadata))
 				{
 					trackLaps = trackMetadata.DefaultLaps;
@@ -787,7 +694,6 @@ public partial class RacingUIManager : Node
 
 				if (leaderboardResult.IsSuccess(out var leaderboard))
 				{
-					// Convert to LeaderboardEntry format
 					for (int i = 0; i < leaderboard.Leaderboard.Count; i++)
 					{
 						var entry = leaderboard.Leaderboard[i];
@@ -803,7 +709,6 @@ public partial class RacingUIManager : Node
 							DisplayRank = (i + 1).ToString(),
 						});
 
-						// Calculate player position
 						if (entry.PlayerId.ToString() == playerId)
 						{
 							playerPosition = i + 1;
@@ -811,7 +716,6 @@ public partial class RacingUIManager : Node
 						}
 					}
 
-					// Reset failure counter on success
 					_leaderboardFailureCount = 0;
 				}
 				else if (leaderboardResult.IsFailure(out var error))
@@ -821,7 +725,6 @@ public partial class RacingUIManager : Node
 				}
 			}
 
-			// If no data loaded, show empty state
 			if (highScores.Count == 0 && finalTime > 0f)
 			{
 				playerPosition = 1; // First recorded time
@@ -837,7 +740,6 @@ public partial class RacingUIManager : Node
 			_leaderboardFailureCount++;
 			GD.PrintErr($"[RacingUIManager] Exception loading race complete data ({_leaderboardFailureCount}/{MAX_LEADERBOARD_FAILURES}): {ex.Message}");
 
-			// Fallback UI update
 			var fallbackCallable = Callable.From(() => UpdateRaceCompleteUIFallback(trackId, finalTime));
 			fallbackCallable.CallDeferred();
 		}
@@ -857,10 +759,8 @@ public partial class RacingUIManager : Node
 			return;
 		}
 
-		// Update race results display
 		_raceCompleteOverlay.UpdateRaceResults(finalTime, trackName, position, isNewHighScore);
 
-		// Update high scores table
 		_raceCompleteOverlay.UpdateHighScores(highScores, currentPlayerPhoneNumber);
 	}
 
@@ -876,7 +776,6 @@ public partial class RacingUIManager : Node
 
 		var trackName = GetTrackNameFromId(trackId);
 
-		// Show basic results without leaderboard data
 		_raceCompleteOverlay.UpdateRaceResults(finalTime, trackName, 1, true); // Assume first place without data
 		_raceCompleteOverlay.UpdateHighScores(new List<LeaderboardEntry>(), null);
 	}
@@ -895,9 +794,10 @@ public partial class RacingUIManager : Node
 		return trackId.Replace("_", " ").Replace("-", " ");
 	}
 
-	// ================================================================
-	// TRACK MANAGEMENT
-	// ================================================================
+	#endregion
+
+	#region Track Management
+
 	public void SetCurrentTrackIndex(int trackIndex)
 	{
 		_currentTrackIndex = trackIndex;
@@ -912,9 +812,9 @@ public partial class RacingUIManager : Node
 		// For now, assume this is called during initialization
 	}
 
-	// ================================================================
-	// CONTEXT BUTTON SUPPORT
-	// ================================================================
+	#endregion
+
+	#region Context Buttons
 
 	/// <summary>
 	/// Get context button data for top menu integration
@@ -926,14 +826,12 @@ public partial class RacingUIManager : Node
 	{
 		var buttons = new List<ContextButtonData>();
 
-		// Standard "Return to Menu" button
 		buttons.Add(GameContextButton.CreateReturnToMenuButton(() =>
 		{
 			ResetUserIdleTimer();
 			EmitSignal(SignalName.MainMenuRequested);
 		}));
 
-		// Pause/Resume button
 		if (isGameActive)
 		{
 			if (isGamePaused)
@@ -952,7 +850,6 @@ public partial class RacingUIManager : Node
 			}
 		}
 
-		// Restart button
 		if (isGameActive)
 		{
 			buttons.Add(new ContextButtonData("Restart", () =>
@@ -965,37 +862,30 @@ public partial class RacingUIManager : Node
 		return [.. buttons];
 	}
 
-	// ================================================================
-	// UTILITY METHODS
-	// ================================================================
+	#endregion
+
+	#region Utilities
+
 	private void ResetUserIdleTimer()
 	{
 		SessionManager.GetInstance()?.ResetAllIdleTimers();
 	}
 
-	// ================================================================
-	// TRACKS & LEADERBOARD MANAGEMENT
-	// ================================================================
+	#endregion
 
-	/// <summary>
-	/// Initialize tracks & leaderboard overlay
-	/// </summary>
-	/// <param name="trackMetadata">Track metadata for display</param>
-	/// <param name="currentTrackId">Currently loaded track ID</param>
+	#region Tracks & Leaderboard
+
 	public void InitializeTracksLeaderboard(Dictionary<string, TrackMetadata> trackMetadata, string currentTrackId)
 	{
-		// Create overlay if it doesn't exist
 		if (_tracksLeaderboardOverlay == null)
 		{
 			_tracksLeaderboardOverlay = new RacingTracksLeaderboardUI();
 			_tracksLeaderboardOverlay.CreateOverlay(_uiLayer);
 
-			// Connect signals
 			_tracksLeaderboardOverlay.CloseButton.Pressed += HideTracksLeaderboard;
 			_tracksLeaderboardOverlay.LoadTrackButton.Pressed += OnLoadTrackFromOverlay;
 		}
 
-		// Update track metadata cache and populate track list
 		_trackMetadataCache = trackMetadata;
 		PopulateTrackList(currentTrackId);
 	}
@@ -1030,7 +920,6 @@ public partial class RacingUIManager : Node
 		{
 			PopulateTrackList(currentTrackId);
 
-			// Refresh leaderboard for currently selected track
 			if (!string.IsNullOrEmpty(_tracksLeaderboardOverlay.SelectedTrackId))
 			{
 				UpdateLeaderboardForTrack(_tracksLeaderboardOverlay.SelectedTrackId);
@@ -1045,16 +934,13 @@ public partial class RacingUIManager : Node
 			return;
 		}
 
-		// Clear existing buttons
 		_tracksLeaderboardOverlay.ClearTrackButtons();
 
-		// Add track buttons
 		foreach (var track in _trackMetadataCache.Values.OrderBy(t => t.Index))
 		{
 			bool isCurrent = track.TrackId == currentTrackId;
 			_tracksLeaderboardOverlay.AddTrackButton(track.TrackId, track.TrackName, isCurrent, track.HasPlayerScores);
 
-			// Connect button signal
 			var button = _tracksLeaderboardOverlay.GetTrackButton(track.TrackId);
 			if (button != null)
 			{
@@ -1063,7 +949,6 @@ public partial class RacingUIManager : Node
 			}
 		}
 
-		// Select first track or current track by default
 		if (_trackMetadataCache.Count > 0)
 		{
 			var defaultTrack = _trackMetadataCache.Values.FirstOrDefault(t => t.TrackId == currentTrackId) ??
@@ -1103,7 +988,6 @@ public partial class RacingUIManager : Node
 			return;
 		}
 
-		// Load leaderboard data asynchronously
 		LoadLeaderboardDataAsync(trackId);
 	}
 
@@ -1134,7 +1018,6 @@ public partial class RacingUIManager : Node
 			// Note: Leaderboard should work even when no user is logged in (shows all players)
 			var playerId = _currentPlayerId;
 
-			// Query backend for leaderboard data using singleton service
 			if (_racingEventService == null)
 			{
 				GD.PrintErr("[RacingUIManager] Racing event service not initialized");
@@ -1142,14 +1025,12 @@ public partial class RacingUIManager : Node
 				return;
 			}
 
-			// Get track lap count from metadata
-			int trackLaps = 3; // Default
+			int trackLaps = 3;
 			if (_trackMetadataCache.TryGetValue(trackId, out var trackMetadata))
 			{
 				trackLaps = trackMetadata.DefaultLaps;
 			}
 
-			// Validate parameters before query
 			if (trackLaps <= 0)
 			{
 				GD.PrintErr($"[RacingUIManager] Invalid lap count {trackLaps} for track {trackId}");
@@ -1175,7 +1056,6 @@ public partial class RacingUIManager : Node
 
 					if (leaderboardResult.HasValue && leaderboardResult.Value.IsSuccess(out _))
 					{
-						// Success - break out of retry loop
 						break;
 					}
 					else if (leaderboardResult.HasValue && leaderboardResult.Value.IsFailure(out var retryError))
@@ -1184,7 +1064,6 @@ public partial class RacingUIManager : Node
 
 						if (attempt < MAX_RETRIES)
 						{
-							// Exponential backoff before retry
 							int delayMs = 1000 * attempt;
 							GD.Print($"[RacingUIManager] Retrying in {delayMs}ms...");
 							await System.Threading.Tasks.Task.Delay(delayMs);
@@ -1197,25 +1076,21 @@ public partial class RacingUIManager : Node
 
 					if (attempt == MAX_RETRIES)
 					{
-						// Final attempt failed, throw to outer catch
 						throw;
 					}
 					else
 					{
-						// Retry with backoff
 						int delayMs = 1000 * attempt;
 						await System.Threading.Tasks.Task.Delay(delayMs);
 					}
 				}
 			}
 
-			// Process result after retry loop
 			if (leaderboardResult.HasValue && leaderboardResult.Value.IsSuccess(out var finalLeaderboard))
 			{
 				var lapEntries = new List<LeaderboardEntry>();
 				var raceEntries = new List<LeaderboardEntry>();
 
-				// Check if leaderboard is empty (no scores yet)
 				if (finalLeaderboard.Leaderboard == null || finalLeaderboard.Leaderboard.Count == 0)
 				{
 					GD.Print($"[RacingUIManager] Leaderboard for {trackId} is empty (no scores yet)");
@@ -1226,7 +1101,6 @@ public partial class RacingUIManager : Node
 				}
 				else
 				{
-					// Convert to LeaderboardEntry format for race entries
 					for (int i = 0; i < finalLeaderboard.Leaderboard.Count; i++)
 					{
 						var entry = finalLeaderboard.Leaderboard[i];
@@ -1250,12 +1124,10 @@ public partial class RacingUIManager : Node
 					callable.CallDeferred();
 				}
 
-				// Reset failure counter on success
 				_leaderboardFailureCount = 0;
 			}
 			else
 			{
-				// All retries failed
 				_leaderboardFailureCount++;
 				GD.PrintErr($"[RacingUIManager] All {MAX_RETRIES} attempts failed to load leaderboard ({_leaderboardFailureCount}/{MAX_LEADERBOARD_FAILURES})");
 				UpdateLeaderboardFallback(trackId);
@@ -1314,7 +1186,6 @@ public partial class RacingUIManager : Node
 		{
 			_currentPlayerId = playerId;
 
-			// Get enhanced metadata with leaderboard data
 			var enhancedMetadata = await EnhanceTrackMetadataWithScores(baseTrackMetadata, playerId);
 
 			// Check validity after async operation - scene could be destroyed
@@ -1323,14 +1194,12 @@ public partial class RacingUIManager : Node
 				return;
 			}
 
-			// Update cache and UI
 			_trackMetadataCache = enhancedMetadata;
 
 			if (_tracksLeaderboardOverlay?.IsVisible == true)
 			{
 				PopulateTrackList(currentTrackId);
 
-				// Refresh leaderboard for currently selected track
 				if (!string.IsNullOrEmpty(_tracksLeaderboardOverlay.SelectedTrackId))
 				{
 					UpdateLeaderboardForTrack(_tracksLeaderboardOverlay.SelectedTrackId);
@@ -1350,7 +1219,6 @@ public partial class RacingUIManager : Node
 	{
 		var enhancedMetadata = new Dictionary<string, TrackMetadata>();
 
-		// Copy base metadata
 		foreach (var kvp in baseMetadata)
 		{
 			enhancedMetadata[kvp.Key] = new TrackMetadata
@@ -1378,20 +1246,12 @@ public partial class RacingUIManager : Node
 		return Task.FromResult(enhancedMetadata);
 	}
 
-	/// <summary>
-	/// Check if tracks & leaderboard overlay is visible
-	/// </summary>
 	public bool IsTracksLeaderboardVisible => _tracksLeaderboardOverlay?.IsVisible ?? false;
 
-	/// <summary>
-	/// Update UI settings from external configuration
-	/// </summary>
-	/// <param name="timeTrialCreditCost">Credit cost for time trial</param>
 	public void UpdateSettings(int timeTrialCreditCost)
 	{
 		TimeTrialCreditCost = timeTrialCreditCost;
 
-		// Update time trial button text if it exists
 		if (_timeTrialButton != null)
 		{
 			string timeTrialText = "Start Time Trial (3 Laps)";
@@ -1404,12 +1264,8 @@ public partial class RacingUIManager : Node
 		}
 	}
 
-	/// <summary>
-	/// Handle credits acquired event to update button states
-	/// </summary>
 	public void OnCreditsAcquired()
 	{
-		// Update race complete overlay button states if visible
 		if (_raceCompleteOverlay != null && _raceCompleteOverlay.IsVisible)
 		{
 			// Assume player can now afford replay after purchasing credits
@@ -1427,8 +1283,8 @@ public partial class RacingUIManager : Node
 	{
 		int minutes = (int)(timeSeconds / 60.0f);
 		float seconds = timeSeconds % 60.0f;
-
-		// Pad minutes to 2 digits for consistent text width
 		return $"{minutes:00}:{seconds:00.000}";
 	}
+
+	#endregion
 }

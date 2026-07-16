@@ -13,9 +13,8 @@ public partial class MiningGame : GameController
 {
 	protected override string GetGameId() => "mining";
 
-	// ================================================================
-	// CONSTANTS
-	// ================================================================
+	#region Constants
+
 	private const int CREDITS_PER_PURCHASE = 1000;
 	private const string MAIN_SCENE_PATH = "res://_Core/Scenes/Main.tscn";
 
@@ -25,18 +24,16 @@ public partial class MiningGame : GameController
 		public const string BACKEND_UNAVAILABLE_MESSAGE = "Unable to connect to game server.\nPlease try again later or contact support if the issue persists.";
 	}
 
-	// ================================================================
-	// SIGNALS - External integration only
-	// ================================================================
+	#endregion
 
-	// Domain-specific lifecycle signals
+	#region Signals
+
 	[Signal]
 	public delegate void MiningSessionStartedEventHandler();
 
 	[Signal]
 	public delegate void MiningSessionEndedEventHandler();
 
-	// Game event signals
 	[Signal]
 	public delegate void GemsExtractedEventHandler(int amount, GemType gemType);
 
@@ -46,9 +43,10 @@ public partial class MiningGame : GameController
 	[Signal]
 	public delegate void UpgradePurchasedEventHandler(UpgradeType upgradeType, int newLevel);
 
-	// ================================================================
-	// EXPORT PROPERTIES
-	// ================================================================
+	#endregion
+
+	#region Exports
+
 	[ExportCategory("Game Settings")]
 	[Export]
 	public MiningGameConfig Config { get; set; }
@@ -67,16 +65,16 @@ public partial class MiningGame : GameController
 	/// </summary>
 	public override bool CanLogout => true;
 
-	// ================================================================
-	// PRIVATE FIELDS
-	// ================================================================
+	#endregion
+
+	#region Fields
+
 	private MiningGameUI _ui;
 	private MiningEngine _engine;
 	private MiningState _state;
 	private SessionEventService _eventService;
 	private MiningEventService _miningEventService;
 
-	// Platform services
 	private SessionManager _sessionManager;
 	private LocationManager _locationManager;
 
@@ -86,21 +84,12 @@ public partial class MiningGame : GameController
 	// Backend-derived location configuration
 	private MiningLocationConfig _locationConfig;
 
-	// ================================================================
-	// INITIALIZATION
-	// ================================================================
+	#endregion
 
-	/// <summary>
-	/// PHASE 1: Service Discovery
-	/// Discovers platform services and initializes event services
-	/// POST-CONDITION GUARANTEES:
-	/// - _eventService exists and is valid (REQUIRED)
-	/// - _miningEventService exists (REQUIRED)
-	/// - _sessionManager, _locationManager exist in production (REQUIRED)
-	/// </summary>
+	#region Initialization
+
 	protected override void OnDiscoverServices()
 	{
-		// Initialize REQUIRED event services
 		_eventService = SessionEventService.GetInstance();
 		if (_eventService == null)
 		{
@@ -113,10 +102,8 @@ public partial class MiningGame : GameController
 		_sessionManager = Platform.Session;
 		_locationManager = Platform.Location;
 
-		// Context detection and validation
 		if (Platform.IsProduction)
 		{
-			// Production: Validate all required services exist
 			if (_sessionManager == null)
 			{
 				throw new InvalidOperationException("SessionManager is required in production but not available");
@@ -134,12 +121,10 @@ public partial class MiningGame : GameController
 		}
 		else
 		{
-			// Development: Enable debug mode explicitly
 			EnableDebugMode = true;
 			GD.Print("[MiningGame] Development context detected - debug mode enabled");
 		}
 
-		// Check if loaded as direct scene - ensure MainController exists
 		bool isDirectSceneLoad = GetTree().CurrentScene == this;
 		if (isDirectSceneLoad)
 		{
@@ -167,16 +152,7 @@ public partial class MiningGame : GameController
 		}
 	}
 
-	/// <summary>
-	/// PHASE 2: Component Initialization
-	/// Creates game components (_engine, _state, _ui)
-	/// NOTE: Location config obtained asynchronously in OnActivateGame()
-	/// POST-CONDITION GUARANTEES:
-	/// - _engine exists and is valid
-	/// - _state exists and is valid
-	/// - _ui exists and is valid
-	/// - Config is not null
-	/// </summary>
+	// Location config is obtained asynchronously in OnActivateGame().
 	protected override void OnInitializeComponents()
 	{
 		Config ??= new MiningGameConfig();
@@ -193,9 +169,9 @@ public partial class MiningGame : GameController
 		_ui.Initialize(this, Config);
 	}
 
-	// ================================================================
-	// DOMAIN-SPECIFIC STATE - Mining Game checks player login status
-	// ================================================================
+	#endregion
+
+	#region Player State
 
 	/// <summary>
 	/// MiningGame uses login status as its primary state check
@@ -205,9 +181,10 @@ public partial class MiningGame : GameController
 		return !string.IsNullOrEmpty(GetCurrentUserPhoneNumber());
 	}
 
-	// ================================================================
-	// DOMAIN-SPECIFIC LIFECYCLE - Mining session management
-	// ================================================================
+	#endregion
+
+	#region Mining Session Lifecycle
+
 	public void StartMiningSession()
 	{
 		if (!IsPlayerLoggedIn())
@@ -227,24 +204,22 @@ public partial class MiningGame : GameController
 		_engine.StopMining();
 		_ui.SetEnabled(false);
 
-		// Notify platform that game session ended
 		Platform.Host?.NotifyGameEnded();
 
 		EmitSignal(SignalName.MiningSessionEnded);
 		GD.Print("[MiningGame] Mining session ended");
 	}
 
-	// ================================================================
-	// GAME SESSION INITIALIZATION
-	// ================================================================
+	#endregion
+
+	#region Session Initialization
+
 	private async void InitializeGameSession()
 	{
 		try
 		{
-			// Create backend activity session if we have a valid player
 			await TryCreateBackendSession();
 
-			// Load user data if logged in
 			if (!string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
 			{
 				await _state.LoadUserDataAsync();
@@ -259,7 +234,6 @@ public partial class MiningGame : GameController
 
 			_engine.StartMining();
 
-			// Update UI based on login state
 			bool isLoggedIn = !string.IsNullOrEmpty(GetCurrentUserPhoneNumber());
 			_ui.SetEnabled(isLoggedIn);
 			if (isLoggedIn)
@@ -267,7 +241,6 @@ public partial class MiningGame : GameController
 				_ui.UpdateAllUI();
 			}
 
-			// Notify platform that game session started
 			Platform.Host?.NotifyGameStarted();
 		}
 		catch (Exception ex)
@@ -312,12 +285,10 @@ public partial class MiningGame : GameController
 	}
 
 	/// <summary>
-	/// PHASE 4: Activation Decision
 	/// Registers location with backend, then starts mining session if user logged in
 	/// </summary>
 	protected override void OnActivateGame()
 	{
-		// Start async location registration
 		RegisterLocationAndActivateAsync();
 	}
 
@@ -325,7 +296,6 @@ public partial class MiningGame : GameController
 	{
 		try
 		{
-			// Get venue name from environment
 			var venueName = _locationManager?.VenueName ?? "dev_location";
 			if (string.IsNullOrEmpty(venueName))
 			{
@@ -348,7 +318,6 @@ public partial class MiningGame : GameController
 			{
 				GD.PrintErr($"[MiningGame] Location registration failed: {error.Message}");
 
-				// Use dev fallback in non-production
 				if (Platform.IsDevelopment)
 				{
 					GD.Print("[MiningGame] Using dev fallback config");
@@ -356,7 +325,6 @@ public partial class MiningGame : GameController
 				}
 				else
 				{
-					// Show error UI in production
 					ShowRegistrationError(error.Message);
 					return;
 				}
@@ -367,16 +335,13 @@ public partial class MiningGame : GameController
 				GD.Print($"[MiningGame] Location registered: {config.VenueName} → {config.GemTypeString}");
 			}
 
-			// Check validity again
 			if (!IsInstanceValid(this) || !IsInstanceValid(_ui))
 			{
 				return;
 			}
 
-			// Apply location config to UI
 			_ui.ApplyLocationConfig(_locationConfig);
 
-			// Now proceed with activation
 			if (IsPlayerLoggedIn())
 			{
 				StartMiningSession();
@@ -431,13 +396,11 @@ public partial class MiningGame : GameController
 
 	protected override void OnGameTeardown()
 	{
-		// Cleanup engine
 		if (IsInstanceValid(_engine))
 		{
 			_engine.StopMining();
 		}
 
-		// Cleanup state
 		if (IsInstanceValid(_state))
 		{
 			_state.ClearAllState();
@@ -477,9 +440,10 @@ public partial class MiningGame : GameController
 				"• 🚀 Mining Speed - Decreases time between mining cycles");
 	}
 
-	// ================================================================
-	// INTERNAL ACCESSORS - Encapsulated access to private fields
-	// ================================================================
+	#endregion
+
+	#region Internal Accessors
+
 	internal MiningEventService GetEventService() => _miningEventService;
 
 	internal LocationManager GetLocationManager() => _locationManager;
@@ -499,9 +463,10 @@ public partial class MiningGame : GameController
 
 	internal MiningLocationConfig GetLocationConfig() => _locationConfig;
 
-	// ================================================================
-	// PUBLIC API
-	// ================================================================
+	#endregion
+
+	#region Public API
+
 	public bool CanExtractGems() => _state.CanExtractGems();
 
 	public bool CanPurchaseCredit() => _state.CanPurchaseCredit();
@@ -592,9 +557,10 @@ public partial class MiningGame : GameController
 		return _sessionManager?.GetPrimarySession()?.PhoneNumber;
 	}
 
-	// ================================================================
-	// EVENT HANDLERS
-	// ================================================================
+	#endregion
+
+	#region Event Handlers
+
 	protected override void OnUserLoggedIn(UserSession session)
 	{
 		if (_isProcessingUserChange)
@@ -653,4 +619,5 @@ public partial class MiningGame : GameController
 			_isProcessingUserChange = false;
 		}
 	}
+	#endregion
 }

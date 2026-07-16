@@ -5,15 +5,13 @@ using Godot;
 namespace BarBox.Games.Racing;
 
 /// <summary>
-/// Unified racing car that combines physics, input handling, and racing system integration
-/// Simplified from the previous RacingPlayer → RacingCarController inheritance chain
+/// Unified racing car that combines physics, input handling, and racing system integration.
 /// </summary>
 [GlobalClass]
 public partial class RacingCar : BasePlayer
 {
-	// ================================================================
-	// EXPORT PROPERTIES - CAR SETTINGS
-	// ================================================================
+	#region Exports
+
 	[ExportCategory("Car Settings")]
 	[Export]
 	public Vector2 CarSize { get; set; } = new Vector2(80, 160);
@@ -63,9 +61,10 @@ public partial class RacingCar : BasePlayer
 	[Export]
 	public float TurnPenaltyLerpSpeed { get; set; } = 3.0f;
 
-	// ================================================================
-	// CONSTANTS - POSITIONING RATIOS
-	// ================================================================
+	#endregion
+
+	#region Constants
+
 	private const float CAR_VISUAL_OFFSET_RATIO = 0.125f;
 	private const float HEADLIGHT_CONE_HALF_WIDTH_RATIO = 0.5f;
 	private const float HEADLIGHT_HORIZONTAL_OFFSET_RATIO = 0.375f;
@@ -75,9 +74,9 @@ public partial class RacingCar : BasePlayer
 	private const float CAR_BACK_VERTICAL_RATIO = 1.5f;
 	private const float TIRE_OFFSET_RATIO = 0.625f;
 
-	// ================================================================
-	// SYSTEM DEPENDENCIES - RACING SYSTEMS
-	// ================================================================
+	#endregion
+
+	#region Fields
 
 	// References to racing game systems for modifiers and transformations
 	private RacingCameraController _cameraController;
@@ -89,17 +88,11 @@ public partial class RacingCar : BasePlayer
 	/// </summary>
 	public Func<bool> InputEnabledCallback { get; set; }
 
-	// ================================================================
-	// CAR PHYSICS COMPONENTS
-	// ================================================================
 	protected CharacterBody2D _carBody;
 	protected CollisionShape2D _carCollision;
 	protected ColorRect _carVisual;
 	protected Polygon2D _headlightCone;
 
-	// ================================================================
-	// CAR PHYSICS STATE
-	// ================================================================
 	protected Vector2 _targetPosition;
 	protected Vector2 _lastTargetPosition;
 	protected Vector2 _velocity = Vector2.Zero;
@@ -107,24 +100,14 @@ public partial class RacingCar : BasePlayer
 	protected bool _hasInput = false;
 	private int _activeFingerId = -1;
 
-	// ================================================================
-	// FRICTIONLESS ZONE STATE
-	// ================================================================
 	private bool _isInFrictionlessState = false;
 	private float _frictionlessTimeRemaining = 0.0f;
 	private Vector2 _lockedVelocity = Vector2.Zero;
 	private float _lockedRotation = 0.0f;
 
-	// ================================================================
-	// TURN PENALTY STATE
-	// ================================================================
 	private float _previousRotation;
 	private float _angularVelocity;
 	private float _currentTurnPenalty = 1.0f;
-
-	// ================================================================
-	// CACHED POSITION DATA
-	// ================================================================
 
 	// Cached directional vectors for performance
 	protected Vector2 _cachedCarForward = Vector2.Zero;
@@ -137,22 +120,16 @@ public partial class RacingCar : BasePlayer
 	protected Vector2 _cachedRightTirePosition = Vector2.Zero;
 	protected Vector2 _cachedClampedTargetPosition = Vector2.Zero;
 
-	// Cache invalidation flag
 	protected bool _positionCacheDirty = true;
 
-	// ================================================================
-	// INPUT MANAGEMENT
-	// ================================================================
 	protected InputManager _inputManager;
 
-	// ================================================================
-	// PUBLIC PROPERTIES
-	// ================================================================
 	public bool IsInitialized => _cameraController != null && _trackValidationSystem != null;
 
-	// ================================================================
-	// INITIALIZATION
-	// ================================================================
+	#endregion
+
+	#region Initialization
+
 	protected override void InitializePlayer()
 	{
 		base.InitializePlayer();
@@ -163,7 +140,6 @@ public partial class RacingCar : BasePlayer
 
 	public void Initialize(RacingCameraController cameraController, RacingTrackValidationSystem trackValidationSystem, string playerId = "player1", string playerName = "Player")
 	{
-		// Validate required dependencies
 		if (string.IsNullOrEmpty(playerId))
 		{
 			throw new System.ArgumentException("Player ID cannot be null or empty", nameof(playerId));
@@ -177,7 +153,6 @@ public partial class RacingCar : BasePlayer
 		_cameraController = cameraController ?? throw new System.ArgumentNullException(nameof(cameraController), "Camera controller is required for car initialization");
 		_trackValidationSystem = trackValidationSystem ?? throw new System.ArgumentNullException(nameof(trackValidationSystem), "Track validation system is required for car initialization");
 
-		// Set player properties
 		PlayerId = playerId;
 		PlayerName = playerName;
 
@@ -196,32 +171,29 @@ public partial class RacingCar : BasePlayer
 		CarSize = carSize;
 	}
 
-	// ================================================================
-	// CAR BODY SETUP
-	// ================================================================
+	#endregion
+
+	#region Car Body Setup
+
 	protected virtual void SetupCarBody()
 	{
 		_carBody = new CharacterBody2D();
 		AddChild(_carBody);
 
-		// Car visual
 		_carVisual = new ColorRect();
 		_carVisual.Size = CarSize;
 		_carVisual.Color = Colors.Red;
 		_carVisual.Position = new Vector2(-CarSize.X * CAR_VISUAL_OFFSET_RATIO, -CarSize.Y * CAR_VISUAL_OFFSET_RATIO);
 		_carBody.AddChild(_carVisual);
 
-		// Car collision
 		_carCollision = new CollisionShape2D();
 		var carShape = new RectangleShape2D();
 		carShape.Size = CarSize;
 		_carCollision.Shape = carShape;
 		_carBody.AddChild(_carCollision);
 
-		// Position car at player position
 		_carBody.GlobalPosition = GlobalPosition;
 
-		// Setup headlight cone
 		SetupHeadlightCone();
 	}
 
@@ -257,9 +229,10 @@ public partial class RacingCar : BasePlayer
 		_headlightCone.Position = Vector2.Zero;
 	}
 
-	// ================================================================
-	// INPUT SYSTEM SETUP
-	// ================================================================
+	#endregion
+
+	#region Input System Setup
+
 	protected virtual void SetupInputManager()
 	{
 		_inputManager = InputManager.GetAutoload();
@@ -274,9 +247,10 @@ public partial class RacingCar : BasePlayer
 		_inputManager.ClickEnded += OnClickEnded;
 	}
 
-	// ================================================================
-	// CORE GAME LOOP
-	// ================================================================
+	#endregion
+
+	#region Core Game Loop
+
 	public override void _Process(double delta)
 	{
 		if (!IsActive())
@@ -284,17 +258,14 @@ public partial class RacingCar : BasePlayer
 			return;
 		}
 
-		// Check racing state before processing any input
 		if (!IsRacingInputEnabled())
 		{
-			// Clear any existing input when state doesn't allow it
 			_hasInput = false;
 			_activeFingerId = -1;
 		}
 
 		float deltaF = (float)delta;
 
-		// Poll for current input position
 		if (_inputManager != null && IsInstanceValid(_inputManager) && _hasInput)
 		{
 			if (_inputManager.IsTouchActive())
@@ -313,9 +284,10 @@ public partial class RacingCar : BasePlayer
 		UpdateCarPhysics(deltaF);
 	}
 
-	// ================================================================
-	// CAR PHYSICS AND MOVEMENT
-	// ================================================================
+	#endregion
+
+	#region Physics And Movement
+
 	protected virtual void UpdateCarPhysics(float delta)
 	{
 		// Check for frictionless state first - maintains locked velocity and ignores all input
@@ -325,10 +297,8 @@ public partial class RacingCar : BasePlayer
 			return;
 		}
 
-		// Check if we should enter frictionless state from zone manager
 		CheckFrictionlessZoneEntry();
 
-		// Update turn penalty based on angular velocity
 		UpdateTurnPenalty(delta);
 
 		Vector2 inputDirection = Vector2.Zero;
@@ -336,7 +306,6 @@ public partial class RacingCar : BasePlayer
 
 		if (_hasInput)
 		{
-			// Calculate direction and distance to target
 			var directionToTarget = _targetPosition - _carBody.GlobalPosition;
 			var distanceToTarget = directionToTarget.Length();
 
@@ -361,10 +330,8 @@ public partial class RacingCar : BasePlayer
 			targetSpeed = 0.0f;
 		}
 
-		// Apply track penalties and zone modifiers
 		targetSpeed *= GetSpeedModifier();
 
-		// Update velocity
 		if (targetSpeed > _currentSpeed)
 		{
 			_currentSpeed = Mathf.MoveToward(_currentSpeed, targetSpeed, AccelerationRate * GetAccelerationModifier() * delta);
@@ -376,10 +343,8 @@ public partial class RacingCar : BasePlayer
 
 		if (_currentSpeed > 0.1f && inputDirection != Vector2.Zero)
 		{
-			// Apply turn penalty to rotation speed
 			var effectiveRotationSpeed = RotationLerpSpeed * GetTurnModifier() * delta;
 
-			// Lerp car rotation towards target direction
 			if (_hasInput)
 			{
 				var targetDirection = (_targetPosition - _carBody.GlobalPosition).Normalized();
@@ -392,7 +357,6 @@ public partial class RacingCar : BasePlayer
 				_carBody.Rotation = Mathf.LerpAngle(_carBody.Rotation, _velocity.Angle() + (Mathf.Pi / 2), effectiveRotationSpeed);
 			}
 
-			// Calculate velocity relative to car's forward direction
 			var carForward = new Vector2(Mathf.Sin(_carBody.Rotation), -Mathf.Cos(_carBody.Rotation));
 			_velocity = carForward * _currentSpeed * GetTurnModifier();
 		}
@@ -401,16 +365,16 @@ public partial class RacingCar : BasePlayer
 			_velocity = Vector2.Zero;
 		}
 
-		// Apply movement
 		_carBody.Velocity = _velocity;
 		_carBody.MoveAndSlide();
 
 		InvalidatePositionCache();
 	}
 
-	// ================================================================
-	// FRICTIONLESS ZONE HANDLING
-	// ================================================================
+	#endregion
+
+	#region Frictionless Zone Handling
+
 	private void CheckFrictionlessZoneEntry()
 	{
 		var zoneManager = _trackValidationSystem.GetZoneManager();
@@ -444,7 +408,6 @@ public partial class RacingCar : BasePlayer
 		_lockedVelocity = velocity;
 		_lockedRotation = rotation;
 
-		// Ensure the car body has the locked rotation
 		_carBody.Rotation = rotation;
 	}
 
@@ -452,19 +415,16 @@ public partial class RacingCar : BasePlayer
 	{
 		_frictionlessTimeRemaining -= delta;
 
-		// Check if effect has expired
 		if (_frictionlessTimeRemaining <= 0)
 		{
 			ExitFrictionlessState();
 			return;
 		}
 
-		// Maintain locked velocity and rotation - ignore all input
 		_carBody.Rotation = _lockedRotation;
 		_carBody.Velocity = _lockedVelocity;
 		_carBody.MoveAndSlide();
 
-		// Update velocity to match actual movement
 		_velocity = _lockedVelocity;
 		_currentSpeed = _lockedVelocity.Length();
 
@@ -483,9 +443,10 @@ public partial class RacingCar : BasePlayer
 
 	public float FrictionlessTimeRemaining => _frictionlessTimeRemaining;
 
-	// ================================================================
-	// TURN PENALTY CALCULATION
-	// ================================================================
+	#endregion
+
+	#region Turn Penalty Calculation
+
 	private void UpdateTurnPenalty(float delta)
 	{
 		if (delta <= 0)
@@ -510,14 +471,14 @@ public partial class RacingCar : BasePlayer
 
 	private float GetTurnAccelerationPenalty()
 	{
-		// Calculate accel-specific penalty based on current angular velocity
 		float turnIntensity = Mathf.Clamp(_angularVelocity / MaxAngularVelocityForPenalty, 0f, 1f);
 		return 1.0f - (turnIntensity * (1.0f - TurnPenaltyAccelMultiplier));
 	}
 
-	// ================================================================
-	// POSITION CACHE MANAGEMENT
-	// ================================================================
+	#endregion
+
+	#region Position Cache Management
+
 	protected virtual void UpdatePositionCache()
 	{
 		if (!_positionCacheDirty || _carBody == null)
@@ -525,7 +486,6 @@ public partial class RacingCar : BasePlayer
 			return;
 		}
 
-		// Cache directional vectors based on car rotation
 		_cachedCarForward = new Vector2(Mathf.Sin(_carBody.Rotation), -Mathf.Cos(_carBody.Rotation));
 		_cachedCarRight = new Vector2(_cachedCarForward.Y, -_cachedCarForward.X);
 
@@ -566,9 +526,10 @@ public partial class RacingCar : BasePlayer
 		_positionCacheDirty = true;
 	}
 
-	// ================================================================
-	// RACING-SPECIFIC INTEGRATIONS
-	// ================================================================
+	#endregion
+
+	#region Racing-Specific Integrations
+
 	protected virtual Vector2 TransformScreenToWorldPosition(Vector2 screenPosition)
 	{
 		return _cameraController?.TransformScreenToWorldPosition(screenPosition) ?? screenPosition;
@@ -611,9 +572,10 @@ public partial class RacingCar : BasePlayer
 		return _trackValidationSystem.GetTurnModifier(carBody, carBody.GlobalPosition);
 	}
 
-	// ================================================================
-	// INPUT HANDLERS
-	// ================================================================
+	#endregion
+
+	#region Input Handlers
+
 	private bool IsRacingInputEnabled()
 	{
 		return InputEnabledCallback?.Invoke() ?? true;
@@ -657,9 +619,9 @@ public partial class RacingCar : BasePlayer
 		OnTouchEnded(position, 0);
 	}
 
-	// ================================================================
-	// CAR MANAGEMENT
-	// ================================================================
+	#endregion
+
+	#region Car Management
 
 	/// <summary>
 	/// Resets all physics state to ensure clean positioning
@@ -673,7 +635,6 @@ public partial class RacingCar : BasePlayer
 			carBody.Rotation = rotation;
 		}
 
-		// Reset all internal physics state to ensure clean positioning
 		ResetCarState();
 
 		InvalidatePositionCache();
@@ -698,22 +659,21 @@ public partial class RacingCar : BasePlayer
 		_hasInput = false;
 		_activeFingerId = -1;
 
-		// Reset frictionless state
 		_isInFrictionlessState = false;
 		_frictionlessTimeRemaining = 0.0f;
 		_lockedVelocity = Vector2.Zero;
 		_lockedRotation = 0.0f;
 
-		// Also reset the car body's physics velocity
 		if (_carBody != null)
 		{
 			_carBody.Velocity = Vector2.Zero;
 		}
 	}
 
-	// ================================================================
-	// DEPENDENCY MANAGEMENT
-	// ================================================================
+	#endregion
+
+	#region Dependency Management
+
 	public void UpdateDependencies(RacingCameraController cameraController, RacingTrackValidationSystem trackValidationSystem)
 	{
 		_cameraController = cameraController;
@@ -725,9 +685,10 @@ public partial class RacingCar : BasePlayer
 		return _cameraController != null && _trackValidationSystem != null;
 	}
 
-	// ================================================================
-	// PUBLIC ACCESSORS
-	// ================================================================
+	#endregion
+
+	#region Public Accessors
+
 	public CharacterBody2D GetCarBody() => _carBody;
 
 	public Vector2 GetVelocity() => _velocity;
@@ -815,7 +776,6 @@ public partial class RacingCar : BasePlayer
 		HeadlightWidth = width;
 		HeadlightColor = color;
 
-		// Update existing headlight if it exists
 		if (_headlightCone != null && GodotObject.IsInstanceValid(_headlightCone))
 		{
 			_headlightCone.Visible = enabled;
@@ -836,9 +796,10 @@ public partial class RacingCar : BasePlayer
 		}
 	}
 
-	// ================================================================
-	// CLEANUP
-	// ================================================================
+	#endregion
+
+	#region Cleanup
+
 	public override void _ExitTree()
 	{
 		if (_inputManager != null && GodotObject.IsInstanceValid(_inputManager))
@@ -851,4 +812,6 @@ public partial class RacingCar : BasePlayer
 
 		base._ExitTree();
 	}
+
+	#endregion
 }
