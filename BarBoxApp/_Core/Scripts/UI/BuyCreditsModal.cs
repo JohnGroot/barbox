@@ -35,7 +35,6 @@ public partial class BuyCreditsModal : Control
 	private const string PAYMENT_TIMEOUT_TEXT = "Payment timed out";
 	private const float POLL_TIMEOUT = 120.0f;
 
-	/// <summary>QR code display size in pixels (80% larger than original 250x250)</summary>
 	public const float QR_CODE_SIZE = 450.0f;
 
 	private Panel _modalBackground;
@@ -47,7 +46,6 @@ public partial class BuyCreditsModal : Control
 	private Button _closeButton;
 	private Label _statusLabel;
 
-	// QR code view elements
 	private VBoxContainer _qrContainer;
 	private TextureRect _qrCodeTexture;
 	private Label _qrInstructionLabel;
@@ -179,7 +177,6 @@ public partial class BuyCreditsModal : Control
 		_statusLabel.CustomMinimumSize = new Vector2(0, 30);
 		_contentContainer.AddChild(_statusLabel);
 
-		// Create QR code view (initially hidden)
 		CreateQRCodeView();
 	}
 
@@ -200,21 +197,18 @@ public partial class BuyCreditsModal : Control
 		_modalPanel.AddChild(qrMargin);
 		qrMargin.AddChild(_qrContainer);
 
-		// Instruction label
 		_qrInstructionLabel = new Label();
 		_qrInstructionLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		_qrInstructionLabel.AddThemeColorOverride("font_color", Colors.White);
 		_qrInstructionLabel.AddThemeFontSizeOverride("font_size", 36);
 		_qrContainer.AddChild(_qrInstructionLabel);
 
-		// User info label (username - credits)
 		_qrUserInfoLabel = new Label();
 		_qrUserInfoLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		_qrUserInfoLabel.AddThemeColorOverride("font_color", Colors.LightGray);
 		_qrUserInfoLabel.AddThemeFontSizeOverride("font_size", 24);
 		_qrContainer.AddChild(_qrUserInfoLabel);
 
-		// QR code texture
 		var qrCenter = new CenterContainer();
 		_qrCodeTexture = new TextureRect();
 		_qrCodeTexture.CustomMinimumSize = new Vector2(QR_CODE_SIZE, QR_CODE_SIZE);
@@ -223,7 +217,6 @@ public partial class BuyCreditsModal : Control
 		qrCenter.AddChild(_qrCodeTexture);
 		_qrContainer.AddChild(qrCenter);
 
-		// Cancel button
 		var qrButtonContainer = new HBoxContainer();
 		qrButtonContainer.Alignment = BoxContainer.AlignmentMode.Center;
 		_qrContainer.AddChild(qrButtonContainer);
@@ -236,7 +229,6 @@ public partial class BuyCreditsModal : Control
 		// Signal connected in ConnectSignals() via CallDeferred to ensure services are initialized
 		qrButtonContainer.AddChild(_qrCancelButton);
 
-		// Progress bar container at bottom
 		var progressBarContainer = new VBoxContainer();
 		progressBarContainer.SizeFlagsVertical = Control.SizeFlags.ShrinkEnd;
 
@@ -255,13 +247,11 @@ public partial class BuyCreditsModal : Control
 		_timeoutProgressBar.CustomMinimumSize = new Vector2(0, 8);
 		_timeoutProgressBar.ShowPercentage = false;
 
-		// Style the progress bar fill (green draining bar)
 		var fillStyle = new StyleBoxFlat();
 		fillStyle.BgColor = new Color(0.3f, 0.7f, 0.3f, 1.0f);
 		fillStyle.SetCornerRadiusAll(4);
 		_timeoutProgressBar.AddThemeStyleboxOverride("fill", fillStyle);
 
-		// Style the progress bar background
 		var bgStyle = new StyleBoxFlat();
 		bgStyle.BgColor = new Color(0.3f, 0.3f, 0.3f, 1.0f);
 		bgStyle.SetCornerRadiusAll(4);
@@ -306,7 +296,6 @@ public partial class BuyCreditsModal : Control
 			_qrCancelButton.Pressed += OnQRCancelPressed;
 		}
 
-		// Connect to PaymentService generic events
 		ConnectPaymentEvents();
 
 		_signalsConnected = true;
@@ -338,7 +327,6 @@ public partial class BuyCreditsModal : Control
 
 	private void OnPaymentUrlReady(string paymentUrl)
 	{
-		// Generate QR code from URL using cache
 		var qrTexture = _qrCache.GetOrCreateQRCode(paymentUrl);
 		if (qrTexture != null)
 		{
@@ -385,13 +373,11 @@ public partial class BuyCreditsModal : Control
 		_qrCodeTexture.Texture = qrTexture;
 		_qrInstructionLabel.Text = string.Format(QR_SCAN_TEXT, price);
 
-		// Show user info in QR view
 		if (_qrUserInfoLabel != null && !string.IsNullOrEmpty(_currentUsername))
 		{
 			_qrUserInfoLabel.Text = string.Format(USER_INFO_FORMAT, _currentUsername, _currentBalance);
 		}
 
-		// Reset progress bar
 		if (_timeoutProgressBar != null)
 		{
 			_timeoutProgressBar.Value = POLL_TIMEOUT;
@@ -411,7 +397,6 @@ public partial class BuyCreditsModal : Control
 
 		_qrCodeTexture.Texture = null;
 
-		// Reset progress bar state
 		if (_timeoutProgressBar != null)
 		{
 			_timeoutProgressBar.Value = POLL_TIMEOUT;
@@ -425,14 +410,12 @@ public partial class BuyCreditsModal : Control
 
 	private async void OnPaymentTimedOut()
 	{
-		// Show timeout message above progress bar
 		if (_timeoutMessageLabel != null)
 		{
 			_timeoutMessageLabel.Text = PAYMENT_TIMEOUT_TEXT;
 			_timeoutMessageLabel.Visible = true;
 		}
 
-		// Wait 2 seconds, then auto-close
 		await Task.Delay(2000);
 
 		if (IsInsideTree())
@@ -500,7 +483,6 @@ public partial class BuyCreditsModal : Control
 		Visible = false;
 		ClearStatusMessage();
 
-		// Cancel payment and hide QR view if showing
 		if (_showingQRCode)
 		{
 			_paymentService?.CancelPayment();
@@ -566,7 +548,6 @@ public partial class BuyCreditsModal : Control
 			return;
 		}
 
-		// Store pending pack for QR code display
 		_pendingPurchasePack = creditPack;
 
 		var confirmMessage = string.Format(PURCHASE_CONFIRMATION_FORMAT, creditPack.DisplayName);
@@ -588,7 +569,6 @@ public partial class BuyCreditsModal : Control
 			var playerId = SessionManager.GetPlayerIdFromPhone(_targetPhoneNumber);
 			var result = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
-			// Hide QR view (if showing) before showing result
 			if (_showingQRCode)
 			{
 				HideQRCodeView();
@@ -619,7 +599,6 @@ public partial class BuyCreditsModal : Control
 		}
 		catch (Exception ex)
 		{
-			// Hide QR view on error
 			if (_showingQRCode)
 			{
 				HideQRCodeView();
@@ -661,7 +640,6 @@ public partial class BuyCreditsModal : Control
 
 	public override void _ExitTree()
 	{
-		// Disconnect PaymentService events
 		DisconnectPaymentEvents();
 
 		// Only disconnect button signals if they were connected
@@ -679,7 +657,6 @@ public partial class BuyCreditsModal : Control
 			}
 		}
 
-		// Cleanup QR cache
 		_qrCache?.ClearCache();
 
 		base._ExitTree();

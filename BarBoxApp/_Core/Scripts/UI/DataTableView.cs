@@ -77,17 +77,14 @@ public partial class DataTableView : Control
 
 	private void SetupTableStructure()
 	{
-		// Clean up existing containers if they exist
 		_scrollContainer?.QueueFree();
 		_scrollContainer = null;
 
-		// Set minimum size for the DataTableView control itself
 		if (CustomMinimumSize.X <= 0 || CustomMinimumSize.Y <= 0)
 		{
 			CustomMinimumSize = new Vector2(400, 200);
 		}
 
-		// Create scroll container
 		_scrollContainer = new ScrollContainer();
 		_scrollContainer.AnchorLeft = 0;
 		_scrollContainer.AnchorTop = 0;
@@ -95,7 +92,6 @@ public partial class DataTableView : Control
 		_scrollContainer.AnchorBottom = 1;
 		AddChild(_scrollContainer);
 
-		// Create grid container
 		_gridContainer = new GridContainer();
 		_gridContainer.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		_gridContainer.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
@@ -158,16 +154,13 @@ public partial class DataTableView : Control
 			return;
 		}
 
-		// Set grid columns
 		_gridContainer.Columns = _columns.Count;
 
-		// Create headers if enabled
 		if (ShowHeaders)
 		{
 			CreateHeaders();
 		}
 
-		// Create data rows
 		CreateDataRows();
 	}
 
@@ -198,13 +191,11 @@ public partial class DataTableView : Control
 			headerButton.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			headerButton.CustomMinimumSize = new Vector2(column.Width > 0 ? column.Width : 0, HeaderHeight);
 
-			// Header styling
 			headerButton.AddThemeColorOverride("font_color", HeaderTextColor);
 			headerButton.AddThemeColorOverride("font_color_hover", HeaderTextColor);
 			headerButton.AddThemeColorOverride("font_color_pressed", HeaderTextColor);
 			headerButton.AddThemeColorOverride("font_color_disabled", HeaderTextColor);
 
-			// Add sort indicator if column is sortable
 			if (column.IsSortable)
 			{
 				string sortIndicator = string.Empty;
@@ -215,7 +206,6 @@ public partial class DataTableView : Control
 
 				headerButton.Text = column.Header + sortIndicator;
 
-				// Connect sort signal
 				var columnHeader = column.Header; // Capture for closure
 				headerButton.Pressed += () => SortByColumn(columnHeader);
 			}
@@ -254,18 +244,15 @@ public partial class DataTableView : Control
 	{
 		var label = new Label();
 
-		// Get cell value
 		string cellValue = column.ValueSelector?.Invoke(item) ?? string.Empty;
 		label.Text = cellValue;
 
-		// Basic styling
 		label.HorizontalAlignment = column.Alignment;
 		label.VerticalAlignment = VerticalAlignment.Center;
 		label.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		label.CustomMinimumSize = new Vector2(column.Width > 0 ? column.Width : 0, DefaultRowHeight);
 		label.AddThemeColorOverride("font_color", RowTextColor);
 
-		// Background color
 		var background = new ColorRect();
 		background.Color = backgroundColor;
 		background.AnchorLeft = 0;
@@ -275,17 +262,14 @@ public partial class DataTableView : Control
 		label.AddChild(background);
 		background.ZIndex = -1;
 
-		// Monospace font if requested
 		if (column.UseMonospaceFont)
 		{
 			// Note: In a real implementation, you might want to load a specific monospace font
 			label.AddThemeFontSizeOverride("font_size", 14);
 		}
 
-		// Apply custom styling if provided
 		column.CellStyler?.Invoke(label, item);
 
-		// Add padding
 		label.AddThemeConstantOverride("margin_left", CellPadding);
 		label.AddThemeConstantOverride("margin_right", CellPadding);
 
@@ -300,7 +284,6 @@ public partial class DataTableView : Control
 			return;
 		}
 
-		// Toggle sort direction if same column
 		if (_currentSortColumn == columnHeader)
 		{
 			_sortAscending = !_sortAscending;
@@ -311,26 +294,21 @@ public partial class DataTableView : Control
 			_sortAscending = true;
 		}
 
-		// Sort the data
 		if (column.SortComparer != null)
 		{
-			// Use custom comparer
 			_data = _sortAscending ?
 				[.. _data.OrderBy(x => x, Comparer<object>.Create((x, y) => column.SortComparer(x, y)))] :
 				[.. _data.OrderByDescending(x => x, Comparer<object>.Create((x, y) => column.SortComparer(x, y)))];
 		}
 		else
 		{
-			// Sort by string value
 			_data = _sortAscending ?
 				[.. _data.OrderBy(x => column.ValueSelector(x))] :
 				[.. _data.OrderByDescending(x => column.ValueSelector(x))];
 		}
 
-		// Refresh table display
 		RefreshTable();
 
-		// Emit signal
 		EmitSignal(SignalName.ColumnSorted, columnHeader, _sortAscending);
 	}
 

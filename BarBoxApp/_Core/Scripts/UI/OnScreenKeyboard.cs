@@ -98,29 +98,23 @@ public partial class OnScreenKeyboard : Control
 
 	#region Private Fields
 
-	// Layout data
 	private KeyboardLayout[] _layouts = [];
 	private int _activeLayoutIndex;
 	private string _previousLayoutName;
 
-	// Cached key rectangles for active layout
 	private KeyRect[] _keyRects = [];
 
-	// Input state
 	private int _hoveredKeyIndex = -1;
 	private int _pressedKeyIndex = -1;
 	private bool _uppercase;
 
-	// Field tracking
 	private readonly HashSet<Control> _monitoredFields = new();
 	private Control _focusedField;
 
-	// Animation
 	private Tween _positionTween;
 	private Vector2 _hiddenPosition;
 	private Vector2 _shownPosition;
 
-	// Cached icons
 	private Texture2D _iconDelete;
 	private Texture2D _iconShift;
 	private Texture2D _iconLeft;
@@ -128,7 +122,6 @@ public partial class OnScreenKeyboard : Control
 	private Texture2D _iconHide;
 	private Texture2D _iconEnter;
 
-	// Custom icon cache
 	private readonly Dictionary<string, Texture2D> _customIconCache = new();
 
 	#endregion
@@ -137,36 +130,27 @@ public partial class OnScreenKeyboard : Control
 
 	public override void _Ready()
 	{
-		// Enable input handling for this control
 		MouseFilter = MouseFilterEnum.Stop;
 
-		// Create default styles if none provided
 		CreateDefaultStyles();
 
-		// Load predefined icons
 		LoadPredefinedIcons();
 
-		// Load layouts from file
 		LoadLayouts();
 
-		// Calculate initial size and position
 		UpdateKeyboardSize();
 
-		// Start hidden
 		if (!Engine.IsEditorHint())
 		{
 			Visible = false;
 			Position = _hiddenPosition;
 		}
 
-		// Discover fields in keyboard_field group
 		DiscoverAndMonitorFields();
 
-		// Connect to tree for new fields
 		GetTree().NodeAdded += OnNodeAdded;
 		GetTree().NodeRemoved += OnNodeRemoved;
 
-		// Connect to viewport resize
 		GetTree().Root.SizeChanged += OnViewportSizeChanged;
 	}
 
@@ -174,7 +158,6 @@ public partial class OnScreenKeyboard : Control
 	{
 		if (what == NotificationExitTree)
 		{
-			// Disconnect signals
 			if (GetTree() != null)
 			{
 				GetTree().NodeAdded -= OnNodeAdded;
@@ -185,7 +168,6 @@ public partial class OnScreenKeyboard : Control
 				}
 			}
 
-			// Clean up field monitors
 			foreach (var field in _monitoredFields)
 			{
 				if (IsInstanceValid(field))
@@ -204,13 +186,11 @@ public partial class OnScreenKeyboard : Control
 
 	public override void _Draw()
 	{
-		// Draw background
 		if (BackgroundStyle != null)
 		{
 			DrawStyleBox(BackgroundStyle, new Rect2(Vector2.Zero, Size));
 		}
 
-		// Draw all keys
 		foreach (var keyRect in _keyRects)
 		{
 			DrawKey(keyRect);
@@ -229,7 +209,6 @@ public partial class OnScreenKeyboard : Control
 		var isHovered = index == _hoveredKeyIndex;
 		var isPressed = index == _pressedKeyIndex;
 
-		// Select style
 		StyleBoxFlat style;
 		Color fontColor;
 
@@ -254,13 +233,11 @@ public partial class OnScreenKeyboard : Control
 			fontColor = FontColorNormal;
 		}
 
-		// Draw key background
 		if (style != null)
 		{
 			DrawStyleBox(style, keyRect.Rect);
 		}
 
-		// Draw content (icon or text)
 		if (keyRect.Data.HasIcon)
 		{
 			DrawKeyIcon(keyRect, fontColor);
@@ -279,7 +256,6 @@ public partial class OnScreenKeyboard : Control
 			return;
 		}
 
-		// Center icon in key rect with padding
 		var iconPadding = 8f;
 		var availableSize = keyRect.Rect.Size - new Vector2(iconPadding * 2, iconPadding * 2);
 		var iconSize = icon.GetSize();
@@ -306,10 +282,8 @@ public partial class OnScreenKeyboard : Control
 		var font = KeyFont ?? ThemeDB.FallbackFont;
 		var fontSize = FontSize;
 
-		// Get text size for centering
 		var textSize = font.GetStringSize(text, HorizontalAlignment.Center, -1, fontSize);
 
-		// Center text in key rect
 		var textPos = new Vector2(
 			keyRect.Rect.Position.X + ((keyRect.Rect.Size.X - textSize.X) / 2),
 			keyRect.Rect.Position.Y + ((keyRect.Rect.Size.Y + textSize.Y) / 2) - (textSize.Y * 0.2f));
@@ -319,7 +293,6 @@ public partial class OnScreenKeyboard : Control
 
 	private Texture2D GetIconTexture(KeyData keyData)
 	{
-		// Check predefined icons
 		var icon = keyData.Icon switch
 		{
 			PredefinedIcon.Delete => _iconDelete,
@@ -336,7 +309,6 @@ public partial class OnScreenKeyboard : Control
 			return icon;
 		}
 
-		// Check custom icon path
 		if (!string.IsNullOrEmpty(keyData.CustomIconPath))
 		{
 			if (!_customIconCache.TryGetValue(keyData.CustomIconPath, out icon))
@@ -501,7 +473,6 @@ public partial class OnScreenKeyboard : Control
 			return;
 		}
 
-		// Activate first layout
 		_activeLayoutIndex = 0;
 		RecalculateKeyRects();
 	}
@@ -568,7 +539,6 @@ public partial class OnScreenKeyboard : Control
 				continue;
 			}
 
-			// Calculate total stretch for this row
 			float totalStretch = 0;
 			foreach (var key in row.Keys)
 			{
@@ -697,18 +667,15 @@ public partial class OnScreenKeyboard : Control
 		CustomMinimumSize = new Vector2(keyboardWidth, keyboardHeight);
 		Size = new Vector2(keyboardWidth, keyboardHeight);
 
-		// Calculate positions
 		var centerX = (viewportSize.X - keyboardWidth) / 2;
 		_shownPosition = new Vector2(centerX, viewportSize.Y - keyboardHeight);
 		_hiddenPosition = new Vector2(centerX, viewportSize.Y + 10);
 
-		// Update if currently hidden
 		if (!Visible)
 		{
 			Position = _hiddenPosition;
 		}
 
-		// Recalculate key rects for new size
 		RecalculateKeyRects();
 		QueueRedraw();
 	}
@@ -717,7 +684,6 @@ public partial class OnScreenKeyboard : Control
 	{
 		UpdateKeyboardSize();
 
-		// If showing, hide on resize (like original behavior)
 		if (AutoShow && Visible)
 		{
 			HideKeyboard();
@@ -793,7 +759,6 @@ public partial class OnScreenKeyboard : Control
 
 		_focusedField = field;
 
-		// Check for field-specific layout
 		if (field.HasMeta(META_LAYOUT_TYPE))
 		{
 			var layoutType = field.GetMeta(META_LAYOUT_TYPE).AsString();
