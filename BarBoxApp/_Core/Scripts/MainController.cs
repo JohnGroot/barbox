@@ -29,19 +29,14 @@ public partial class MainController : Control
 
 	public override void _Ready()
 	{
-		// Check for test mode
 		var args = OS.GetCmdlineArgs();
 		if (System.Array.IndexOf(args, "--run-tests") >= 0)
 		{
-			// Load test runner instead of main UI
 			// Use CallDeferred to avoid scene tree modification during _Ready()
 			GetTree().CallDeferred(SceneTree.MethodName.ChangeSceneToFile, "res://Tests/TestRunner.tscn");
 			return;
 		}
 
-		// MainController _Ready() starting
-
-		// Get ApplicationBootstrap reference to check if services are ready
 		_appBootstrap = ApplicationBootstrap.GetAutoload();
 		if (_appBootstrap == null)
 		{
@@ -49,15 +44,12 @@ public partial class MainController : Control
 			return;
 		}
 
-		// Check if services are already initialized
 		if (_appBootstrap.AreServicesReady())
 		{
-			// Services already ready, initializing UI
 			InitializeUI();
 		}
 		else
 		{
-			// Waiting for services to be ready
 			_appBootstrap.AllServicesReady += InitializeUI;
 		}
 	}
@@ -67,23 +59,16 @@ public partial class MainController : Control
 	/// </summary>
 	private void InitializeUI()
 	{
-		// Services ready, initializing UI
-
-		// Now safe to get service references
 		_sessionManager = SessionManager.GetInstance();
 		_gameRegistry = GameRegistry.GetAutoload();
 		_gameHost = GameHost.GetInstance();
 		_creditService = CreditService.GetInstance();
 
-		// Services loaded and initialized
-
-		// Get reference to onscreen keyboard
 		_onscreenKeyboard = GetNode<Node>("KeyboardLayer/OnscreenKeyboard");
 
 		// Enable keyboard for main menu (disabled by default in scene)
 		EnableKeyboardAutoShow();
 
-		// Get UIManager reference - it's now an autoload service
 		_uiManager = UIManager.GetInstance();
 
 		if (_uiManager != null)
@@ -102,19 +87,17 @@ public partial class MainController : Control
 		{
 			DisconnectSignals();
 
-			// Disconnect from ApplicationBootstrap signal
 			if (IsInstanceValid(_appBootstrap))
 			{
 				_appBootstrap.AllServicesReady -= InitializeUI;
 			}
 
-			// Disconnect from UIManager (it's an autoload now, don't QueueFree)
+			// Disconnect from UIManager (autoload - don't QueueFree)
 			if (IsInstanceValid(_uiManager))
 			{
 				_uiManager.LogoutRequested -= OnLogoutRequested;
 			}
 
-			// Clear game button references
 			ClearGameList();
 
 			// Clear references to prevent memory leaks
@@ -146,7 +129,7 @@ public partial class MainController : Control
 		// Always show game selection panel - login is handled by UIManager modal
 		if (GameSelectionPanel != null)
 		{
-			GameSelectionPanel.Visible = true; // Always show game selection
+			GameSelectionPanel.Visible = true;
 		}
 
 		// Always populate game list, regardless of login status
@@ -160,10 +143,8 @@ public partial class MainController : Control
 			return;
 		}
 
-		// Clear existing game buttons properly
 		ClearGameList();
 
-		// Add game buttons
 		var availableGames = _gameRegistry.GetAvailableGames();
 		foreach (var gameData in availableGames)
 		{
@@ -176,7 +157,6 @@ public partial class MainController : Control
 
 	private void ClearGameList()
 	{
-		// Properly cleanup button references
 		foreach (var button in _activeGameButtons)
 		{
 			if (IsInstanceValid(button))
@@ -227,7 +207,6 @@ public partial class MainController : Control
 
 	private async void UpdateUI()
 	{
-		// Show primary user info in main menu UI
 		var currentUserSession = _sessionManager?.GetPrimarySession();
 
 		if (UserInfoLabel != null)
@@ -270,12 +249,8 @@ public partial class MainController : Control
 	{
 		try
 		{
-			// Logout requested
-
-			// Handle logout request from UIManager
 			if (_sessionManager != null)
 			{
-				// Get primary user session to get phone number
 				var session = _sessionManager.GetPrimarySession();
 				if (session != null)
 				{
@@ -303,18 +278,15 @@ public partial class MainController : Control
 	{
 		if (_uiManager != null)
 		{
-			// Disconnect any existing connection first
 			if (_uiManager.IsConnected(UIManager.SignalName.LogoutRequested, new Callable(this, nameof(OnLogoutRequested))))
 			{
 				_uiManager.LogoutRequested -= OnLogoutRequested;
 			}
 
-			// Reconnect to ensure signal works
 			_uiManager.LogoutRequested += OnLogoutRequested;
 		}
 		else
 		{
-			// Try to get UIManager reference if not available
 			_uiManager = UIManager.GetInstance();
 
 			if (_uiManager != null)
@@ -323,7 +295,6 @@ public partial class MainController : Control
 			}
 		}
 
-		// Ensure SessionManager reference is available for logout functionality
 		_sessionManager ??= SessionManager.GetInstance();
 	}
 
@@ -352,13 +323,9 @@ public partial class MainController : Control
 			uiContainer.Visible = true;
 		}
 
-		// Re-enable keyboard auto_show when returning to main menu
 		EnableKeyboardAutoShow();
 	}
 
-	/// <summary>
-	/// Dismiss the onscreen keyboard
-	/// </summary>
 	private void DismissKeyboard()
 	{
 		if (IsInstanceValid(_onscreenKeyboard) && _onscreenKeyboard.HasMethod("hide"))
@@ -367,9 +334,6 @@ public partial class MainController : Control
 		}
 	}
 
-	/// <summary>
-	/// Disable keyboard completely to prevent it from appearing during games
-	/// </summary>
 	private void DisableKeyboardAutoShow()
 	{
 		if (IsInstanceValid(_onscreenKeyboard))
@@ -379,9 +343,6 @@ public partial class MainController : Control
 		}
 	}
 
-	/// <summary>
-	/// Re-enable keyboard when returning to main menu
-	/// </summary>
 	private void EnableKeyboardAutoShow()
 	{
 		if (IsInstanceValid(_onscreenKeyboard))

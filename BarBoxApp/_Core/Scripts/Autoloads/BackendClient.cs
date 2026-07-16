@@ -165,7 +165,6 @@ public partial class BackendClient : AutoloadBase
 			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
-			// Validate body before deserializing
 			if (string.IsNullOrEmpty(bodyText))
 			{
 				_httpClient.Close();
@@ -223,8 +222,6 @@ public partial class BackendClient : AutoloadBase
 
 			await WaitForResponseAsync();
 
-			// CRITICAL: Poll to ensure body is fully received
-			// Using reactive polling
 			var responseCode = _httpClient.GetResponseCode();
 			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
@@ -347,7 +344,6 @@ public partial class BackendClient : AutoloadBase
 			}
 
 			// Ensure response body is fully received (Godot HttpClient timing issue)
-			// Using reactive polling
 			var bodyBytes = await _httpClient.ReadResponseBodyAsync();
 			var bodyText = bodyBytes.GetStringFromUtf8();
 
@@ -355,7 +351,6 @@ public partial class BackendClient : AutoloadBase
 			LogInfo($"[HTTP] PostAsync response: code={responseCode}, bodyLength={bodyBytes.Length}");
 #endif
 
-			// Validate body before deserializing
 			if (string.IsNullOrEmpty(bodyText))
 			{
 				_httpClient.Close();
@@ -533,9 +528,6 @@ public partial class BackendClient : AutoloadBase
 		return headers;
 	}
 
-	/// <summary>
-	/// Build headers with player ID for player-scoped operations
-	/// </summary>
 	internal List<string> BuildPlayerHeaders(Guid playerId)
 	{
 		var headers = BuildHeaders();
@@ -577,7 +569,7 @@ public partial class BackendClient : AutoloadBase
 				var chunk = _httpClient.ReadResponseBodyChunk();
 				if (chunk.Length == 0)
 				{
-					break; // No more data available
+					break;
 				}
 
 				totalBytesDiscarded += chunk.Length;
@@ -605,7 +597,7 @@ public partial class BackendClient : AutoloadBase
 #if DEBUG_HTTP_LIFECYCLE
 				LogInfo("[HTTP] Connection recovered to Connected state after cleanup");
 #endif
-				return; // Now ready for reuse
+				return;
 			}
 		}
 
@@ -620,12 +612,10 @@ public partial class BackendClient : AutoloadBase
 			await DelayAsync(0.01f); // Brief delay for clean close
 		}
 
-		// Establish new connection
 #if DEBUG_HTTP_LIFECYCLE
 		LogInfo($"[HTTP] Establishing new connection to {_backendHost}:{_backendPort} (HTTPS: {_useHttps})");
 #endif
 
-		// Configure TLS options for HTTPS
 		TlsOptions tlsOptions = null;
 		if (_useHttps)
 		{
@@ -685,7 +675,6 @@ public partial class BackendClient : AutoloadBase
 			return locationManager.BoxApiKey;
 		}
 
-		// Fallback
 		var apiKey = System.Environment.GetEnvironmentVariable("BARBOX_API_KEY");
 		if (string.IsNullOrEmpty(apiKey))
 		{
@@ -696,10 +685,9 @@ public partial class BackendClient : AutoloadBase
 		return apiKey;
 	}
 
-	// Internal forwarding members for SessionEventService's raw-HttpClient session methods
-	// (CreateActivitySessionAsync/CloseActivitySessionAsync/CreateLobbySessionAsync) -
-	// those methods aren't moving to BackendClient in this increment, but _httpClient
-	// itself is no longer accessible to SessionEventService, so they call these instead.
+	// Forwarding members giving SessionEventService's raw-HttpClient session methods
+	// (CreateActivitySessionAsync/CloseActivitySessionAsync/CreateLobbySessionAsync)
+	// access to _httpClient, which SessionEventService does not own directly.
 	internal Godot.Error Request(HttpClient.Method method, string url, string[] headers, string body = null)
 	{
 		return body == null
@@ -719,9 +707,6 @@ public partial class BackendClient : AutoloadBase
 
 	internal void Close() => _httpClient.Close();
 
-	/// <summary>
-	/// Get the singleton instance
-	/// </summary>
 	public static BackendClient GetInstance()
 	{
 		return GetAutoload<BackendClient>();

@@ -9,24 +9,14 @@ using LightResults;
 [GlobalClass]
 public abstract partial class GameController : Node2D
 {
-	// ==========================================================================
-	// PLATFORM ACCESS
-	// ==========================================================================
-
 	/// <summary>
 	/// Access to platform services. Available after _Ready() begins.
 	/// Provides Session, Events, Credits, Location, Host, UI, Input, Registry.
 	/// </summary>
 	protected GameContext Platform { get; private set; }
 
-	/// <summary>
-	/// Game metadata from GameRegistry.
-	/// </summary>
 	protected GameMetadata _gameMetadata;
 
-	/// <summary>
-	/// Public accessor for game ID (for external callers like GameHost).
-	/// </summary>
 	public string GameId => GetGameId();
 
 	/// <summary>
@@ -35,14 +25,7 @@ public abstract partial class GameController : Node2D
 	/// </summary>
 	public virtual bool CanLogout => true;
 
-	/// <summary>
-	/// Indicates whether the game is currently paused.
-	/// </summary>
 	public bool IsPaused { get; protected set; }
-
-	// ==========================================================================
-	// SEALED ORCHESTRATION - Ensures proper initialization flow
-	// ==========================================================================
 
 	/// <summary>
 	/// Sealed - orchestrates all initialization phases. Cannot be overridden.
@@ -50,23 +33,17 @@ public abstract partial class GameController : Node2D
 	/// </summary>
 	public sealed override void _Ready()
 	{
-		// Phase 0: Create platform context (services always available)
 		Platform = GameContext.CreateFromAutoloads();
 
-		// Phase 1: Load game metadata and register with GameHost
 		_gameMetadata = Platform.Registry?.GetGameData(GameId);
 		Platform.Host?.RegisterCurrentGame(this);
 
-		// Phase 2: Game-specific service discovery (for additional services)
 		OnDiscoverServices();
 
-		// Phase 3: Component initialization
 		OnInitializeComponents();
 
-		// Phase 4: UI/Context setup (sealed internal)
 		SetupGameContext();
 
-		// Phase 5: Async init then activate
 		StartAsyncInitialization();
 	}
 
@@ -82,10 +59,6 @@ public abstract partial class GameController : Node2D
 		CloseBackendSession();
 		base._ExitTree();
 	}
-
-	// ==========================================================================
-	// BACKEND SESSION LIFECYCLE - Shared session create/close for all games
-	// ==========================================================================
 
 	/// <summary>
 	/// Backend activity-session id, owned by the base class so games no longer
@@ -127,10 +100,6 @@ public abstract partial class GameController : Node2D
 			_activitySessionId = Guid.Empty;
 		}
 	}
-
-	// ==========================================================================
-	// VIRTUAL OVERRIDE POINTS - Games implement these
-	// ==========================================================================
 
 	/// <summary>
 	/// REQUIRED: Returns the game ID for registry lookup. Must match an entry in GameRegistry.
@@ -189,9 +158,6 @@ public abstract partial class GameController : Node2D
 	{
 	}
 
-	/// <summary>
-	/// Override to handle async initialization failure.
-	/// </summary>
 	protected virtual void OnInitializationFailed(Exception ex)
 	{
 	}
@@ -232,14 +198,6 @@ public abstract partial class GameController : Node2D
 		return buttons;
 	}
 
-	// ==========================================================================
-	// PAUSE/RESUME LIFECYCLE
-	// ==========================================================================
-
-	/// <summary>
-	/// Pauses the game. Sets IsPaused to true and calls OnPause() for derived classes.
-	/// Override OnPause() to implement game-specific pause behavior.
-	/// </summary>
 	public void Pause()
 	{
 		if (IsPaused)
@@ -251,10 +209,6 @@ public abstract partial class GameController : Node2D
 		OnPause();
 	}
 
-	/// <summary>
-	/// Resumes the game. Sets IsPaused to false and calls OnResume() for derived classes.
-	/// Override OnResume() to implement game-specific resume behavior.
-	/// </summary>
 	public void Resume()
 	{
 		if (!IsPaused)
@@ -266,28 +220,14 @@ public abstract partial class GameController : Node2D
 		OnResume();
 	}
 
-	/// <summary>
-	/// Override this method to implement game-specific pause logic.
-	/// </summary>
 	protected virtual void OnPause()
 	{
 	}
 
-	/// <summary>
-	/// Override this method to implement game-specific resume logic.
-	/// </summary>
 	protected virtual void OnResume()
 	{
 	}
 
-	// ==========================================================================
-	// UI STATE MANAGEMENT
-	// ==========================================================================
-
-	/// <summary>
-	/// Called to update the game's UI state (e.g., button enabled/disabled states).
-	/// Override this to customize UI state updates.
-	/// </summary>
 	public virtual void UpdateUIState()
 	{
 		RefreshUI();
@@ -338,9 +278,6 @@ public abstract partial class GameController : Node2D
 		}
 	}
 
-	// ==========================================================================
-	// INTERNAL ORCHESTRATION
-	// ==========================================================================
 	private async void StartAsyncInitialization()
 	{
 		try
@@ -367,7 +304,6 @@ public abstract partial class GameController : Node2D
 		// Set up top menu context (Host may be null in dev)
 		Platform.Host?.SetTopMenuContext(GetGameTitle(), GetContextButtons());
 
-		// Set up help content
 		var helpContent = GetHelpContent();
 		Platform.Host?.SetGameHelpContent(helpContent);
 		Platform.Host?.ShowGameHelp(true);

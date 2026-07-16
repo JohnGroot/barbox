@@ -552,12 +552,9 @@ Priority order within the workstream. Money first.
    (24 files, whitespace-only) and added `.editorconfig` to hold the line.
    Resolved the `'D'` TODO as a deliberate decision (docstrings stay
    optional) rather than leaving it open. Added `scripts/lint.sh`
-   (`ruff format --check` + `ruff check` + `ty check`) for local use — `ruff
-   check`'s full `select=["ALL"]` and `ty check` both surface a backlog of
-   pre-existing findings unrelated to this item; fixing that backlog is a
-   separate, much larger effort and intentionally out of scope here. `ruff
-   format --check` is clean and the script treats a regression there as
-   real.
+   (`ruff format --check` + `ruff check` + `ty check`) for local use.
+   (Update 2026-07-16: the ruff/ty backlog noted here was since cleared;
+   all three checks are clean and gate commits via pre-commit hooks.)
 
 ### WS6 — Deferred (trigger-based, do NOT build speculatively)
 

@@ -86,15 +86,9 @@ public partial class ApplicationBootstrap : AutoloadBase
 	{
 		LogInfo("Triggering graceful shutdown from main thread...");
 
-		// Trigger the same notification that clicking X button does
-		// SessionManager listens for this and does graceful logout
 		GetTree().Root.PropagateNotification((int)NotificationWMCloseRequest);
 	}
 
-	/// <summary>
-	/// Load environment variables from .env file.
-	/// Called in OnServiceEnterTree to ensure env vars are set before any service initialization.
-	/// </summary>
 	private void LoadDotEnvFile()
 	{
 		string[] envPaths = ["res://.env.local", "res://.env", "user://.env.local"];
@@ -129,13 +123,11 @@ public partial class ApplicationBootstrap : AutoloadBase
 		{
 			var line = file.GetLine().Trim();
 
-			// Skip comments and empty lines
 			if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
 			{
 				continue;
 			}
 
-			// Parse KEY=VALUE format
 			var parts = line.Split('=', 2);
 			if (parts.Length == 2)
 			{
@@ -205,8 +197,6 @@ public partial class ApplicationBootstrap : AutoloadBase
 
 	private async Task<bool> InitializePhase1Async(CancellationToken cancellationToken)
 	{
-		// Phase 1a: Configuration service (LocationManager MUST complete first)
-		// LocationManager reads all config values and exposes them via properties
 		LogInfo("Phase 1: Foundation services (LocationManager, then BackendManager)");
 		var locationReady = await InitializeServiceAsync(
 			"LocationManager",
@@ -218,7 +208,6 @@ public partial class ApplicationBootstrap : AutoloadBase
 			return false;
 		}
 
-		// Phase 1b: Backend service (depends on LocationManager for config)
 		var backendReady = await InitializeServiceAsync(
 			"BackendManager",
 			BackendManager.GetInstance(), ServiceCriticality.Required, cancellationToken);

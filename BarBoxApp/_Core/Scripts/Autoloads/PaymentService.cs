@@ -37,24 +37,12 @@ public partial class PaymentService : AutoloadBase
 	private CreditService _creditService;
 	private CancellationTokenSource _paymentCancellation;
 
-	/// <summary>
-	/// Fired when a payment URL is ready for display (e.g., as QR code)
-	/// </summary>
 	public event Action<string> OnPaymentUrlReady;
 
-	/// <summary>
-	/// Fired during payment polling with remaining seconds
-	/// </summary>
 	public event Action<float> OnProgressUpdate;
 
-	/// <summary>
-	/// Fired when payment times out
-	/// </summary>
 	public event Action OnPaymentTimeout;
 
-	/// <summary>
-	/// Check if provider requires user action (e.g., Stripe with QR code)
-	/// </summary>
 	public bool RequiresUserActionForPayments => _currentProvider?.RequiresUserActionForPayments ?? false;
 
 	protected override void OnServiceInitialize()
@@ -94,7 +82,6 @@ public partial class PaymentService : AutoloadBase
 			return PaymentResult.Failure("Credit service not available");
 		}
 
-		// Validate player has an active session
 		var sessionManager = SessionManager.GetInstance();
 		if (sessionManager == null)
 		{
@@ -109,14 +96,12 @@ public partial class PaymentService : AutoloadBase
 			return PaymentResult.Failure("No active session - please log in first");
 		}
 
-		// CRITICAL: Check SessionEventService readiness BEFORE processing payment
 		var validation = ValidateEventServiceReady();
 		if (validation.HasValue)
 		{
 			return validation.Value;
 		}
 
-		// Cancel any previous payment, create new cancellation token
 		_paymentCancellation?.Cancel();
 		_paymentCancellation?.Dispose();
 		_paymentCancellation = new CancellationTokenSource();
@@ -125,7 +110,6 @@ public partial class PaymentService : AutoloadBase
 		{
 			LogInfo($"Processing purchase for player {playerId}: {creditPack.DisplayName}");
 
-			// Phase 1: Initiate payment
 			var checkoutResult = await _currentProvider.InitiatePaymentAsync(playerId.ToString(), creditPack);
 
 			if (checkoutResult.IsFailure(out var checkoutError))
@@ -138,10 +122,8 @@ public partial class PaymentService : AutoloadBase
 
 			if (checkout.RequiresUserAction)
 			{
-				// Notify UI to display payment URL as QR code
 				OnPaymentUrlReady?.Invoke(checkout.PaymentUrl);
 
-				// Phase 2: Wait for payment completion with progress updates
 				var result = await _currentProvider.AwaitPaymentCompletionAsync(
 					checkout,
 					_paymentCancellation.Token,
@@ -150,7 +132,6 @@ public partial class PaymentService : AutoloadBase
 						OnProgressUpdate?.Invoke(secondsRemaining);
 					});
 
-				// Check if timeout occurred
 				if (!result.IsSuccess && result.ErrorMessage?.Contains("timed out") == true)
 				{
 					OnPaymentTimeout?.Invoke();
@@ -194,9 +175,6 @@ public partial class PaymentService : AutoloadBase
 		}
 	}
 
-	/// <summary>
-	/// Cancel any in-progress payment
-	/// </summary>
 	public void CancelPayment()
 	{
 		_paymentCancellation?.Cancel();

@@ -55,8 +55,8 @@ public partial class SessionManager : AutoloadBase
 	private const float IDLE_CHECK_INTERVAL = 30.0f; // 30 seconds
 	private const float IDLE_TIMEOUT = 600.0f; // 10 minutes
 
-	// CRITICAL FIX: Limit concurrent logout operations to prevent overwhelming backend
-	private readonly SemaphoreSlim _logoutSemaphore = new(5, 5); // Max 5 concurrent logouts
+	// Limit concurrent logout operations to prevent overwhelming backend
+	private readonly SemaphoreSlim _logoutSemaphore = new(5, 5);
 
 	public string CurrentLocationId
 	{
@@ -111,9 +111,6 @@ public partial class SessionManager : AutoloadBase
 		}
 	}
 
-	/// <summary>
-	/// Gracefully shutdown by logging out all active users with timeout
-	/// </summary>
 	private async Task ShutdownGracefullyAsync()
 	{
 		try
@@ -166,10 +163,6 @@ public partial class SessionManager : AutoloadBase
 		}
 	}
 
-	/// <summary>
-	/// Authenticate and log in a user by phone number and PIN
-	/// Returns Result with UserSession on success or specific error message on failure
-	/// </summary>
 	public async Task<Result<UserSession>> LoginUserByPhoneAsync(string phoneNumber, string pin)
 	{
 		if (string.IsNullOrEmpty(phoneNumber))
@@ -177,14 +170,12 @@ public partial class SessionManager : AutoloadBase
 			return Result.Failure<UserSession>("Phone number is required");
 		}
 
-		// Clean phone number for consistency
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
 		{
 			return Result.Failure<UserSession>("Invalid phone number format");
 		}
 
-		// Clean PIN for consistency
 		var cleanedPin = InputValidator.CleanPin(pin);
 		if (!InputValidator.IsValidPin(cleanedPin))
 		{
@@ -193,14 +184,12 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			// Don't allow duplicate sessions for the same user
 			if (_activeSessions.ContainsKey(cleanedPhone))
 			{
 				LogWarning($"User {cleanedPhone} already has an active session");
 				return Result.Failure<UserSession>("User already logged in");
 			}
 
-			// Authenticate with backend and get JWT token
 			if (_eventService == null || !_eventService.IsReady)
 			{
 				LogError("SessionEventService not available - cannot authenticate");
@@ -232,7 +221,6 @@ public partial class SessionManager : AutoloadBase
 				return Result.Failure<UserSession>("Unexpected authentication state");
 			}
 
-			// Validate response contains all required fields
 			var validationResult = loginData.ValidateRequired();
 			if (validationResult.IsFailure(out var validationError))
 			{
@@ -243,23 +231,20 @@ public partial class SessionManager : AutoloadBase
 			// Now safe to parse - validation guarantees non-empty strings
 			var playerId = Guid.Parse(loginData.PlayerId);
 
-			// Validate player ID is not empty/zero GUID
 			if (playerId == Guid.Empty)
 			{
 				LogError($"Backend returned invalid player ID (all zeros) for phone {cleanedPhone}");
 				return Result.Failure<UserSession>("Invalid player ID received from backend");
 			}
 
-			// Parse token expiration (ISO 8601 format from backend)
-			// CRITICAL: Use DateTimeStyles.RoundtripKind to preserve the UTC timezone from the Z suffix
-			// Without this, DateTime.TryParse() may parse as local time, causing 4+ hour timezone mismatch
+			// Use DateTimeStyles.RoundtripKind to preserve the UTC timezone from the Z suffix -
+			// without this, DateTime.TryParse() may parse as local time, causing 4+ hour timezone mismatch
 			if (!DateTime.TryParse(loginData.ExpiresAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var tokenExpiration))
 			{
 				LogError($"Failed to parse token expiration: {loginData.ExpiresAt}");
 				return Result.Failure<UserSession>("Invalid token expiration format");
 			}
 
-			// Create local session with JWT token
 			var session = new UserSession
 			{
 				PhoneNumber = cleanedPhone,
@@ -274,11 +259,9 @@ public partial class SessionManager : AutoloadBase
 
 			LogInfo($"User authenticated successfully - Token expires at: {tokenExpiration:u}");
 
-			// Add session to dictionaries
 			_activeSessions[cleanedPhone] = session;
-			_sessionsByPlayerId[playerId] = session; // Maintain secondary index
+			_sessionsByPlayerId[playerId] = session;
 
-			// Create lobby session for user-scoped events
 			if (_eventService != null && _eventService.IsReady)
 			{
 				var lobbyBoxId = _eventService.GetBoxId();
@@ -288,7 +271,6 @@ public partial class SessionManager : AutoloadBase
 					session.LobbySessionId = lobbySessionId;
 					LogInfo($"Lobby session created: {session.LobbySessionId}");
 
-					// Emit user/login event to lobby session
 					var payload = new
 					{
 						username = session.UserName,
@@ -324,12 +306,8 @@ public partial class SessionManager : AutoloadBase
 		}
 	}
 
-	/// <summary>
-	/// Create a new user account with phone number authentication
-	/// </summary>
 	public async Task<Result<string>> CreateUserAccountAsync(string phoneNumber, string pin, string username)
 	{
-		// Validate inputs
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
 		{
@@ -358,10 +336,8 @@ public partial class SessionManager : AutoloadBase
 		{
 			LogInfo($"User account creation requested: {cleanedUsername} ({cleanedPhone})");
 
-			// Generate new player ID (UUID v4)
 			var playerId = Guid.NewGuid();
 
-			// Get box ID from LocationManager
 			var locationManager = LocationManager.GetAutoload();
 			if (locationManager == null || !locationManager.IsConfigLoaded)
 			{
@@ -371,7 +347,6 @@ public partial class SessionManager : AutoloadBase
 
 			var boxId = locationManager.BoxId;
 
-			// Create player account via direct REST call to backend
 			var result = await CreatePlayerBackendAsync(playerId, cleanedUsername, cleanedPhone, cleanedPin, boxId);
 			if (result.IsSuccess(out _))
 			{
@@ -382,7 +357,6 @@ public partial class SessionManager : AutoloadBase
 			{
 				LogError($"Account creation failed: {error.Message}");
 
-				// Provide user-friendly error messages
 				if (error.Message.Contains("409") || error.Message.Contains("already exists"))
 				{
 					return Result.Failure<string>("An account with this phone number or username already exists");
@@ -412,7 +386,6 @@ public partial class SessionManager : AutoloadBase
 	/// </summary>
 	public async Task<Result<PlayerValidationResponse>> ValidatePlayerCreationAsync(string phoneNumber, string pin, string username)
 	{
-		// Clean and validate inputs
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
 		{
@@ -439,11 +412,9 @@ public partial class SessionManager : AutoloadBase
 
 		try
 		{
-			// Generate temporary player ID for validation
 			// NOTE: Cannot use GetPlayerIdFromPhone() here because user hasn't registered yet (no session exists)
 			var playerId = Guid.NewGuid();
 
-			// Get box ID from LocationManager
 			var locationManager = LocationManager.GetAutoload();
 			if (locationManager == null || !locationManager.IsConfigLoaded)
 			{
@@ -453,7 +424,6 @@ public partial class SessionManager : AutoloadBase
 
 			var boxId = locationManager.BoxId;
 
-			// Validate via backend
 			var result = await ValidatePlayerCreationBackendAsync(playerId, cleanedUsername, cleanedPhone, cleanedPin, boxId);
 			if (result.IsSuccess(out var validationResponse))
 			{
@@ -475,9 +445,6 @@ public partial class SessionManager : AutoloadBase
 		}
 	}
 
-	/// <summary>
-	/// Check if a username is available for registration
-	/// </summary>
 	public async Task<Result<bool>> IsUsernameAvailableAsync(string username)
 	{
 		var cleanedUsername = InputValidator.CleanUsername(username);
@@ -515,13 +482,8 @@ public partial class SessionManager : AutoloadBase
 		}
 	}
 
-	/// <summary>
-	/// Log out a user and sync their data
-	/// </summary>
 	public async Task<bool> LogoutUserAsync(string phoneNumber)
 	{
-		// CRITICAL FIX: Use semaphore to limit concurrent logout operations
-		// Prevents overwhelming backend with many simultaneous HTTP calls during mass logout
 		await _logoutSemaphore.WaitAsync();
 
 		try
@@ -534,7 +496,6 @@ public partial class SessionManager : AutoloadBase
 				return false;
 			}
 
-			// Revoke JWT token on backend
 			if (_eventService != null && _eventService.IsReady && !string.IsNullOrEmpty(session.JwtToken))
 			{
 				// Create a simple logout request (backend reads JWT from Authorization header)
@@ -557,7 +518,7 @@ public partial class SessionManager : AutoloadBase
 				}
 			}
 
-			// Emit user/logout event to lobby session (before closing it)
+			// Must emit before closing the lobby session
 			if (_eventService != null && _eventService.IsReady && session.LobbySessionId != Guid.Empty)
 			{
 				var payload = new
@@ -572,7 +533,6 @@ public partial class SessionManager : AutoloadBase
 					LogWarning($"Failed to emit logout event: {logoutError.Message}");
 				}
 
-				// Close lobby session
 				var closeResult = await _eventService.CloseActivitySessionAsync(session.LobbySessionId);
 				if (closeResult.IsFailure(out var closeError))
 				{
@@ -584,9 +544,8 @@ public partial class SessionManager : AutoloadBase
 				}
 			}
 
-			// Remove local session
 			_activeSessions.Remove(phoneNumber);
-			_sessionsByPlayerId.Remove(session.PlayerId); // Maintain secondary index
+			_sessionsByPlayerId.Remove(session.PlayerId);
 			EmitSignal(SignalName.UserLoggedOut, phoneNumber);
 
 			LogInfo($"Phone {phoneNumber} logged out");
@@ -712,25 +671,16 @@ public partial class SessionManager : AutoloadBase
 		return _activeSessions.GetValueOrDefault(phoneNumber);
 	}
 
-	/// <summary>
-	/// Check if user is logged in
-	/// </summary>
 	public bool IsUserLoggedIn(string phoneNumber)
 	{
 		return _activeSessions.ContainsKey(phoneNumber);
 	}
 
-	/// <summary>
-	/// Get all active user IDs
-	/// </summary>
 	public string[] GetActivePhoneNumbers()
 	{
 		return [.. _activeSessions.Keys];
 	}
 
-	/// <summary>
-	/// Reset idle timer for user activity
-	/// </summary>
 	public void ResetUserIdleTimer(string phoneNumber)
 	{
 		if (_activeSessions.TryGetValue(phoneNumber, out var session))
@@ -739,9 +689,6 @@ public partial class SessionManager : AutoloadBase
 		}
 	}
 
-	/// <summary>
-	/// Reset idle timer for all active users
-	/// </summary>
 	public void ResetAllIdleTimers()
 	{
 		var now = DateTime.UtcNow;
@@ -810,10 +757,6 @@ public partial class SessionManager : AutoloadBase
 	}
 
 	// Private helper methods
-
-	/// <summary>
-	/// Check if username is available for registration
-	/// </summary>
 	private async Task<Result<bool>> QueryUsernameAvailableAsync(string username)
 	{
 		var result = await _backend.QueryAsync<UsernameAvailabilityResponse>(
@@ -833,10 +776,6 @@ public partial class SessionManager : AutoloadBase
 		return Result.Failure<bool>("Unknown error");
 	}
 
-	/// <summary>
-	/// Validate player creation without actually creating the player (pre-flight check)
-	/// Performs all validation checks: box exists, username available, player ID unique
-	/// </summary>
 	private async Task<Result<PlayerValidationResponse>> ValidatePlayerCreationBackendAsync(Guid playerId, string username, string phoneNumber, string pin, Guid originBoxId)
 	{
 		var request = new PlayerCreateRequest
@@ -854,7 +793,6 @@ public partial class SessionManager : AutoloadBase
 		{
 			if (!response.Valid)
 			{
-				// Validation failed - construct error message from validation errors
 				var errorMessages = new StringBuilder();
 				errorMessages.AppendLine("Validation failed:");
 				foreach (var validationError in response.Errors)
@@ -877,9 +815,6 @@ public partial class SessionManager : AutoloadBase
 		return Result.Failure<PlayerValidationResponse>("Unknown error");
 	}
 
-	/// <summary>
-	/// Create a new player account via backend API
-	/// </summary>
 	private async Task<Result<Guid>> CreatePlayerBackendAsync(Guid playerId, string username, string phoneNumber, string pin, Guid originBoxId)
 	{
 		var request = new PlayerCreateRequest
@@ -932,9 +867,6 @@ public partial class SessionManager : AutoloadBase
 		}
 	}
 
-	/// <summary>
-	/// Get the singleton instance
-	/// </summary>
 	public static SessionManager GetInstance()
 	{
 		return GetAutoload<SessionManager>();
@@ -971,13 +903,12 @@ public partial class SessionManager : AutoloadBase
 		var phoneNumbers = GetActivePhoneNumbers();
 		foreach (var phoneNumber in phoneNumbers)
 		{
-			_ = LogoutUserAsync(phoneNumber); // Fire and forget for cleanup
+			_ = LogoutUserAsync(phoneNumber);
 		}
 
 		_idleTimer?.Stop();
 		_idleTimer?.QueueFree();
 
-		// Dispose of logout semaphore
 		_logoutSemaphore?.Dispose();
 	}
 }
@@ -1002,7 +933,6 @@ public class UserSession
 
 	public DateTime LastActivity { get; set; }
 
-	// JWT authentication fields
 	public string JwtToken { get; set; } = string.Empty;
 
 	public DateTime TokenExpiration { get; set; } = DateTime.MinValue;

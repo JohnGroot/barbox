@@ -13,7 +13,6 @@ namespace BarBox.Core.Autoloads;
 /// </summary>
 public partial class LocationManager : AutoloadBase
 {
-	// Cached configuration values
 	private Guid _boxId;
 	private string _boxName;
 	private string _venueName;
@@ -21,8 +20,6 @@ public partial class LocationManager : AutoloadBase
 	private string _boxApiKey;
 	private string _registrationSecret;
 	private bool _isConfigLoaded = false;
-
-	// Public typed accessors
 
 	/// <summary>
 	/// Box ID (UUID) - Required for backend authentication and database foreign keys
@@ -76,19 +73,16 @@ public partial class LocationManager : AutoloadBase
 	public bool IsTestMode => !string.IsNullOrEmpty(
 		System.Environment.GetEnvironmentVariable("BARBOX_TEST_MODE"));
 
-	// Note: .env loading moved to ApplicationBootstrap.OnServiceEnterTree()
-	// This ensures env vars are set before ANY service (including LocationManager) initializes
+	// Env vars are set by ApplicationBootstrap.OnServiceEnterTree() before any
+	// service (including LocationManager) initializes.
 	protected override Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
-		// Load configuration values during async init phase
-		// Env vars are already set by ApplicationBootstrap.OnServiceEnterTree()
 		LoadEnvironmentConfiguration();
 		return Task.CompletedTask;
 	}
 
 	protected override void OnServiceReady()
 	{
-		// Config already loaded in OnServiceInitializeAsync
 		// Show masked API key preview for debugging (helps confirm correct key)
 		var apiKeyStatus = string.IsNullOrEmpty(_boxApiKey)
 			? "NOT SET"
@@ -97,7 +91,6 @@ public partial class LocationManager : AutoloadBase
 				: "SET (short)";
 		LogInfo($"LocationManager initialized - Venue: {_venueName}, BoxName: {_boxName}, BoxId: {_boxId}, ApiKey: {apiKeyStatus}");
 
-		// In production, schedule box verification after services are ready
 		if (!OS.HasFeature("editor"))
 		{
 			CallDeferred(MethodName.VerifyBoxRegistrationDeferred);
@@ -106,7 +99,6 @@ public partial class LocationManager : AutoloadBase
 
 	private void LoadEnvironmentConfiguration()
 	{
-		// .env file already loaded in OnServiceEnterTree() - just load config values
 		_venueName = LoadVenueName();
 		_boxName = LoadBoxName();
 		_boxId = LoadBoxId();
@@ -146,13 +138,11 @@ public partial class LocationManager : AutoloadBase
 		{
 			var line = file.GetLine().Trim();
 
-			// Skip comments and empty lines
 			if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
 			{
 				continue;
 			}
 
-			// Parse KEY=VALUE format
 			var parts = line.Split('=', 2);
 			if (parts.Length == 2)
 			{
@@ -235,7 +225,6 @@ public partial class LocationManager : AutoloadBase
 		var url = System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_URL") ??
 				  "http://localhost:8000";
 
-		// Validate and cache the URI
 		try
 		{
 			_backendUri = new Uri(url);
@@ -298,9 +287,6 @@ public partial class LocationManager : AutoloadBase
 		return System.Environment.GetEnvironmentVariable("BARBOX_REGISTRATION_SECRET") ?? string.Empty;
 	}
 
-	/// <summary>
-	/// Get venue name for venue-scoped data
-	/// </summary>
 	public string GetVenueName() => _venueName;
 
 	public static LocationManager GetAutoload()
@@ -315,7 +301,6 @@ public partial class LocationManager : AutoloadBase
 	{
 		try
 		{
-			// Wait for BackendClient to be ready
 			await AutoloadBase.StaticDelayAsync(1.0f); // Frame-aware timing
 
 			var backend = BackendClient.GetInstance();
@@ -337,7 +322,6 @@ public partial class LocationManager : AutoloadBase
 
 				if (isFirstRegistration && !string.IsNullOrEmpty(response.ApiKey))
 				{
-					// First registration - show action required banner with masked key
 					var maskedKey = response.ApiKey.Length > 12
 						? $"{response.ApiKey[..8]}...{response.ApiKey[^4..]}"
 						: "********";
@@ -357,13 +341,11 @@ public partial class LocationManager : AutoloadBase
 				}
 				else
 				{
-					// Re-registration - just log verification with masked key
 					var maskedKey = !string.IsNullOrEmpty(response.ApiKey) && response.ApiKey.Length > 12
 						? $"{response.ApiKey[..8]}...{response.ApiKey[^4..]}"
 						: "***";
 					LogInfo($"Box verified: {_venueName} (BoxName: {_boxName}), key: {maskedKey}");
 
-					// Log warning if name/tag mismatch was detected
 					if (!string.IsNullOrEmpty(response.Warning) && response.Warning.Contains("different"))
 					{
 						LogWarning($"Box registration note: {response.Warning}");
@@ -417,7 +399,7 @@ public partial class LocationManager : AutoloadBase
 
 		if (result.IsSuccess(out var response))
 		{
-			// API key is always returned now - mask it for logging
+			// API key is always returned - mask it for logging
 			var maskedKey = !string.IsNullOrEmpty(response.ApiKey) && response.ApiKey.Length > 12
 				? $"{response.ApiKey[..8]}...{response.ApiKey[^4..]}"
 				: "***";
@@ -434,7 +416,6 @@ public partial class LocationManager : AutoloadBase
 			{
 				LogInfo($"Box verified: {locationName} ({boxId}), key: {maskedKey}");
 
-				// Log warning if name/tag mismatch was detected
 				if (!string.IsNullOrEmpty(response.Warning) && response.Warning.Contains("different"))
 				{
 					LogWarning($"Box registration note: {response.Warning}");

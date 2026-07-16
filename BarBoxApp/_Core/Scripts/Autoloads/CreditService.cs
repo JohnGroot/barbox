@@ -28,10 +28,9 @@ public partial class CreditService : AutoloadBase
 	[Signal]
 	public delegate void CreditsChangedEventHandler(string playerId, int newBalance);
 
-	// Cache and polling configuration constants
 	private const float CACHE_TTL_SECONDS = 30.0f;
 	private const float BALANCE_POLL_TIMEOUT_SECONDS = 1.5f;
-	private const float BALANCE_POLL_INTERVAL_SECONDS = 0.05f;  // Reduced from 0.1f for 2x faster UX responsiveness
+	private const float BALANCE_POLL_INTERVAL_SECONDS = 0.05f;
 
 	private readonly ConcurrentDictionary<Guid, CachedBalance> _balanceCache = new();
 
@@ -96,7 +95,6 @@ public partial class CreditService : AutoloadBase
 			return Result.Failure<int>("Credit service unavailable");
 		}
 
-		// Ensure lobby session exists (lazy creation via SessionManager)
 		var sessionManager = SessionManager.GetInstance();
 		if (sessionManager == null)
 		{
@@ -131,7 +129,6 @@ public partial class CreditService : AutoloadBase
 		}
 
 		// Poll for updated balance after spend (event-sourced system requires waiting for event processing)
-		// Optimized for game responsiveness: 100ms polls, 1.5s max wait = 15 attempts
 		var startTime = System.DateTime.UtcNow;
 		var expectedMaxBalance = initialBalance - amount;
 
@@ -146,7 +143,6 @@ public partial class CreditService : AutoloadBase
 				return balanceResult;
 			}
 
-			// Wait before next poll attempt
 			await DelayAsync(BALANCE_POLL_INTERVAL_SECONDS);
 		}
 
@@ -157,9 +153,9 @@ public partial class CreditService : AutoloadBase
 		LogWarning($"Credit spend timeout: Event succeeded but balance did not update within {BALANCE_POLL_TIMEOUT_SECONDS}s. " +
 			$"Initial: {initialBalance}, Expected: <={expectedMaxBalance}, Final: {finalBalance}");
 
-		// CRITICAL FIX: Backend operation succeeded, so we must return success
-		// The timeout is only for the event-sourced balance update, not the spend operation
-		// Return the best available balance (final query result or expected balance)
+		// Backend operation succeeded, so we must return success - the timeout is only for
+		// the event-sourced balance update, not the spend operation. Return the best available
+		// balance (final query result or expected balance).
 		if (finalBalanceResult.IsSuccess(out var finalBalanceValue))
 		{
 			UpdateCache(playerId, finalBalanceValue);
@@ -255,7 +251,6 @@ public partial class CreditService : AutoloadBase
 			return Result.Failure<int>("Credit service unavailable");
 		}
 
-		// Ensure lobby session exists (lazy creation via SessionManager)
 		var sessionManager = SessionManager.GetInstance();
 		if (sessionManager == null)
 		{
@@ -289,7 +284,6 @@ public partial class CreditService : AutoloadBase
 		}
 
 		// Poll for updated balance after add (event-sourced system requires waiting for event processing)
-		// Optimized for game responsiveness: 100ms polls, 1.5s max wait = 15 attempts
 		var startTime = System.DateTime.UtcNow;
 		var expectedMinBalance = initialBalance + amount;
 
@@ -304,7 +298,6 @@ public partial class CreditService : AutoloadBase
 				return balanceResult;
 			}
 
-			// Wait before next poll attempt
 			await DelayAsync(BALANCE_POLL_INTERVAL_SECONDS);
 		}
 
@@ -315,9 +308,9 @@ public partial class CreditService : AutoloadBase
 		LogWarning($"Credit add timeout: Event succeeded but balance did not update within {BALANCE_POLL_TIMEOUT_SECONDS}s. " +
 			$"Initial: {initialBalance}, Expected: >={expectedMinBalance}, Final: {finalBalance}");
 
-		// CRITICAL FIX: Backend operation succeeded, so we must return success
-		// The timeout is only for the event-sourced balance update, not the add operation
-		// Return the best available balance (final query result or expected balance)
+		// Backend operation succeeded, so we must return success - the timeout is only for
+		// the event-sourced balance update, not the add operation. Return the best available
+		// balance (final query result or expected balance).
 		if (finalBalanceResult.IsSuccess(out var finalBalanceValue))
 		{
 			UpdateCache(playerId, finalBalanceValue);
@@ -361,14 +354,10 @@ public partial class CreditService : AutoloadBase
 		}
 		else
 		{
-			// First time seeing this player - initialize cache
 			UpdateCache(playerId, backendBalance);
 		}
 	}
 
-	/// <summary>
-	/// Get machine credit pot balance and player contributions
-	/// </summary>
 	public async Task<Result<MachineCreditsResponse>> GetMachineCreditsAsync(string gameTag, Guid boxId)
 	{
 		var backendResult = await EnsureBackendClientReadyAsync();
@@ -385,9 +374,6 @@ public partial class CreditService : AutoloadBase
 		return await backend.QueryAsync<MachineCreditsResponse>($"/machine-credits/{gameTag}", queryParams);
 	}
 
-	/// <summary>
-	/// Deposit credits to machine pot (from player account)
-	/// </summary>
 	public async Task<Result<MachineCreditsResponse>> DepositMachineCreditsAsync(
 		string gameTag,
 		Guid boxId,
@@ -447,9 +433,6 @@ public partial class CreditService : AutoloadBase
 		return depositResult;
 	}
 
-	/// <summary>
-	/// Consume credits from machine pot (for game start)
-	/// </summary>
 	public async Task<Result<MachineCreditsResponse>> ConsumeMachineCreditsAsync(
 		string gameTag,
 		Guid boxId,

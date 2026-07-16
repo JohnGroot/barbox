@@ -64,8 +64,16 @@ cwd-relative, and fix mode exits 0 even when unfixable violations remain — use
 - **Classes**: PascalCase. **Methods/Properties**: PascalCase
 - **Fields**: Public PascalCase, Private `_camelCase`
 - **Organization**: Use `[ExportCategory("Section Name")]` for Inspector
-- **Comments**: Only where they add value beyond code. Explain "why" not "what". Write for the **human maintainer reading the code** — never address an agent or reference process/review artifacts (architectural tenets, audit/plan stage numbers, "introduced by X migration"). That context belongs in instruction files (CLAUDE.md), plan docs, or commit messages, not code comments.
+- **Comments**: See Comment Philosophy below
 - **Modern C#**: File-scoped namespaces, `??=`, collection expressions, required properties in new code
+
+## Comment Philosophy
+
+A comment earns its place only by stating what the code *cannot*: a constraint, a non-obvious rationale, or an external contract (threading, Godot lifecycle, backend API shape). Everything else is noise — write for the human maintainer reading the code, never an agent or a process artifact.
+
+- **Delete on sight**: restatement comments, change-log narration ("now managed by", "no longer", "moved to X"), fix/process markers (`CRITICAL FIX:`, `PHASE n:`, `OPTIMIZED:`), phase-plan narration, XML docs that just restate the signature, commented-out code.
+- **Keep**: constraints, timing/ordering requirements, Godot lifecycle gotchas, backend contracts, security/threading rationale — the stuff the next reader can't infer from the code itself.
+- **Section markers**: no `// ====` banners. `#region`/`#endregion` only in long files where collapsibility genuinely aids navigation (see `_Games/Nines/Scripts/NinesGame.cs`); smaller files use no markers at all.
 
 ## Development Rules
 

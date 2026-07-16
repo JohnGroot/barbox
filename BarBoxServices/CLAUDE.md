@@ -75,6 +75,14 @@ API docs: http://localhost:8000/redoc (human) | http://localhost:8000/docs (inte
 - **Logging**: structlog for structured logging
 - **Naming**: Modules snake_case, Classes PascalCase, Functions snake_case, Constants UPPER_CASE
 
+## Comment Philosophy
+
+A comment earns its place only by stating what the code *cannot*: a constraint, a non-obvious rationale, or an external contract (e.g. a webhook payload shape, a lazy-load gotcha). Everything else is noise.
+
+- **Delete on sight**: restatement comments, change-log narration ("now managed by", "no longer", "moved to X"), fix/process markers (`CRITICAL FIX:`, `PHASE n:`, `OPTIMIZED:`), docstrings that just repeat the signature, commented-out code.
+- **Keep**: constraints, timing/ordering requirements, external contracts (backend/webhook payload shapes, cwd-relative paths, timing-attack mitigations), reference-data-only notes.
+- No `# ====` banner comments.
+
 ## Tech Stack
 
 - **FastAPI** - Web framework with OpenAPI docs
