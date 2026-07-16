@@ -1,5 +1,5 @@
-using Godot;
 using Chickensoft.GoDotTest;
+using Godot;
 using Shouldly;
 
 namespace BarBox.Games.Racing.Tests;
@@ -12,7 +12,8 @@ public class RacingZoneManagerTests : TestClass
 {
 	private RacingZoneManager _zoneManager;
 
-	public RacingZoneManagerTests(Node testScene) : base(testScene)
+	public RacingZoneManagerTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -66,7 +67,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// INITIALIZATION TESTS
 	// ================================================================
-
 	[Test]
 	public void InitialState_HasNoZones()
 	{
@@ -82,7 +82,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// ZONE REGISTRATION TESTS
 	// ================================================================
-
 	[Test]
 	public void RegisterZone_AddsZoneToList()
 	{
@@ -173,7 +172,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// MODIFIER CALCULATION TESTS (Without Body in Zones)
 	// ================================================================
-
 	[Test]
 	public void GetCombinedSpeedModifier_ReturnsOne_WhenBodyNotInAnyZone()
 	{
@@ -213,7 +211,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// BODY TRACKING TESTS
 	// ================================================================
-
 	[Test]
 	public void IsInAnyZone_ReturnsFalse_WhenBodyNotTracked()
 	{
@@ -253,7 +250,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// INPUT BLOCKED TESTS
 	// ================================================================
-
 	[Test]
 	public void IsInputBlocked_ReturnsFalse_WhenBodyNotInAnyZone()
 	{
@@ -267,7 +263,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// FRICTIONLESS STATE TESTS
 	// ================================================================
-
 	[Test]
 	public void IsInFrictionlessState_ReturnsFalse_WhenNotInFrictionlessZone()
 	{
@@ -302,7 +297,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// KERB ZONE TESTS
 	// ================================================================
-
 	[Test]
 	public void IsInKerbZone_ReturnsFalse_WhenNoKerbZonesRegistered()
 	{
@@ -328,7 +322,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// POSITION-BASED QUERY TESTS
 	// ================================================================
-
 	[Test]
 	public void GetZonesAtPosition_ReturnsEmptyList_WhenNoZonesRegistered()
 	{
@@ -341,7 +334,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// ZONE TYPE TESTS
 	// ================================================================
-
 	[Test]
 	public void RegisteredZones_PreserveType()
 	{
@@ -369,7 +361,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// MODIFIER VALUES TESTS
 	// ================================================================
-
 	[Test]
 	public void RegisteredZones_PreserveModifierValues()
 	{
@@ -377,8 +368,7 @@ public class RacingZoneManagerTests : TestClass
 			type: ZoneType.Slowdown,
 			speedModifier: 0.5f,
 			accelerationModifier: 0.7f,
-			turnModifier: 0.8f
-		);
+			turnModifier: 0.8f);
 
 		_zoneManager.RegisterZone(zone);
 
@@ -392,7 +382,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// ALL ZONES READ-ONLY TESTS
 	// ================================================================
-
 	[Test]
 	public void AllZones_ReturnsReadOnlyCollection()
 	{
@@ -411,7 +400,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// MULTIPLE BODY TRACKING TESTS
 	// ================================================================
-
 	[Test]
 	public void CanTrackMultipleBodies()
 	{
@@ -432,7 +420,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// CLEAR CLEARS BODY TRACKING TESTS
 	// ================================================================
-
 	[Test]
 	public void ClearAllZones_ClearsBodyTracking()
 	{
@@ -443,7 +430,6 @@ public class RacingZoneManagerTests : TestClass
 
 		// Simulate body entering zone by calling internal event
 		// Since we can't easily trigger the signal, test that clear works
-
 		_zoneManager.ClearAllZones();
 
 		// After clear, body should not be tracked
@@ -456,7 +442,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// FRICTIONLESS UPDATE TESTS
 	// ================================================================
-
 	[Test]
 	public void UpdateFrictionlessEffects_HandlesMultipleUpdates()
 	{
@@ -470,7 +455,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// ZONE TYPE ENUM COVERAGE TESTS
 	// ================================================================
-
 	[Test]
 	public void ZoneType_HasExpectedValues()
 	{
@@ -489,7 +473,6 @@ public class RacingZoneManagerTests : TestClass
 	// ================================================================
 	// DEFAULT MODIFIER VALUES TESTS
 	// ================================================================
-
 	[Test]
 	public void DefaultZone_HasModifiersOfOne()
 	{

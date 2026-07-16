@@ -1,8 +1,8 @@
-using Godot;
-using LightResults;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Godot;
+using LightResults;
 
 namespace BarBox.Core.Autoloads;
 
@@ -44,7 +44,9 @@ public partial class LocationManager : AutoloadBase
 	public string VenueName => _venueName;
 
 	public string BackendUrl => _backendUrl;
+
 	public string BoxApiKey => _boxApiKey;
+
 	public bool IsConfigLoaded => _isConfigLoaded;
 
 	// Cached URI to avoid repeated parsing and potential exceptions
@@ -76,7 +78,6 @@ public partial class LocationManager : AutoloadBase
 
 	// Note: .env loading moved to ApplicationBootstrap.OnServiceEnterTree()
 	// This ensures env vars are set before ANY service (including LocationManager) initializes
-
 	protected override Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
 		// Load configuration values during async init phase
@@ -147,7 +148,9 @@ public partial class LocationManager : AutoloadBase
 
 			// Skip comments and empty lines
 			if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
+			{
 				continue;
+			}
 
 			// Parse KEY=VALUE format
 			var parts = line.Split('=', 2);
@@ -230,7 +233,7 @@ public partial class LocationManager : AutoloadBase
 	private string LoadBackendUrl()
 	{
 		var url = System.Environment.GetEnvironmentVariable("BARBOX_BACKEND_URL") ??
-		          "http://localhost:8000";
+				  "http://localhost:8000";
 
 		// Validate and cache the URI
 		try
@@ -270,7 +273,7 @@ public partial class LocationManager : AutoloadBase
 				LogError("║ Get API key from backend seed:                             ║");
 				LogError("║   curl -X POST http://127.0.0.1:8000/test/seed            ║");
 				LogError("╚════════════════════════════════════════════════════════════╝");
-				return "";
+				return string.Empty;
 			}
 
 			throw new InvalidOperationException("BARBOX_API_KEY required in production builds");
@@ -292,7 +295,7 @@ public partial class LocationManager : AutoloadBase
 	/// </summary>
 	private string LoadRegistrationSecret()
 	{
-		return System.Environment.GetEnvironmentVariable("BARBOX_REGISTRATION_SECRET") ?? "";
+		return System.Environment.GetEnvironmentVariable("BARBOX_REGISTRATION_SECRET") ?? string.Empty;
 	}
 
 	/// <summary>
@@ -388,13 +391,15 @@ public partial class LocationManager : AutoloadBase
 	{
 		var backend = BackendClient.GetInstance();
 		if (backend == null)
+		{
 			return Result.Failure<BoxDetailResponse>("BackendClient not available");
+		}
 
 		var request = new BoxCreateRequest
 		{
 			Id = boxId.ToString(),
 			Name = locationName,
-			Tag = locationName
+			Tag = locationName,
 		};
 
 		// Use PUT for idempotent box registration. The registration secret is
@@ -408,8 +413,7 @@ public partial class LocationManager : AutoloadBase
 			$"/box/{boxId}",
 			request,
 			200,
-			extraHeaders: extraHeaders
-		);
+			extraHeaders: extraHeaders);
 
 		if (result.IsSuccess(out var response))
 		{
@@ -459,10 +463,14 @@ public partial class LocationManager : AutoloadBase
 		var result = await RegisterBoxWithDetailAsync(boxId, locationName);
 
 		if (result.IsSuccess(out var detail))
+		{
 			return Result.Success(Guid.Parse(detail.Id));
+		}
 
 		if (result.IsFailure(out var error))
+		{
 			return Result.Failure<Guid>(error.Message);
+		}
 
 		return Result.Failure<Guid>("Unknown error");
 	}

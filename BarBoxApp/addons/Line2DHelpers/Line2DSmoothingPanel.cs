@@ -1,6 +1,6 @@
 #if TOOLS
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 /// <summary>
 /// Inspector panel for Line2D turn smoothing using Catmull-Rom splines
@@ -63,7 +63,7 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 		{
 			MinValue = 0,
 			Step = 1,
-			CustomMinimumSize = new Vector2(60, 0)
+			CustomMinimumSize = new Vector2(60, 0),
 		};
 		_startIndexSpinBox.ValueChanged += OnStartIndexChanged;
 		startContainer.AddChild(_startIndexSpinBox);
@@ -72,7 +72,7 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 			Text = "⊙",
 			TooltipText = "Click to toggle point picking from viewport",
 			ToggleMode = true,
-			CustomMinimumSize = new Vector2(28, 0)
+			CustomMinimumSize = new Vector2(28, 0),
 		};
 		_startPickerButton.Toggled += OnStartPickerToggled;
 		startContainer.AddChild(_startPickerButton);
@@ -86,7 +86,7 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 			MinValue = 1,
 			Step = 1,
 			Value = 1,
-			CustomMinimumSize = new Vector2(60, 0)
+			CustomMinimumSize = new Vector2(60, 0),
 		};
 		endContainer.AddChild(_endIndexSpinBox);
 		_endPickerButton = new Button
@@ -94,7 +94,7 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 			Text = "⊙",
 			TooltipText = "Click to toggle point picking from viewport",
 			ToggleMode = true,
-			CustomMinimumSize = new Vector2(28, 0)
+			CustomMinimumSize = new Vector2(28, 0),
 		};
 		_endPickerButton.Toggled += OnEndPickerToggled;
 		endContainer.AddChild(_endPickerButton);
@@ -117,7 +117,7 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 			MaxValue = 100000.0,
 			Step = 0.00000001,
 			Value = DEFAULT_POINTS_PER_10_UNITS,
-			CustomMinimumSize = new Vector2(60, 0)
+			CustomMinimumSize = new Vector2(60, 0),
 		};
 		densityContainer.AddChild(_pointsPerUnitSpinBox);
 		mainContainer.AddChild(densityContainer);
@@ -132,7 +132,7 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 			MaxValue = 2.0,
 			Step = 0.1,
 			Value = DEFAULT_BULGE_FACTOR,
-			CustomMinimumSize = new Vector2(60, 0)
+			CustomMinimumSize = new Vector2(60, 0),
 		};
 		bulgeContainer.AddChild(_bulgeFactorSpinBox);
 		mainContainer.AddChild(bulgeContainer);
@@ -144,13 +144,13 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 		{
 			Text = "Even Spacing",
 			TooltipText = "Redistribute points evenly along the curve for smoother results",
-			ButtonPressed = false
+			ButtonPressed = false,
 		};
 		spacingContainer.AddChild(_evenSpacingCheckBox);
 		mainContainer.AddChild(spacingContainer);
 
 		// Status label
-		_statusLabel = new Label { Text = "" };
+		_statusLabel = new Label { Text = string.Empty };
 		_statusLabel.AddThemeColorOverride("font_color", new Color(0.6f, 0.6f, 0.6f));
 		mainContainer.AddChild(_statusLabel);
 
@@ -240,6 +240,7 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 				_endIndexSpinBox.Value = value + 1;
 			}
 		}
+
 		UpdateStatusLabel();
 	}
 
@@ -288,7 +289,10 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 
 	private void UpdateStatusLabel()
 	{
-		if (_targetLine2D == null) return;
+		if (_targetLine2D == null)
+		{
+			return;
+		}
 
 		int startIdx = (int)_startIndexSpinBox.Value;
 		int endIdx = (int)_endIndexSpinBox.Value;
@@ -315,10 +319,14 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 
 	private void OnApplyPressed()
 	{
-		if (_targetLine2D == null) return;
+		if (_targetLine2D == null)
+		{
+			return;
+		}
 
 		int startIdx = (int)_startIndexSpinBox.Value;
 		int endIdx = (int)_endIndexSpinBox.Value;
+
 		// Convert from "points per 10 units" to "points per unit"
 		float pointsPerUnit = (float)_pointsPerUnitSpinBox.Value / 10.0f;
 		float bulgeFactor = (float)_bulgeFactorSpinBox.Value;
@@ -333,6 +341,7 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 		var pointsArray = _targetLine2D.Points;
 
 		bool isClosedLoop = _targetLine2D.Closed;
+
 		// Full loop (start == end) or wrap-around (end < start) both use wrap method
 		bool isWrapAround = isClosedLoop && endIdx <= startIdx;
 
@@ -395,7 +404,7 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 		}
 
 		// 4. Apply with undo support
-		ApplySmoothingWithUndo(_targetLine2D, newPointsList.ToArray(), pointsArray, startIdx, endIdx);
+		ApplySmoothingWithUndo(_targetLine2D, [.. newPointsList], pointsArray, startIdx, endIdx);
 
 		// 5. Update limits and status for next operation
 		UpdateSpinBoxLimits();
@@ -408,7 +417,8 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 		var undoRedo = EditorInterface.Singleton.GetEditorUndoRedo();
 
 		// CreateAction with customContext ensures correct scene history is used
-		undoRedo.CreateAction($"Smooth Line2D Turn ({startIdx}-{endIdx})",
+		undoRedo.CreateAction(
+			$"Smooth Line2D Turn ({startIdx}-{endIdx})",
 			mergeMode: UndoRedo.MergeMode.Disable,
 			customContext: line2D);
 
@@ -423,7 +433,10 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 
 	private void OnStraightenPressed()
 	{
-		if (_targetLine2D == null) return;
+		if (_targetLine2D == null)
+		{
+			return;
+		}
 
 		int startIdx = (int)_startIndexSpinBox.Value;
 		int endIdx = (int)_endIndexSpinBox.Value;
@@ -466,14 +479,15 @@ public partial class Line2DSmoothingPanel : FoldableContainer
 			}
 		}
 
-		ApplyStraightenWithUndo(_targetLine2D, newPointsList.ToArray(), pointsArray, startIdx, endIdx);
+		ApplyStraightenWithUndo(_targetLine2D, [.. newPointsList], pointsArray, startIdx, endIdx);
 		UpdateSpinBoxLimits();
 	}
 
 	private void ApplyStraightenWithUndo(Line2D line2D, Vector2[] newPoints, Vector2[] originalPoints, int startIdx, int endIdx)
 	{
 		var undoRedo = EditorInterface.Singleton.GetEditorUndoRedo();
-		undoRedo.CreateAction($"Straighten Line2D ({startIdx}-{endIdx})",
+		undoRedo.CreateAction(
+			$"Straighten Line2D ({startIdx}-{endIdx})",
 			mergeMode: UndoRedo.MergeMode.Disable,
 			customContext: line2D);
 

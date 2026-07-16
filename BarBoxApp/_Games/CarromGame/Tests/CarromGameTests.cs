@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Games.Carrom.Tests;
@@ -21,7 +21,8 @@ public class CarromGameTests : TestClass
 	private Guid _testPlayer2Id;
 	private Guid _testSessionId;
 
-	public CarromGameTests(Node testScene) : base(testScene)
+	public CarromGameTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -65,7 +66,7 @@ public class CarromGameTests : TestClass
 		var playerIds = new List<string>
 		{
 			_testPlayer1Id.ToString(),
-			_testPlayer2Id.ToString()
+			_testPlayer2Id.ToString(),
 		};
 
 		var result = await _eventService.CreateActivitySessionAsync(
@@ -99,7 +100,7 @@ public class CarromGameTests : TestClass
 		{
 			game = GAME_TAG,
 			mode = "competitive",
-			player_count = 2
+			player_count = 2,
 		});
 
 		if (result.IsSuccess(out var _))
@@ -126,7 +127,7 @@ public class CarromGameTests : TestClass
 		{
 			player_id = _testPlayer1Id.ToString(),
 			points = 10,
-			piece_type = "white"
+			piece_type = "white",
 		});
 
 		// Player 2 scores
@@ -134,7 +135,7 @@ public class CarromGameTests : TestClass
 		{
 			player_id = _testPlayer2Id.ToString(),
 			points = 15,
-			piece_type = "black"
+			piece_type = "black",
 		});
 
 		// Player 1 scores again
@@ -142,7 +143,7 @@ public class CarromGameTests : TestClass
 		{
 			player_id = _testPlayer1Id.ToString(),
 			points = 20,
-			piece_type = "queen"
+			piece_type = "queen",
 		});
 
 		if (score1.IsSuccess(out var _) && score2.IsSuccess(out var _) && score3.IsSuccess(out var _))
@@ -172,9 +173,9 @@ public class CarromGameTests : TestClass
 			final_scores = new Dictionary<string, int>
 			{
 				{ _testPlayer1Id.ToString(), 30 },
-				{ _testPlayer2Id.ToString(), 15 }
+				{ _testPlayer2Id.ToString(), 15 },
 			},
-			duration_seconds = 300
+			duration_seconds = 300,
 		});
 
 		if (result.IsSuccess(out var _))
@@ -193,7 +194,6 @@ public class CarromGameTests : TestClass
 		// This test verifies the pattern for leaderboard updates
 		// In production: POST /game/leaderboard/carrom
 		// Backend aggregates scores from session events
-
 		TestHelpers.LogTestInfo("Leaderboard would be updated from session events");
 		TestHelpers.LogTestInfo("Query: GET /game/leaderboard/carrom");
 	}
@@ -210,7 +210,6 @@ public class CarromGameTests : TestClass
 		// 3. Backend processes the generic credit event
 		//
 		// This integration is tested in CreditServiceTests with proper mock setup.
-
 		TestHelpers.LogTestInfo("Credit deduction tested via CreditService integration tests");
 		TestHelpers.LogTestInfo("Game entry cost: 1000 credits per player in competitive mode");
 		TestHelpers.LogTestInfo("Event type: credit/spend (generic, not carrom-specific)");
@@ -231,7 +230,7 @@ public class CarromGameTests : TestClass
 		var playerIds = new List<string>
 		{
 			_testPlayer1Id.ToString(),
-			_testPlayer2Id.ToString()
+			_testPlayer2Id.ToString(),
 		};
 
 		var sessionResult = await _eventService.CreateActivitySessionAsync(
@@ -249,7 +248,7 @@ public class CarromGameTests : TestClass
 			{
 				game = GAME_TAG,
 				mode = "competitive",
-				player_count = 2
+				player_count = 2,
 			});
 
 			TestHelpers.LogTestInfo($"Step 2 - Game Begin: {(beginResult.IsSuccess(out var _) ? "✓" : "✗")}");
@@ -258,12 +257,12 @@ public class CarromGameTests : TestClass
 			await _eventService.EmitEventAsync("play/score", new
 			{
 				player_id = _testPlayer1Id.ToString(),
-				points = 25
+				points = 25,
 			});
 			await _eventService.EmitEventAsync("play/score", new
 			{
 				player_id = _testPlayer2Id.ToString(),
-				points = 20
+				points = 20,
 			});
 
 			TestHelpers.LogTestInfo("Step 3 - Scores Recorded: ✓");
@@ -275,8 +274,8 @@ public class CarromGameTests : TestClass
 				final_scores = new Dictionary<string, int>
 				{
 					{ _testPlayer1Id.ToString(), 25 },
-					{ _testPlayer2Id.ToString(), 20 }
-				}
+					{ _testPlayer2Id.ToString(), 20 },
+				},
 			});
 
 			TestHelpers.LogTestInfo($"Step 4 - Game Finish: {(finishResult.IsSuccess(out var _) ? "✓" : "✗")}");
@@ -302,7 +301,6 @@ public class CarromGameTests : TestClass
 		//   { "player_id": "player1", "score": 25, "rank": 1 },
 		//   { "player_id": "player2", "score": 20, "rank": 2 }
 		// ]
-
 		TestHelpers.LogTestInfo("Leaderboard query test - requires backend endpoint implementation");
 		TestHelpers.LogTestInfo("Expected: GET /game/leaderboard/carrom returns sorted scores");
 	}

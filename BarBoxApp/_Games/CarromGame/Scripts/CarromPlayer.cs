@@ -1,5 +1,5 @@
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
@@ -9,26 +9,37 @@ namespace BarBox.Games.Carrom;
 [GlobalClass]
 public partial class CarromPlayer : BasePlayer
 {
-	[Signal] public delegate void PieceAssignmentChangedEventHandler();
-	[Signal] public delegate void ScoreUpdatedEventHandler(int newScore);
-	[Signal] public delegate void QueenCoveredSuccessfullyEventHandler(string playerId);
+	[Signal]
+	public delegate void PieceAssignmentChangedEventHandler();
+
+	[Signal]
+	public delegate void ScoreUpdatedEventHandler(int newScore);
+
+	[Signal]
+	public delegate void QueenCoveredSuccessfullyEventHandler(string playerId);
 
 	[ExportCategory("Carrom Settings")]
-	[Export] public PieceType AssignedPieceType { get; set; } = PieceType.White;
-	[Export] public int PiecesPocketed { get; set; } = 0;
-	[Export] public bool HasQueen { get; set; } = false; // Whether player has pocketed the queen
-	[Export] public bool QueenCovered { get; set; } = false; // Whether queen is properly covered
+	[Export]
+	public PieceType AssignedPieceType { get; set; } = PieceType.White;
+
+	[Export]
+	public int PiecesPocketed { get; set; } = 0;
+
+	[Export]
+	public bool HasQueen { get; set; } = false; // Whether player has pocketed the queen
+
+	[Export]
+	public bool QueenCovered { get; set; } = false; // Whether queen is properly covered
 
 	// Player statistics
 	private int _totalShots = 0;
 	private int _validPockets = 0;
 	private int _fouls = 0;
 	private List<PieceType> _pocketedPieces = [];
-	
+
 	// Queen covering state (CRITICAL FIX for same-turn covering rule)
 	private bool _pocketedQueenThisTurn = false;
 	private bool _needsQueenCovering = false;
-	
 
 	protected override void InitializePlayer()
 	{
@@ -48,7 +59,7 @@ public partial class CarromPlayer : BasePlayer
 		_validPockets = 0;
 		_fouls = 0;
 		_pocketedPieces.Clear();
-		
+
 		// Reset queen covering state
 		_pocketedQueenThisTurn = false;
 		_needsQueenCovering = false;
@@ -88,7 +99,7 @@ public partial class CarromPlayer : BasePlayer
 			GD.PrintErr($"[CarromPlayer] Cannot pocket pieces - no assigned piece type for player {PlayerId}");
 			return;
 		}
-		
+
 		// Validate that this is a legal piece type to pocket
 		if (pieceType == PieceType.Striker)
 		{
@@ -110,18 +121,18 @@ public partial class CarromPlayer : BasePlayer
 		{
 			PiecesPocketed++;
 			_validPockets++;
-			
+
 			// OFFICIAL RULE: Queen covering must happen immediately after queen in same turn
 			if (_needsQueenCovering)
 			{
 				QueenCovered = true;
 				_needsQueenCovering = false;
 				GD.Print($"[CarromPlayer] {PlayerId} covered queen with {pieceType} piece");
-				
+
 				// Emit signal for queen covered event so UI can show floating text
 				EmitSignal(SignalName.QueenCoveredSuccessfully, PlayerId);
 			}
-			
+
 			EmitSignal(SignalName.ScoreUpdated, PiecesPocketed);
 		}
 	}
@@ -173,7 +184,7 @@ public partial class CarromPlayer : BasePlayer
 		// The covering eligibility (having at least one assigned piece) is checked separately
 		return !HasQueen;
 	}
-	
+
 	/// <summary>
 	/// Check if player is eligible to cover the queen (has at least one assigned piece pocketed)
 	/// </summary>
@@ -188,7 +199,11 @@ public partial class CarromPlayer : BasePlayer
 	/// </summary>
 	public virtual float GetAccuracy()
 	{
-		if (_totalShots == 0) return 0.0f;
+		if (_totalShots == 0)
+		{
+			return 0.0f;
+		}
+
 		return (float)_validPockets / _totalShots;
 	}
 
@@ -197,7 +212,11 @@ public partial class CarromPlayer : BasePlayer
 	/// </summary>
 	public virtual float GetFoulRate()
 	{
-		if (_totalShots == 0) return 0.0f;
+		if (_totalShots == 0)
+		{
+			return 0.0f;
+		}
+
 		return (float)_fouls / _totalShots;
 	}
 
@@ -206,7 +225,7 @@ public partial class CarromPlayer : BasePlayer
 	/// </summary>
 	public virtual List<PieceType> GetPocketedPieces()
 	{
-		return new List<PieceType>(_pocketedPieces);
+		return [.. _pocketedPieces];
 	}
 
 	/// <summary>
@@ -256,8 +275,8 @@ public partial class CarromPlayer : BasePlayer
 		return PiecesPocketed > 0 || (HasQueen && !QueenCovered);
 	}
 
-
 	// Public accessors for game statistics
+
 	/// <summary>
 	/// Handle end of turn - check if queen needs to be returned to center
 	/// OFFICIAL CARROM RULE: If queen was pocketed but not covered in same turn, return to center
@@ -265,7 +284,7 @@ public partial class CarromPlayer : BasePlayer
 	public virtual bool HandleEndOfTurn()
 	{
 		bool queenNeedsReturning = false;
-		
+
 		// Check if queen was pocketed this turn but not covered
 		if (_pocketedQueenThisTurn && _needsQueenCovering)
 		{
@@ -273,7 +292,7 @@ public partial class CarromPlayer : BasePlayer
 			HasQueen = false;
 			QueenCovered = false;
 			queenNeedsReturning = true;
-			
+
 			// Remove queen from pocketed pieces list
 			for (int i = _pocketedPieces.Count - 1; i >= 0; i--)
 			{
@@ -283,17 +302,17 @@ public partial class CarromPlayer : BasePlayer
 					break;
 				}
 			}
-			
+
 			GD.Print($"[CarromPlayer] {PlayerId} did not cover queen - returning to center");
 		}
-		
+
 		// Reset turn state
 		_pocketedQueenThisTurn = false;
 		_needsQueenCovering = false;
-		
+
 		return queenNeedsReturning;
 	}
-	
+
 	/// <summary>
 	/// Start new turn - reset turn-specific state
 	/// </summary>
@@ -302,13 +321,17 @@ public partial class CarromPlayer : BasePlayer
 		_pocketedQueenThisTurn = false;
 		_needsQueenCovering = false;
 	}
-	
+
 	// Public accessors for game statistics
 	public int GetTotalShots() => _totalShots;
+
 	public int GetValidPockets() => _validPockets;
+
 	public int GetFouls() => _fouls;
+
 	public bool IsAssignedPiece(PieceType pieceType) => pieceType == AssignedPieceType;
+
 	public bool NeedsQueenCovering() => _needsQueenCovering;
+
 	public bool PocketedQueenThisTurn() => _pocketedQueenThisTurn;
-	
 }

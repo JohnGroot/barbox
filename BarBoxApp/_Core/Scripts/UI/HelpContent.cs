@@ -54,7 +54,7 @@ public struct HelpSection
 	public HelpSection(string header, string[] content, bool isList = false)
 	{
 		Header = header;
-		Content = content.ToList();
+		Content = [.. content];
 		IsList = isList;
 	}
 }
@@ -75,34 +75,40 @@ public static class HelpContentFactory
 	public static HelpContentData CreateMiningGameHelp()
 	{
 		return new HelpContentData("Mining Game - Complete Guide")
-			.AddSection("⛏️ How Mining Works",
+			.AddSection(
+				"⛏️ How Mining Works",
 				"Gems accumulate automatically every 2 hours while the machine is running.",
 				"Each location mines a specific type of gem with unique properties.",
 				"Mining continues even when you're not actively playing.")
 
-			.AddSection("💎 Extracting Gems",
+			.AddSection(
+				"💎 Extracting Gems",
 				"Gems are stored locally on each machine until extracted.",
 				"Click 'Extract' to move ready gems to your global inventory.",
 				"Each machine has a maximum capacity - extract regularly to avoid waste.")
 
-			.AddSection("🪙 Purchasing Credits",
+			.AddSection(
+				"🪙 Purchasing Credits",
 				"Trade 150 gems of any type for 1 credit.",
 				"Credits can be used to play other BarBox games.",
 				"Each credit has a 24-hour recharge timer before you can buy another.")
 
-			.AddListSection("⬆️ Upgrade Types",
+			.AddListSection(
+				"⬆️ Upgrade Types",
 				"💼 Capacity - Increases maximum gem storage",
 				"⚡ Mining Amount - More gems per mining cycle",
 				"🚀 Mining Speed - Faster mining cycles",
 				"🎫 Credit Charges - Purchase multiple credits")
 
-			.AddSection("🏆 Upgrade Progression",
+			.AddSection(
+				"🏆 Upgrade Progression",
 				"Each upgrade has 15 levels with increasing costs.",
 				"Tier 1 (Levels 1-5): Only location gems required",
 				"Tier 2 (Levels 6-10): Location gems + 1 random type",
 				"Tier 3 (Levels 11-15): Location gems + 2 random types")
 
-			.AddSection("🗺️ Multiple Locations",
+			.AddSection(
+				"🗺️ Multiple Locations",
 				"Each BarBox location has different gem types and themes.",
 				"Upgrades are specific to each machine - progress separately.",
 				"Visit different locations to mine various gem types.");

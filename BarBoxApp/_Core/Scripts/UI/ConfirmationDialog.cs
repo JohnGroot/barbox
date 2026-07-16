@@ -1,6 +1,6 @@
-using Godot;
 using System;
 using System.Threading.Tasks;
+using Godot;
 
 /// <summary>
 /// Reusable confirmation dialog for user actions requiring confirmation
@@ -8,8 +8,11 @@ using System.Threading.Tasks;
 /// </summary>
 public partial class ConfirmationDialog : Control
 {
-	[Signal] public delegate void ConfirmedEventHandler();
-	[Signal] public delegate void CancelledEventHandler();
+	[Signal]
+	public delegate void ConfirmedEventHandler();
+
+	[Signal]
+	public delegate void CancelledEventHandler();
 
 	private const string DEFAULT_TITLE = "Confirm Action";
 	private const string DEFAULT_MESSAGE = "Are you sure?";
@@ -195,7 +198,9 @@ public partial class ConfirmationDialog : Control
 		string cancelText = DEFAULT_CANCEL_TEXT)
 	{
 		if (Visible)
+		{
 			return false;
+		}
 
 		_currentTitle = title;
 		_currentMessage = message;
@@ -216,22 +221,32 @@ public partial class ConfirmationDialog : Control
 	private void UpdateDialogContent()
 	{
 		if (_titleLabel != null)
+		{
 			_titleLabel.Text = _currentTitle;
+		}
 
 		if (_messageLabel != null)
+		{
 			_messageLabel.Text = _currentMessage;
+		}
 
 		if (_confirmButton != null)
+		{
 			_confirmButton.Text = _currentConfirmText;
+		}
 
 		if (_cancelButton != null)
+		{
 			_cancelButton.Text = _currentCancelText;
+		}
 	}
 
 	public new void Hide()
 	{
 		if (!Visible)
+		{
 			return;
+		}
 
 		Visible = false;
 
@@ -246,8 +261,8 @@ public partial class ConfirmationDialog : Control
 	private void OnBackgroundInput(InputEvent inputEvent)
 	{
 		if (inputEvent is InputEventMouseButton mouseButton &&
-		    mouseButton.ButtonIndex == MouseButton.Left &&
-		    mouseButton.Pressed)
+			mouseButton.ButtonIndex == MouseButton.Left &&
+			mouseButton.Pressed)
 		{
 			OnCancelPressed();
 		}
@@ -256,7 +271,9 @@ public partial class ConfirmationDialog : Control
 	public override void _Input(InputEvent inputEvent)
 	{
 		if (!Visible)
+		{
 			return;
+		}
 
 		if (inputEvent is InputEventKey keyEvent && keyEvent.Pressed)
 		{
@@ -312,13 +329,19 @@ public partial class ConfirmationDialog : Control
 	public override void _ExitTree()
 	{
 		if (GodotObject.IsInstanceValid(_confirmButton))
+		{
 			_confirmButton.Pressed -= OnConfirmPressed;
+		}
 
 		if (GodotObject.IsInstanceValid(_cancelButton))
+		{
 			_cancelButton.Pressed -= OnCancelPressed;
+		}
 
 		if (GodotObject.IsInstanceValid(_modalBackground))
+		{
 			_modalBackground.GuiInput -= OnBackgroundInput;
+		}
 
 		Confirmed -= OnConfirmed;
 		Cancelled -= OnCancelled;

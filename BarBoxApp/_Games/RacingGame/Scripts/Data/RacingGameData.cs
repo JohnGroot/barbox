@@ -4,13 +4,11 @@ using Godot;
 namespace BarBox.Games.Racing;
 
 // ============= RACE DATABASE RECORDS =============
-
 [Serializable]
 public record CheckpointTime(
 	int Index,
 	float Time,
-	float Gap
-);
+	float Gap);
 
 /// <summary>
 /// Only created when races are fully completed
@@ -25,8 +23,7 @@ public record RaceEntry(
 	int TotalLaps,
 	float TotalTime,
 	float[] LapTimes,
-	CheckpointTime[] Checkpoints
-);
+	CheckpointTime[] Checkpoints);
 
 // ============= RACE DATABASE =============
 
@@ -42,19 +39,23 @@ public static class RaceDatabase
 	public static string GenerateTrackId(PackedScene trackScene)
 	{
 		if (trackScene?.ResourcePath == null)
+		{
 			return "unknown_track";
+		}
 
 		return trackScene.ResourcePath
-			.GetFile()				// "GoCartTrack.tscn"
-			.GetBaseName()			// "GoCartTrack"
-			.ToSnakeCase()			// "go_cart_track"
-			.ToLowerInvariant();	// "go_cart_track"
+			.GetFile() // "GoCartTrack.tscn"
+			.GetBaseName() // "GoCartTrack"
+			.ToSnakeCase() // "go_cart_track"
+			.ToLowerInvariant();    // "go_cart_track"
 	}
 
 	public static string GenerateTrackIdFromName(string trackName)
 	{
 		if (string.IsNullOrEmpty(trackName))
+		{
 			return "unknown_track";
+		}
 
 		return trackName
 			.ToSnakeCase()

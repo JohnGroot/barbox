@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Unit.UI;
@@ -16,7 +16,8 @@ public class BuyCreditsModalTests : BackendTestBase
 	private BuyCreditsModal _modal;
 	private SessionManager _sessionManager;
 
-	public BuyCreditsModalTests(Node testScene) : base(testScene)
+	public BuyCreditsModalTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -139,7 +140,8 @@ public class BuyCreditsModalTests : BackendTestBase
 	public async Task ShowModal_WithValidUser_DisplaysUsernameInCreditsLabel()
 	{
 		// Arrange
-		var servicesReady = await TestHelpers.WaitForConditionAsync(() =>
+		var servicesReady = await TestHelpers.WaitForConditionAsync(
+			() =>
 		{
 			var eventService = GetEventService();
 			return eventService != null && eventService.IsReady;

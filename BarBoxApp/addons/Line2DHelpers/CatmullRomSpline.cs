@@ -1,6 +1,6 @@
 #if TOOLS
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 /// <summary>
 /// Utility class for Catmull-Rom spline interpolation
@@ -23,11 +23,10 @@ public static class CatmullRomSpline
 		float t3 = t2 * t;
 
 		return 0.5f * (
-			2.0f * p1 +
-			(-p0 + p2) * t +
-			(2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
-			(-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3
-		);
+			(2.0f * p1) +
+			((-p0 + p2) * t) +
+			(((2.0f * p0) - (5.0f * p1) + (4.0f * p2) - p3) * t2) +
+			((-p0 + (3.0f * p1) - (3.0f * p2) + p3) * t3));
 	}
 
 	/// <summary>
@@ -49,10 +48,14 @@ public static class CatmullRomSpline
 		bool isClosedLoop = false)
 	{
 		if (originalPoints == null || originalPoints.Length < 2)
+		{
 			return originalPoints;
+		}
 
 		if (startIndex < 0 || endIndex >= originalPoints.Length || startIndex >= endIndex)
+		{
 			return originalPoints;
+		}
 
 		var result = new List<Vector2>();
 
@@ -115,8 +118,8 @@ public static class CatmullRomSpline
 
 			// Apply bulge factor to control curve tightness
 			// Bulge affects how much the tangent points influence the curve
-			Vector2 adjustedP0 = p1 + (p0 - p1) * bulgeFactor;
-			Vector2 adjustedP3 = p2 + (p3 - p2) * bulgeFactor;
+			Vector2 adjustedP0 = p1 + ((p0 - p1) * bulgeFactor);
+			Vector2 adjustedP3 = p2 + ((p3 - p2) * bulgeFactor);
 
 			// Calculate number of points based on segment distance
 			float segmentLength = (p2 - p1).Length();
@@ -133,7 +136,7 @@ public static class CatmullRomSpline
 		// Add the final endpoint
 		result.Add(originalPoints[endIndex]);
 
-		return result.ToArray();
+		return [.. result];
 	}
 
 	/// <summary>
@@ -154,7 +157,9 @@ public static class CatmullRomSpline
 		float bulgeFactor = 1.0f)
 	{
 		if (originalPoints == null || originalPoints.Length < 2)
+		{
 			return originalPoints;
+		}
 
 		var result = new List<Vector2>();
 		int n = originalPoints.Length;
@@ -176,15 +181,22 @@ public static class CatmullRomSpline
 		{
 			// Wrap-around: start→end_of_array, then 0→end
 			for (int i = startIndex; i < n; i++)
+			{
 				segments.Add((i, (i + 1) % n));
+			}
+
 			for (int i = 0; i < endIndex; i++)
+			{
 				segments.Add((i, i + 1));
+			}
 		}
 		else
 		{
 			// Normal range (shouldn't typically call this method for normal range, but handle it)
 			for (int i = startIndex; i < endIndex; i++)
+			{
 				segments.Add((i, i + 1));
+			}
 		}
 
 		// Determine first and last segment indices for boundary tangent preservation
@@ -224,8 +236,8 @@ public static class CatmullRomSpline
 			}
 
 			// Apply bulge factor
-			Vector2 adjustedP0 = p1 + (p0 - p1) * bulgeFactor;
-			Vector2 adjustedP3 = p2 + (p3 - p2) * bulgeFactor;
+			Vector2 adjustedP0 = p1 + ((p0 - p1) * bulgeFactor);
+			Vector2 adjustedP3 = p2 + ((p3 - p2) * bulgeFactor);
 
 			// Calculate number of points based on segment distance
 			float segmentLength = (p2 - p1).Length();
@@ -242,7 +254,7 @@ public static class CatmullRomSpline
 		// Add the final endpoint
 		result.Add(originalPoints[endIndex]);
 
-		return result.ToArray();
+		return [.. result];
 	}
 
 	/// <summary>
@@ -251,7 +263,9 @@ public static class CatmullRomSpline
 	public static Vector2[] RedistributeEvenly(Vector2[] points, int targetPointCount)
 	{
 		if (points == null || points.Length < 2 || targetPointCount < 2)
+		{
 			return points;
+		}
 
 		// Calculate cumulative arc lengths
 		float[] arcLengths = new float[points.Length];
@@ -260,10 +274,13 @@ public static class CatmullRomSpline
 		{
 			arcLengths[i] = arcLengths[i - 1] + points[i].DistanceTo(points[i - 1]);
 		}
+
 		float totalLength = arcLengths[^1];
 
 		if (totalLength < 0.0001f)
+		{
 			return points;
+		}
 
 		// Resample at equal arc-length intervals
 		var result = new Vector2[targetPointCount];

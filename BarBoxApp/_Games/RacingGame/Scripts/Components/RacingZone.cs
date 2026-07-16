@@ -12,14 +12,13 @@ public partial class RacingZone : Area2D, IRacingZone
 	// ================================================================
 	// EXPORT PROPERTIES - ZONE TYPE
 	// ================================================================
-
 	[ExportCategory("Zone Type")]
-	[Export] public ZoneType Type { get; set; } = ZoneType.Slowdown;
+	[Export]
+	public ZoneType Type { get; set; } = ZoneType.Slowdown;
 
 	// ================================================================
 	// EXPORT PROPERTIES - MODIFIERS
 	// ================================================================
-
 	[ExportCategory("Modifiers")]
 	[Export(PropertyHint.Range, "0.1,3.0,0.1")]
 	public float SpeedModifier { get; set; } = 1.0f;
@@ -33,9 +32,9 @@ public partial class RacingZone : Area2D, IRacingZone
 	// ================================================================
 	// EXPORT PROPERTIES - FRICTIONLESS SETTINGS
 	// ================================================================
-
 	[ExportCategory("Frictionless Settings")]
-	[Export] public bool BlocksInput { get; set; } = false;
+	[Export]
+	public bool BlocksInput { get; set; } = false;
 
 	[Export(PropertyHint.Range, "0.0,10.0,0.1")]
 	public float Duration { get; set; } = 0.0f;
@@ -43,16 +42,19 @@ public partial class RacingZone : Area2D, IRacingZone
 	// ================================================================
 	// EXPORT PROPERTIES - VISUAL
 	// ================================================================
-
 	[ExportCategory("Visual")]
-	[Export] public Color ZoneColor { get; set; } = new Color(1.0f, 1.0f, 0.0f, 0.3f);
-	[Export] public Polygon2D VisualPolygon { get; set; }
-	[Export] public bool ShowVisual { get; set; } = true;
+	[Export]
+	public Color ZoneColor { get; set; } = new Color(1.0f, 1.0f, 0.0f, 0.3f);
+
+	[Export]
+	public Polygon2D VisualPolygon { get; set; }
+
+	[Export]
+	public bool ShowVisual { get; set; } = true;
 
 	// ================================================================
 	// LIFECYCLE
 	// ================================================================
-
 	public override void _Ready()
 	{
 		// Set up collision monitoring
@@ -75,14 +77,10 @@ public partial class RacingZone : Area2D, IRacingZone
 	// ================================================================
 	// VISUAL UPDATES
 	// ================================================================
-
 	private void UpdateVisual()
 	{
-		if (VisualPolygon == null)
-		{
-			// Try to find visual polygon child
-			VisualPolygon = GetNodeOrNull<Polygon2D>("VisualPolygon");
-		}
+		// Try to find visual polygon child
+		VisualPolygon ??= GetNodeOrNull<Polygon2D>("VisualPolygon");
 
 		if (VisualPolygon != null)
 		{
@@ -97,7 +95,9 @@ public partial class RacingZone : Area2D, IRacingZone
 	private void SyncVisualWithCollision()
 	{
 		if (VisualPolygon == null)
+		{
 			return;
+		}
 
 		// If visual has no polygon, copy from collision
 		if (VisualPolygon.Polygon.Length == 0)
@@ -113,7 +113,6 @@ public partial class RacingZone : Area2D, IRacingZone
 	// ================================================================
 	// ZONE MANAGER REGISTRATION
 	// ================================================================
-
 	private void TryAutoRegister()
 	{
 		// Look for zone manager in parent hierarchy
@@ -126,6 +125,7 @@ public partial class RacingZone : Area2D, IRacingZone
 				zoneManager.RegisterZone(this);
 				return;
 			}
+
 			parent = parent.GetParent();
 		}
 	}
@@ -141,6 +141,7 @@ public partial class RacingZone : Area2D, IRacingZone
 				zoneManager.UnregisterZone(this);
 				return;
 			}
+
 			parent = parent.GetParent();
 		}
 	}
@@ -207,7 +208,7 @@ public partial class RacingZone : Area2D, IRacingZone
 			AccelerationModifier = 0.7f,
 			TurnModifier = 1.0f,
 			BlocksInput = false,
-			ZoneColor = new Color(1.0f, 0.2f, 0.2f, 0.3f) // Red tint
+			ZoneColor = new Color(1.0f, 0.2f, 0.2f, 0.3f), // Red tint
 		};
 		return zone;
 	}
@@ -221,7 +222,7 @@ public partial class RacingZone : Area2D, IRacingZone
 			AccelerationModifier = 1.5f,
 			TurnModifier = 1.0f,
 			BlocksInput = false,
-			ZoneColor = new Color(0.2f, 0.4f, 1.0f, 0.3f) // Blue tint
+			ZoneColor = new Color(0.2f, 0.4f, 1.0f, 0.3f), // Blue tint
 		};
 		return zone;
 	}
@@ -236,7 +237,7 @@ public partial class RacingZone : Area2D, IRacingZone
 			TurnModifier = 1.0f,
 			BlocksInput = true,
 			Duration = duration,
-			ZoneColor = new Color(0.2f, 1.0f, 1.0f, 0.3f) // Cyan tint
+			ZoneColor = new Color(0.2f, 1.0f, 1.0f, 0.3f), // Cyan tint
 		};
 		return zone;
 	}
@@ -250,7 +251,7 @@ public partial class RacingZone : Area2D, IRacingZone
 			AccelerationModifier = 1.0f,
 			TurnModifier = 1.0f,
 			BlocksInput = false,
-			ZoneColor = new Color(1.0f, 0.3f, 0.3f, 0.5f) // Red/white kerb color
+			ZoneColor = new Color(1.0f, 0.3f, 0.3f, 0.5f), // Red/white kerb color
 		};
 		return zone;
 	}
@@ -258,7 +259,6 @@ public partial class RacingZone : Area2D, IRacingZone
 	// ================================================================
 	// DEBUG
 	// ================================================================
-
 	public override string ToString()
 	{
 		return $"RacingZone({Type}, Speed:{SpeedModifier:F2}, Accel:{AccelerationModifier:F2}, Turn:{TurnModifier:F2})";

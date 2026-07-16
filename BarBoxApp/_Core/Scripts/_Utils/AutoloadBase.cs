@@ -1,8 +1,8 @@
-using Godot;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Godot;
 
 /// <summary>
 /// Abstract base class for all autoload services in the project
@@ -17,10 +17,10 @@ public abstract partial class AutoloadBase : Node
 	/// </summary>
 	public enum ServiceState
 	{
-		Constructed,	// _Ready() called, basic setup done
-		Initializing,	// InitializeAsync() called, async work in progress
-		Ready,			// Fully operational, can service requests
-		Failed			// Initialization failed, degraded mode
+		Constructed,    // _Ready() called, basic setup done
+		Initializing,   // InitializeAsync() called, async work in progress
+		Ready,          // Fully operational, can service requests
+		Failed, // Initialization failed, degraded mode
 	}
 
 	/// <summary>
@@ -41,20 +41,26 @@ public abstract partial class AutoloadBase : Node
 	/// Override this for critical service setup (NO async/await, NO CallDeferred allowed)
 	/// All autoloads will have completed OnServiceEnterTree() before any scene loads
 	/// </summary>
-	protected virtual void OnServiceEnterTree() { }
+	protected virtual void OnServiceEnterTree()
+	{
+	}
 
 	/// <summary>
 	/// Called during _Ready() to perform service-specific setup (async work allowed)
 	/// By this point, all autoloads have completed OnServiceEnterTree() synchronously
 	/// Override this for async initialization or signal connections
 	/// </summary>
-	protected virtual void OnServiceReady() { }
+	protected virtual void OnServiceReady()
+	{
+	}
 
 	/// <summary>
 	/// Called explicitly by SceneManager to perform full service initialization
 	/// Override this for services that need explicit initialization order
 	/// </summary>
-	protected virtual void OnServiceInitialize() { }
+	protected virtual void OnServiceInitialize()
+	{
+	}
 
 	/// <summary>
 	/// Called explicitly by SceneManager to perform async service initialization
@@ -185,7 +191,9 @@ public abstract partial class AutoloadBase : Node
 	public async Task<bool> WaitForReadyAsync(float timeoutSeconds = 30.0f, CancellationToken cancellationToken = default)
 	{
 		if (_state == ServiceState.Ready)
+		{
 			return true;
+		}
 
 		if (_state == ServiceState.Failed)
 		{
@@ -233,22 +241,26 @@ public abstract partial class AutoloadBase : Node
 	/// </summary>
 	/// <typeparam name="T">The autoload service type to find</typeparam>
 	/// <returns>The autoload instance or null if not found</returns>
-	public static T GetAutoload<T>() where T : AutoloadBase
+	public static T GetAutoload<T>()
+		where T : AutoloadBase
 	{
-		if (Engine.GetMainLoop() is not SceneTree tree) 
+		if (Engine.GetMainLoop() is not SceneTree tree)
+		{
 			return null;
+		}
 
 		string serviceName = typeof(T).Name;
 
 		// Primary: Group-based discovery
-		if (tree.GetFirstNodeInGroup(serviceName) is T serviceFromGroup) 
+		if (tree.GetFirstNodeInGroup(serviceName) is T serviceFromGroup)
+		{
 			return serviceFromGroup;
+		}
 
 		// Fallback: Direct node path discovery
 		var serviceFromPath = tree.Root?.GetNode($"/root/{serviceName}") as T;
 		return serviceFromPath;
 	}
-
 
 	/// <summary>
 	/// Safely connects a signal from a node if the signal exists
@@ -279,6 +291,7 @@ public abstract partial class AutoloadBase : Node
 			node.Disconnect(signalName, callable);
 			return true;
 		}
+
 		return false;
 	}
 
@@ -315,8 +328,11 @@ public abstract partial class AutoloadBase : Node
 	/// <returns>Task that completes after the specified delay</returns>
 	protected async System.Threading.Tasks.Task DelayAsync(float seconds)
 	{
-		if (seconds <= 0.0f) return;
-		
+		if (seconds <= 0.0f)
+		{
+			return;
+		}
+
 		var timer = GetTree().CreateTimer(seconds);
 		await ToSignal(timer, SceneTreeTimer.SignalName.Timeout);
 	}
@@ -330,8 +346,11 @@ public abstract partial class AutoloadBase : Node
 	/// <returns>Task that completes after the specified delay</returns>
 	public static async System.Threading.Tasks.Task StaticDelayAsync(float seconds)
 	{
-		if (seconds <= 0.0f) return;
-		
+		if (seconds <= 0.0f)
+		{
+			return;
+		}
+
 		var mainLoop = Engine.GetMainLoop();
 		if (mainLoop is not SceneTree tree)
 		{
@@ -339,7 +358,7 @@ public abstract partial class AutoloadBase : Node
 			await System.Threading.Tasks.Task.Delay((int)(seconds * 1000));
 			return;
 		}
-		
+
 		var timer = tree.CreateTimer(seconds);
 		await tree.ToSignal(timer, SceneTreeTimer.SignalName.Timeout);
 	}

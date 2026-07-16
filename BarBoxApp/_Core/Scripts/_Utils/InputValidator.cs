@@ -27,23 +27,27 @@ public static class InputValidator
 	public static string CleanPhoneNumber(string input)
 	{
 		if (string.IsNullOrEmpty(input))
+		{
 			return string.Empty;
+		}
 
 		// Check if input is E.164 format (starts with +)
 		if (input.StartsWith("+"))
 		{
 			// E.164 format: preserve + and all digits
 			// Remove non-digit characters except leading +
-			var e164 = "+" + Regex.Replace(input.Substring(1), @"[^\d]", "");
+			var e164 = "+" + Regex.Replace(input.Substring(1), @"[^\d]", string.Empty);
 			return e164;
 		}
 
 		// US format: remove all non-digit characters and limit to 10 digits
-		var digitsOnly = Regex.Replace(input, @"[^\d]", "");
+		var digitsOnly = Regex.Replace(input, @"[^\d]", string.Empty);
 
 		// Limit to 10 digits
 		if (digitsOnly.Length > PHONE_NUMBER_LENGTH)
+		{
 			digitsOnly = digitsOnly.Substring(0, PHONE_NUMBER_LENGTH);
+		}
 
 		return digitsOnly;
 	}
@@ -56,13 +60,19 @@ public static class InputValidator
 		var cleaned = CleanPhoneNumber(phoneNumber);
 
 		if (cleaned.Length == 0)
+		{
 			return string.Empty;
+		}
 
 		if (cleaned.Length <= 3)
+		{
 			return $"({cleaned}";
+		}
 
 		if (cleaned.Length <= 6)
+		{
 			return $"({cleaned.Substring(0, 3)}) {cleaned.Substring(3)}";
+		}
 
 		return $"({cleaned.Substring(0, 3)}) {cleaned.Substring(3, 3)}-{cleaned.Substring(6)}";
 	}
@@ -79,7 +89,7 @@ public static class InputValidator
 		if (cleaned.StartsWith("+"))
 		{
 			return cleaned.Length == 12 && cleaned.StartsWith("+1") &&
-			       Regex.IsMatch(cleaned.Substring(2), @"^\d{10}$");
+				   Regex.IsMatch(cleaned.Substring(2), @"^\d{10}$");
 		}
 
 		// Check US format: exactly 10 digits
@@ -96,14 +106,18 @@ public static class InputValidator
 	public static string CleanPin(string input)
 	{
 		if (string.IsNullOrEmpty(input))
+		{
 			return string.Empty;
+		}
 
 		// Remove all non-digit characters
-		var digitsOnly = Regex.Replace(input, @"[^\d]", "");
+		var digitsOnly = Regex.Replace(input, @"[^\d]", string.Empty);
 
 		// Limit to 4 digits
 		if (digitsOnly.Length > PIN_LENGTH)
+		{
 			digitsOnly = digitsOnly.Substring(0, PIN_LENGTH);
+		}
 
 		return digitsOnly;
 	}
@@ -127,14 +141,18 @@ public static class InputValidator
 	public static string CleanUsername(string input)
 	{
 		if (string.IsNullOrEmpty(input))
+		{
 			return string.Empty;
+		}
 
 		// Remove invalid characters (keep only alphanumeric and underscore)
-		var cleaned = Regex.Replace(input, @"[^a-zA-Z0-9_]", "");
+		var cleaned = Regex.Replace(input, @"[^a-zA-Z0-9_]", string.Empty);
 
 		// Limit to 7 characters
 		if (cleaned.Length > USERNAME_MAX_LENGTH)
+		{
 			cleaned = cleaned.Substring(0, USERNAME_MAX_LENGTH);
+		}
 
 		return cleaned;
 	}
@@ -145,7 +163,9 @@ public static class InputValidator
 	public static bool IsValidUsername(string username)
 	{
 		if (string.IsNullOrEmpty(username))
+		{
 			return false;
+		}
 
 		var cleaned = CleanUsername(username);
 		return cleaned.Length >= 1 && cleaned.Length <= USERNAME_MAX_LENGTH && UsernameRegex.IsMatch(cleaned);
@@ -163,7 +183,7 @@ public static class InputValidator
 		None,      // No validation performed yet
 		Valid,     // Input is valid
 		Invalid,   // Input is invalid
-		Incomplete // Input is not complete but on the right track
+		Incomplete, // Input is not complete but on the right track
 	}
 
 	/// <summary>
@@ -174,13 +194,19 @@ public static class InputValidator
 		var cleaned = CleanPhoneNumber(input);
 
 		if (string.IsNullOrEmpty(cleaned))
+		{
 			return ValidationState.None;
+		}
 
 		if (cleaned.Length == PHONE_NUMBER_LENGTH)
+		{
 			return ValidationState.Valid;
+		}
 
 		if (cleaned.Length < PHONE_NUMBER_LENGTH)
+		{
 			return ValidationState.Incomplete;
+		}
 
 		return ValidationState.Invalid;
 	}
@@ -193,13 +219,19 @@ public static class InputValidator
 		var cleaned = CleanPin(input);
 
 		if (string.IsNullOrEmpty(cleaned))
+		{
 			return ValidationState.None;
+		}
 
 		if (cleaned.Length == PIN_LENGTH)
+		{
 			return ValidationState.Valid;
+		}
 
 		if (cleaned.Length < PIN_LENGTH)
+		{
 			return ValidationState.Incomplete;
+		}
 
 		return ValidationState.Invalid;
 	}
@@ -210,15 +242,21 @@ public static class InputValidator
 	public static ValidationState GetUsernameValidationState(string input)
 	{
 		if (string.IsNullOrEmpty(input))
+		{
 			return ValidationState.None;
+		}
 
 		var cleaned = CleanUsername(input);
 
 		if (string.IsNullOrEmpty(cleaned))
+		{
 			return ValidationState.Invalid;
+		}
 
 		if (cleaned.Length >= 1 && cleaned.Length <= USERNAME_MAX_LENGTH)
+		{
 			return ValidationState.Valid;
+		}
 
 		return ValidationState.Invalid;
 	}

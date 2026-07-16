@@ -1,8 +1,8 @@
-using BarBox.Core.Gameplay;
-using Godot;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BarBox.Core.Gameplay;
+using Godot;
 
 namespace BarBox.Core.Autoloads;
 
@@ -15,8 +15,11 @@ public partial class GameHost : AutoloadBase
 	private const string FEATURE_EDITOR = "editor";
 	private const string FEATURE_STANDALONE = "standalone";
 
-	[Signal] public delegate void GameStartedEventHandler(string gameId);
-	[Signal] public delegate void GameEndedEventHandler(string gameId);
+	[Signal]
+	public delegate void GameStartedEventHandler(string gameId);
+
+	[Signal]
+	public delegate void GameEndedEventHandler(string gameId);
 
 	private GameController _currentGame;
 	private string _currentGameId = string.Empty;
@@ -27,7 +30,6 @@ public partial class GameHost : AutoloadBase
 
 	protected override void OnServiceEnterTree()
 	{
-
 		// All autoloads guaranteed to exist after _EnterTree phase
 		_sessionManager = SessionManager.GetInstance();
 		_gameRegistry = GetAutoload<GameRegistry>();
@@ -37,7 +39,9 @@ public partial class GameHost : AutoloadBase
 		if (IsProductionContext())
 		{
 			if (_gameRegistry == null || _sessionManager == null || _sceneManager == null)
+			{
 				throw new InvalidOperationException("Required services not configured for GameHost");
+			}
 		}
 
 		LogInfo("GameHost initialized");
@@ -55,11 +59,7 @@ public partial class GameHost : AutoloadBase
 		// Validate game data (GameRegistry guaranteed to exist). GameRegistry's
 		// own boot-time check means an unregistered id here is a caller bug,
 		// not a data problem - fail loudly rather than silently no-op.
-		var gameData = _gameRegistry.GetGameData(gameId);
-		if (gameData == null)
-		{
-			throw new InvalidOperationException($"[GameHost] Unknown game id: {gameId}");
-		}
+		var gameData = _gameRegistry.GetGameData(gameId) ?? throw new InvalidOperationException($"[GameHost] Unknown game id: {gameId}");
 		if (!gameData.IsActive)
 		{
 			LogError($"Game {gameId} is inactive");
@@ -69,7 +69,6 @@ public partial class GameHost : AutoloadBase
 		// Load game scene as overlay
 		LoadGameScene(gameId, gameData.ScenePath);
 	}
-
 
 	private void LoadGameScene(string gameId, string scenePath)
 	{
@@ -146,8 +145,10 @@ public partial class GameHost : AutoloadBase
 	/// </summary>
 	public void PauseGame()
 	{
-		if (_currentGame == null) 
+		if (_currentGame == null)
+		{
 			return;
+		}
 
 		_currentGame.Pause();
 	}
@@ -157,8 +158,10 @@ public partial class GameHost : AutoloadBase
 	/// </summary>
 	public void ResumeGame()
 	{
-		if (_currentGame == null) 
+		if (_currentGame == null)
+		{
 			return;
+		}
 
 		_currentGame.Resume();
 	}
@@ -168,7 +171,6 @@ public partial class GameHost : AutoloadBase
 		StopCurrentGame();
 		_sceneManager.ReturnToMainMenu();
 	}
-
 
 	// ============================================================================
 	// Platform Integration - Games call these to emit platform-level signals
@@ -196,6 +198,7 @@ public partial class GameHost : AutoloadBase
 
 	// Public API for games and other systems
 	public string GetCurrentGameId() => _currentGameId;
+
 	public GameController GetCurrentGame() => _currentGame;
 
 	/// <summary>

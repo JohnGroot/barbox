@@ -1,9 +1,9 @@
-using Godot;
-using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
+using Godot;
+using LightResults;
 
 namespace BarBox.Core.Autoloads;
 
@@ -22,8 +22,11 @@ public class GameEventServiceBase
 	}
 
 	public string GetVenueName() => _eventService.GetVenueName();
+
 	public string GetBoxName() => _eventService.GetBoxName();
+
 	public Guid GetBoxId() => _eventService.GetBoxId();
+
 	public Guid GetCurrentSessionId() => _eventService.GetCurrentSessionId();
 
 	/// <summary>
@@ -33,11 +36,15 @@ public class GameEventServiceBase
 	{
 		// Service availability and validity check
 		if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
+		{
 			return Result.Failure<bool>("Event service not available");
+		}
 
 		// Backend session check
 		if (_eventService.GetCurrentSessionId() == Guid.Empty)
+		{
 			return Result.Failure<bool>("No active backend session");
+		}
 
 		// Emit event
 		var result = await _eventService.EmitEventAsync(eventType, payload);
@@ -61,11 +68,12 @@ public class GameEventServiceBase
 	/// </summary>
 	protected async Task<Result<string>> QueryBackendRawAsync(
 		string endpoint,
-		Dictionary<string, string> queryParams = null
-	)
+		Dictionary<string, string> queryParams = null)
 	{
 		if (_eventService == null || !GodotObject.IsInstanceValid(_eventService))
+		{
 			return Result.Failure<string>("Event service not available");
+		}
 
 		// Delegate to SessionEventService which maintains persistent HttpClient
 		return await _eventService.QueryRawAsync(endpoint, queryParams);
@@ -78,11 +86,15 @@ public class GameEventServiceBase
 	protected Result<Godot.Collections.Dictionary> ParseJsonResponse(string responseBody)
 	{
 		if (string.IsNullOrEmpty(responseBody))
+		{
 			return Result.Failure<Godot.Collections.Dictionary>("Empty response from server");
+		}
 
 		var json = Json.ParseString(responseBody);
 		if (json.Obj == null)
+		{
 			return Result.Failure<Godot.Collections.Dictionary>("Failed to parse JSON response");
+		}
 
 		var jsonDict = json.AsGodotDictionary();
 		return Result.Success(jsonDict);
@@ -95,7 +107,9 @@ public class GameEventServiceBase
 	protected Result<T> MapBackendError<T>(Result<T> backendResult)
 	{
 		if (backendResult.IsSuccess(out var value))
+		{
 			return Result.Success(value);
+		}
 
 		if (backendResult.IsFailure(out var error))
 		{
@@ -116,7 +130,7 @@ public class GameEventServiceBase
 		_ when backendError.Contains("No active backend session") => "Session expired - please restart the game",
 		_ when backendError.Contains("Connection failed") => "Unable to connect to game server",
 		_ when backendError.Contains("Connection timeout") => "Unable to connect to game server",
-		_ => "Unable to save game data"
+		_ => "Unable to save game data",
 	};
 
 	/// <summary>
@@ -200,20 +214,23 @@ public class GameEventServiceBase
 	protected async Task<Result<TData>> QueryBackendAsync<TData>(
 		string endpoint,
 		Dictionary<string, string> queryParams,
-		Func<Godot.Collections.Dictionary, Result<TData>> parseFunc
-	)
+		Func<Godot.Collections.Dictionary, Result<TData>> parseFunc)
 	{
 		try
 		{
 			var responseResult = await QueryBackendRawAsync(endpoint, queryParams);
 			if (responseResult.IsFailure(out var responseError))
+			{
 				return Result.Failure<TData>(responseError.Message);
+			}
 
 			if (responseResult.IsSuccess(out var responseBody))
 			{
 				var parseResult = ParseJsonResponse(responseBody);
 				if (parseResult.IsFailure(out var parseError))
+				{
 					return Result.Failure<TData>(parseError.Message);
+				}
 
 				if (parseResult.IsSuccess(out var jsonDict))
 				{
@@ -260,13 +277,17 @@ public class GameEventServiceBase
 		public static Result<string> ParseString(Godot.Collections.Dictionary dict, string key)
 		{
 			if (!dict.ContainsKey(key))
+			{
 				return Result.Failure<string>($"Missing required field: {key}");
+			}
 
 			try
 			{
 				var value = dict[key].AsString();
 				if (string.IsNullOrEmpty(value))
+				{
 					return Result.Failure<string>($"Field {key} is null or empty");
+				}
 
 				return Result.Success(value);
 			}
@@ -282,7 +303,9 @@ public class GameEventServiceBase
 		public static Result<Guid> ParseGuid(Godot.Collections.Dictionary dict, string key)
 		{
 			if (!dict.ContainsKey(key))
+			{
 				return Result.Failure<Guid>($"Missing required field: {key}");
+			}
 
 			try
 			{
@@ -300,7 +323,9 @@ public class GameEventServiceBase
 		public static Result<DateTime> ParseDateTime(Godot.Collections.Dictionary dict, string key)
 		{
 			if (!dict.ContainsKey(key))
+			{
 				return Result.Failure<DateTime>($"Missing required field: {key}");
+			}
 
 			try
 			{
@@ -327,7 +352,9 @@ public class GameEventServiceBase
 		public static Result<DateTime?> ParseNullableDateTime(Godot.Collections.Dictionary dict, string key)
 		{
 			if (IsNullOrMissing(dict, key))
+			{
 				return Result.Success<DateTime?>(null);
+			}
 
 			try
 			{
@@ -357,7 +384,9 @@ public class GameEventServiceBase
 			string key)
 		{
 			if (!dict.ContainsKey(key))
+			{
 				return Result.Failure<Dictionary<string, int>>($"Missing required field: {key}");
+			}
 
 			try
 			{
@@ -389,12 +418,16 @@ public class GameEventServiceBase
 	protected static class ValidationMessages
 	{
 		public static string Required(string fieldName) => $"{fieldName} is required";
+
 		public static string MinValue(string fieldName, int minValue) =>
 			$"{fieldName} must be at least {minValue}";
+
 		public static string MaxValue(string fieldName, int maxValue) =>
 			$"{fieldName} must not exceed {maxValue}";
+
 		public static string InvalidFormat(string fieldName) =>
 			$"Invalid format for {fieldName}";
+
 		public static string RangeError(string fieldName, int minValue, int maxValue) =>
 			$"{fieldName} must be between {minValue} and {maxValue}";
 	}
@@ -405,7 +438,10 @@ public class GameEventServiceBase
 	protected Result<bool> ValidateGuid(Guid value, string parameterName)
 	{
 		if (value == Guid.Empty)
+		{
 			return Result.Failure<bool>(ValidationMessages.Required(parameterName));
+		}
+
 		return Result.Success(true);
 	}
 
@@ -415,8 +451,11 @@ public class GameEventServiceBase
 	protected Result<bool> ValidateLeaderboardLimit(int limit)
 	{
 		if (limit < MIN_LEADERBOARD_LIMIT || limit > MAX_LEADERBOARD_LIMIT)
+		{
 			return Result.Failure<bool>(
 				ValidationMessages.RangeError("Limit", MIN_LEADERBOARD_LIMIT, MAX_LEADERBOARD_LIMIT));
+		}
+
 		return Result.Success(true);
 	}
 

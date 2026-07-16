@@ -1,5 +1,5 @@
-using Godot;
 using System;
+using Godot;
 
 /// <summary>
 /// Top menu bar UI component displaying game title, user info, and contextual buttons
@@ -7,10 +7,17 @@ using System;
 /// </summary>
 public partial class TopMenuBar : Control
 {
-	[Signal] public delegate void LoginRequestedEventHandler();
-	[Signal] public delegate void LogoutRequestedEventHandler();
-	[Signal] public delegate void BuyCreditsRequestedEventHandler();
-	[Signal] public delegate void ReturnToMenuRequestedEventHandler();
+	[Signal]
+	public delegate void LoginRequestedEventHandler();
+
+	[Signal]
+	public delegate void LogoutRequestedEventHandler();
+
+	[Signal]
+	public delegate void BuyCreditsRequestedEventHandler();
+
+	[Signal]
+	public delegate void ReturnToMenuRequestedEventHandler();
 
 	private const float BASE_HEIGHT = 100.0f;
 	private const float CONTEXT_SECTION_HEIGHT = 50.0f;
@@ -100,7 +107,7 @@ public partial class TopMenuBar : Control
 		_gameStatusLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		_gameStatusLabel.AddThemeColorOverride("font_color", Colors.White);
 		_gameStatusLabel.AddThemeFontSizeOverride("font_size", 16);
-		_gameStatusLabel.Text = "";
+		_gameStatusLabel.Text = string.Empty;
 		_topSection.AddChild(_gameStatusLabel);
 
 		_userInfoContainer = new HBoxContainer();
@@ -153,7 +160,6 @@ public partial class TopMenuBar : Control
 		}
 	}
 
-
 	/// <summary>
 	/// Games should generally use their own HUD for game-specific status information
 	/// </summary>
@@ -161,7 +167,7 @@ public partial class TopMenuBar : Control
 	{
 		if (_gameStatusLabel != null)
 		{
-			_gameStatusLabel.Text = statusText ?? "";
+			_gameStatusLabel.Text = statusText ?? string.Empty;
 		}
 	}
 
@@ -221,7 +227,8 @@ public partial class TopMenuBar : Control
 
 		if (data.OnPressed != null)
 		{
-			button.Pressed += () => {
+			button.Pressed += () =>
+			{
 				try
 				{
 					data.OnPressed.Invoke();
@@ -278,7 +285,7 @@ public partial class TopMenuBar : Control
 		if (_logoutButton != null)
 		{
 			_logoutButton.Disabled = !enabled;
-			_logoutButton.TooltipText = enabled ? "" : LOGOUT_DISABLED_TOOLTIP;
+			_logoutButton.TooltipText = enabled ? string.Empty : LOGOUT_DISABLED_TOOLTIP;
 		}
 	}
 
@@ -362,13 +369,19 @@ public partial class TopMenuBar : Control
 	public override void _ExitTree()
 	{
 		if (GodotObject.IsInstanceValid(_loginButton))
+		{
 			_loginButton.Pressed -= OnLoginPressed;
+		}
 
 		if (GodotObject.IsInstanceValid(_buyCreditsButton))
+		{
 			_buyCreditsButton.Pressed -= OnBuyCreditsPressed;
+		}
 
 		if (GodotObject.IsInstanceValid(_logoutButton))
+		{
 			_logoutButton.Pressed -= OnLogoutPressed;
+		}
 
 		base._ExitTree();
 	}

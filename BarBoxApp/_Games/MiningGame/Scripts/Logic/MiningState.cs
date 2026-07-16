@@ -2,14 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Godot;
 using BarBox.Core.Autoloads;
+using Godot;
 
 namespace BarBox.Games.MiningGame.Logic;
 
 public partial class MiningState : Node
 {
-#region Fields
+	#region Fields
 
 	private MiningGame _game;
 	private MiningGlobalDataStore _globalData;
@@ -29,9 +29,9 @@ public partial class MiningState : Node
 	// Constants
 	private const int CREDITS_PER_PURCHASE = 1000;
 
-#endregion
+	#endregion
 
-#region Constructor & Lifecycle
+	#region Constructor & Lifecycle
 
 	public MiningState(MiningGame game)
 	{
@@ -39,11 +39,13 @@ public partial class MiningState : Node
 		Name = "State";
 	}
 
-#endregion
+	#endregion
 
-#region Public API - Properties
+	#region Public API - Properties
 	public int PendingGems => _pendingGems;
+
 	public bool IsExtractionReady => _pendingGems > 0;
+
 	public bool FirstTimeBonus => _firstTimeBonus;
 
 	public int GetMaxCapacity()
@@ -51,13 +53,13 @@ public partial class MiningState : Node
 		RefreshCacheIfNeeded();
 		return _cachedMaxCapacity;
 	}
-		
+
 	public float GetMiningTickTime()
 	{
 		RefreshCacheIfNeeded();
 		return _cachedMiningTickTime;
 	}
-		
+
 	public int GetGemsPerTick()
 	{
 		RefreshCacheIfNeeded();
@@ -75,14 +77,16 @@ public partial class MiningState : Node
 		InvalidateCache();
 	}
 
-#endregion
+	#endregion
 
-#region Cache Management
+	#region Cache Management
 
 	private void RefreshCacheIfNeeded()
 	{
 		if (_cacheValid)
+		{
 			return;
+		}
 
 		var config = _game.GetConfig();
 		var capacityLevel = GetUpgradeLevel(UpgradeType.Capacity);
@@ -97,7 +101,7 @@ public partial class MiningState : Node
 		if (_game.IsDebugMode())
 		{
 			GD.Print($"[GameState] Cache refreshed from upgrade levels: Capacity={capacityLevel}, Speed={speedLevel}, Amount={amountLevel}");
-			GD.Print($"[GameState] Calculated values: MaxCapacity={_cachedMaxCapacity}, TickTime={_cachedMiningTickTime}s ({_cachedMiningTickTime/60:F1}min), GemsPerTick={_cachedGemsPerTick}");
+			GD.Print($"[GameState] Calculated values: MaxCapacity={_cachedMaxCapacity}, TickTime={_cachedMiningTickTime}s ({_cachedMiningTickTime / 60:F1}min), GemsPerTick={_cachedGemsPerTick}");
 		}
 	}
 
@@ -106,9 +110,9 @@ public partial class MiningState : Node
 		_cacheValid = false;
 	}
 
-#endregion
+	#endregion
 
-#region Mining Calculations
+	#region Mining Calculations
 
 	/// <summary>
 	/// Calculates mining progress using timestamp-based calculation.
@@ -130,47 +134,59 @@ public partial class MiningState : Node
 			RecoverFromClockDrift();
 			return (0, 0.0f);
 		}
-			
+
 		var miningInterval = GetMiningTickTime();
-		if (miningInterval <= 0) return (0, 0.0f);
-			
+		if (miningInterval <= 0)
+		{
+			return (0, 0.0f);
+		}
+
 		var ticksReady = (int)(elapsed / miningInterval);
 		var progressToNextTick = (float)((elapsed % miningInterval) / miningInterval);
-			
+
 		return (ticksReady, progressToNextTick);
 	}
-		
+
 	public void ProcessReadyMiningTicks()
 	{
 		var (ticksReady, _) = CalculateMiningProgress();
-			
-		if (ticksReady <= 0) return;
-			
+
+		if (ticksReady <= 0)
+		{
+			return;
+		}
+
 		var maxCapacity = GetMaxCapacity();
 		var gemsPerTick = GetGemsPerTick();
-			
+
 		// Check if we're already at capacity - don't process any ticks
-		if (_pendingGems >= maxCapacity) return;
-			
+		if (_pendingGems >= maxCapacity)
+		{
+			return;
+		}
+
 		// Calculate how many ticks we can actually process (capacity limit)
 		var availableCapacity = maxCapacity - _pendingGems;
+
 		// Use float division to prevent truncation errors
 		var maxPossibleTicks = (int)((float)availableCapacity / Math.Max(1.0f, gemsPerTick));
 		var actualTicks = Math.Min(ticksReady, maxPossibleTicks);
-			
+
 		if (actualTicks > 0)
 		{
 			_pendingGems += actualTicks * gemsPerTick;
 
 			if (_game.IsDebugMode())
+			{
 				GD.Print($"[GameState] Processed {actualTicks} mining ticks: +{actualTicks * gemsPerTick} gems, Total: {_pendingGems}/{maxCapacity}");
-				
+			}
+
 			// Only advance timestamp when we actually processed ticks
 			var miningInterval = GetMiningTickTime();
 			_lastMiningTickTime = _lastMiningTickTime.AddSeconds(actualTicks * miningInterval);
 		}
 	}
-		
+
 	/// <summary>
 	/// Start a new mining cycle from current time.
 	/// Called after extraction to establish baseline for next offline calculation.
@@ -180,7 +196,9 @@ public partial class MiningState : Node
 		_lastMiningTickTime = DateTime.UtcNow;
 
 		if (_game.IsDebugMode())
+		{
 			GD.Print("[GameState] New mining cycle started");
+		}
 	}
 
 	/// <summary>
@@ -192,17 +210,21 @@ public partial class MiningState : Node
 		_lastMiningTickTime = DateTime.UtcNow;
 
 		if (_game.IsDebugMode())
+		{
 			GD.PrintErr("[GameState] Clock drift detected - timer recovered");
+		}
 	}
 
-#endregion
+	#endregion
 
-#region Data Loading
+	#region Data Loading
 
 	public async Task LoadUserDataAsync()
 	{
 		if (_game.IsDebugMode())
+		{
 			GD.Print("[GameState] === LoadUserDataAsync START ===");
+		}
 
 		// Early return: no user logged in
 		var phoneNumber = _game.GetCurrentUserPhoneNumber();
@@ -231,6 +253,7 @@ public partial class MiningState : Node
 
 		// Happy path: load from backend
 		var playerId = currentSession.PlayerId;
+
 		// Get venue name from SessionEventService for venue-scoped mining progress
 		// Mining progress follows player across machines at same venue
 		var eventService = _game.GetEventService();
@@ -256,9 +279,9 @@ public partial class MiningState : Node
 		GD.Print("[GameState] === LoadUserDataAsync COMPLETE ===");
 	}
 
-		#endregion
+	#endregion
 
-#region Backend State Loading
+	#region Backend State Loading
 
 	private async Task<bool> TryLoadStateFromBackend(Guid playerId, string venueName)
 	{
@@ -286,6 +309,7 @@ public partial class MiningState : Node
 					_globalData.AddGems(gemType, kvp.Value);
 				}
 			}
+
 			GD.Print($"[GameState] Loaded inventory: {string.Join(", ", state.Inventory.Select(g => $"{g.Key}={g.Value}"))}");
 
 			_upgradeLevels = new();
@@ -296,6 +320,7 @@ public partial class MiningState : Node
 					_upgradeLevels[upgradeType] = kvp.Value;
 				}
 			}
+
 			GD.Print($"[GameState] Loaded upgrades: {string.Join(", ", state.Upgrades.Select(u => $"{u.Key}={u.Value}"))}");
 
 			_lastMiningTickTime = ValidateAndNormalizeTimestamp(state.LastExtractionTime);
@@ -336,42 +361,50 @@ public partial class MiningState : Node
 		_lastMiningTickTime = DateTime.UtcNow;
 	}
 
-#endregion
+	#endregion
 
-#region Transaction Logic
+	#region Transaction Logic
 
 	public bool CanExtractGems() => IsExtractionReady;
-		
+
 	public bool CanPurchaseCredit()
 	{
 		if (_globalData == null)
+		{
 			return false;
+		}
 
 		var cost = new Dictionary<GemType, int>
 		{
-			{ _game.GetPrimaryGemType(), _game.GetConfig().CreditCost }
+			{ _game.GetPrimaryGemType(), _game.GetConfig().CreditCost },
 		};
 
 		return _globalData.HasSufficientGems(cost);
 	}
-		
+
 	public bool CanPurchaseUpgrade(UpgradeType upgradeType)
 	{
 		if (_globalData == null)
+		{
 			return false;
+		}
 
 		int currentLevel = GetUpgradeLevel(upgradeType);
 		if (currentLevel >= _game.GetConfig().MaxUpgradeLevel)
+		{
 			return false;
+		}
 
 		var cost = _game.GetConfig().GetUpgradeCost(upgradeType, currentLevel, _game.GetPrimaryGemType());
 		return _globalData.HasSufficientGems(cost);
 	}
-		
+
 	public bool ExtractGems()
 	{
 		if (!CanExtractGems())
+		{
 			return false;
+		}
 
 		var maxCapacity = GetMaxCapacity();
 		int extractedAmount = _pendingGems;
@@ -407,19 +440,26 @@ public partial class MiningState : Node
 
 		return true;
 	}
-		
-	public enum CreditPurchaseResult { NotEligible, Success, DepositFailed }
+
+	public enum CreditPurchaseResult
+	{
+		NotEligible,
+		Success,
+		DepositFailed,
+	}
 
 	public async Task<CreditPurchaseResult> PurchaseCreditAsync()
 	{
 		if (!CanPurchaseCredit())
+		{
 			return CreditPurchaseResult.NotEligible;
+		}
 
 		var primaryGemType = _game.GetPrimaryGemType();
 		var creditCost = _game.GetConfig().CreditCost;
 		var cost = new Dictionary<GemType, int>
 		{
-			{ primaryGemType, creditCost }
+			{ primaryGemType, creditCost },
 		};
 
 		// Update local state
@@ -450,11 +490,13 @@ public partial class MiningState : Node
 
 		return CreditPurchaseResult.Success;
 	}
-		
+
 	public bool PurchaseUpgrade(UpgradeType upgradeType)
 	{
 		if (!CanPurchaseUpgrade(upgradeType))
+		{
 			return false;
+		}
 
 		int currentLevel = GetUpgradeLevel(upgradeType);
 		int newLevel = currentLevel + 1;
@@ -475,9 +517,9 @@ public partial class MiningState : Node
 		return true;
 	}
 
-#endregion
+	#endregion
 
-#region State Management
+	#region State Management
 
 	public MiningGlobalDataStore GetGlobalData() => _globalData;
 
@@ -495,9 +537,9 @@ public partial class MiningState : Node
 		GD.Print("[GameState] All state cleared - ready for new user");
 	}
 
-#endregion
+	#endregion
 
-#region Helper Methods
+	#region Helper Methods
 
 	private DateTime ValidateAndNormalizeTimestamp(DateTime? backendTimestamp)
 	{
@@ -524,5 +566,5 @@ public partial class MiningState : Node
 		return timestamp;
 	}
 
-#endregion
+	#endregion
 }

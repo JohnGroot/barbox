@@ -1,0 +1,140 @@
+# C# style rules for BarBoxApp. Enforced at commit time by dotnet format via the
+# pre-commit hook (analyzers are skipped in regular builds — see Directory.Build.props).
+# Rules at `warning` are gated; rules at `suggestion` are IDE-advisory only.
+
+[*.cs]
+indent_style = tab
+indent_size = 4
+tab_width = 4
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+#### Naming (gated) ####
+# Rules are evaluated in order; more specific rules come first.
+
+# Const-like symbols: SCREAMING_SNAKE is the dominant existing convention (201 vs 47
+# for consts), but usage is mixed and renames have no working auto-fix — advisory only.
+dotnet_naming_rule.constants_screaming_snake.severity = suggestion
+dotnet_naming_rule.constants_screaming_snake.symbols = constants
+dotnet_naming_rule.constants_screaming_snake.style = screaming_snake
+dotnet_naming_symbols.constants.applicable_kinds = field, local
+dotnet_naming_symbols.constants.required_modifiers = const
+
+# Static readonly fields: three casings coexist today; exempt from gating for now.
+dotnet_naming_rule.static_readonly_advisory.severity = suggestion
+dotnet_naming_rule.static_readonly_advisory.symbols = static_readonly_fields
+dotnet_naming_rule.static_readonly_advisory.style = screaming_snake
+dotnet_naming_symbols.static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.static_readonly_fields.required_modifiers = static, readonly
+
+# Interfaces: IPascalCase
+dotnet_naming_rule.interfaces_prefixed_with_i.severity = warning
+dotnet_naming_rule.interfaces_prefixed_with_i.symbols = interfaces
+dotnet_naming_rule.interfaces_prefixed_with_i.style = i_prefix_pascal_case
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+
+# Private/protected fields: _camelCase
+dotnet_naming_rule.private_fields_underscore_camel.severity = warning
+dotnet_naming_rule.private_fields_underscore_camel.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore_camel.style = underscore_camel_case
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private, protected, private_protected, protected_internal
+
+# Public/internal fields: PascalCase
+dotnet_naming_rule.public_fields_pascal_case.severity = warning
+dotnet_naming_rule.public_fields_pascal_case.symbols = public_fields
+dotnet_naming_rule.public_fields_pascal_case.style = pascal_case
+dotnet_naming_symbols.public_fields.applicable_kinds = field
+dotnet_naming_symbols.public_fields.applicable_accessibilities = public, internal
+
+# Types and members: PascalCase
+dotnet_naming_rule.types_and_members_pascal_case.severity = warning
+dotnet_naming_rule.types_and_members_pascal_case.symbols = types_and_members
+dotnet_naming_rule.types_and_members_pascal_case.style = pascal_case
+dotnet_naming_symbols.types_and_members.applicable_kinds = class, struct, enum, delegate, method, property, event
+
+# Locals and parameters: camelCase
+dotnet_naming_rule.locals_camel_case.severity = warning
+dotnet_naming_rule.locals_camel_case.symbols = locals_and_parameters
+dotnet_naming_rule.locals_camel_case.style = camel_case
+dotnet_naming_symbols.locals_and_parameters.applicable_kinds = local, parameter
+
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+dotnet_naming_style.camel_case.capitalization = camel_case
+dotnet_naming_style.screaming_snake.capitalization = all_upper
+dotnet_naming_style.screaming_snake.word_separator = _
+dotnet_naming_style.i_prefix_pascal_case.capitalization = pascal_case
+dotnet_naming_style.i_prefix_pascal_case.required_prefix = I
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+dotnet_naming_style.underscore_camel_case.required_prefix = _
+
+#### House conventions (gated) ####
+csharp_style_namespace_declarations = file_scoped:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+csharp_prefer_braces = true:warning
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_event = false:warning
+dotnet_style_coalesce_expression = true:warning
+dotnet_style_null_propagation = true:warning
+dotnet_style_prefer_compound_assignment = true:warning
+dotnet_style_prefer_collection_expression = when_types_loosely_match:warning
+
+#### Modern C# preferences (advisory — visible in IDE, not gated) ####
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_pattern_matching_over_is_with_cast_check = true:suggestion
+csharp_style_pattern_matching_over_as_with_null_check = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_expression_bodied_properties = when_on_single_line:suggestion
+csharp_style_expression_bodied_accessors = when_on_single_line:suggestion
+csharp_style_prefer_primary_constructors = true:suggestion
+
+#### StyleCop configuration ####
+# Documentation rules off wholesale: comments must earn their place (see CLAUDE.md),
+# and XML docs are not required.
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.DocumentationRules.severity = none
+# SA0001 is in Special Rules (not Documentation) and fires on every file when
+# GenerateDocumentationFile is off — must be disabled explicitly.
+dotnet_diagnostic.SA0001.severity = none
+# House style REQUIRES the underscore prefix on private fields: disable the ban,
+# enable StyleCop's built-in opposite rules.
+dotnet_diagnostic.SA1309.severity = none
+dotnet_diagnostic.SX1309.severity = warning
+# No `this.` qualification (mirrors dotnet_style_qualification_* above).
+dotnet_diagnostic.SA1101.severity = none
+dotnet_diagnostic.SX1101.severity = warning
+# Underscore-in-name ban conflicts with _camelCase fields; naming rules above govern.
+dotnet_diagnostic.SA1310.severity = none
+# One-type-per-file conflicts with the file-consolidation / nested-class conventions.
+dotnet_diagnostic.SA1402.severity = none
+# Public/protected fields are sanctioned house style (SDK base classes, Godot exports).
+dotnet_diagnostic.SA1401.severity = none
+# False positives on discard names (_, __, ___); the naming rules above govern real names.
+dotnet_diagnostic.SA1312.severity = none
+dotnet_diagnostic.SA1313.severity = none
+# No file headers.
+dotnet_diagnostic.SA1633.severity = none
+# #region is the sanctioned section marker for large files.
+dotnet_diagnostic.SA1124.severity = none
+# Member ordering: advisory only for now (retrofit churn too large to gate).
+dotnet_diagnostic.SA1201.severity = suggestion
+dotnet_diagnostic.SA1202.severity = suggestion
+dotnet_diagnostic.SA1204.severity = suggestion
+dotnet_diagnostic.SA1203.severity = suggestion
+dotnet_diagnostic.SA1214.severity = suggestion
+# Parameter layout: advisory only for now (no auto-fix; promotable once retrofitted).
+dotnet_diagnostic.SA1117.severity = suggestion
+dotnet_diagnostic.SA1118.severity = suggestion
+# Empty catch-all clauses exist as deliberate fallbacks; tightening them is a
+# behavior change, not a style fix.
+dotnet_diagnostic.RCS1075.severity = suggestion
+# Tuple element casing follows .NET convention (PascalCase in public signatures,
+# camelCase in locals); SA1316 supports only one casing, so it can't gate.
+dotnet_diagnostic.SA1316.severity = suggestion
+
+#### Vendored third-party code: analyzers and formatter skip it ####
+[addons/ShapesRenderer/**.cs]
+generated_code = true

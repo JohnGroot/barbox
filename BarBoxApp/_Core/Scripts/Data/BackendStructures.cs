@@ -17,7 +17,7 @@ using LightResults;
 public record UsernameAvailabilityResponse
 {
 	[JsonPropertyName("username")]
-	public string Username { get; init; } = "";
+	public string Username { get; init; } = string.Empty;
 
 	[JsonPropertyName("is_available")]
 	public bool IsAvailable { get; init; }
@@ -26,10 +26,10 @@ public record UsernameAvailabilityResponse
 public record PlayerCreditsResponse
 {
 	[JsonPropertyName("player_id")]
-	public string PlayerId { get; init; } = "";
+	public string PlayerId { get; init; } = string.Empty;
 
 	[JsonPropertyName("location_id")]
-	public string LocationId { get; init; } = "";
+	public string LocationId { get; init; } = string.Empty;
 
 	[JsonPropertyName("credits")]
 	public int Credits { get; init; } = 0;
@@ -38,46 +38,46 @@ public record PlayerCreditsResponse
 public record PlayerCreateRequest
 {
 	[JsonPropertyName("id")]
-	public string Id { get; init; } = "";
+	public string Id { get; init; } = string.Empty;
 
 	[JsonPropertyName("tag")]
-	public string Tag { get; init; } = "";
+	public string Tag { get; init; } = string.Empty;
 
 	[JsonPropertyName("origin_id")]
-	public string OriginId { get; init; } = "";
+	public string OriginId { get; init; } = string.Empty;
 
 	[JsonPropertyName("pin")]
-	public string Pin { get; init; } = "";
+	public string Pin { get; init; } = string.Empty;
 
 	[JsonPropertyName("phone_number")]
-	public string PhoneNumber { get; init; } = "";
+	public string PhoneNumber { get; init; } = string.Empty;
 }
 
 public record PlayerDetailResponse
 {
 	[JsonPropertyName("id")]
-	public string Id { get; init; } = "";
+	public string Id { get; init; } = string.Empty;
 
 	[JsonPropertyName("tag")]
-	public string Tag { get; init; } = "";
+	public string Tag { get; init; } = string.Empty;
 
 	[JsonPropertyName("origin_id")]
-	public string OriginId { get; init; } = "";
+	public string OriginId { get; init; } = string.Empty;
 
 	[JsonPropertyName("phone_number")]
-	public string PhoneNumber { get; init; } = "";
+	public string PhoneNumber { get; init; } = string.Empty;
 }
 
 public record BoxCreateRequest
 {
 	[JsonPropertyName("id")]
-	public string Id { get; init; } = "";
+	public string Id { get; init; } = string.Empty;
 
 	[JsonPropertyName("name")]
-	public string Name { get; init; } = "";
+	public string Name { get; init; } = string.Empty;
 
 	[JsonPropertyName("tag")]
-	public string Tag { get; init; } = "";
+	public string Tag { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -90,7 +90,7 @@ public record BoxCreateRequest
 public record BoxDetailResponse
 {
 	[JsonPropertyName("id")]
-	public string Id { get; init; } = "";
+	public string Id { get; init; } = string.Empty;
 
 	/// <summary>
 	/// Box name - returns existing name (not updated on re-registration)
@@ -129,10 +129,10 @@ public record BoxDetailResponse
 public record ValidationErrorDetail
 {
 	[JsonPropertyName("field")]
-	public string Field { get; init; } = "";
+	public string Field { get; init; } = string.Empty;
 
 	[JsonPropertyName("message")]
-	public string Message { get; init; } = "";
+	public string Message { get; init; } = string.Empty;
 
 	[JsonPropertyName("value")]
 	public object? Value { get; init; }
@@ -150,7 +150,7 @@ public record PlayerValidationResponse
 public record MachinePlayerContribution
 {
 	[JsonPropertyName("player_id")]
-	public string PlayerId { get; init; } = "";
+	public string PlayerId { get; init; } = string.Empty;
 
 	[JsonPropertyName("amount")]
 	public int Amount { get; init; }
@@ -159,10 +159,10 @@ public record MachinePlayerContribution
 public record MachineCreditsResponse
 {
 	[JsonPropertyName("box_id")]
-	public string BoxId { get; init; } = "";
+	public string BoxId { get; init; } = string.Empty;
 
 	[JsonPropertyName("game_tag")]
-	public string GameTag { get; init; } = "";
+	public string GameTag { get; init; } = string.Empty;
 
 	[JsonPropertyName("balance")]
 	public int Balance { get; init; }
@@ -201,13 +201,13 @@ public record MachineCreditsConsumeRequest
 public record PlayerLoginRequest
 {
 	[JsonPropertyName("phone_number")]
-	public string PhoneNumber { get; init; } = "";
+	public string PhoneNumber { get; init; } = string.Empty;
 
 	[JsonPropertyName("pin")]
-	public string Pin { get; init; } = "";
+	public string Pin { get; init; } = string.Empty;
 
 	[JsonPropertyName("box_id")]
-	public string BoxId { get; init; } = "";
+	public string BoxId { get; init; } = string.Empty;
 }
 
 public record PlayerLoginResponse
@@ -218,13 +218,13 @@ public record PlayerLoginResponse
 	/// Valid for duration specified in ExpiresAt field.
 	/// </summary>
 	[JsonPropertyName("access_token")]
-	public string AccessToken { get; init; } = "";
+	public string AccessToken { get; init; } = string.Empty;
 
 	[JsonPropertyName("player_id")]
-	public string PlayerId { get; init; } = "";
+	public string PlayerId { get; init; } = string.Empty;
 
 	[JsonPropertyName("username")]
-	public string Username { get; init; } = "";
+	public string Username { get; init; } = string.Empty;
 
 	/// <summary>
 	/// Token expiration time in ISO 8601 format (UTC).
@@ -232,7 +232,7 @@ public record PlayerLoginResponse
 	/// Check this value to determine if token refresh is needed.
 	/// </summary>
 	[JsonPropertyName("expires_at")]
-	public string ExpiresAt { get; init; } = "";
+	public string ExpiresAt { get; init; } = string.Empty;
 }
 
 public static class ResponseValidationExtensions
@@ -240,19 +240,29 @@ public static class ResponseValidationExtensions
 	public static Result<PlayerLoginResponse> ValidateRequired(this PlayerLoginResponse response)
 	{
 		if (response == null)
+		{
 			return Result.Failure<PlayerLoginResponse>("Response is null");
+		}
 
 		if (string.IsNullOrEmpty(response.AccessToken))
+		{
 			return Result.Failure<PlayerLoginResponse>("Missing access_token in login response");
+		}
 
 		if (string.IsNullOrEmpty(response.PlayerId))
+		{
 			return Result.Failure<PlayerLoginResponse>("Missing player_id in login response");
+		}
 
 		if (string.IsNullOrEmpty(response.Username))
+		{
 			return Result.Failure<PlayerLoginResponse>("Missing username in login response");
+		}
 
 		if (string.IsNullOrEmpty(response.ExpiresAt))
+		{
 			return Result.Failure<PlayerLoginResponse>("Missing expires_at in login response");
+		}
 
 		return Result.Success(response);
 	}
@@ -260,19 +270,29 @@ public static class ResponseValidationExtensions
 	public static Result<PlayerDetailResponse> ValidateRequired(this PlayerDetailResponse response)
 	{
 		if (response == null)
+		{
 			return Result.Failure<PlayerDetailResponse>("Response is null");
+		}
 
 		if (string.IsNullOrEmpty(response.Id))
+		{
 			return Result.Failure<PlayerDetailResponse>("Missing id in player detail response");
+		}
 
 		if (string.IsNullOrEmpty(response.Tag))
+		{
 			return Result.Failure<PlayerDetailResponse>("Missing tag in player detail response");
+		}
 
 		if (string.IsNullOrEmpty(response.OriginId))
+		{
 			return Result.Failure<PlayerDetailResponse>("Missing origin_id in player detail response");
+		}
 
 		if (string.IsNullOrEmpty(response.PhoneNumber))
+		{
 			return Result.Failure<PlayerDetailResponse>("Missing phone_number in player detail response");
+		}
 
 		return Result.Success(response);
 	}
@@ -283,10 +303,14 @@ public static class ResponseValidationExtensions
 	public static Result<BoxDetailResponse> ValidateRequired(this BoxDetailResponse response)
 	{
 		if (response == null)
+		{
 			return Result.Failure<BoxDetailResponse>("Response is null");
+		}
 
 		if (string.IsNullOrEmpty(response.Id))
+		{
 			return Result.Failure<BoxDetailResponse>("Missing id in box response");
+		}
 
 		return Result.Success(response);
 	}
@@ -298,16 +322,24 @@ public static class ResponseValidationExtensions
 	{
 		var baseValidation = response.ValidateRequired();
 		if (baseValidation.IsFailure(out var error))
+		{
 			return Result.Failure<BoxDetailResponse>(error);
+		}
 
 		if (string.IsNullOrEmpty(response.ApiKey))
+		{
 			return Result.Failure<BoxDetailResponse>("Expected first-time registration but api_key is missing");
+		}
 
 		if (string.IsNullOrEmpty(response.Name))
+		{
 			return Result.Failure<BoxDetailResponse>("Expected first-time registration but name is missing");
+		}
 
 		if (string.IsNullOrEmpty(response.Tag))
+		{
 			return Result.Failure<BoxDetailResponse>("Expected first-time registration but tag is missing");
+		}
 
 		return Result.Success(response);
 	}
@@ -315,10 +347,14 @@ public static class ResponseValidationExtensions
 	public static Result<UsernameAvailabilityResponse> ValidateRequired(this UsernameAvailabilityResponse response)
 	{
 		if (response == null)
+		{
 			return Result.Failure<UsernameAvailabilityResponse>("Response is null");
+		}
 
 		if (string.IsNullOrEmpty(response.Username))
+		{
 			return Result.Failure<UsernameAvailabilityResponse>("Missing username in availability response");
+		}
 
 		return Result.Success(response);
 	}
@@ -326,13 +362,19 @@ public static class ResponseValidationExtensions
 	public static Result<PlayerCreditsResponse> ValidateRequired(this PlayerCreditsResponse response)
 	{
 		if (response == null)
+		{
 			return Result.Failure<PlayerCreditsResponse>("Response is null");
+		}
 
 		if (string.IsNullOrEmpty(response.PlayerId))
+		{
 			return Result.Failure<PlayerCreditsResponse>("Missing player_id in credits response");
+		}
 
 		if (string.IsNullOrEmpty(response.LocationId))
+		{
 			return Result.Failure<PlayerCreditsResponse>("Missing location_id in credits response");
+		}
 
 		return Result.Success(response);
 	}
@@ -340,13 +382,19 @@ public static class ResponseValidationExtensions
 	public static Result<CheckoutSessionResponse> ValidateRequired(this CheckoutSessionResponse response)
 	{
 		if (response == null)
+		{
 			return Result.Failure<CheckoutSessionResponse>("Response is null");
+		}
 
 		if (string.IsNullOrEmpty(response.SessionId))
+		{
 			return Result.Failure<CheckoutSessionResponse>("Missing session_id in checkout response");
+		}
 
 		if (string.IsNullOrEmpty(response.SessionUrl))
+		{
 			return Result.Failure<CheckoutSessionResponse>("Missing session_url in checkout response");
+		}
 
 		return Result.Success(response);
 	}
@@ -367,10 +415,10 @@ public record CheckoutSessionRequest
 public record CheckoutSessionResponse
 {
 	[JsonPropertyName("session_id")]
-	public string SessionId { get; init; } = "";
+	public string SessionId { get; init; } = string.Empty;
 
 	[JsonPropertyName("session_url")]
-	public string SessionUrl { get; init; } = "";
+	public string SessionUrl { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -380,13 +428,13 @@ public record CheckoutSessionResponse
 public record CheckoutStatusResponse
 {
 	[JsonPropertyName("session_id")]
-	public string SessionId { get; init; } = "";
+	public string SessionId { get; init; } = string.Empty;
 
 	/// <summary>
 	/// Payment status: "pending", "completed", or "failed"
 	/// </summary>
 	[JsonPropertyName("status")]
-	public string Status { get; init; } = "";
+	public string Status { get; init; } = string.Empty;
 
 	/// <summary>
 	/// Total credits granted (base + bonus) if completed, null otherwise

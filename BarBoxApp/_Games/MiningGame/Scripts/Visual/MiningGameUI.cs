@@ -69,7 +69,9 @@ public partial class MiningGameUI : Control
 
 		// Update location display
 		if (_locationLabel != null)
+		{
 			_locationLabel.Text = GetLocationDisplayName();
+		}
 
 		// Refresh UI colors based on new gem type
 		RefreshThemeColors();
@@ -79,13 +81,13 @@ public partial class MiningGameUI : Control
 	{
 		// Background
 		if (_background != null)
+		{
 			_background.Color = GetBackgroundColor();
+		}
 
 		// Header section
-		if (_titleLabel != null)
-			_titleLabel.AddThemeColorOverride("font_color", GetHeaderColor());
-		if (_locationLabel != null)
-			_locationLabel.AddThemeColorOverride("font_color", GetPrimaryAccent());
+		_titleLabel?.AddThemeColorOverride("font_color", GetHeaderColor());
+		_locationLabel?.AddThemeColorOverride("font_color", GetPrimaryAccent());
 
 		// Progress bar
 		if (_miningProgressBar != null)
@@ -97,12 +99,9 @@ public partial class MiningGameUI : Control
 		}
 
 		// Text labels
-		if (_progressLabel != null)
-			_progressLabel.AddThemeColorOverride("font_color", GetTextColor());
-		if (_gemsReadyLabel != null)
-			_gemsReadyLabel.AddThemeColorOverride("font_color", GetTextColor());
-		if (_capacityLabel != null)
-			_capacityLabel.AddThemeColorOverride("font_color", GetTextColor());
+		_progressLabel?.AddThemeColorOverride("font_color", GetTextColor());
+		_gemsReadyLabel?.AddThemeColorOverride("font_color", GetTextColor());
+		_capacityLabel?.AddThemeColorOverride("font_color", GetTextColor());
 
 		// Action buttons - recreate styles with new colors
 		RefreshButtonStyles(_extractButton);
@@ -130,7 +129,10 @@ public partial class MiningGameUI : Control
 
 	private void RefreshButtonStyles(Button button)
 	{
-		if (button == null) return;
+		if (button == null)
+		{
+			return;
+		}
 
 		var normalStyle = new StyleBoxFlat();
 		normalStyle.BgColor = GetButtonEnabledColor();
@@ -158,14 +160,23 @@ public partial class MiningGameUI : Control
 	}
 
 	private Color GetBackgroundColor() => GemTheme.GetBackgroundColor(_gemType);
+
 	public Color GetPrimaryAccent() => GemTheme.GetPrimaryAccent(_gemType);
+
 	public Color GetSecondaryAccent() => GemTheme.GetSecondaryAccent(_gemType);
+
 	private Color GetProgressBarColor() => GemTheme.GetProgressBarColor(_gemType);
+
 	public Color GetButtonEnabledColor() => GemTheme.GetButtonEnabledColor(_gemType);
+
 	public Color GetButtonDisabledColor() => GemTheme.GetButtonDisabledColor(_gemType);
+
 	public Color GetTextColor() => GemTheme.GetTextColor(_gemType);
+
 	public Color GetHeaderColor() => GemTheme.GetHeaderColor(_gemType);
+
 	private string GetLocationDisplayName() => _locationConfig?.DisplayName ?? "Crystal Cavern";
+
 	internal GemType GetGemType() => _gemType;
 
 	private void CreateUI()
@@ -349,7 +360,9 @@ public partial class MiningGameUI : Control
 		SetInteractiveElementsEnabled(enabled);
 
 		if (enabled)
+		{
 			UpdateAllUI();
+		}
 	}
 
 	private void SetInteractiveElementsEnabled(bool enabled)
@@ -448,12 +461,16 @@ public partial class MiningGameUI : Control
 				_progressLabel.Text = "Mining...";
 				_lastDisplayedSeconds = 0;
 			}
+
 			return;
 		}
 
 		int totalSeconds = (int)timeRemaining;
 		if (totalSeconds == _lastDisplayedSeconds)
+		{
 			return;
+		}
+
 		_lastDisplayedSeconds = totalSeconds;
 
 		int hours = totalSeconds / 3600;
@@ -526,7 +543,9 @@ public partial class MiningGameUI : Control
 	public override void _Process(double delta)
 	{
 		if (!_isEnabled)
+		{
 			return;
+		}
 
 		// Incremental update for real-time mining progress
 		UpdateMiningProgress(incrementalOnly: true);
@@ -557,7 +576,9 @@ public partial class MiningGameUI : Control
 
 		// Helper methods to access parent UI theme
 		private Color GetHeaderColor() => _parentUI.GetHeaderColor();
+
 		private Color GetTextColor() => _parentUI.GetTextColor();
+
 		private Color GetSecondaryAccent() => _parentUI.GetSecondaryAccent();
 
 		private string FormatEnumName(string enumName)
@@ -565,8 +586,7 @@ public partial class MiningGameUI : Control
 			return System.Text.RegularExpressions.Regex.Replace(
 				enumName,
 				"(?<!^)([A-Z])",
-				" $1"
-			);
+				" $1");
 		}
 
 		private string GenerateTickIndicators(int currentLevel, int maxLevel)
@@ -676,7 +696,7 @@ public partial class MiningGameUI : Control
 				UpgradeType.Capacity => $"Current: {_game.GetMaxCapacity()} gems",
 				UpgradeType.MiningSpeed => $"Current: {_game.GetMiningTickTime() / 60:F1} minutes/tick",
 				UpgradeType.MiningAmount => $"Current: {_game.GetGemsPerTick()} gems/tick",
-				_ => ""
+				_ => string.Empty,
 			};
 		}
 

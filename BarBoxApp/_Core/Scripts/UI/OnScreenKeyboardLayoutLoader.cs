@@ -1,7 +1,7 @@
-namespace BarBox.Core.UI;
-
 using Godot;
 using Godot.Collections;
+
+namespace BarBox.Core.UI;
 
 /// <summary>
 /// Loads keyboard layouts from JSON files
@@ -16,14 +16,14 @@ public static class OnScreenKeyboardLayoutLoader
 		if (!FileAccess.FileExists(filePath))
 		{
 			GD.PrintErr($"Keyboard layout file not found: {filePath}");
-			return System.Array.Empty<KeyboardLayout>();
+			return [];
 		}
 
 		using var file = FileAccess.Open(filePath, FileAccess.ModeFlags.Read);
 		if (file == null)
 		{
 			GD.PrintErr($"Failed to open keyboard layout file: {filePath}");
-			return System.Array.Empty<KeyboardLayout>();
+			return [];
 		}
 
 		var jsonText = file.GetAsText();
@@ -40,14 +40,14 @@ public static class OnScreenKeyboardLayoutLoader
 		if (error != Error.Ok)
 		{
 			GD.PrintErr($"Failed to parse keyboard layout JSON: {json.GetErrorMessage()} at line {json.GetErrorLine()}");
-			return System.Array.Empty<KeyboardLayout>();
+			return [];
 		}
 
 		var data = json.Data.AsGodotDictionary();
 		if (data == null || !data.ContainsKey("layouts"))
 		{
 			GD.PrintErr("Keyboard layout JSON missing 'layouts' array");
-			return System.Array.Empty<KeyboardLayout>();
+			return [];
 		}
 
 		var layoutsArray = data["layouts"].AsGodotArray();
@@ -56,25 +56,28 @@ public static class OnScreenKeyboardLayoutLoader
 		foreach (var layoutVariant in layoutsArray)
 		{
 			var layoutDict = layoutVariant.AsGodotDictionary();
-			if (layoutDict == null) continue;
+			if (layoutDict == null)
+			{
+				continue;
+			}
 
 			var layout = ParseLayout(layoutDict);
 			layouts.Add(layout);
 		}
 
-		return layouts.ToArray();
+		return [.. layouts];
 	}
 
 	private static KeyboardLayout ParseLayout(Dictionary layoutDict)
 	{
 		var layout = new KeyboardLayout
 		{
-			Name = layoutDict.ContainsKey("name") ? layoutDict["name"].AsString() : "unnamed"
+			Name = layoutDict.ContainsKey("name") ? layoutDict["name"].AsString() : "unnamed",
 		};
 
 		if (!layoutDict.ContainsKey("rows"))
 		{
-			layout.Rows = System.Array.Empty<KeyboardRow>();
+			layout.Rows = [];
 			return layout;
 		}
 
@@ -84,23 +87,26 @@ public static class OnScreenKeyboardLayoutLoader
 		foreach (var rowVariant in rowsArray)
 		{
 			var rowDict = rowVariant.AsGodotDictionary();
-			if (rowDict == null) continue;
+			if (rowDict == null)
+			{
+				continue;
+			}
 
 			var row = ParseRow(rowDict);
 			rows.Add(row);
 		}
 
-		layout.Rows = rows.ToArray();
+		layout.Rows = [.. rows];
 		return layout;
 	}
 
 	private static KeyboardRow ParseRow(Dictionary rowDict)
 	{
-		var row = new KeyboardRow();
+		var row = default(KeyboardRow);
 
 		if (!rowDict.ContainsKey("keys"))
 		{
-			row.Keys = System.Array.Empty<KeyData>();
+			row.Keys = [];
 			return row;
 		}
 
@@ -110,13 +116,16 @@ public static class OnScreenKeyboardLayoutLoader
 		foreach (var keyVariant in keysArray)
 		{
 			var keyDict = keyVariant.AsGodotDictionary();
-			if (keyDict == null) continue;
+			if (keyDict == null)
+			{
+				continue;
+			}
 
 			var key = ParseKey(keyDict);
 			keys.Add(key);
 		}
 
-		row.Keys = keys.ToArray();
+		row.Keys = [.. keys];
 		return row;
 	}
 
@@ -180,14 +189,16 @@ public static class OnScreenKeyboardLayoutLoader
 			"switch-layout" => KeyType.SwitchLayout,
 			"special-hide-keyboard" => KeyType.HideKeyboard,
 			"spacer" => KeyType.Spacer,
-			_ => KeyType.Char
+			_ => KeyType.Char,
 		};
 	}
 
 	private static void ParseIcon(string iconStr, ref KeyData key)
 	{
 		if (string.IsNullOrEmpty(iconStr))
+		{
 			return;
+		}
 
 		// Check for predefined icons: "PREDEFINED:DELETE", "PREDEFINED:SHIFT", etc.
 		if (iconStr.StartsWith("PREDEFINED:"))
@@ -201,9 +212,10 @@ public static class OnScreenKeyboardLayoutLoader
 				"RIGHT" => PredefinedIcon.Right,
 				"HIDE" => PredefinedIcon.Hide,
 				"ENTER" => PredefinedIcon.Enter,
-				_ => PredefinedIcon.None
+				_ => PredefinedIcon.None,
 			};
 		}
+
 		// Custom icon path starting with "res://"
 		else if (iconStr.StartsWith("res://") || iconStr.StartsWith("res:"))
 		{

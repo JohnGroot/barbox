@@ -1,7 +1,7 @@
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Unit.Services;
@@ -14,7 +14,8 @@ public class BackendManagerTests : BackendTestBase
 {
 	private BackendManager _backendManager;
 
-	public BackendManagerTests(Node testScene) : base(testScene)
+	public BackendManagerTests(Node testScene)
+		: base(testScene)
 	{
 	}
 

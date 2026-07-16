@@ -1,10 +1,10 @@
-using Godot;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BarBox.Core.Autoloads;
 using BarBox.Games.Carrom;
+using Godot;
 
 /// <summary>
 /// Interstitial player setup menu for Carrom competitive mode
@@ -12,8 +12,11 @@ using BarBox.Games.Carrom;
 /// </summary>
 public partial class CarromPlayerSetupMenu : CanvasLayer
 {
-	[Signal] public delegate void GameStartRequestedEventHandler();
-	[Signal] public delegate void MenuCancelledEventHandler();
+	[Signal]
+	public delegate void GameStartRequestedEventHandler();
+
+	[Signal]
+	public delegate void MenuCancelledEventHandler();
 
 	// Configuration
 	private int _playerCount = 2;
@@ -62,20 +65,28 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		private static readonly Vector2 SlotSize = new(250, 200);
 
 		public Panel BackgroundPanel { get; private set; }
+
 		public Label SlotNumberLabel { get; private set; }
+
 		public Label PieceColorLabel { get; private set; }
+
 		public Label PlayerInfoLabel { get; private set; }
+
 		public Label CreditsLabel { get; private set; }
 
 		// Buttons
 		public Button LoginButton { get; private set; }
+
 		public Button LogoutButton { get; private set; }
+
 		public Button BuyCreditsButton { get; private set; }
+
 		public Button TransferCreditButton { get; private set; }
 
 		private HBoxContainer _actionButtonsContainer;
 
 		public int SlotIndex { get; private set; }
+
 		public bool IsOccupied { get; private set; }
 
 		public PlayerSlotUI(int slotIndex)
@@ -113,7 +124,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 			// Piece color label (will be set when showing menu based on player count)
 			PieceColorLabel = new Label();
-			PieceColorLabel.Text = "";
+			PieceColorLabel.Text = string.Empty;
 			PieceColorLabel.HorizontalAlignment = HorizontalAlignment.Center;
 			PieceColorLabel.AddThemeColorOverride("font_color", Colors.LightGray);
 			PieceColorLabel.AddThemeFontSizeOverride("font_size", 12);
@@ -130,7 +141,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 			// Credits label
 			CreditsLabel = new Label();
-			CreditsLabel.Text = "";
+			CreditsLabel.Text = string.Empty;
 			CreditsLabel.HorizontalAlignment = HorizontalAlignment.Center;
 			CreditsLabel.AddThemeColorOverride("font_color", Colors.LightGreen);
 			CreditsLabel.AddThemeFontSizeOverride("font_size", 12);
@@ -198,7 +209,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			IsOccupied = false;
 			PlayerInfoLabel.Text = "Empty Slot";
 			PlayerInfoLabel.Modulate = Colors.Gray;
-			CreditsLabel.Text = "";
+			CreditsLabel.Text = string.Empty;
 			CreditsLabel.Visible = false;
 
 			// Reset background to empty state
@@ -285,8 +296,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_backgroundPanel.GuiInput += (InputEvent @event) =>
 			{
 				if (@event is InputEventMouseButton mouseButton &&
-				    mouseButton.Pressed &&
-				    mouseButton.ButtonIndex == MouseButton.Left)
+					mouseButton.Pressed &&
+					mouseButton.ButtonIndex == MouseButton.Left)
 				{
 					OnCancelPressed();
 				}
@@ -394,7 +405,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 			// Status label
 			_statusLabel = new Label();
-			_statusLabel.Text = "";
+			_statusLabel.Text = string.Empty;
 			_statusLabel.HorizontalAlignment = HorizontalAlignment.Center;
 			_statusLabel.AddThemeColorOverride("font_color", Colors.Orange);
 			_statusLabel.AddThemeFontSizeOverride("font_size", 12);
@@ -473,7 +484,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_playerNameLabel.Text = $"Player: {_playerName}";
 			_availableCreditsLabel.Text = $"Available: {_availableCredits:N0} Credits";
 			_amountLabel.Text = _selectedAmount.ToString("N0");
-			_statusLabel.Text = "";
+			_statusLabel.Text = string.Empty;
 
 			UpdateButtonStates();
 
@@ -520,7 +531,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			}
 			else
 			{
-				_statusLabel.Text = "";
+				_statusLabel.Text = string.Empty;
 			}
 		}
 
@@ -639,7 +650,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	public System.Guid[] GetLoggedInPlayerIds()
 	{
 		if (_sessionManager == null)
-			return System.Array.Empty<System.Guid>();
+		{
+			return [];
+		}
 
 		var playerIds = new List<System.Guid>();
 
@@ -659,7 +672,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			}
 		}
 
-		return playerIds.ToArray();
+		return [.. playerIds];
 	}
 
 	private void CreateModalUI()
@@ -852,13 +865,14 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		}
 
 		// Update cost label
-		_costLabel.Text = $"Cost: {_costPerGame} Credit{(_costPerGame > 1 ? "s" : "")}";
+		_costLabel.Text = $"Cost: {_costPerGame} Credit{(_costPerGame > 1 ? "s" : string.Empty)}";
 
 		// Clear existing player slots
 		foreach (var slot in _playerSlots)
 		{
 			slot.QueueFree();
 		}
+
 		_playerSlots.Clear();
 
 		// Create player slots based on player count
@@ -897,19 +911,25 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		{
 			return slotIndex == 0 ? PieceType.White : PieceType.Black;
 		}
-		else // 4-player
+		else
 		{
+			// 4-player
 			return (slotIndex == 0 || slotIndex == 2) ? PieceType.White : PieceType.Black;
 		}
 	}
 
 	private async void AutoPopulateFirstSlot()
 	{
-		if (_sessionManager == null) return;
+		if (_sessionManager == null)
+		{
+			return;
+		}
 
 		// Only auto-populate if slot 0 is not already occupied
 		if (_slotToPhoneNumber.ContainsKey(0))
+		{
 			return;
+		}
 
 		// Auto-populate first slot with primary user (UI convenience for local multiplayer)
 		var currentSession = _sessionManager.GetPrimarySession();
@@ -973,7 +993,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	/// </summary>
 	private async void RestoreOccupiedSlots()
 	{
-		if (_sessionManager == null) return;
+		if (_sessionManager == null)
+		{
+			return;
+		}
 
 		// Track slots and phone numbers to clear if user is no longer logged in
 		var slotsToRemove = new List<(int slotIndex, string phoneNumber)>();
@@ -985,7 +1008,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 			// Validate slot index
 			if (slotIndex < 0 || slotIndex >= _playerSlots.Count)
+			{
 				continue;
+			}
 
 			// Get user session
 			var session = _sessionManager.GetSessionByPhone(phoneNumber);
@@ -1002,6 +1027,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 						credits = balance;
 					}
 				}
+
 				var slot = _playerSlots[slotIndex];
 				slot.SetOccupied(session.UserName, credits);
 			}
@@ -1025,7 +1051,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private void UpdateTableCreditsDisplay()
 	{
-		_tableCreditsAmountLabel.Text = $"{_tableCredits} Credit{(_tableCredits != 1 ? "s" : "")}";
+		_tableCreditsAmountLabel.Text = $"{_tableCredits} Credit{(_tableCredits != 1 ? "s" : string.Empty)}";
 
 		// Color based on sufficiency
 		if (_tableCredits >= _costPerGame)
@@ -1042,14 +1068,18 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	{
 		// Check correct number of slots filled
 		if (_slotToPhoneNumber.Count != _playerCount)
+		{
 			return false;
+		}
 
 		// Validate each player has valid session
 		foreach (var kvp in _slotToPhoneNumber)
 		{
 			var session = _sessionManager?.GetSessionByPhone(kvp.Value);
 			if (session == null)
+			{
 				return false;
+			}
 		}
 
 		return true;
@@ -1075,7 +1105,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		else if (!slotsFilledCorrectly)
 		{
 			int needed = _playerCount - _slotToPhoneNumber.Count;
-			_startGameButton.Text = $"Need {needed} More Player{(needed > 1 ? "s" : "")}";
+			_startGameButton.Text = $"Need {needed} More Player{(needed > 1 ? "s" : string.Empty)}";
 		}
 		else
 		{
@@ -1084,12 +1114,11 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	}
 
 	// Event handlers
-
 	private void OnBackgroundInput(InputEvent inputEvent)
 	{
 		if (inputEvent is InputEventMouseButton mouseButton &&
-		    mouseButton.ButtonIndex == MouseButton.Left &&
-		    mouseButton.Pressed)
+			mouseButton.ButtonIndex == MouseButton.Left &&
+			mouseButton.Pressed)
 		{
 			OnExitPressed();
 		}
@@ -1097,7 +1126,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private void OnLoginButtonPressed(int slotIndex)
 	{
-		if (_uiManager == null) return;
+		if (_uiManager == null)
+		{
+			return;
+		}
 
 		// Store which slot is waiting for login
 		_pendingLoginSlot = slotIndex;
@@ -1113,12 +1145,16 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	private async void OnUserLoggedIn(string phoneNumber)
 	{
 		if (_sessionManager == null)
+		{
 			return;
+		}
 
 		// Get the user session
 		var session = _sessionManager.GetSessionByPhone(phoneNumber);
 		if (session == null)
+		{
 			return;
+		}
 
 		// Check if this user is already in another slot
 		if (_slotToPhoneNumber.Values.Contains(phoneNumber))
@@ -1174,6 +1210,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 					credits = balance;
 				}
 			}
+
 			var slot = _playerSlots[slotIndex];
 			slot.SetOccupied(session.UserName, credits);
 			GD.Print($"Player {session.UserName} assigned to slot {slotIndex}");
@@ -1225,7 +1262,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		// Update UI for all slots - playerId is a GUID string, not phone number
 		// Find the slot with this player and update it
 		if (!Guid.TryParse(playerId, out var playerGuid))
+		{
 			return;
+		}
 
 		// Find phone number for this player ID
 		foreach (var kvp in _slotToPhoneNumber)
@@ -1256,7 +1295,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			if (kvp.Value == phoneNumber)
 			{
 				if (kvp.Key >= _playerSlots.Count)
+				{
 					break;
+				}
 
 				// Fetch credits from CreditService (single source of truth)
 				var playerId = SessionManager.GetPlayerIdFromPhone(phoneNumber);
@@ -1268,6 +1309,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 						_playerSlots[kvp.Key].UpdateCreditsDisplay(balance);
 					}
 				}
+
 				break;
 			}
 		}
@@ -1275,9 +1317,15 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private async void OnLogoutButtonPressed(int slotIndex)
 	{
-		if (_sessionManager == null) return;
-		if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
+		if (_sessionManager == null)
+		{
 			return;
+		}
+
+		if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
+		{
+			return;
+		}
 
 		// Return transferred credits to player
 		if (_creditsTransferredByPlayer.TryGetValue(phoneNumber, out var transferredAmount))
@@ -1320,9 +1368,15 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private void OnBuyCreditsButtonPressed(int slotIndex)
 	{
-		if (_uiManager == null) return;
-		if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
+		if (_uiManager == null)
+		{
 			return;
+		}
+
+		if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
+		{
+			return;
+		}
 
 		// Show buy credits modal for this specific user (explicit user targeting)
 		_uiManager.ShowBuyCreditsModal(phoneNumber);
@@ -1334,9 +1388,14 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	private async void RefreshSlotCreditsDisplay(int slotIndex)
 	{
 		if (_sessionManager == null)
+		{
 			return;
+		}
+
 		if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
+		{
 			return;
+		}
 
 		// Wait a moment for purchase to process
 		await ToSignal(GetTree().CreateTimer(1.0f), Timer.SignalName.Timeout);
@@ -1359,13 +1418,20 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		try
 		{
 			if (_sessionManager == null)
+			{
 				return;
+			}
+
 			if (!_slotToPhoneNumber.TryGetValue(slotIndex, out var phoneNumber))
+			{
 				return;
+			}
 
 			var session = _sessionManager.GetSessionByPhone(phoneNumber);
 			if (session == null)
+			{
 				return;
+			}
 
 			// Fetch credits from CreditService (single source of truth)
 			int availableCredits = 0;
@@ -1389,12 +1455,13 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				phoneNumber,
 				slotIndex,
 				session.UserName,
-				availableCredits
-			);
+				availableCredits);
 
 			// If cancelled or invalid, return
 			if (!selectedAmount.HasValue || selectedAmount.Value < 1)
+			{
 				return;
+			}
 
 			// Transfer credits: player credits → machine credits (via CreditService)
 			if (_creditService == null)
@@ -1421,12 +1488,13 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 					session.PlayerId,
 					selectedAmount.Value,
 					session.LobbySessionId,
-					"Transfer to Carrom table"
-				);
+					"Transfer to Carrom table");
 
 				// Validate scene still exists after async operation
 				if (!IsInstanceValid(this))
+				{
 					return;
+				}
 
 				if (transferResult.IsFailure(out var transferError))
 				{
@@ -1440,11 +1508,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				var spendResult = await _creditService.SpendAsync(
 					session.PlayerId,
 					selectedAmount.Value,
-					"Transfer to Carrom table"
-				);
+					"Transfer to Carrom table");
 
 				if (!IsInstanceValid(this))
+				{
 					return;
+				}
 
 				if (spendResult.IsFailure(out var spendError))
 				{
@@ -1492,7 +1561,9 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	{
 		// Validate credits (existing check)
 		if (_tableCredits < _costPerGame)
+		{
 			return;
+		}
 
 		// Validate player slots
 		if (!ValidatePlayerSlots())
@@ -1517,8 +1588,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 				"carrom",  // Use game tag to match backend queries
 				boxId,
 				_costPerGame,
-				tempGameSessionId
-			);
+				tempGameSessionId);
 
 			if (consumeResult.IsSuccess(out var machineState))
 			{
@@ -1551,7 +1621,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 
 	private async Task ReturnAllCreditsToPlayers()
 	{
-		if (_sessionManager == null) return;
+		if (_sessionManager == null)
+		{
+			return;
+		}
 
 		int totalReturned = 0;
 
@@ -1591,7 +1664,10 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	/// </summary>
 	private async Task CleanupAllPlayerSessions()
 	{
-		if (_sessionManager == null) return;
+		if (_sessionManager == null)
+		{
+			return;
+		}
 
 		// Get primary session to avoid logging it out (primary user manages their own session lifecycle)
 		var primarySession = _sessionManager.GetPrimarySession();

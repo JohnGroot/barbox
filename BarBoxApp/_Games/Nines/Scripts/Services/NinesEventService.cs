@@ -1,7 +1,7 @@
-using BarBox.Core.Autoloads;
-using LightResults;
 using System;
 using System.Threading.Tasks;
+using BarBox.Core.Autoloads;
+using LightResults;
 
 namespace BarBox.Games.Nines;
 
@@ -14,7 +14,8 @@ public class NinesEventService : GameEventServiceBase
 {
 	private const string EVENT_JACKPOT_WON = "nines/jackpot_won";
 
-	public NinesEventService(SessionEventService eventService = null) : base(eventService)
+	public NinesEventService(SessionEventService eventService = null)
+		: base(eventService)
 	{
 	}
 
@@ -26,7 +27,9 @@ public class NinesEventService : GameEventServiceBase
 	public async Task<Result<bool>> EmitJackpotWonAsync(string venueName, string playerId, string playerName, int jackpotAmount)
 	{
 		if (string.IsNullOrEmpty(venueName))
+		{
 			return Result.Failure<bool>(ValidationMessages.Required("Venue name"));
+		}
 
 		var payload = new
 		{
@@ -34,7 +37,7 @@ public class NinesEventService : GameEventServiceBase
 			player_id = playerId ?? "unknown",
 			player_name = playerName ?? "Unknown",
 			jackpot_amount = jackpotAmount,
-			timestamp = DateTime.UtcNow.ToString("o")
+			timestamp = DateTime.UtcNow.ToString("o"),
 		};
 
 		return await SubmitResultAsync(EVENT_JACKPOT_WON, payload);

@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Unit.Services;
@@ -14,7 +14,8 @@ public class CreditServiceTests : BackendTestBase
 {
 	private CreditService _creditService;
 
-	public CreditServiceTests(Node testScene) : base(testScene)
+	public CreditServiceTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -220,7 +221,8 @@ public class CreditServiceTests : BackendTestBase
 
 		// Assert
 		newResult.IsSuccess(out var newBalance).ShouldBeTrue("Balance retrieval should succeed after spend");
-		newBalance.ShouldBeLessThan(initialBalance,
+		newBalance.ShouldBeLessThan(
+			initialBalance,
 			"Balance should decrease after spend (cache should be invalidated)");
 		TestHelpers.LogTestInfo($"After spend: old={initialBalance}, new={newBalance}");
 	}

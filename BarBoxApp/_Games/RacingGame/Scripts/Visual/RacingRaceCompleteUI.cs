@@ -1,7 +1,7 @@
-using Godot;
 using System.Collections.Generic;
 using System.Linq;
 using BarBox.Core.UI;
+using Godot;
 
 namespace BarBox.Games.Racing;
 
@@ -13,13 +13,21 @@ public class RacingRaceCompleteUI
 {
 	// Overlay components
 	public Control OverlayRoot { get; private set; }
+
 	public VBoxContainer ContentContainer { get; private set; }
+
 	public Label RaceCompleteLabel { get; private set; }
+
 	public Label FinalTimeLabel { get; private set; }
+
 	public Label PositionLabel { get; private set; }
+
 	public Button TryAgainButton { get; private set; }
+
 	public Button AddCreditsButton { get; private set; }
+
 	public Button ReturnToPracticeButton { get; private set; }
+
 	public DataTableView HighScoresTable { get; private set; }
 
 	// State
@@ -188,14 +196,16 @@ public class RacingRaceCompleteUI
 			1 => "st",
 			2 => "nd",
 			3 => "rd",
-			_ => "th"
+			_ => "th",
 		};
 	}
 
 	public void UpdateHighScores(List<RacingUIManager.LeaderboardEntry> highScores, string currentPlayerPhoneNumber)
 	{
 		if (highScores == null)
+		{
 			return;
+		}
 
 		for (int i = 0; i < highScores.Count; i++)
 		{
@@ -217,7 +227,7 @@ public class RacingRaceCompleteUI
 		TryAgainButton.Disabled = !canAffordTryAgain;
 		if (creditCost > 0)
 		{
-			TryAgainButton.Text = $"Try Again - {creditCost} Credit{(creditCost != 1 ? "s" : "")}";
+			TryAgainButton.Text = $"Try Again - {creditCost} Credit{(creditCost != 1 ? "s" : string.Empty)}";
 		}
 		else
 		{

@@ -1,5 +1,5 @@
-using Godot;
 using System.Threading.Tasks;
+using Godot;
 
 namespace BarBox.Core.Autoloads;
 
@@ -9,9 +9,14 @@ namespace BarBox.Core.Autoloads;
 /// </summary>
 public partial class UIManager : AutoloadBase
 {
-	[Signal] public delegate void LoginRequestedEventHandler();
-	[Signal] public delegate void LogoutRequestedEventHandler();
-	[Signal] public delegate void ReturnToMenuRequestedEventHandler();
+	[Signal]
+	public delegate void LoginRequestedEventHandler();
+
+	[Signal]
+	public delegate void LogoutRequestedEventHandler();
+
+	[Signal]
+	public delegate void ReturnToMenuRequestedEventHandler();
 
 	public static UIManager Instance { get; private set; }
 
@@ -49,7 +54,7 @@ public partial class UIManager : AutoloadBase
 	private Label _helpTitleLabel;
 	private HelpContentData _currentHelpContent;
 	private bool _isHelpVisible = false;
-	
+
 	// Context tracking
 	private string _currentGameTitle = "BarBox";
 	private ContextButtonData[] _currentContextButtons = null;
@@ -206,7 +211,6 @@ public partial class UIManager : AutoloadBase
 		LogInfo($"Game context set: '{_currentGameTitle}' with {contextButtons?.Length ?? 0} buttons");
 	}
 
-
 	/// <summary>
 	/// Clear game context and return to main menu state
 	/// </summary>
@@ -214,7 +218,7 @@ public partial class UIManager : AutoloadBase
 	{
 		_currentGameTitle = "BarBox";
 		_currentContextButtons = null;
-		
+
 		if (_topMenuBar != null)
 		{
 			_topMenuBar.SetGameTitle(_currentGameTitle);
@@ -229,10 +233,12 @@ public partial class UIManager : AutoloadBase
 	public void RefreshTopMenuContext()
 	{
 		if (_topMenuBar == null)
+		{
 			return;
+		}
 
 		_topMenuBar.SetGameTitle(_currentGameTitle);
-			
+
 		if (_currentContextButtons != null)
 		{
 			_topMenuBar.SetContextButtons(_currentContextButtons);
@@ -277,6 +283,7 @@ public partial class UIManager : AutoloadBase
 					credits = balance;
 				}
 			}
+
 			_topMenuBar.UpdateUserInfo(session, credits);
 		}
 	}
@@ -350,14 +357,10 @@ public partial class UIManager : AutoloadBase
 	/// </summary>
 	public void SetGameStatus(string statusText)
 	{
-		if (_topMenuBar != null)
-		{
-			_topMenuBar.SetGameStatus(statusText);
-		}
+		_topMenuBar?.SetGameStatus(statusText);
 	}
 
 	// Signal handlers
-
 	private void OnLoginRequested()
 	{
 		// Show login modal directly instead of emitting signal
@@ -395,6 +398,7 @@ public partial class UIManager : AutoloadBase
 			if (session != null && _creditService != null)
 			{
 				await _creditService.GetBalanceAsync(session.PlayerId, forceRefresh: true);
+
 				// CreditsChanged signal emitted by CreditService → OnCreditsChanged updates UI
 			}
 		}
@@ -409,9 +413,13 @@ public partial class UIManager : AutoloadBase
 		UpdateUserDisplay();
 	}
 
-	private void OnLoginModalClosed() { }
+	private void OnLoginModalClosed()
+	{
+	}
 
-	private void OnBuyCreditsModalClosed() { }
+	private void OnBuyCreditsModalClosed()
+	{
+	}
 
 	private void OnCreditsAcquired(string userId, int amount)
 	{
@@ -469,11 +477,14 @@ public partial class UIManager : AutoloadBase
 		_helpToggleButton.Position = new Vector2(-60, 20);
 		_helpToggleButton.AddThemeFontSizeOverride("font_size", 24);
 
-		_helpToggleButton.AddThemeStyleboxOverride("normal",
+		_helpToggleButton.AddThemeStyleboxOverride(
+			"normal",
 			CreateCircularButtonStyle(new Color(0.2f, 0.4f, 0.8f, 0.6f), new Color(0.6f, 0.8f, 1.0f, 1.0f), 30));
-		_helpToggleButton.AddThemeStyleboxOverride("hover",
+		_helpToggleButton.AddThemeStyleboxOverride(
+			"hover",
 			CreateCircularButtonStyle(new Color(0.3f, 0.5f, 0.9f, 0.95f), new Color(0.8f, 0.9f, 1.0f, 1.0f), 30));
-		_helpToggleButton.AddThemeStyleboxOverride("pressed",
+		_helpToggleButton.AddThemeStyleboxOverride(
+			"pressed",
 			CreateCircularButtonStyle(new Color(0.1f, 0.3f, 0.7f, 1.0f), new Color(0.4f, 0.6f, 0.8f, 1.0f), 30));
 
 		_helpToggleButton.Pressed += ToggleHelpMenu;
@@ -494,7 +505,7 @@ public partial class UIManager : AutoloadBase
 			CornerRadiusTopLeft = cornerRadius,
 			CornerRadiusTopRight = cornerRadius,
 			CornerRadiusBottomLeft = cornerRadius,
-			CornerRadiusBottomRight = cornerRadius
+			CornerRadiusBottomRight = cornerRadius,
 		};
 	}
 
@@ -509,7 +520,8 @@ public partial class UIManager : AutoloadBase
 		var background = new ColorRect();
 		background.Color = new Color(0, 0, 0, 0.7f);
 		background.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-		background.GuiInput += (InputEvent @event) => {
+		background.GuiInput += (InputEvent @event) =>
+		{
 			if (@event is InputEventMouseButton mouseButton && mouseButton.Pressed && mouseButton.ButtonIndex == MouseButton.Left)
 			{
 				SetHelpMenuVisible(false);

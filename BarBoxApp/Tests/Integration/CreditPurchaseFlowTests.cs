@@ -1,7 +1,7 @@
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Integration;
@@ -19,7 +19,8 @@ public class CreditPurchaseFlowTests : BackendTestBase
 	private BackendManager _backendManager;
 	private CreditService _creditService;
 
-	public CreditPurchaseFlowTests(Node testScene) : base(testScene)
+	public CreditPurchaseFlowTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -64,7 +65,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		var purchaseResult = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 		// Assert
-		(purchaseResult.IsSuccess).ShouldBeTrue($"Purchase should succeed, but failed: {purchaseResult.ErrorMessage}");
+		purchaseResult.IsSuccess.ShouldBeTrue($"Purchase should succeed, but failed: {purchaseResult.ErrorMessage}");
 		purchaseResult.TransactionId.ShouldNotBeNullOrEmpty("Transaction ID should be set");
 		TestHelpers.LogTestInfo($"Purchase succeeded: {purchaseResult.TransactionId}");
 
@@ -74,7 +75,8 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		TestHelpers.LogTestInfo($"User credits after purchase: {updatedCredits}");
 
 		var expectedCredits = initialCredits + creditPack.Credits;
-		updatedCredits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
+		updatedCredits.ShouldBeGreaterThanOrEqualTo(
+			expectedCredits,
 			$"Credits should be at least {expectedCredits} after purchase");
 		TestHelpers.LogTestInfo($"✓ Credits correctly added");
 
@@ -84,7 +86,8 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		if (backendCredits.IsSuccess(out var backendCreditAmount))
 		{
 			TestHelpers.LogTestInfo($"Backend credits: {backendCreditAmount}");
-			backendCreditAmount.ShouldBeGreaterThanOrEqualTo(expectedCredits,
+			backendCreditAmount.ShouldBeGreaterThanOrEqualTo(
+				expectedCredits,
 				$"Backend credits should match or exceed {expectedCredits}");
 			TestHelpers.LogTestInfo($"✓ Backend credits match session");
 		}
@@ -124,7 +127,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		// Assert
 		if (!isBackendRunning || !isEventServiceReady)
 		{
-			(result.IsSuccess).ShouldBeFalse("Purchase must fail when backend/SessionEventService not ready");
+			result.IsSuccess.ShouldBeFalse("Purchase must fail when backend/SessionEventService not ready");
 			result.ErrorMessage.ShouldNotBeNullOrEmpty("Error message should be provided");
 			TestHelpers.LogTestInfo($"Purchase correctly failed: {result.ErrorMessage}");
 
@@ -206,9 +209,20 @@ public class CreditPurchaseFlowTests : BackendTestBase
 
 		// Assert
 		var successCount = 0;
-		if (result1.IsSuccess) successCount++;
-		if (result2.IsSuccess) successCount++;
-		if (result3.IsSuccess) successCount++;
+		if (result1.IsSuccess)
+		{
+			successCount++;
+		}
+
+		if (result2.IsSuccess)
+		{
+			successCount++;
+		}
+
+		if (result3.IsSuccess)
+		{
+			successCount++;
+		}
 
 		TestHelpers.LogTestInfo($"Concurrent purchases: {successCount}/3 succeeded");
 		successCount.ShouldBeGreaterThan(0, "At least one concurrent purchase should succeed");
@@ -219,7 +233,8 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		var expectedMinCredits = initialCredits + (smallPack.Credits * successCount);
 
 		TestHelpers.LogTestInfo($"Final credits: {finalCredits} (expected >= {expectedMinCredits})");
-		finalCredits.ShouldBeGreaterThanOrEqualTo(expectedMinCredits,
+		finalCredits.ShouldBeGreaterThanOrEqualTo(
+			expectedMinCredits,
 			$"Credits should be at least {expectedMinCredits} from {successCount} successful purchases");
 		TestHelpers.LogTestInfo("✓ Credits correctly accumulated from concurrent purchases");
 
@@ -232,7 +247,6 @@ public class CreditPurchaseFlowTests : BackendTestBase
 	{
 		// This test documents expected behavior when backend restarts
 		// Actual backend restart testing would require process control
-
 		TestHelpers.LogTestInfo("Testing backend readiness recovery pattern...");
 
 		// Check current state
@@ -308,7 +322,7 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		var purchaseResult = await _paymentService.PurchaseCreditsAsync(playerId, creditPack);
 
 		// Assert - Purchase should succeed
-		(purchaseResult.IsSuccess).ShouldBeTrue($"Purchase should succeed, but failed: {purchaseResult.ErrorMessage}");
+		purchaseResult.IsSuccess.ShouldBeTrue($"Purchase should succeed, but failed: {purchaseResult.ErrorMessage}");
 		TestHelpers.LogTestInfo($"Purchase succeeded: {purchaseResult.TransactionId}");
 
 		// CRITICAL: Query balance immediately after purchase (this is where the bug manifests)
@@ -325,7 +339,8 @@ public class CreditPurchaseFlowTests : BackendTestBase
 		// This assertion should FAIL due to race condition (balance will be initialBalance, not expectedBalance)
 		TestHelpers.LogTestInfo($"Expected balance: {expectedBalance}, Actual balance: {immediateBalance}");
 
-		immediateBalance.ShouldBe(expectedBalance,
+		immediateBalance.ShouldBe(
+			expectedBalance,
 			$"RACE CONDITION BUG: Balance should be {expectedBalance} but got {immediateBalance}. " +
 			$"This indicates the balance query happened before the backend processed the credit/earn event.");
 

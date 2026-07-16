@@ -64,7 +64,7 @@ public static class ProcessTestHelpers
 		try
 		{
 			var output = new Godot.Collections.Array();
-			var exitCode = OS.Execute("lsof", new string[] { "-i", $":{port}", "-t" }, output);
+			var exitCode = OS.Execute("lsof", ["-i", $":{port}", "-t"], output);
 
 			if (exitCode == 0 && output.Count > 0)
 			{
@@ -90,7 +90,7 @@ public static class ProcessTestHelpers
 		try
 		{
 			var output = new Godot.Collections.Array();
-			var exitCode = OS.Execute("lsof", new string[] { "-i", $":{port}", "-t" }, output);
+			var exitCode = OS.Execute("lsof", ["-i", $":{port}", "-t"], output);
 
 			if (exitCode == 0 && output.Count > 0)
 			{
@@ -116,7 +116,7 @@ public static class ProcessTestHelpers
 		try
 		{
 			var output = new Godot.Collections.Array();
-			var exitCode = OS.Execute("kill", new string[] { "-9", pid.ToString() }, output);
+			var exitCode = OS.Execute("kill", ["-9", pid.ToString()], output);
 			return exitCode == 0;
 		}
 		catch (Exception ex)
@@ -213,7 +213,7 @@ public static class ProcessTestHelpers
 	/// </summary>
 	public static class TestData
 	{
-		public static readonly int[] TypicalStalePids = { 60147, 66881, 79755 };
+		public static readonly int[] TypicalStalePids = [60147, 66881, 79755];
 		public static readonly int SingleStalePid = 12345;
 		public static readonly int TestBackendPort = 8000;
 		public static readonly int TestBackendPid = 80985;

@@ -25,7 +25,8 @@ public class RacingPendingSaveQueueTests : TestClass
 {
 	private RacingPendingSaveQueue _queue;
 
-	public RacingPendingSaveQueueTests(Node testScene) : base(testScene)
+	public RacingPendingSaveQueueTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -116,9 +117,21 @@ public class RacingPendingSaveQueueTests : TestClass
 	{
 		var order = new System.Collections.Generic.List<int>();
 
-		_queue.Enqueue(() => { order.Add(1); return Task.CompletedTask; });
-		_queue.Enqueue(() => { order.Add(2); return Task.CompletedTask; });
-		_queue.Enqueue(() => { order.Add(3); return Task.CompletedTask; });
+		_queue.Enqueue(() =>
+		{
+			order.Add(1);
+			return Task.CompletedTask;
+		});
+		_queue.Enqueue(() =>
+		{
+			order.Add(2);
+			return Task.CompletedTask;
+		});
+		_queue.Enqueue(() =>
+		{
+			order.Add(3);
+			return Task.CompletedTask;
+		});
 
 		await _queue.FlushAsync();
 

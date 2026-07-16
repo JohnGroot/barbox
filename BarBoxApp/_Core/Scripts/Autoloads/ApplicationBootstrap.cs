@@ -1,10 +1,10 @@
-using Godot;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using BarBox.Core.Debug;
+using Godot;
 
 namespace BarBox.Core.Autoloads;
 
@@ -14,7 +14,8 @@ namespace BarBox.Core.Autoloads;
 /// </summary>
 public partial class ApplicationBootstrap : AutoloadBase
 {
-	[Signal] public delegate void AllServicesReadyEventHandler();
+	[Signal]
+	public delegate void AllServicesReadyEventHandler();
 
 	private bool _servicesInitialized = false;
 	private readonly List<string> _failedServices = new();
@@ -23,7 +24,7 @@ public partial class ApplicationBootstrap : AutoloadBase
 	private enum ServiceCriticality
 	{
 		Required,    // Abort if fails
-		Optional     // Warn and continue
+		Optional, // Warn and continue
 	}
 
 	protected override void OnServiceEnterTree()
@@ -130,7 +131,9 @@ public partial class ApplicationBootstrap : AutoloadBase
 
 			// Skip comments and empty lines
 			if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
+			{
 				continue;
+			}
 
 			// Parse KEY=VALUE format
 			var parts = line.Split('=', 2);
@@ -194,6 +197,7 @@ public partial class ApplicationBootstrap : AutoloadBase
 			{
 				LogWarning($"Services that failed: {string.Join(", ", _failedServices)}");
 			}
+
 			// Always emit signal so app can continue
 			EmitSignal(SignalName.AllServicesReady);
 		}
@@ -204,7 +208,8 @@ public partial class ApplicationBootstrap : AutoloadBase
 		// Phase 1a: Configuration service (LocationManager MUST complete first)
 		// LocationManager reads all config values and exposes them via properties
 		LogInfo("Phase 1: Foundation services (LocationManager, then BackendManager)");
-		var locationReady = await InitializeServiceAsync("LocationManager",
+		var locationReady = await InitializeServiceAsync(
+			"LocationManager",
 			LocationManager.GetAutoload(), ServiceCriticality.Required, cancellationToken);
 
 		if (!locationReady)
@@ -214,7 +219,8 @@ public partial class ApplicationBootstrap : AutoloadBase
 		}
 
 		// Phase 1b: Backend service (depends on LocationManager for config)
-		var backendReady = await InitializeServiceAsync("BackendManager",
+		var backendReady = await InitializeServiceAsync(
+			"BackendManager",
 			BackendManager.GetInstance(), ServiceCriticality.Required, cancellationToken);
 
 		return backendReady;
@@ -269,6 +275,7 @@ public partial class ApplicationBootstrap : AutoloadBase
 			{
 				_failedServices.Add(serviceName);
 			}
+
 			return false;
 		}
 
@@ -287,6 +294,7 @@ public partial class ApplicationBootstrap : AutoloadBase
 					_failedServices.Add(serviceName);
 				}
 			}
+
 			return success;
 		}
 		catch (Exception ex)
@@ -296,6 +304,7 @@ public partial class ApplicationBootstrap : AutoloadBase
 			{
 				_failedServices.Add(serviceName);
 			}
+
 			return false;
 		}
 	}

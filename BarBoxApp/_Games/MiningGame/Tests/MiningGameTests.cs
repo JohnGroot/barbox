@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BarBox.Games.MiningGame;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
-using BarBox.Games.MiningGame;
 using Shouldly;
 
 namespace BarBox.Games.MiningGame.Tests;
@@ -16,11 +16,11 @@ namespace BarBox.Games.MiningGame.Tests;
 public class MiningGameTests : GameSessionTestBase
 {
 	private const string GAME_TAG = "mining";
+
 	protected override string GameTag => GAME_TAG;
 
-	private SessionEventService _eventService => EventService;
-
-	public MiningGameTests(Node testScene) : base(testScene)
+	public MiningGameTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -29,19 +29,18 @@ public class MiningGameTests : GameSessionTestBase
 	{
 		// This tests the pattern of loading inventory from backend
 		// In production, MiningEventService would query the backend
-
-		if (_eventService == null)
+		if (EventService == null)
 		{
 			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 
 		// Emit an extract event to create inventory data
-		var extractResult = await _eventService.EmitEventAsync("mining/extract_complete", new
+		var extractResult = await EventService.EmitEventAsync("mining/extract_complete", new
 		{
 			gem_type = "painite",
 			quantity = 10,
-			location_id = "test_cave"
+			location_id = "test_cave",
 		});
 
 		if (extractResult.IsSuccess(out var _))
@@ -60,19 +59,19 @@ public class MiningGameTests : GameSessionTestBase
 	[Test]
 	public async Task LoadUpgradeLevels_FromBackend_ReturnsCorrectData()
 	{
-		if (_eventService == null)
+		if (EventService == null)
 		{
 			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
 		}
 
 		// Emit an upgrade purchase event
-		var upgradeResult = await _eventService.EmitEventAsync("mining/upgrade_purchase", new
+		var upgradeResult = await EventService.EmitEventAsync("mining/upgrade_purchase", new
 		{
 			upgrade_type = "capacity",
 			level = 2,
 			cost = new Dictionary<string, int> { { "painite", 50 } },
-			location_id = "test_cave"
+			location_id = "test_cave",
 		});
 
 		if (upgradeResult.IsSuccess(out var _))
@@ -94,7 +93,6 @@ public class MiningGameTests : GameSessionTestBase
 		// - Last extraction time (from backend state)
 		// - Mining rate (from config/upgrades)
 		// No backend event needed - client calculates when to show extraction UI
-
 		var lastExtractionTime = DateTime.UtcNow.AddHours(-2);
 		var miningIntervalHours = 2.0;
 		var nextTickTime = lastExtractionTime.AddHours(miningIntervalHours);
@@ -106,7 +104,7 @@ public class MiningGameTests : GameSessionTestBase
 	[Test]
 	public void IdentifyExtractableGems_ReturnsCorrectQuantity()
 	{
-		if (_eventService == null)
+		if (EventService == null)
 		{
 			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
@@ -127,7 +125,7 @@ public class MiningGameTests : GameSessionTestBase
 	[Test]
 	public async Task CompleteGemExtraction_UpdatesBackendInventory()
 	{
-		if (_eventService == null)
+		if (EventService == null)
 		{
 			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
@@ -137,11 +135,11 @@ public class MiningGameTests : GameSessionTestBase
 		var gemType = "painite";
 		var quantity = 15;
 
-		var result = await _eventService.EmitEventAsync("mining/extract_complete", new
+		var result = await EventService.EmitEventAsync("mining/extract_complete", new
 		{
 			gem_type = gemType,
 			quantity = quantity,
-			location_id = "test_cave"
+			location_id = "test_cave",
 		});
 
 		if (result.IsSuccess(out var _))
@@ -159,7 +157,7 @@ public class MiningGameTests : GameSessionTestBase
 	[Test]
 	public async Task PurchaseUpgrade_UpdatesBackendAndLocalState()
 	{
-		if (_eventService == null)
+		if (EventService == null)
 		{
 			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
@@ -171,15 +169,15 @@ public class MiningGameTests : GameSessionTestBase
 		var cost = new Dictionary<string, int>
 		{
 			{ "painite", 100 },
-			{ "bixbite", 50 }
+			{ "bixbite", 50 },
 		};
 
-		var result = await _eventService.EmitEventAsync("mining/upgrade_purchase", new
+		var result = await EventService.EmitEventAsync("mining/upgrade_purchase", new
 		{
 			upgrade_type = upgradeType,
 			level = level,
 			cost = cost,
-			location_id = "test_cave"
+			location_id = "test_cave",
 		});
 
 		if (result.IsSuccess(out var _))
@@ -201,7 +199,7 @@ public class MiningGameTests : GameSessionTestBase
 	[Test]
 	public async Task DepositGemsForCredits_UpdatesCreditsOnBackend()
 	{
-		if (_eventService == null)
+		if (EventService == null)
 		{
 			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
@@ -212,11 +210,11 @@ public class MiningGameTests : GameSessionTestBase
 		var gemsSpent = 50;
 		var creditsEarned = 100;
 
-		var result = await _eventService.EmitEventAsync("mining/credit_deposit", new
+		var result = await EventService.EmitEventAsync("mining/credit_deposit", new
 		{
 			gem_type = gemType,
 			gems_spent = gemsSpent,
-			credits_earned = creditsEarned
+			credits_earned = creditsEarned,
 		});
 
 		if (result.IsSuccess(out var _))
@@ -238,7 +236,7 @@ public class MiningGameTests : GameSessionTestBase
 	[Test]
 	public async Task CompleteMiningGameFlow_AllOperationsSucceed()
 	{
-		if (_eventService == null)
+		if (EventService == null)
 		{
 			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
@@ -247,11 +245,11 @@ public class MiningGameTests : GameSessionTestBase
 		TestHelpers.LogTestInfo("=== Starting Complete Mining Game Flow ===");
 
 		// Step 1: Extract gems
-		var extract1 = await _eventService.EmitEventAsync("mining/extract_complete", new
+		var extract1 = await EventService.EmitEventAsync("mining/extract_complete", new
 		{
 			gem_type = "painite",
 			quantity = 20,
-			location_id = "test_cave"
+			location_id = "test_cave",
 		});
 
 		TestHelpers.LogTestInfo($"Step 1 - Extract: {(extract1.IsSuccess(out var _) ? "✓" : "✗")}");
@@ -260,22 +258,22 @@ public class MiningGameTests : GameSessionTestBase
 		TestHelpers.LogTestInfo("Step 2 - Tick Timing: ✓ (client-side calculation)");
 
 		// Step 3: Purchase upgrade
-		var upgrade = await _eventService.EmitEventAsync("mining/upgrade_purchase", new
+		var upgrade = await EventService.EmitEventAsync("mining/upgrade_purchase", new
 		{
 			upgrade_type = "capacity",
 			level = 2,
 			cost = new Dictionary<string, int> { { "painite", 10 } },
-			location_id = "test_cave"
+			location_id = "test_cave",
 		});
 
 		TestHelpers.LogTestInfo($"Step 3 - Upgrade: {(upgrade.IsSuccess(out var _) ? "✓" : "✗")}");
 
 		// Step 4: Deposit for credits
-		var deposit = await _eventService.EmitEventAsync("mining/credit_deposit", new
+		var deposit = await EventService.EmitEventAsync("mining/credit_deposit", new
 		{
 			gem_type = "painite",
 			gems_spent = 10,
-			credits_earned = 20
+			credits_earned = 20,
 		});
 
 		TestHelpers.LogTestInfo($"Step 4 - Credit Deposit: {(deposit.IsSuccess(out var _) ? "✓" : "✗")}");

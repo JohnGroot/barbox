@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Unit.Services;
@@ -15,7 +15,8 @@ public class SessionManagerTests : BackendTestBase
 	private SessionManager _sessionManager;
 	private CreditService _creditService;
 
-	public SessionManagerTests(Node testScene) : base(testScene)
+	public SessionManagerTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -66,6 +67,7 @@ public class SessionManagerTests : BackendTestBase
 		if (session != null)
 		{
 			TestHelpers.LogTestInfo($"Found existing session (may be from previous test): {session.PhoneNumber}");
+
 			// Don't fail - there might be sessions from other tests
 		}
 		else
@@ -134,6 +136,7 @@ public class SessionManagerTests : BackendTestBase
 		// Arrange
 		_sessionManager.ShouldNotBeNull("SessionManager must be available");
 		var pin = "1234";
+
 		// Use deterministic phone numbers based on test name
 		var testNameHash = "LoginMultipleUsers".GetHashCode();
 		var phone1 = TestHelpers.GenerateTestPhoneNumber(testNameHash);
@@ -329,7 +332,8 @@ public class SessionManagerTests : BackendTestBase
 			var expectedCredits = initialCredits + 100;
 			TestHelpers.LogTestInfo($"Credits: {initialCredits} → {updatedCredits} (expected {expectedCredits})");
 
-			updatedCredits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
+			updatedCredits.ShouldBeGreaterThanOrEqualTo(
+				expectedCredits,
 				"CreditService should reflect credit addition");
 			TestHelpers.LogTestInfo("✓ Credits correctly updated via CreditService");
 		}

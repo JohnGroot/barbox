@@ -1,7 +1,7 @@
-using Godot;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Godot;
 
 namespace BarBox.Core.Autoloads;
 
@@ -112,7 +112,9 @@ public partial class PaymentService : AutoloadBase
 		// CRITICAL: Check SessionEventService readiness BEFORE processing payment
 		var validation = ValidateEventServiceReady();
 		if (validation.HasValue)
+		{
 			return validation.Value;
+		}
 
 		// Cancel any previous payment, create new cancellation token
 		_paymentCancellation?.Cancel();
@@ -205,7 +207,9 @@ public partial class PaymentService : AutoloadBase
 	public async Task<bool> IsServiceAvailableAsync()
 	{
 		if (_currentProvider == null)
+		{
 			return false;
+		}
 
 		return await _currentProvider.IsServiceAvailableAsync();
 	}
@@ -265,6 +269,7 @@ public partial class PaymentService : AutoloadBase
 		{
 			disposable.Dispose();
 		}
+
 		_currentProvider = null;
 	}
 }

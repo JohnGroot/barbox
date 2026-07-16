@@ -1,6 +1,6 @@
-using Godot;
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 
 namespace BarBox.Core.Autoloads;
 
@@ -13,7 +13,7 @@ public enum NotificationSeverity
 	Info,
 	Success,
 	Warning,
-	Error
+	Error,
 }
 
 /// <summary>
@@ -31,7 +31,8 @@ public partial class NotificationService : AutoloadBase
 	/// </summary>
 	private partial class NotificationEntry : Panel
 	{
-		[Signal] public delegate void ReadyToRemoveEventHandler(NotificationEntry entry);
+		[Signal]
+		public delegate void ReadyToRemoveEventHandler(NotificationEntry entry);
 
 		public bool IsSticky { get; }
 
@@ -101,7 +102,10 @@ public partial class NotificationService : AutoloadBase
 
 		public void FadeIn()
 		{
-			if (_isRemoving) return;
+			if (_isRemoving)
+			{
+				return;
+			}
 
 			_fadeTween?.Kill();
 
@@ -148,7 +152,11 @@ public partial class NotificationService : AutoloadBase
 
 		public void FadeOut()
 		{
-			if (_isRemoving) return;
+			if (_isRemoving)
+			{
+				return;
+			}
+
 			_isRemoving = true;
 
 			_dismissTimer?.Stop();
@@ -253,7 +261,7 @@ public partial class NotificationService : AutoloadBase
 			NotificationSeverity.Success => (COLOR_SUCCESS, false, 2.0f),
 			NotificationSeverity.Warning => (COLOR_WARNING, false, 3.0f),
 			NotificationSeverity.Error => (COLOR_ERROR, true, 3.0f),
-			_ => (COLOR_INFO, false, 2.0f)
+			_ => (COLOR_INFO, false, 2.0f),
 		};
 
 		if (_activeEntries.Count >= MAX_VISIBLE_ENTRIES)
@@ -272,7 +280,10 @@ public partial class NotificationService : AutoloadBase
 
 	private void RemoveOldestEntry()
 	{
-		if (_activeEntries.Count == 0) return;
+		if (_activeEntries.Count == 0)
+		{
+			return;
+		}
 
 		var oldestEntry = _activeEntries[0];
 		if (IsInstanceValid(oldestEntry))
@@ -311,7 +322,10 @@ public partial class NotificationService : AutoloadBase
 
 	private void AnimateStackMovement(List<NotificationEntry> entries, Dictionary<NotificationEntry, float> oldPositions)
 	{
-		if (entries.Count == 0) return;
+		if (entries.Count == 0)
+		{
+			return;
+		}
 
 		_positionTween?.Kill();
 
@@ -326,7 +340,10 @@ public partial class NotificationService : AutoloadBase
 
 		foreach (var entry in entries)
 		{
-			if (!IsInstanceValid(entry)) continue;
+			if (!IsInstanceValid(entry))
+			{
+				continue;
+			}
 
 			float oldY = oldPositions[entry];
 			float newY = entry.Position.Y;
@@ -401,6 +418,7 @@ public partial class NotificationService : AutoloadBase
 				entry.QueueFree();
 			}
 		}
+
 		_activeEntries.Clear();
 	}
 }

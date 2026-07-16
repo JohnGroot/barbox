@@ -1,8 +1,8 @@
-using Godot;
-using LightResults;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Godot;
+using LightResults;
 
 namespace BarBox.Core.Autoloads;
 
@@ -47,15 +47,11 @@ public partial class BackendManager : AutoloadBase
 	private bool _isBackendRunning = false;
 	private int _backendProcessId = -1;  // Track backend process for lifecycle management
 
-
 	protected override async Task OnServiceInitializeAsync(CancellationToken cancellationToken = default)
 	{
 		// Get configuration from LocationManager (centralized config source)
 		// LocationManager is initialized before BackendManager in Phase 1
-		var locationManager = LocationManager.GetAutoload();
-		if (locationManager == null)
-			throw new InvalidOperationException("LocationManager required but not available - cannot get backend configuration");
-
+		var locationManager = LocationManager.GetAutoload() ?? throw new InvalidOperationException("LocationManager required but not available - cannot get backend configuration");
 		_backendHost = locationManager.BackendHost;
 		_backendPort = locationManager.BackendPort;
 		_isTestMode = locationManager.IsTestMode;
@@ -100,20 +96,21 @@ public partial class BackendManager : AutoloadBase
 		LogInfo($"Backend is available and healthy at {_backendHost}:{_backendPort}");
 	}
 
-
 	/// <summary>
 	/// Check if host is local (localhost/127.0.0.1/etc) vs remote
 	/// </summary>
 	private static bool IsLocalBackend(string host)
 	{
 		if (string.IsNullOrEmpty(host))
+		{
 			return true; // Assume local if not set
+		}
 
 		return host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
-		       host.Equals("127.0.0.1", StringComparison.Ordinal) ||
-		       host.Equals("::1", StringComparison.Ordinal) ||
-		       host.StartsWith("192.168.", StringComparison.Ordinal) ||
-		       host.StartsWith("10.", StringComparison.Ordinal);
+			   host.Equals("127.0.0.1", StringComparison.Ordinal) ||
+			   host.Equals("::1", StringComparison.Ordinal) ||
+			   host.StartsWith("192.168.", StringComparison.Ordinal) ||
+			   host.StartsWith("10.", StringComparison.Ordinal);
 	}
 
 	/// <summary>
@@ -212,7 +209,9 @@ public partial class BackendManager : AutoloadBase
 			var exitCode = OS.Execute(CMD_LSOF, ["-i", $":{port}", "-t"], output);
 
 			if (exitCode != 0 || output.Count <= 0)
+			{
 				return false;
+			}
 
 			var outputStr = output[0].ToString().Trim();
 			return !string.IsNullOrEmpty(outputStr);
@@ -340,6 +339,7 @@ public partial class BackendManager : AutoloadBase
 						LogInfo("Backend became healthy");
 						return Result.Success(true);
 					}
+
 					await DelayAsync(0.5f);
 				}
 
@@ -376,6 +376,7 @@ public partial class BackendManager : AutoloadBase
 					LogInfo("External backend is healthy - using existing instance");
 					return Result.Success(true);
 				}
+
 				await DelayAsync(0.5f);
 			}
 
@@ -396,7 +397,7 @@ public partial class BackendManager : AutoloadBase
 		// Create backend process as independent background process
 		// Note: OS.Execute would block forever since dev.sh runs a long-running server
 		// OS.CreateProcess returns immediately and gives us the PID for process tracking
-		var pid = OS.CreateProcess(startScript, new string[] {});
+		var pid = OS.CreateProcess(startScript, []);
 
 		if (pid == -1)
 		{
@@ -446,7 +447,9 @@ public partial class BackendManager : AutoloadBase
 			var error = httpClient.ConnectToHost(_backendHost, _backendPort, tlsOptions);
 
 			if (error != Godot.Error.Ok)
+			{
 				return Result.Failure<bool>($"Failed to initiate connection: {error}");
+			}
 
 			// Poll for connection
 			var startTime = Time.GetTicksMsec();
@@ -456,7 +459,7 @@ public partial class BackendManager : AutoloadBase
 				var status = httpClient.GetStatus();
 
 				if (status == HttpClient.Status.Resolving ||
-				    status == HttpClient.Status.Connecting)
+					status == HttpClient.Status.Connecting)
 				{
 					await DelayAsync(0.05f);
 					continue;
@@ -467,7 +470,9 @@ public partial class BackendManager : AutoloadBase
 					var requestError = httpClient.Request(HttpClient.Method.Get, "/alive", HEALTH_CHECK_HEADERS);
 
 					if (requestError != Godot.Error.Ok)
+					{
 						return Result.Failure<bool>($"Failed to send request: {requestError}");
+					}
 
 					// Wait for response
 					var responseStartTime = Time.GetTicksMsec();
@@ -482,14 +487,16 @@ public partial class BackendManager : AutoloadBase
 							var responseCode = httpClient.GetResponseCode();
 
 							if (responseCode == 200)
+							{
 								return Result.Success(true);
+							}
 
 							return Result.Failure<bool>($"Unexpected response code: {responseCode}");
 						}
 
 						// Still processing - continue waiting
 						if (currentStatus == HttpClient.Status.Requesting ||
-						    currentStatus == HttpClient.Status.Connected)
+							currentStatus == HttpClient.Status.Connected)
 						{
 							await DelayAsync(0.05f);
 							continue;
@@ -497,7 +504,7 @@ public partial class BackendManager : AutoloadBase
 
 						// Error states - bail out early
 						if (currentStatus == HttpClient.Status.CantConnect ||
-						    currentStatus == HttpClient.Status.ConnectionError)
+							currentStatus == HttpClient.Status.ConnectionError)
 						{
 							return Result.Failure<bool>("Connection error while waiting for response");
 						}
@@ -509,8 +516,8 @@ public partial class BackendManager : AutoloadBase
 				}
 
 				if (status == HttpClient.Status.CantConnect ||
-				    status == HttpClient.Status.CantResolve ||
-				    status == HttpClient.Status.ConnectionError)
+					status == HttpClient.Status.CantResolve ||
+					status == HttpClient.Status.ConnectionError)
 				{
 					return Result.Failure<bool>($"Connection failed: {status}");
 				}

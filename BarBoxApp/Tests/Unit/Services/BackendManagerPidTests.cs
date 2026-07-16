@@ -1,8 +1,8 @@
 using System.Threading.Tasks;
-using Chickensoft.GoDotTest;
-using Godot;
 using BarBox.Tests.Fixtures;
 using BarBox.Tests.Helpers;
+using Chickensoft.GoDotTest;
+using Godot;
 using Shouldly;
 
 namespace BarBox.Tests.Unit.Services;
@@ -17,7 +17,8 @@ namespace BarBox.Tests.Unit.Services;
 /// </summary>
 public class BackendManagerPidTests : BackendTestBase
 {
-	public BackendManagerPidTests(Node testScene) : base(testScene)
+	public BackendManagerPidTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -143,7 +144,7 @@ public class BackendManagerPidTests : BackendTestBase
 		}
 
 		// Document what the fix should do
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("✓ Correct implementation should:");
 		TestHelpers.LogTestInfo("  1. Split '60147\\n66881\\n79755' into three separate PIDs");
 		TestHelpers.LogTestInfo("  2. Execute: kill -9 60147");
@@ -163,7 +164,7 @@ public class BackendManagerPidTests : BackendTestBase
 		TestHelpers.LogTestInfo("Validating ProcessTestHelpers.ParsePidsFromLsofOutput implementation");
 
 		// Test 1: Empty/null input
-		var emptyResult = ProcessTestHelpers.ParsePidsFromLsofOutput("");
+		var emptyResult = ProcessTestHelpers.ParsePidsFromLsofOutput(string.Empty);
 		emptyResult.ShouldNotBeNull("Empty result should not be null");
 		emptyResult.Count.ShouldBe(0, "Empty string should return empty list");
 		TestHelpers.LogTestInfo("✓ Empty string handled correctly");

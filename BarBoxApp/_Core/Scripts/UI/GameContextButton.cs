@@ -1,5 +1,5 @@
-using Godot;
 using System;
+using Godot;
 
 /// <summary>
 /// Simple data structure for context button configuration

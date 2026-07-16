@@ -107,6 +107,7 @@ public static class CarromRuleEngine
 						preferredType: player.AssignedPieceType,
 						reason: "Striker foul - return one piece");
 				}
+
 				return PenaltyAction.None();
 
 			case FoulType.OpponentPiecePocketed:
@@ -301,7 +302,9 @@ public static class CarromRuleEngine
 		PieceType? preferredType)
 	{
 		if (player.PocketedPieces.Count == 0)
+		{
 			return null;
+		}
 
 		// Try to find preferred type (most recent)
 		if (preferredType.HasValue)
@@ -346,7 +349,9 @@ public static class CarromRuleEngine
 	public static float CalculateAccuracy(int validPockets, int totalShots)
 	{
 		if (totalShots == 0)
+		{
 			return 0.0f;
+		}
 
 		return (float)validPockets / totalShots;
 	}

@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Unit.Services;
@@ -18,7 +18,8 @@ public class PaymentServiceTests : BackendTestBase
 	private SessionEventService _eventService;
 	private CreditService _creditService;
 
-	public PaymentServiceTests(Node testScene) : base(testScene)
+	public PaymentServiceTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -80,13 +81,15 @@ public class PaymentServiceTests : BackendTestBase
 			{
 				// Skip test if backend connection fails - this is an infrastructure issue, not a code bug
 				if (creditsError.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
-				    creditsError.Message.Contains("Connection", StringComparison.OrdinalIgnoreCase))
+					creditsError.Message.Contains("Connection", StringComparison.OrdinalIgnoreCase))
 				{
 					TestHelpers.LogTestWarning($"Test skipped - backend connection issue: {creditsError.Message}");
 					return;
 				}
+
 				TestHelpers.LogTestError($"GetBalanceAsync failed: {creditsError.Message}");
 			}
+
 			initialCreditsResult.IsSuccess(out var initialCredits).ShouldBeTrue($"Should get initial credits - error: {(initialCreditsResult.IsFailure(out var err) ? err.Message : "N/A")}");
 
 			// Act
@@ -102,7 +105,8 @@ public class PaymentServiceTests : BackendTestBase
 			updatedCreditsResult.IsSuccess(out var updatedCredits).ShouldBeTrue("Should get updated credits");
 			var expectedCredits = initialCredits + creditPack.Credits;
 
-			updatedCredits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
+			updatedCredits.ShouldBeGreaterThanOrEqualTo(
+				expectedCredits,
 				$"Credits should be at least {expectedCredits} after purchase");
 			TestHelpers.LogTestInfo($"Credits correctly added: {updatedCredits} (expected >= {expectedCredits})");
 		}
@@ -169,7 +173,7 @@ public class PaymentServiceTests : BackendTestBase
 
 			// Verify error message includes diagnostic info
 			var hasDiagnostics = result.ErrorMessage.Contains("SessionEventService") &&
-			                    (result.ErrorMessage.Contains("ready") || result.ErrorMessage.Contains("initialized"));
+								(result.ErrorMessage.Contains("ready") || result.ErrorMessage.Contains("initialized"));
 			hasDiagnostics.ShouldBeTrue("Error message should include SessionEventService diagnostics");
 			TestHelpers.LogTestInfo("✓ Error message includes proper diagnostics");
 		}
@@ -272,12 +276,13 @@ public class PaymentServiceTests : BackendTestBase
 			{
 				// Skip test if backend connection fails - this is an infrastructure issue, not a code bug
 				if (creditsError.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
-				    creditsError.Message.Contains("Connection", StringComparison.OrdinalIgnoreCase))
+					creditsError.Message.Contains("Connection", StringComparison.OrdinalIgnoreCase))
 				{
 					TestHelpers.LogTestWarning($"Test skipped - backend connection issue: {creditsError.Message}");
 					return;
 				}
 			}
+
 			initialCreditsResult.IsSuccess(out var initialCredits).ShouldBeTrue($"Should get initial credits - error: {(initialCreditsResult.IsFailure(out var err) ? err.Message : "N/A")}");
 
 			// Act - Purchase three times
@@ -295,7 +300,8 @@ public class PaymentServiceTests : BackendTestBase
 			finalCreditsResult.IsSuccess(out var finalCredits).ShouldBeTrue("Should get final credits");
 			var expectedCredits = initialCredits + (smallPack.Credits * 3);
 
-			finalCredits.ShouldBeGreaterThanOrEqualTo(expectedCredits,
+			finalCredits.ShouldBeGreaterThanOrEqualTo(
+				expectedCredits,
 				"Credits should accumulate correctly across multiple purchases");
 			TestHelpers.LogTestInfo($"All purchases succeeded. Credits: {finalCredits} (expected >= {expectedCredits})");
 		}

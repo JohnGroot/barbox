@@ -1,7 +1,7 @@
-using Godot;
 using System.Collections.Generic;
 using System.Linq;
 using BarBox.Core.UI;
+using Godot;
 
 namespace BarBox.Games.Racing;
 
@@ -13,17 +13,26 @@ public class RacingTracksLeaderboardUI
 {
 	// Overlay components
 	public Control OverlayRoot { get; private set; }
+
 	public Control TrackListPanel { get; private set; }
+
 	public Control LeaderboardPanel { get; private set; }
+
 	public VBoxContainer TrackButtonContainer { get; private set; }
+
 	public VBoxContainer LeaderboardContainer { get; private set; }
+
 	public Label TrackNameLabel { get; private set; }
+
 	public Button LoadTrackButton { get; private set; }
+
 	public Button CloseButton { get; private set; }
+
 	public TabContainer LeaderboardTabs { get; private set; }
 
 	// State
-	public string SelectedTrackId { get; set; } = "";
+	public string SelectedTrackId { get; set; } = string.Empty;
+
 	public bool IsVisible => OverlayRoot?.Visible ?? false;
 
 	// Track button references
@@ -221,6 +230,7 @@ public class RacingTracksLeaderboardUI
 		{
 			button?.QueueFree();
 		}
+
 		_trackButtons.Clear();
 		_trackButtonMap.Clear();
 	}
@@ -241,7 +251,10 @@ public class RacingTracksLeaderboardUI
 	private void UpdateLeaderboardTab(string containerName, List<RacingUIManager.LeaderboardEntry> entries)
 	{
 		var container = LeaderboardTabs.FindChild(containerName, true, false) as VBoxContainer;
-		if (container == null) return;
+		if (container == null)
+		{
+			return;
+		}
 
 		foreach (Node child in container.GetChildren())
 		{
@@ -295,12 +308,16 @@ public class RacingTracksLeaderboardUI
 	public void ShowOverlay()
 	{
 		if (OverlayRoot != null)
+		{
 			OverlayRoot.Visible = true;
+		}
 	}
 
 	public void HideOverlay()
 	{
 		if (OverlayRoot != null)
+		{
 			OverlayRoot.Visible = false;
+		}
 	}
 }

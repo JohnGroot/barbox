@@ -1,5 +1,5 @@
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 /// <summary>
 /// Optional component for games that need player tracking
@@ -7,8 +7,11 @@ using System.Collections.Generic;
 /// </summary>
 public partial class PlayerManagementComponent : Node
 {
-	[Signal] public delegate void PlayerAddedEventHandler(string playerId);
-	[Signal] public delegate void PlayerRemovedEventHandler(string playerId);
+	[Signal]
+	public delegate void PlayerAddedEventHandler(string playerId);
+
+	[Signal]
+	public delegate void PlayerRemovedEventHandler(string playerId);
 
 	private List<BasePlayer> _players = [];
 
@@ -33,7 +36,9 @@ public partial class PlayerManagementComponent : Node
 	public void RemovePlayer(BasePlayer player)
 	{
 		if (player == null)
+		{
 			return;
+		}
 
 		if (_players.Remove(player))
 		{

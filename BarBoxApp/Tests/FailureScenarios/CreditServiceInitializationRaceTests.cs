@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.FailureScenarios;
@@ -26,14 +26,15 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 	private SessionEventService _eventService;
 	private SessionManager _sessionManager;
 
-	public CreditServiceInitializationRaceTests(Node testScene) : base(testScene)
+	public CreditServiceInitializationRaceTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
 	[Setup]
 	public void SetupRaceConditionTest()
 	{
-		base.SetupTestIdentifiers();
+		SetupTestIdentifiers();
 		_creditService = GetCreditService();
 		_eventService = GetEventService();
 		_sessionManager = GetSessionManager();
@@ -57,7 +58,6 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 	{
 		// This test requires understanding the internal state of CreditService
 		// We can't directly manipulate _eventService field, but we can verify behavior
-
 		TestHelpers.LogTestInfo("=== REPRODUCTION TEST: CreditService Initialization Race Condition ===");
 
 		// Arrange - login user
@@ -90,7 +90,6 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 			// Assert - This is where the bug manifests
 			// Production logs show: [CreditService] ERROR: SessionEventService not available (exists: False, ready: False)
 			// This means CreditService._eventService is null even though SessionEventService.GetInstance() works
-
 			if (addResult.IsFailure(out var addError))
 			{
 				TestHelpers.LogTestError($"❌ BUG REPRODUCED: Credit add failed: {addError.Message}");
@@ -176,9 +175,9 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 			if (!purchaseResult.IsSuccess)
 			{
 				// Check if failure is due to backend connectivity issue (not the race condition bug)
-				var errorMessage = purchaseResult.ErrorMessage ?? "";
+				var errorMessage = purchaseResult.ErrorMessage ?? string.Empty;
 				if (errorMessage.Contains("timeout") || errorMessage.Contains("Timeout") ||
-				    errorMessage.Contains("Disconnected") || errorMessage.Contains("Connection"))
+					errorMessage.Contains("Disconnected") || errorMessage.Contains("Connection"))
 				{
 					TestHelpers.LogTestInfo($"Skipping - backend checkout endpoint not available: {errorMessage}");
 					return;
@@ -191,11 +190,12 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 				// Verify credits were NOT added (correct behavior for failed purchase)
 				var finalCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
 				finalCreditsResult.IsSuccess(out var finalCredits).ShouldBeTrue("Should get final credits");
-				finalCredits.ShouldBe(initialCredits,
+				finalCredits.ShouldBe(
+					initialCredits,
 					"Credits should not change when purchase fails");
 
 				// This assertion will FAIL with current buggy code
-				(purchaseResult.IsSuccess).ShouldBeTrue(
+				purchaseResult.IsSuccess.ShouldBeTrue(
 					$"BUG: Purchase should succeed when SessionEventService is ready. " +
 					$"SessionEventService exists: {eventServiceExists}, ready: {eventServiceReady}. " +
 					$"Error: {purchaseResult.ErrorMessage}");
@@ -208,7 +208,8 @@ public class CreditServiceInitializationRaceTests : BackendTestBase
 				var finalCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
 				finalCreditsResult.IsSuccess(out var finalCredits).ShouldBeTrue("Should get final credits");
 				var expectedCredits = initialCredits + creditPack.Credits;
-				finalCredits.ShouldBe(expectedCredits,
+				finalCredits.ShouldBe(
+					expectedCredits,
 					"Credits should be added after successful purchase");
 			}
 		}

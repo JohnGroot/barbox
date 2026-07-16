@@ -93,7 +93,7 @@ public partial class NinesGame : GameController
 		_deckVisual = new CardVisual(this, null, _scaleFactor)
 		{
 			Position = GetDeckPosition(),
-			ShowBack = true
+			ShowBack = true,
 		};
 		AddChild(_deckVisual);
 
@@ -102,7 +102,7 @@ public partial class NinesGame : GameController
 		_deckLabel = new Label
 		{
 			Text = "Deck: 0",
-			Position = new Vector2(deckPos.X + _scaledCardSize.X + 10 * _scaleFactor, deckPos.Y + _scaledCardSize.Y / 2 - 12 * _scaleFactor)
+			Position = new Vector2(deckPos.X + _scaledCardSize.X + (10 * _scaleFactor), deckPos.Y + (_scaledCardSize.Y / 2) - (12 * _scaleFactor)),
 		};
 		_deckLabel.AddThemeFontSizeOverride("font_size", Config.GetScaledFontSize(24, _scaleFactor));
 		AddChild(_deckLabel);
@@ -124,6 +124,7 @@ public partial class NinesGame : GameController
 			_ui.Name = "UI";
 			AddChild(_ui);
 		}
+
 		_ui.Initialize(this);
 	}
 
@@ -137,20 +138,21 @@ public partial class NinesGame : GameController
 		// During active game, show Forfeit button
 		if (_state.CurrentPhase != GamePhase.Idle && _state.CurrentPhase != GamePhase.GameOver)
 		{
-			return new[]
-			{
-				new ContextButtonData("Forfeit", () => _ui?.ShowForfeitConfirmation(), "", true, "Forfeit the current game")
-			};
+			return
+			[
+				new ContextButtonData("Forfeit", () => _ui?.ShowForfeitConfirmation(), string.Empty, true, "Forfeit the current game")
+			];
 		}
 
 		// When not in active game, show Return to Menu
-		return new[]
-		{
-			GameContextButton.CreateReturnToMenuButton(() => {
+		return
+		[
+			GameContextButton.CreateReturnToMenuButton(() =>
+			{
 				_sessionManager?.ResetAllIdleTimers();
 				ReturnToMainMenu();
 			})
-		};
+		];
 	}
 
 	/// <summary>
@@ -180,7 +182,9 @@ public partial class NinesGame : GameController
 	private void SyncExistingSessions()
 	{
 		if (_sessionManager == null)
+		{
 			return;
+		}
 
 		var phoneNumbers = _sessionManager.GetActivePhoneNumbers();
 		foreach (var phoneNumber in phoneNumbers)
@@ -300,15 +304,21 @@ public partial class NinesGame : GameController
 			_state.JackpotAmount);
 
 		if (result.IsSuccess(out _))
+		{
 			GD.Print("[Nines] Jackpot win recorded with backend");
+		}
 		else if (result.IsFailure(out var error))
+		{
 			GD.PrintErr($"[Nines] Failed to record jackpot win: {error.Message}");
+		}
 	}
 
 	private void AutoLogoutOnExit()
 	{
 		if (_sessionManager == null || _state.Players.Count == 0)
+		{
 			return;
+		}
 
 		// Find earliest logged-in player (by slot index)
 		var earliestPlayer = _state.Players
@@ -331,7 +341,9 @@ public partial class NinesGame : GameController
 	protected override void OnUserLoggedIn(UserSession session)
 	{
 		if (session == null)
+		{
 			return;
+		}
 
 		// Check if already in players list
 		if (_state.Roster.Contains(session.PlayerId))
@@ -339,6 +351,7 @@ public partial class NinesGame : GameController
 			// Update existing player data
 			var existingPlayer = _state.Roster.Find(session.PlayerId);
 			existingPlayer.DisplayName = !string.IsNullOrEmpty(session.UserName) ? session.UserName : "Player";
+
 			// Credits will be fetched from SessionEventService in credit flow implementation
 		}
 		else if (_state.Players.Count < Config.MaxPlayers)
@@ -383,7 +396,7 @@ public partial class NinesGame : GameController
 			PhoneNumber = session.PhoneNumber,
 			DisplayName = displayName,
 			Credits = 0, // Credits will be fetched from SessionEventService in credit flow implementation
-			SlotIndex = slotIndex
+			SlotIndex = slotIndex,
 		};
 
 		_state.Roster.Add(player);
@@ -404,7 +417,7 @@ public partial class NinesGame : GameController
 			PhoneNumber = string.Empty, // Anonymous - PlayerId left as Guid.Empty (not logged in)
 			DisplayName = $"Player {slotIndex + 1}",
 			Credits = 0,
-			SlotIndex = slotIndex
+			SlotIndex = slotIndex,
 		};
 
 		_state.Roster.Add(player);
@@ -416,8 +429,8 @@ public partial class NinesGame : GameController
 	{
 		// If current player, advance turn
 		if (_state.CurrentPlayerIndex >= 0 &&
-		    _state.CurrentPlayerIndex < _state.Players.Count &&
-		    _state.Players[_state.CurrentPlayerIndex] == player)
+			_state.CurrentPlayerIndex < _state.Players.Count &&
+			_state.Players[_state.CurrentPlayerIndex] == player)
 		{
 			// Skip to next player if game is active
 			if (_state.CurrentPhase == GamePhase.TurnActive)
@@ -450,7 +463,10 @@ public partial class NinesGame : GameController
 	public NinesPlayer? GetPlayer(int index)
 	{
 		if (index >= 0 && index < _state.Players.Count)
+		{
 			return _state.Players[index];
+		}
+
 		return null;
 	}
 
@@ -472,11 +488,15 @@ public partial class NinesGame : GameController
 	{
 		// Need credit service for entry fee
 		if (_creditService == null)
+		{
 			return false;
+		}
 
 		// Need at least one player
 		if (_state.Players.Count == 0)
+		{
 			return false;
+		}
 
 		// All players must be logged in (to deduct credits)
 		return _state.Players.All(p => p.IsLoggedIn);
@@ -519,18 +539,24 @@ public partial class NinesGame : GameController
 	private async Task TryCreateBackendSessionAsync()
 	{
 		if (_sessionManager == null)
+		{
 			return;
+		}
 
 		var sessions = new List<UserSession>();
 		foreach (var player in _state.Players.Where(p => p.IsLoggedIn))
 		{
 			var session = _sessionManager.GetSessionByPhone(player.PhoneNumber);
 			if (session != null)
+			{
 				sessions.Add(session);
+			}
 		}
 
 		if (sessions.Count == 0)
+		{
 			return;
+		}
 
 		var boxId = Platform.BoxId;
 		var hostPlayerId = sessions[0].PlayerId;
@@ -538,9 +564,13 @@ public partial class NinesGame : GameController
 
 		var result = await StartBackendSessionAsync(boxId, hostPlayerId, playerIdStrings);
 		if (result.IsFailure(out var error))
+		{
 			GD.PrintErr($"[Nines] WARNING: Failed to create backend session: {error.Message} - jackpot win may not record");
+		}
 		else
+		{
 			GD.Print("[Nines] Backend session created");
+		}
 	}
 
 	private async Task<Result<bool>> DeductCreditsWithRollbackAsync()
@@ -612,7 +642,9 @@ public partial class NinesGame : GameController
 	public void ForfeitGame()
 	{
 		if (_state.CurrentPhase == GamePhase.Idle || _state.CurrentPhase == GamePhase.GameOver)
+		{
 			return;
+		}
 
 		EndGame(GameEndReason.Forfeit);
 	}
@@ -620,7 +652,9 @@ public partial class NinesGame : GameController
 	private async void AwardJackpotAsync(int jackpotAmount)
 	{
 		if (_creditService == null)
+		{
 			return;
+		}
 
 		GD.Print($"[Nines] Awarding jackpot of {jackpotAmount} credits");
 
@@ -682,7 +716,9 @@ public partial class NinesGame : GameController
 	private void TransitionToPhase(GamePhase newPhase)
 	{
 		if (_state.CurrentPhase == newPhase)
+		{
 			return;
+		}
 
 		var oldPhase = _state.CurrentPhase;
 		ExitPhase(oldPhase);
@@ -746,6 +782,7 @@ public partial class NinesGame : GameController
 					var screenPos = GetStackScreenPosition(_state.SelectedStack);
 					_ui?.ShowPredictionPopup(screenPos);
 				}
+
 				break;
 
 			case TurnSubState.SelectingRevive:
@@ -779,6 +816,7 @@ public partial class NinesGame : GameController
 		{
 			visual.QueueFree();
 		}
+
 		_cardVisuals.Clear();
 		_state.Stacks.Clear();
 	}
@@ -787,14 +825,13 @@ public partial class NinesGame : GameController
 	{
 		var gridOffset = GetGridOffset();
 		return new Vector2(
-			gridOffset.X + stack.GridPosition.X * (_scaledCardSize.X + _scaledGridSpacing),
-			gridOffset.Y + stack.GridPosition.Y * (_scaledCardSize.Y + _scaledGridSpacing)
-		);
+			gridOffset.X + (stack.GridPosition.X * (_scaledCardSize.X + _scaledGridSpacing)),
+			gridOffset.Y + (stack.GridPosition.Y * (_scaledCardSize.Y + _scaledGridSpacing)));
 	}
 
 	private Vector2 GetStackScreenPosition(CardStack stack)
 	{
-		return GetStackWorldPosition(stack) + _scaledCardSize / 2;
+		return GetStackWorldPosition(stack) + (_scaledCardSize / 2);
 	}
 
 	private Vector2 GetGridOffset()
@@ -807,9 +844,8 @@ public partial class NinesGame : GameController
 	private Vector2 GetScaledGridTotalSize()
 	{
 		return new Vector2(
-			Config.GridSize * _scaledCardSize.X + (Config.GridSize - 1) * _scaledGridSpacing,
-			Config.GridSize * _scaledCardSize.Y + (Config.GridSize - 1) * _scaledGridSpacing
-		);
+			(Config.GridSize * _scaledCardSize.X) + ((Config.GridSize - 1) * _scaledGridSpacing),
+			(Config.GridSize * _scaledCardSize.Y) + ((Config.GridSize - 1) * _scaledGridSpacing));
 	}
 
 	private Vector2 GetDeckPosition()
@@ -820,9 +856,8 @@ public partial class NinesGame : GameController
 		// Center horizontally above grid, with scaled gap above grid
 		var gap = 30 * _scaleFactor;
 		return new Vector2(
-			gridOffset.X + (gridTotalSize.X - _scaledCardSize.X) / 2,
-			gridOffset.Y - _scaledCardSize.Y - gap
-		);
+			gridOffset.X + ((gridTotalSize.X - _scaledCardSize.X) / 2),
+			gridOffset.Y - _scaledCardSize.Y - gap);
 	}
 
 	#endregion
@@ -849,7 +884,7 @@ public partial class NinesGame : GameController
 			var visual = new CardVisual(this, card.Value, _scaleFactor)
 			{
 				Position = GetDeckPosition(),
-				ShowBack = true
+				ShowBack = true,
 			};
 			AddChild(visual);
 			_cardVisuals[stack.GridPosition] = visual;
@@ -916,7 +951,9 @@ public partial class NinesGame : GameController
 	public void OnStackSelected(CardStack stack)
 	{
 		if (_state.CurrentPhase != GamePhase.TurnActive)
+		{
 			return;
+		}
 
 		switch (_state.TurnSubState)
 		{
@@ -935,8 +972,10 @@ public partial class NinesGame : GameController
 	public void OnPredictionMade(PredictionType prediction)
 	{
 		if (_state.CurrentPhase != GamePhase.TurnActive ||
-		    _state.TurnSubState != TurnSubState.SelectingPrediction)
+			_state.TurnSubState != TurnSubState.SelectingPrediction)
+		{
 			return;
+		}
 
 		_state.CurrentPrediction = prediction;
 		_ui?.HidePredictionPopup();
@@ -1005,8 +1044,7 @@ public partial class NinesGame : GameController
 		var result = _engine.EvaluatePrediction(
 			_state.CurrentPrediction.Value,
 			targetCard.Value,
-			drawnCard.Value
-		);
+			drawnCard.Value);
 
 		AnimateCardReveal(drawnCard.Value, result);
 	}
@@ -1019,7 +1057,7 @@ public partial class NinesGame : GameController
 		var cardVisual = new CardVisual(this, drawnCard, _scaleFactor)
 		{
 			Position = GetDeckPosition(),
-			ShowBack = true
+			ShowBack = true,
 		};
 		AddChild(cardVisual);
 
@@ -1078,7 +1116,9 @@ public partial class NinesGame : GameController
 	private void PlaceCardOnStack(PlayingCard card, CardVisual visual)
 	{
 		if (_state.SelectedStack == null)
+		{
 			return;
+		}
 
 		_state.SelectedStack.AddCard(card);
 
@@ -1140,7 +1180,9 @@ public partial class NinesGame : GameController
 	{
 		var player = GetCurrentPlayer();
 		if (player == null)
+		{
 			return;
+		}
 
 		switch (result)
 		{
@@ -1187,7 +1229,9 @@ public partial class NinesGame : GameController
 	private void AdvanceToNextPlayer()
 	{
 		if (_state.CurrentPhase == GamePhase.GameOver)
+		{
 			return;
+		}
 
 		_state.CurrentPlayerIndex = (_state.CurrentPlayerIndex + 1) % Math.Max(1, _state.Players.Count);
 		_state.SelectedStack = null;
@@ -1199,7 +1243,9 @@ public partial class NinesGame : GameController
 	private NinesPlayer? GetCurrentPlayer()
 	{
 		if (_state.Players.Count == 0)
+		{
 			return null;
+		}
 
 		return _state.Players[_state.CurrentPlayerIndex];
 	}
@@ -1255,7 +1301,9 @@ public partial class NinesGame : GameController
 		public PlayingCard? DrawCard()
 		{
 			if (_deck.Count == 0)
+			{
 				return null;
+			}
 
 			var card = _deck[^1];
 			_deck.RemoveAt(_deck.Count - 1);
@@ -1273,7 +1321,7 @@ public partial class NinesGame : GameController
 				PredictionType.Higher => isHigher ? PredictionResult.Correct : PredictionResult.Wrong,
 				PredictionType.Lower => isLower ? PredictionResult.Correct : PredictionResult.Wrong,
 				PredictionType.Same => isSame ? PredictionResult.SameCorrect : PredictionResult.SameWrong,
-				_ => PredictionResult.Wrong
+				_ => PredictionResult.Wrong,
 			};
 		}
 	}
@@ -1287,14 +1335,19 @@ public partial class NinesGame : GameController
 		private readonly NinesGame _game;
 
 		public GamePhase CurrentPhase { get; set; } = GamePhase.Idle;
+
 		public TurnSubState TurnSubState { get; set; } = TurnSubState.SelectingStack;
 
 		public List<CardStack> Stacks { get; } = new();
+
 		public PlayerRoster<NinesPlayer> Roster { get; } = new();
+
 		public IReadOnlyList<NinesPlayer> Players => Roster.Players;
 
 		public int CurrentPlayerIndex { get; set; }
+
 		public CardStack? SelectedStack { get; set; }
+
 		public PredictionType? CurrentPrediction { get; set; }
 
 		public int JackpotAmount { get; set; }
@@ -1302,6 +1355,7 @@ public partial class NinesGame : GameController
 		public NinesState(NinesGame game)
 		{
 			_game = game;
+
 			// Players populated via SessionManager.SyncExistingSessions()
 		}
 
@@ -1316,6 +1370,7 @@ public partial class NinesGame : GameController
 		}
 
 		public int FaceUpStackCount => Stacks.Count(s => s.IsFaceUp);
+
 		public bool AllStacksFlipped => FaceUpStackCount == 0;
 	}
 
@@ -1330,10 +1385,13 @@ public partial class NinesGame : GameController
 		private PlayingCard? _card;
 
 		public bool ShowBack { get; set; }
+
 		public bool Selectable { get; set; }
+
 		public bool Selected { get; set; }
 
 		private NinesGameConfig Config => _game.Config;
+
 		private Vector2 ScaledCardSize => Config.GetScaledCardSize(_scale);
 
 		public CardVisual(NinesGame game, PlayingCard? card, float scaleFactor)
@@ -1394,9 +1452,8 @@ public partial class NinesGame : GameController
 			var center = rect.Size / 2;
 			var patternSize = rect.Size * 0.6f;
 			var patternRect = new Rect2(
-				center - patternSize / 2,
-				patternSize
-			);
+				center - (patternSize / 2),
+				patternSize);
 			DrawRect(patternRect, Config.CardBackColor.Lightened(0.2f), false, 2f * _scale);
 		}
 
@@ -1425,7 +1482,7 @@ public partial class NinesGame : GameController
 			DrawCardText(suitStr, new Vector2(8 * _scale, 38 * _scale), textColor, suitFontSize);
 
 			// Center suit (larger)
-			var centerPos = rect.Size / 2 - new Vector2(10 * _scale, 12 * _scale);
+			var centerPos = (rect.Size / 2) - new Vector2(10 * _scale, 12 * _scale);
 			DrawCardText(suitStr, centerPos, textColor, centerFontSize);
 
 			// Bottom-right (rotated 180 - just offset for now)
@@ -1447,11 +1504,13 @@ public partial class NinesGame : GameController
 		public override void _Input(InputEvent @event)
 		{
 			if (!Selectable)
+			{
 				return;
+			}
 
 			if (@event is InputEventMouseButton mouseButton &&
-			    mouseButton.ButtonIndex == MouseButton.Left &&
-			    mouseButton.Pressed)
+				mouseButton.ButtonIndex == MouseButton.Left &&
+				mouseButton.Pressed)
 			{
 				var localPos = ToLocal(mouseButton.Position);
 				var rect = new Rect2(Vector2.Zero, ScaledCardSize);
@@ -1485,6 +1544,7 @@ public partial class NinesGame : GameController
 					{
 						_game.OnStackSelected(stack);
 					}
+
 					break;
 				}
 			}

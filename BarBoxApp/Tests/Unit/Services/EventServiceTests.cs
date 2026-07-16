@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Unit.Services;
@@ -15,7 +15,8 @@ public class EventServiceTests : BackendTestBase
 	private SessionEventService _eventService;
 	private CreditService _creditService;
 
-	public EventServiceTests(Node testScene) : base(testScene)
+	public EventServiceTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -81,7 +82,7 @@ public class EventServiceTests : BackendTestBase
 		var playerIds = new System.Collections.Generic.List<string>
 		{
 			TestPlayerId.ToString(),
-			TestHelpers.GenerateTestPlayerId().ToString()
+			TestHelpers.GenerateTestPlayerId().ToString(),
 		};
 
 		// Act
@@ -99,6 +100,7 @@ public class EventServiceTests : BackendTestBase
 		else if (result.IsFailure(out var error))
 		{
 			TestHelpers.LogTestInfo($"Multiplayer session result: {error.Message}");
+
 			// Note: Backend may reject if players don't exist, but API call should succeed
 			TestHelpers.LogTestInfo($"Backend rejected multiplayer session: {error.Message}");
 		}
@@ -339,7 +341,8 @@ public class EventServiceTests : BackendTestBase
 		// The API key lives on BackendClient (sole HTTP transport), not SessionEventService
 		var backendClient = BackendClient.GetInstance();
 		backendClient.ShouldNotBeNull("BackendClient must exist");
-		var apiKeyField = typeof(BackendClient).GetField("_boxApiKey",
+		var apiKeyField = typeof(BackendClient).GetField(
+			"_boxApiKey",
 			System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 		var apiKey = apiKeyField?.GetValue(backendClient) as string;
 
@@ -379,7 +382,8 @@ public class EventServiceTests : BackendTestBase
 		}
 		else
 		{
-			locationManager.BoxApiKey.ShouldBe(expectedApiKey,
+			locationManager.BoxApiKey.ShouldBe(
+				expectedApiKey,
 				"LocationManager should load API key from environment");
 			TestHelpers.LogTestInfo($"✓ API key loaded from environment: {expectedApiKey.Substring(0, 8)}...");
 		}
@@ -406,8 +410,7 @@ public class EventServiceTests : BackendTestBase
 		var result = await _eventService.CreateActivitySessionAsync(
 			TestBoxId,
 			TestPlayerId,
-			"test_game"
-		);
+			"test_game");
 
 		// Assert
 		if (result.IsFailure(out var error))
@@ -437,6 +440,7 @@ public class EventServiceTests : BackendTestBase
 	public override Task CleanupTestResources()
 	{
 		base.CleanupTestResources();
+
 		// SessionEventService is autoload - don't queue free
 		_eventService = null;
 		return Task.CompletedTask;

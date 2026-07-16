@@ -1,7 +1,7 @@
-using Godot;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Godot;
 using LightResults;
 
 namespace BarBox.Core.Autoloads;
@@ -88,7 +88,7 @@ public class StripePaymentService : IPaymentService, IDisposable
 				SessionId = session.SessionId,
 				PaymentUrl = session.SessionUrl,
 				CreditPack = creditPack,
-				CreatedAtUtc = DateTime.UtcNow
+				CreatedAtUtc = DateTime.UtcNow,
 			});
 		}
 		catch (Exception ex)
@@ -163,11 +163,13 @@ public class StripePaymentService : IPaymentService, IDisposable
 						GD.Print($"[StripePaymentService] Payment confirmed! Credits: {status.CreditsGranted}");
 						return PaymentResult.Success(checkout.SessionId, checkout.CreditPack);
 					}
+
 					if (status.Status == "failed")
 					{
 						GD.Print("[StripePaymentService] Payment failed");
 						return PaymentResult.Failure("Payment failed. Please try again.");
 					}
+
 					// status is "pending" - continue polling
 				}
 				else
@@ -187,7 +189,9 @@ public class StripePaymentService : IPaymentService, IDisposable
 
 				// Check cancellation after async delay
 				if (linkedCts.Token.IsCancellationRequested)
+				{
 					break;
+				}
 
 				if (!IsBackendClientValid())
 				{
@@ -235,8 +239,8 @@ public class StripePaymentService : IPaymentService, IDisposable
 	private bool IsBackendClientValid()
 	{
 		return _backend != null &&
-		       GodotObject.IsInstanceValid(_backend) &&
-		       _backend.IsReady;
+			   GodotObject.IsInstanceValid(_backend) &&
+			   _backend.IsReady;
 	}
 
 	/// <summary>
@@ -251,8 +255,7 @@ public class StripePaymentService : IPaymentService, IDisposable
 			"/payments/checkout/create",
 			request,
 			201,
-			playerId: playerId
-		);
+			playerId: playerId);
 
 		if (result.IsSuccess(out var response))
 		{
@@ -313,7 +316,9 @@ public class StripePaymentService : IPaymentService, IDisposable
 	protected virtual void Dispose(bool disposing)
 	{
 		if (_disposed)
+		{
 			return;
+		}
 
 		if (disposing)
 		{

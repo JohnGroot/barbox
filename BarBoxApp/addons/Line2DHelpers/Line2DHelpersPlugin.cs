@@ -1,6 +1,6 @@
 #if TOOLS
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 [Tool]
 public partial class Line2DHelpersPlugin : EditorPlugin
@@ -15,6 +15,7 @@ public partial class Line2DHelpersPlugin : EditorPlugin
 	private static readonly Color POINT_COLOR = new Color(1, 1, 0, 1.0f);
 
 	private static Line2DHelpersPlugin _instance;
+
 	public static Line2DHelpersPlugin Instance => _instance;
 
 	private Line2DInspectorPlugin _inspectorPlugin;
@@ -30,6 +31,7 @@ public partial class Line2DHelpersPlugin : EditorPlugin
 
 	// Public accessors for toggle button state
 	public bool IsPickingPoint => _isPickingPoint;
+
 	public SpinBox ActivePickerSpinBox => _pickerTargetSpinBox;
 
 	public override void _EnterTree()
@@ -77,7 +79,9 @@ public partial class Line2DHelpersPlugin : EditorPlugin
 	{
 		// Clean up when plugin becomes invisible
 		if (!visible)
+		{
 			CancelPointPicking();
+		}
 	}
 
 	public void StartPointPicking(Line2D line2D, SpinBox targetSpinBox, int startIdx, int endIdx, Line2DSmoothingPanel sourcePanel = null)
@@ -114,7 +118,9 @@ public partial class Line2DHelpersPlugin : EditorPlugin
 	public override bool _ForwardCanvasGuiInput(InputEvent @event)
 	{
 		if (!_isPickingPoint || _pickerTargetLine == null)
+		{
 			return false;
+		}
 
 		if (@event is InputEventMouseButton mouseButton)
 		{
@@ -125,6 +131,7 @@ public partial class Line2DHelpersPlugin : EditorPlugin
 				{
 					_pickerTargetSpinBox.Value = pointIndex;
 				}
+
 				CancelPointPicking();
 				return true;
 			}
@@ -148,7 +155,9 @@ public partial class Line2DHelpersPlugin : EditorPlugin
 	public override void _ForwardCanvasForceDrawOverViewport(Control viewportControl)
 	{
 		if (!_isPickingPoint || _pickerTargetLine == null || _editor2DViewport == null)
+		{
 			return;
+		}
 
 		var editorTransform = _editor2DViewport.GlobalCanvasTransform;
 		var points = _pickerTargetLine.Points;
@@ -187,37 +196,54 @@ public partial class Line2DHelpersPlugin : EditorPlugin
 	{
 		var indices = new List<int>();
 		if (start < 0 || end < 0 || pointCount == 0)
+		{
 			return indices;
+		}
 
 		if (isClosed && start == end)
 		{
 			// Full loop: all points starting from start, wrapping back to start
 			for (int i = start; i < pointCount; i++)
+			{
 				indices.Add(i);
+			}
+
 			for (int i = 0; i <= start; i++)
+			{
 				indices.Add(i);
+			}
 		}
 		else if (isClosed && end < start)
 		{
 			// Wrap-around path: start→end_of_array→0→end
 			for (int i = start; i < pointCount; i++)
+			{
 				indices.Add(i);
+			}
+
 			for (int i = 0; i <= end; i++)
+			{
 				indices.Add(i);
+			}
 		}
 		else
 		{
 			// Normal path: start→end
 			for (int i = start; i <= end; i++)
+			{
 				indices.Add(i);
+			}
 		}
+
 		return indices;
 	}
 
 	private int GetClosestPointIndex(Vector2 screenPos)
 	{
 		if (_pickerTargetLine == null || _editor2DViewport == null)
+		{
 			return -1;
+		}
 
 		// Screen to world coordinates
 		var editorTransform = _editor2DViewport.GlobalCanvasTransform;

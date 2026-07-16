@@ -1,32 +1,52 @@
-using Godot;
 using System;
 using System.Collections.Generic;
+using Godot;
 
-namespace BarBox.Games.Racing
-{
-	/// <summary>
-	/// Handles all visual feedback rendering for racing games including tire trails, input lines, and mouse indicators
-	/// Extracted from RacingGame to follow single responsibility principle
-	/// </summary>
-	[GlobalClass]
-	public partial class RacingVisualFeedbackRenderer : Node2D
+namespace BarBox.Games.Racing;
+
+/// <summary>
+/// Handles all visual feedback rendering for racing games including tire trails, input lines, and mouse indicators
+/// Extracted from RacingGame to follow single responsibility principle
+/// </summary>
+[GlobalClass]
+public partial class RacingVisualFeedbackRenderer : Node2D
 {
 	// ================================================================
 	// EXPORT PROPERTIES - VISUAL SETTINGS
 	// ================================================================
-	
 	[ExportCategory("Visual Feedback")]
-	[Export] public Color InputLineActiveColor { get; set; } = Colors.White;
-	[Export] public Color InputLineInactiveColor { get; set; } = Colors.Gray;
-	[Export] public Color MouseMovingColor { get; set; } = Colors.Cyan;
-	[Export] public Color MouseStationaryColor { get; set; } = Colors.LimeGreen;
-	[Export] public Color TireTrailColor { get; set; } = Colors.DarkGray;
-	[Export] public float InputLineWidth { get; set; } = 10.0f;
-	[Export] public float MouseIndicatorRadius { get; set; } = 75.0f;
-	[Export] public float TireTrailWidth { get; set; } = 5.0f;
-	[Export] public int MaxTrailPoints { get; set; } = 1000;
-	[Export] public float TrailUpdateDistance { get; set; } = 3.0f;
-	[Export] public float TrailLifetime { get; set; } = 3000.0f;
+	[Export]
+	public Color InputLineActiveColor { get; set; } = Colors.White;
+
+	[Export]
+	public Color InputLineInactiveColor { get; set; } = Colors.Gray;
+
+	[Export]
+	public Color MouseMovingColor { get; set; } = Colors.Cyan;
+
+	[Export]
+	public Color MouseStationaryColor { get; set; } = Colors.LimeGreen;
+
+	[Export]
+	public Color TireTrailColor { get; set; } = Colors.DarkGray;
+
+	[Export]
+	public float InputLineWidth { get; set; } = 10.0f;
+
+	[Export]
+	public float MouseIndicatorRadius { get; set; } = 75.0f;
+
+	[Export]
+	public float TireTrailWidth { get; set; } = 5.0f;
+
+	[Export]
+	public int MaxTrailPoints { get; set; } = 1000;
+
+	[Export]
+	public float TrailUpdateDistance { get; set; } = 3.0f;
+
+	[Export]
+	public float TrailLifetime { get; set; } = 3000.0f;
 
 	// ================================================================
 	// PRIVATE FIELDS
@@ -68,13 +88,11 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	// PUBLIC PROPERTIES
 	// ================================================================
-
 	public bool ShouldRender { get; set; } = true;
 
 	// ================================================================
 	// INITIALIZATION
 	// ================================================================
-
 	public void Initialize(RacingCar carController)
 	{
 		_carController = carController;
@@ -133,10 +151,12 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	// UPDATE METHODS
 	// ================================================================
-
 	public void UpdateVisualFeedback(float delta)
 	{
-		if (_carController?.IsInitialized != true) return;
+		if (_carController?.IsInitialized != true)
+		{
+			return;
+		}
 
 		var targetPosition = _carController.GetTargetPosition();
 		var hasInput = _carController.HasInput();
@@ -156,7 +176,10 @@ namespace BarBox.Games.Racing
 
 		// Update arc rotation for moving indicator (purely visual animation)
 		_arcRotation += delta * 3.0f;
-		if (_arcRotation > Mathf.Pi * 2) _arcRotation -= Mathf.Pi * 2;
+		if (_arcRotation > Mathf.Pi * 2)
+		{
+			_arcRotation -= Mathf.Pi * 2;
+		}
 
 		// Update cached values for performance
 		UpdateCachedValues();
@@ -187,7 +210,9 @@ namespace BarBox.Games.Racing
 	public void UpdateTireTrails()
 	{
 		if (_carController?.IsInitialized != true)
+		{
 			return;
+		}
 
 		var currentTime = Time.GetTicksMsec();
 
@@ -196,15 +221,24 @@ namespace BarBox.Games.Racing
 		CleanupExpiredTrailPoints(_rightTireTrail, currentTime);
 
 		// Only create new trail points when moving at decent speed
-		if (_carController.GetCarSpeed() < 5.0f) return;
+		if (_carController.GetCarSpeed() < 5.0f)
+		{
+			return;
+		}
 
 		var carBody = _carController.GetCarBody();
-		if (carBody == null) return;
+		if (carBody == null)
+		{
+			return;
+		}
 
 		var carPosition = carBody.GlobalPosition;
 
 		// Check if car has moved enough to add new trail points
-		if (_lastTrailPosition.DistanceTo(carPosition) < TrailUpdateDistance) return;
+		if (_lastTrailPosition.DistanceTo(carPosition) < TrailUpdateDistance)
+		{
+			return;
+		}
 
 		_cachedValuesValid = false;
 
@@ -250,7 +284,10 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void CleanupExpiredTrailPoints(List<(Vector2 position, ulong timestamp, Color zoneColor)> trail, ulong currentTime)
 	{
-		if (trail == null) return;
+		if (trail == null)
+		{
+			return;
+		}
 
 		// Trails are added chronologically (oldest first), so scan from the front
 		// and stop at the first non-expired point.
@@ -275,7 +312,10 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public override void _Draw()
 	{
-		if (!ShouldRender || _carController?.IsInitialized != true) return;
+		if (!ShouldRender || _carController?.IsInitialized != true)
+		{
+			return;
+		}
 
 		DrawInputLine();
 		DrawMouseIndicators();
@@ -287,19 +327,25 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void DrawInputLine()
 	{
-		if (_carController?.IsInitialized != true) return;
-		
+		if (_carController?.IsInitialized != true)
+		{
+			return;
+		}
+
 		var targetPosition = _carController.GetTargetPosition();
 		var hasInput = _carController.HasInput();
 		var carBody = _carController.GetCarBody();
-		
-		if (carBody == null || targetPosition == Vector2.Zero) return;
-		
+
+		if (carBody == null || targetPosition == Vector2.Zero)
+		{
+			return;
+		}
+
 		// Use cached positions from car controller for performance
 		var carFrontPosition = _carController.CarFrontPosition;
 		var clampedTarget = _carController.ClampedTargetPosition;
-		
-		var inputLineColor = hasInput ? InputLineActiveColor : 
+
+		var inputLineColor = hasInput ? InputLineActiveColor :
 			(_carController.GetCarSpeed() > 1.0f ? InputLineInactiveColor : InputLineInactiveColor * new Color(1, 1, 1, 0.3f));
 
 		DrawDashedLine(carFrontPosition, clampedTarget, inputLineColor, InputLineWidth, 10.0f, 5.0f);
@@ -310,16 +356,22 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void DrawMouseIndicators()
 	{
-		if (_carController?.IsInitialized != true) return;
-		
+		if (_carController?.IsInitialized != true)
+		{
+			return;
+		}
+
 		var targetPosition = _carController.GetTargetPosition();
 		var hasInput = _carController.HasInput();
 
-		if (targetPosition == Vector2.Zero || (!hasInput && _carController.GetCarSpeed() < 1.0f)) return;
+		if (targetPosition == Vector2.Zero || (!hasInput && _carController.GetCarSpeed() < 1.0f))
+		{
+			return;
+		}
 
 		// Use cached clamped target position from car controller for performance
 		var clampedTarget = _carController.ClampedTargetPosition;
-		
+
 		// Draw circle at clamped target position
 		if (clampedTarget != Vector2.Zero)
 		{
@@ -330,21 +382,24 @@ namespace BarBox.Games.Racing
 		if (hasInput)
 		{
 			// Use cached values for consistent behavior (restored from original)
-			if (!_cachedValuesValid) UpdateCachedValues();
-			
+			if (!_cachedValuesValid)
+			{
+				UpdateCachedValues();
+			}
+
 			var arcColor = MouseMovingColor;
-			
+
 			// Speed-based arc width (thickness) - restored missing feature
 			var baseWidth = 3.0f;
 			var speedMultiplier = Mathf.Clamp(_cachedCurrentSpeed / _carController.MaxSpeed, 0.3f, 1.5f);
 			var arcWidth = baseWidth * speedMultiplier;
-			
+
 			if (_cachedArcSweepAngle > 0.1f)
 			{
 				// Use movement-based rotation (separate from animated rotation)
 				var startAngle = _cachedMovementArcRotation - (_cachedArcSweepAngle / 2.0f);
 				var endAngle = _cachedMovementArcRotation + (_cachedArcSweepAngle / 2.0f);
-				
+
 				// Apply animated rotation overlay for visual polish
 				startAngle += _arcRotation * 0.1f; // Reduced influence for subtlety
 				endAngle += _arcRotation * 0.1f;
@@ -370,7 +425,10 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void DrawTrailLine(List<(Vector2 position, ulong timestamp, Color zoneColor)> trail)
 	{
-		if (trail.Count < 2) return;
+		if (trail.Count < 2)
+		{
+			return;
+		}
 
 		var currentTime = Time.GetTicksMsec();
 		var trailCount = trail.Count;
@@ -398,7 +456,10 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void EnsureTrailBufferCapacity(int requiredCapacity)
 	{
-		if (_trailBufferCapacity >= requiredCapacity) return;
+		if (_trailBufferCapacity >= requiredCapacity)
+		{
+			return;
+		}
 
 		// Allocate with headroom to avoid frequent resizing
 		_trailBufferCapacity = Math.Max(requiredCapacity, MaxTrailPoints);
@@ -420,19 +481,19 @@ namespace BarBox.Games.Racing
 		var direction = (to - from).Normalized();
 		var totalDistance = from.DistanceTo(to);
 		var segmentLength = dashLength + gapLength;
-		
+
 		var currentPos = from;
 		var distanceTraveled = 0.0f;
-		
+
 		while (distanceTraveled < totalDistance)
 		{
 			var remainingDistance = totalDistance - distanceTraveled;
 			var actualSegmentLength = Mathf.Min(segmentLength, remainingDistance);
 			var actualDashLength = Mathf.Min(dashLength, actualSegmentLength);
-			
-			var dashEnd = currentPos + direction * actualDashLength;
+
+			var dashEnd = currentPos + (direction * actualDashLength);
 			DrawLine(currentPos, dashEnd, color, width);
-			
+
 			distanceTraveled += segmentLength;
 			currentPos += direction * segmentLength;
 		}
@@ -447,32 +508,44 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	private void UpdateCachedValues()
 	{
-		if (_cachedValuesValid) return;
-		
-		if (_carController?.IsInitialized != true) return;
-		
+		if (_cachedValuesValid)
+		{
+			return;
+		}
+
+		if (_carController?.IsInitialized != true)
+		{
+			return;
+		}
+
 		var carBody = _carController.GetCarBody();
-		if (carBody == null) return;
-		
+		if (carBody == null)
+		{
+			return;
+		}
+
 		var targetPosition = _carController.GetTargetPosition();
-		if (targetPosition == Vector2.Zero) return;
-		
+		if (targetPosition == Vector2.Zero)
+		{
+			return;
+		}
+
 		// Cache direction to target for consistent calculations
 		_cachedDirectionToTarget = (targetPosition - carBody.GlobalPosition).Normalized();
-		
+
 		// Cache movement-based arc rotation (separate from animated rotation)
 		_cachedMovementArcRotation = _cachedDirectionToTarget.Angle();
-		
+
 		// Cache current speed for consistent calculations
 		_cachedCurrentSpeed = _carController.GetCarSpeed();
-		
+
 		// Cache arc sweep angle based on speed (0 to Pi radians = 0 to 180 degrees)
 		var normalizedSpeed = Mathf.Clamp(_cachedCurrentSpeed / _carController.MaxSpeed, 0.0f, 1.0f);
 		_cachedArcSweepAngle = Mathf.Lerp(0.0f, Mathf.Pi, normalizedSpeed);
-		
+
 		_cachedValuesValid = true;
 	}
-	
+
 	// ================================================================
 	// UTILITY METHODS
 	// ================================================================
@@ -484,7 +557,9 @@ namespace BarBox.Games.Racing
 	{
 		var zones = _carController?.GetZonesAtPosition(position);
 		if (zones == null || zones.Count == 0)
+		{
 			return TireTrailColor;
+		}
 
 		// Average all zone colors
 		Color blended = new Color(0, 0, 0, 0);
@@ -492,12 +567,12 @@ namespace BarBox.Games.Racing
 		{
 			blended += zone.ZoneColor;
 		}
+
 		return new Color(
 			blended.R / zones.Count,
 			blended.G / zones.Count,
 			blended.B / zones.Count,
-			Mathf.Max(0.8f, blended.A / zones.Count)
-		);
+			Mathf.Max(0.8f, blended.A / zones.Count));
 	}
 
 	/// <summary>
@@ -518,5 +593,4 @@ namespace BarBox.Games.Racing
 	{
 		return _carController?.IsInitialized == true;
 	}
-}
 }

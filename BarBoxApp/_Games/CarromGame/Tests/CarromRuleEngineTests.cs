@@ -10,12 +10,14 @@ namespace BarBox.Games.Carrom.Tests;
 /// </summary>
 public class CarromRuleEngineTests : TestClass
 {
-	public CarromRuleEngineTests(Node testScene) : base(testScene) { }
+	public CarromRuleEngineTests(Node testScene)
+		: base(testScene)
+	{
+	}
 
 	// ================================================================
 	// PIECE POCKETING TESTS
 	// ================================================================
-
 	[Test]
 	public void EvaluatePocketedPiece_StrikerPocketed_ReturnsFoul()
 	{
@@ -75,7 +77,6 @@ public class CarromRuleEngineTests : TestClass
 	// ================================================================
 	// QUEEN POCKETING TESTS
 	// ================================================================
-
 	[Test]
 	public void EvaluateQueenPocketing_WithOnePiecePocketed_AllowsQueenPocket()
 	{
@@ -132,7 +133,7 @@ public class CarromRuleEngineTests : TestClass
 		var turnContext = new TurnContext
 		{
 			NeedsQueenCovering = true,
-			PocketedQueenThisTurn = true
+			PocketedQueenThisTurn = true,
 		};
 
 		// Act
@@ -149,7 +150,6 @@ public class CarromRuleEngineTests : TestClass
 	// ================================================================
 	// FOUL PENALTY TESTS
 	// ================================================================
-
 	[Test]
 	public void CalculateFoulPenalty_StrikerFoul_WithPieces_ReturnsPenalty()
 	{
@@ -215,7 +215,6 @@ public class CarromRuleEngineTests : TestClass
 	// ================================================================
 	// BREAKING TURN TESTS
 	// ================================================================
-
 	[Test]
 	public void EvaluateBreakingTurn_PiecesDisturbed_ReturnsSuccess()
 	{
@@ -310,7 +309,6 @@ public class CarromRuleEngineTests : TestClass
 	// ================================================================
 	// QUEEN COVERING VALIDATION TESTS
 	// ================================================================
-
 	[Test]
 	public void ValidateQueenCovering_QueenPocketedButNotCovered_ReturnsTrue()
 	{
@@ -319,7 +317,7 @@ public class CarromRuleEngineTests : TestClass
 		var turnContext = new TurnContext
 		{
 			PocketedQueenThisTurn = true,
-			NeedsQueenCovering = true
+			NeedsQueenCovering = true,
 		};
 
 		// Act
@@ -337,7 +335,7 @@ public class CarromRuleEngineTests : TestClass
 		var turnContext = new TurnContext
 		{
 			PocketedQueenThisTurn = true,
-			NeedsQueenCovering = false // Covered
+			NeedsQueenCovering = false, // Covered
 		};
 
 		// Act
@@ -395,7 +393,6 @@ public class CarromRuleEngineTests : TestClass
 	// ================================================================
 	// WIN CONDITION TESTS - SINGLES
 	// ================================================================
-
 	[Test]
 	public void CheckWinCondition_Singles_AllPiecesAndQueenCovered_ReturnsWin()
 	{
@@ -459,7 +456,6 @@ public class CarromRuleEngineTests : TestClass
 	// ================================================================
 	// WIN CONDITION TESTS - DOUBLES
 	// ================================================================
-
 	[Test]
 	public void CheckWinCondition_Doubles_CombinedPiecesAndQueen_ReturnsWin()
 	{
@@ -509,14 +505,13 @@ public class CarromRuleEngineTests : TestClass
 	// ================================================================
 	// PIECE RETURN TESTS
 	// ================================================================
-
 	[Test]
 	public void SelectPieceToReturn_PreferredTypeAvailable_ReturnsPreferredType()
 	{
 		// Arrange
 		var playerState = new PlayerState
 		{
-			PocketedPieces = { PieceType.White, PieceType.White, PieceType.White }
+			PocketedPieces = { PieceType.White, PieceType.White, PieceType.White },
 		};
 
 		// Act
@@ -546,7 +541,7 @@ public class CarromRuleEngineTests : TestClass
 		var playerState = new PlayerState
 		{
 			PiecesPocketed = 3,
-			PocketedPieces = { PieceType.White, PieceType.White, PieceType.White }
+			PocketedPieces = { PieceType.White, PieceType.White, PieceType.White },
 		};
 
 		// Act
@@ -560,7 +555,6 @@ public class CarromRuleEngineTests : TestClass
 	// ================================================================
 	// STATISTICS HELPER TESTS
 	// ================================================================
-
 	[Test]
 	public void CalculateAccuracy_WithShots_ReturnsCorrectPercentage()
 	{
@@ -631,7 +625,6 @@ public class CarromRuleEngineTests : TestClass
 	// ================================================================
 	// HELPER METHODS
 	// ================================================================
-
 	private PlayerState CreateTestPlayer(
 		PieceType assignedPieceType,
 		int piecesPocketed = 0,
@@ -648,7 +641,7 @@ public class CarromRuleEngineTests : TestClass
 			TotalShots = piecesPocketed > 0 ? piecesPocketed + 2 : 0,
 			ValidPockets = piecesPocketed,
 			Fouls = 0,
-			PocketedPieces = new()
+			PocketedPieces = new(),
 		};
 	}
 }

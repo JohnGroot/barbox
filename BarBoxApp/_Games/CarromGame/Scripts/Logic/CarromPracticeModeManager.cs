@@ -1,11 +1,11 @@
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
 /// <summary>
 /// Manages practice mode functionality for Carrom game
-/// 
+///
 /// ARCHITECTURE NOTES:
 /// - Striker positioning: Uses base class PositionStrikerAtBaseline() for consistency
 /// - Phase transitions: Relies on base class ExecuteSettlement() for proper phase management
@@ -14,8 +14,11 @@ namespace BarBox.Games.Carrom;
 [GlobalClass]
 public partial class CarromPracticeModeManager : CarromModeManagerBase
 {
-	[Signal] public delegate void PracticeResetRequestedEventHandler();
-	[Signal] public delegate void PracticeModeSetupCompleteEventHandler();
+	[Signal]
+	public delegate void PracticeResetRequestedEventHandler();
+
+	[Signal]
+	public delegate void PracticeModeSetupCompleteEventHandler();
 
 	// Practice mode state
 	private Dictionary<CarromPiece, Vector2> _practiceInitialPositions = [];
@@ -29,7 +32,7 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 		CarromPhysicsConfig physicsConfig, PackedScene blackTemplate,
 		PackedScene strikerTemplate)
 	{
-		base.Initialize(board, inputController, physicsConfig);
+		Initialize(board, inputController, physicsConfig);
 		_blackPieceTemplate = blackTemplate;
 		_strikerTemplate = strikerTemplate;
 	}
@@ -37,16 +40,15 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 	// ================================================================
 	// ABSTRACT METHOD IMPLEMENTATIONS
 	// ================================================================
-
 	protected override void CreateModeSpecificPieces()
 	{
 		_practicePieces.Clear();
 		_practiceInitialPositions.Clear();
-		
+
 		// Get initial positions using global coordinates for consistency
 		var strikerInitialPosition = _board.ToGlobal(_board.GetBaselinePosition(0));
 		var centerPieceInitialPosition = _board.ToGlobal(Vector2.Zero); // Center of board in global coords
-		
+
 		// Create single practice piece in center
 		var centerPiece = CreatePiece(PieceType.Black, Vector2.Zero);
 		if (centerPiece != null)
@@ -54,20 +56,20 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 			_practicePieces.Add(centerPiece);
 			_practiceInitialPositions[centerPiece] = centerPieceInitialPosition;
 		}
-		
+
 		// Store striker initial position (striker is created by base class)
 		if (_striker != null)
 		{
 			_practiceInitialPositions[_striker] = strikerInitialPosition;
 		}
-		
+
 		// Position pieces at their initial positions
 		PositionPiecesAtInitialPositions();
 	}
 
 	protected override List<CarromPiece> GetManagedPieces()
 	{
-		return new List<CarromPiece>(_practicePieces);
+		return [.. _practicePieces];
 	}
 
 	protected override void ClearModeSpecificPieces()
@@ -79,9 +81,10 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 				piece.QueueFree();
 			}
 		}
+
 		_practicePieces.Clear();
 	}
-	
+
 	/// <summary>
 	/// Handle practice mode settlement - only restore striker, pieces stay where they land
 	/// Full board reset only happens via explicit RequestExplicitReset() call
@@ -102,7 +105,7 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 			PositionStrikerAtBaseline();
 		}
 	}
-	
+
 	/// <summary>
 	/// Check if win condition is met (practice mode never "wins")
 	/// </summary>
@@ -111,7 +114,7 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 		// Practice mode doesn't have win conditions
 		return false;
 	}
-	
+
 	/// <summary>
 	/// Determine if current turn should continue (practice mode always continues)
 	/// </summary>
@@ -120,11 +123,11 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 		// Practice mode continues indefinitely
 		return true;
 	}
-	
+
 	// ================================================================
 	// PRACTICE MODE SPECIFIC METHODS
 	// ================================================================
-	
+
 	/// <summary>
 	/// Setup practice mode pieces (striker + single piece) - public interface
 	/// </summary>
@@ -191,7 +194,6 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 		EmitSignal(SignalName.PracticeResetRequested);
 	}
 
-
 	private void PositionPiecesAtInitialPositions()
 	{
 		foreach (var kvp in _practiceInitialPositions)
@@ -213,18 +215,20 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 	/// </summary>
 	private void ResetPieceToStartImmediate(CarromPiece piece, Vector2 globalPosition)
 	{
-		if (!IsInstanceValid(piece)) 
+		if (!IsInstanceValid(piece))
+		{
 			return;
+		}
 
-		// First restore from pocketed state if the piece was pocketed
-		if (!piece.Visible) // Check if piece was pocketed (invisible)
+		// First restore from pocketed state if the piece was pocketed (invisible)
+		if (!piece.Visible)
 		{
 			piece.Reset();
 		}
 
 		// Then use the immediate synchronous reset method for positioning
 		piece.Reset(globalPosition);
-		
+
 		// CRITICAL FIX: Mark this piece in settlement context to prevent false "still moving" detection
 		MarkRecentRestoration(piece);
 	}
@@ -239,13 +243,16 @@ public partial class CarromPracticeModeManager : CarromModeManagerBase
 	/// </summary>
 	protected override void PositionStrikerAtBaseline()
 	{
-		if (!IsStrikerValid()) return;
-		
+		if (!IsStrikerValid())
+		{
+			return;
+		}
+
 		// Use stored initial position instead of calculated baseline
 		if (_practiceInitialPositions.ContainsKey(_striker))
 		{
 			var storedPosition = _practiceInitialPositions[_striker];
-			
+
 			_striker.GlobalPosition = storedPosition;
 			_striker.LinearVelocity = Vector2.Zero;
 			_striker.AngularVelocity = 0.0f;

@@ -1,10 +1,10 @@
-using BarBox.Core.Utils;
-using Godot;
-using LightResults;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BarBox.Core.Utils;
+using Godot;
+using LightResults;
 
 namespace BarBox.Core.Autoloads;
 
@@ -25,7 +25,8 @@ namespace BarBox.Core.Autoloads;
 /// </summary>
 public partial class CreditService : AutoloadBase
 {
-	[Signal] public delegate void CreditsChangedEventHandler(string playerId, int newBalance);
+	[Signal]
+	public delegate void CreditsChangedEventHandler(string playerId, int newBalance);
 
 	// Cache and polling configuration constants
 	private const float CACHE_TTL_SECONDS = 30.0f;
@@ -37,7 +38,9 @@ public partial class CreditService : AutoloadBase
 	private class CachedBalance(int amount, DateTime lastUpdated)
 	{
 		public int Amount { get; set; } = amount;
+
 		public DateTime LastUpdated { get; set; } = lastUpdated;
+
 		public bool IsStale => (DateTime.UtcNow - LastUpdated).TotalSeconds > CACHE_TTL_SECONDS;
 	}
 
@@ -81,13 +84,17 @@ public partial class CreditService : AutoloadBase
 	public async Task<Result<int>> SpendAsync(Guid playerId, int amount, string reason)
 	{
 		if (amount <= 0)
+		{
 			return Result.Failure<int>("Amount must be positive");
+		}
 
 		// Ensure SessionEventService is ready (with retry for race condition) - credit/spend is a
 		// session-scoped emit, which SessionEventService still owns
 		var eventServiceResult = await EnsureEventServiceReadyAsync();
 		if (!eventServiceResult.IsSuccess(out var eventService))
+		{
 			return Result.Failure<int>("Credit service unavailable");
+		}
 
 		// Ensure lobby session exists (lazy creation via SessionManager)
 		var sessionManager = SessionManager.GetInstance();
@@ -114,7 +121,7 @@ public partial class CreditService : AutoloadBase
 		{
 			location_id = GetVenueName(),
 			amount = amount,
-			reason = reason
+			reason = reason,
 		};
 		var spendResult = await eventService.EmitUserEventAsync(playerId, "credit/spend", payload, lobbySessionId);
 		if (spendResult.IsFailure(out var spendError))
@@ -199,7 +206,9 @@ public partial class CreditService : AutoloadBase
 		{
 			var addResult = await AddAsync(playerId, amount, reason);
 			if (addResult.IsFailure(out var error))
+			{
 				LogError($"CRITICAL: Failed to rollback credits for {label} ({playerId}): {error.Message}");
+			}
 		}
 	}
 
@@ -212,14 +221,18 @@ public partial class CreditService : AutoloadBase
 	public async Task<Result<int>> SpendWithConfirmationAsync(Guid playerId, string phoneNumber, int amount, string reason)
 	{
 		if (amount <= 0)
+		{
 			return Result.Failure<int>("Amount must be positive");
+		}
 
 		var balanceResult = await GetBalanceAsync(playerId);
 		int currentBalance = balanceResult.IsSuccess(out var balance) ? balance : 0;
 
 		bool confirmed = await CreditConfirmationHelper.ShowCreditConfirmationAsync(phoneNumber, amount, reason, currentBalance);
 		if (!confirmed)
+		{
 			return Result.Failure<int>("Credit spend cancelled");
+		}
 
 		return await SpendAsync(playerId, amount, reason);
 	}
@@ -230,13 +243,17 @@ public partial class CreditService : AutoloadBase
 	public async Task<Result<int>> AddAsync(Guid playerId, int amount, string reason)
 	{
 		if (amount <= 0)
+		{
 			return Result.Failure<int>("Amount must be positive");
+		}
 
 		// Ensure SessionEventService is ready (with retry for race condition) - credit/earn is a
 		// session-scoped emit, which SessionEventService still owns
 		var eventServiceResult = await EnsureEventServiceReadyAsync();
 		if (!eventServiceResult.IsSuccess(out var eventService))
+		{
 			return Result.Failure<int>("Credit service unavailable");
+		}
 
 		// Ensure lobby session exists (lazy creation via SessionManager)
 		var sessionManager = SessionManager.GetInstance();
@@ -262,7 +279,7 @@ public partial class CreditService : AutoloadBase
 		{
 			location_id = GetVenueName(),
 			amount = amount,
-			reason = reason
+			reason = reason,
 		};
 		var addResult = await eventService.EmitUserEventAsync(playerId, "credit/earn", payload, lobbySessionId);
 		if (addResult.IsFailure(out var addError))
@@ -329,7 +346,9 @@ public partial class CreditService : AutoloadBase
 		}
 
 		if (!backendResult.IsSuccess(out var backendBalance))
+		{
 			return;
+		}
 
 		if (_balanceCache.TryGetValue(playerId, out var cached))
 		{
@@ -354,11 +373,13 @@ public partial class CreditService : AutoloadBase
 	{
 		var backendResult = await EnsureBackendClientReadyAsync();
 		if (!backendResult.IsSuccess(out var backend))
+		{
 			return Result.Failure<MachineCreditsResponse>("Credit service unavailable");
+		}
 
 		var queryParams = new Dictionary<string, string>
 		{
-			{ "box_id", boxId.ToString() }
+			{ "box_id", boxId.ToString() },
 		};
 
 		return await backend.QueryAsync<MachineCreditsResponse>($"/machine-credits/{gameTag}", queryParams);
@@ -376,14 +397,16 @@ public partial class CreditService : AutoloadBase
 	{
 		var backendResult = await EnsureBackendClientReadyAsync();
 		if (!backendResult.IsSuccess(out var backend))
+		{
 			return Result.Failure<MachineCreditsResponse>("Credit service unavailable");
+		}
 
 		var request = new MachineCreditsDepositRequest
 		{
 			BoxId = boxId,
 			PlayerId = playerId,
 			Amount = amount,
-			LobbySessionId = lobbySessionId
+			LobbySessionId = lobbySessionId,
 		};
 		return await backend.PostAsync<MachineCreditsDepositRequest, MachineCreditsResponse>(
 			$"/machine-credits/{gameTag}/deposit", request, 201, playerId: playerId);
@@ -405,14 +428,18 @@ public partial class CreditService : AutoloadBase
 	{
 		var spendResult = await SpendAsync(playerId, amount, spendReason);
 		if (spendResult.IsFailure(out var spendError))
+		{
 			return Result.Failure<MachineCreditsResponse>(spendError.Message);
+		}
 
 		var depositResult = await DepositMachineCreditsAsync(gameTag, boxId, playerId, amount, lobbySessionId);
 		if (depositResult.IsFailure(out var depositError))
 		{
 			var refundResult = await AddAsync(playerId, amount, spendReason + " Rollback");
 			if (refundResult.IsFailure(out var refundError))
+			{
 				LogError($"CRITICAL: Failed to rollback machine transfer for {playerId}: {refundError.Message}");
+			}
 
 			return Result.Failure<MachineCreditsResponse>($"Failed to deposit to machine pot: {depositError.Message}");
 		}
@@ -431,13 +458,15 @@ public partial class CreditService : AutoloadBase
 	{
 		var backendResult = await EnsureBackendClientReadyAsync();
 		if (!backendResult.IsSuccess(out var backend))
+		{
 			return Result.Failure<MachineCreditsResponse>("Credit service unavailable");
+		}
 
 		var request = new MachineCreditsConsumeRequest
 		{
 			BoxId = boxId,
 			Amount = amount,
-			GameSessionId = gameSessionId
+			GameSessionId = gameSessionId,
 		};
 		return await backend.PostAsync<MachineCreditsConsumeRequest, MachineCreditsResponse>(
 			$"/machine-credits/{gameTag}/consume", request, 200);
@@ -449,7 +478,7 @@ public partial class CreditService : AutoloadBase
 		_balanceCache[playerId] = new CachedBalance(amount, DateTime.UtcNow);
 	}
 
-	private static string GetVenueName() => LocationManager.GetAutoload()?.VenueName ?? "";
+	private static string GetVenueName() => LocationManager.GetAutoload()?.VenueName ?? string.Empty;
 
 	/// <summary>
 	/// Get player's credit balance for current location, over BackendClient directly
@@ -458,18 +487,23 @@ public partial class CreditService : AutoloadBase
 	{
 		var backendResult = await EnsureBackendClientReadyAsync();
 		if (!backendResult.IsSuccess(out var backend))
+		{
 			return Result.Failure<int>("Credit service unavailable");
+		}
 
 		var result = await backend.QueryAsync<PlayerCreditsResponse>(
 			$"/player/{playerId}/credits",
-			new Dictionary<string, string> { { "location_id", GetVenueName() } }
-		);
+			new Dictionary<string, string> { { "location_id", GetVenueName() } });
 
 		if (result.IsSuccess(out var creditsResponse))
+		{
 			return Result.Success(creditsResponse.Credits);
+		}
 
 		if (result.IsFailure(out var error))
+		{
 			return Result.Failure<int>(error.Message);
+		}
 
 		return Result.Failure<int>("Unknown error getting player credits");
 	}
@@ -482,7 +516,9 @@ public partial class CreditService : AutoloadBase
 	{
 		var eventService = SessionEventService.GetInstance();
 		if (eventService != null && eventService.IsReady)
+		{
 			return Result.Success(eventService);
+		}
 
 		// Wait for SessionEventService to become ready (handles initialization race condition)
 		const int MAX_RETRIES = 10;
@@ -513,7 +549,9 @@ public partial class CreditService : AutoloadBase
 	{
 		var backend = BackendClient.GetInstance();
 		if (backend != null && backend.IsReady)
+		{
 			return Result.Success(backend);
+		}
 
 		// Wait for BackendClient to become ready (handles initialization race condition)
 		const int MAX_RETRIES = 10;
@@ -543,6 +581,7 @@ public partial class CreditService : AutoloadBase
 		{
 			LogWarning($"Could not get initial balance: {error.Message}");
 		}
+
 		return result.IsSuccess(out var balance) ? balance : 0;
 	}
 

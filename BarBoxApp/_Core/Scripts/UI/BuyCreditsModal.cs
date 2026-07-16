@@ -1,7 +1,7 @@
-using Godot;
-using BarBox.Core.Autoloads;
 using System;
 using System.Threading.Tasks;
+using BarBox.Core.Autoloads;
+using Godot;
 
 /// <summary>
 /// Modal dialog for purchasing credit packs
@@ -10,8 +10,11 @@ using System.Threading.Tasks;
 /// </summary>
 public partial class BuyCreditsModal : Control
 {
-	[Signal] public delegate void CreditsAcquiredEventHandler(string userId, int amount);
-	[Signal] public delegate void ModalClosedEventHandler();
+	[Signal]
+	public delegate void CreditsAcquiredEventHandler(string userId, int amount);
+
+	[Signal]
+	public delegate void ModalClosedEventHandler();
 
 	private const string TITLE_TEXT = "Buy Credits";
 	private const string CURRENT_CREDITS_FORMAT = "Current Credits: {0:N0}";
@@ -229,6 +232,7 @@ public partial class BuyCreditsModal : Control
 		_qrCancelButton.Text = CANCEL_TEXT;
 		_qrCancelButton.CustomMinimumSize = new Vector2(216, 72);
 		TopMenuBar.ApplyStandardButtonStyle(_qrCancelButton);
+
 		// Signal connected in ConnectSignals() via CallDeferred to ensure services are initialized
 		qrButtonContainer.AddChild(_qrCancelButton);
 
@@ -237,7 +241,7 @@ public partial class BuyCreditsModal : Control
 		progressBarContainer.SizeFlagsVertical = Control.SizeFlags.ShrinkEnd;
 
 		_timeoutMessageLabel = new Label();
-		_timeoutMessageLabel.Text = "";
+		_timeoutMessageLabel.Text = string.Empty;
 		_timeoutMessageLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		_timeoutMessageLabel.AddThemeColorOverride("font_color", Colors.Red);
 		_timeoutMessageLabel.AddThemeFontSizeOverride("font_size", 24);
@@ -293,10 +297,14 @@ public partial class BuyCreditsModal : Control
 	private void ConnectSignals()
 	{
 		if (_closeButton != null)
+		{
 			_closeButton.Pressed += OnClosePressed;
+		}
 
 		if (_qrCancelButton != null)
+		{
 			_qrCancelButton.Pressed += OnQRCancelPressed;
+		}
 
 		// Connect to PaymentService generic events
 		ConnectPaymentEvents();
@@ -307,7 +315,9 @@ public partial class BuyCreditsModal : Control
 	private void ConnectPaymentEvents()
 	{
 		if (_paymentService == null)
+		{
 			return;
+		}
 
 		_paymentService.OnPaymentUrlReady += OnPaymentUrlReady;
 		_paymentService.OnProgressUpdate += OnPaymentProgressUpdate;
@@ -317,7 +327,9 @@ public partial class BuyCreditsModal : Control
 	private void DisconnectPaymentEvents()
 	{
 		if (_paymentService == null)
+		{
 			return;
+		}
 
 		_paymentService.OnPaymentUrlReady -= OnPaymentUrlReady;
 		_paymentService.OnProgressUpdate -= OnPaymentProgressUpdate;
@@ -384,6 +396,7 @@ public partial class BuyCreditsModal : Control
 		{
 			_timeoutProgressBar.Value = POLL_TIMEOUT;
 		}
+
 		if (_timeoutMessageLabel != null)
 		{
 			_timeoutMessageLabel.Visible = false;
@@ -403,6 +416,7 @@ public partial class BuyCreditsModal : Control
 		{
 			_timeoutProgressBar.Value = POLL_TIMEOUT;
 		}
+
 		if (_timeoutMessageLabel != null)
 		{
 			_timeoutMessageLabel.Visible = false;
@@ -463,6 +477,7 @@ public partial class BuyCreditsModal : Control
 				_currentBalance = balance;
 			}
 		}
+
 		UpdateCurrentCreditsDisplay(_currentBalance);
 
 		// Clear and recreate credit pack buttons to ensure fresh data
@@ -473,6 +488,7 @@ public partial class BuyCreditsModal : Control
 				child.QueueFree();
 			}
 		}
+
 		CreateCreditPackButtons();
 
 		Visible = true;
@@ -512,7 +528,9 @@ public partial class BuyCreditsModal : Control
 	private void ShowStatusMessage(string message, bool isSuccess)
 	{
 		if (_statusLabel == null)
+		{
 			return;
+		}
 
 		_statusLabel.Text = message;
 		_statusLabel.Modulate = isSuccess ? Colors.Green : Colors.Red;
@@ -522,7 +540,7 @@ public partial class BuyCreditsModal : Control
 	{
 		if (_statusLabel != null)
 		{
-			_statusLabel.Text = "";
+			_statusLabel.Text = string.Empty;
 		}
 	}
 
@@ -555,7 +573,9 @@ public partial class BuyCreditsModal : Control
 		var confirmed = await ShowConfirmationDialog(confirmMessage);
 
 		if (!confirmed)
+		{
 			return;
+		}
 
 		// For providers without URL (debug mode): Show processing message immediately
 		if (!_paymentService.RequiresUserActionForPayments)
@@ -604,6 +624,7 @@ public partial class BuyCreditsModal : Control
 			{
 				HideQRCodeView();
 			}
+
 			ShowStatusMessage(string.Format(ERROR_FORMAT, ex.Message), false);
 		}
 	}
@@ -648,10 +669,14 @@ public partial class BuyCreditsModal : Control
 		if (_signalsConnected)
 		{
 			if (IsInstanceValid(_closeButton))
+			{
 				_closeButton.Pressed -= OnClosePressed;
+			}
 
 			if (IsInstanceValid(_qrCancelButton))
+			{
 				_qrCancelButton.Pressed -= OnQRCancelPressed;
+			}
 		}
 
 		// Cleanup QR cache

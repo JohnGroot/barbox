@@ -10,16 +10,25 @@ namespace BarBox.Games.Racing;
 [GlobalClass]
 public partial class RacingLineTrigger : Area2D
 {
-	[Signal] public delegate void TriggerHitEventHandler(Node2D body, RacingLineTrigger trigger);
-	[Signal] public delegate void StartLineCrossedEventHandler(Node2D body);
-	[Signal] public delegate void CheckpointCrossedEventHandler(Node2D body, int checkpointIndex);
+	[Signal]
+	public delegate void TriggerHitEventHandler(Node2D body, RacingLineTrigger trigger);
+
+	[Signal]
+	public delegate void StartLineCrossedEventHandler(Node2D body);
+
+	[Signal]
+	public delegate void CheckpointCrossedEventHandler(Node2D body, int checkpointIndex);
 
 	[ExportCategory("Component References")]
-	[Export] public CollisionShape2D CollisionShape { get; set; }
-	[Export] public Line2D VisualLine { get; set; }
+	[Export]
+	public CollisionShape2D CollisionShape { get; set; }
+
+	[Export]
+	public Line2D VisualLine { get; set; }
 
 	[ExportCategory("Trigger Info")]
-	[Export] public string TriggerName { get; set; } = "Trigger";
+	[Export]
+	public string TriggerName { get; set; } = "Trigger";
 
 	public override void _Ready()
 	{

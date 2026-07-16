@@ -1,7 +1,7 @@
-using Godot;
-using QRCoder;
 using System;
 using System.Collections.Generic;
+using Godot;
+using QRCoder;
 
 namespace BarBox.Core.Autoloads;
 
@@ -18,6 +18,7 @@ public class QRCodeCache
 	private const int MAX_CACHE_SIZE = 20;
 
 	private readonly record struct CacheEntry(ImageTexture Texture, DateTime CreatedAt);
+
 	private readonly Dictionary<string, CacheEntry> _cache = new();
 	private readonly object _cacheLock = new();
 
@@ -92,6 +93,7 @@ public class QRCodeCache
 			{
 				entry.Texture?.Dispose();
 			}
+
 			_cache.Clear();
 			GD.Print("[QRCodeCache] Cache cleared");
 		}

@@ -1,8 +1,7 @@
-namespace BarBox.Games.MiningGame;
-
 using System;
 using System.Text.Json.Serialization;
 
+namespace BarBox.Games.MiningGame;
 /// <summary>
 /// Immutable location configuration from backend registration.
 /// Used to configure the mining game at a specific venue.
@@ -28,6 +27,7 @@ public sealed record MiningLocationConfig
 		{
 			throw new ArgumentException($"Invalid gem type from backend: '{GemTypeString}'");
 		}
+
 		return gemType;
 	}
 
@@ -38,6 +38,6 @@ public sealed record MiningLocationConfig
 	{
 		VenueName = "dev_location",
 		GemTypeString = "amethyst",
-		DisplayName = "Development Location"
+		DisplayName = "Development Location",
 	};
 }

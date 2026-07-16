@@ -11,9 +11,13 @@ namespace BarBox.Core.Autoloads;
 public struct CreditPack
 {
 	public string PackId { get; init; }
+
 	public int Credits { get; init; }
+
 	public int BonusCredits { get; init; }
+
 	public decimal Price { get; init; }
+
 	public int TotalCredits => Credits + BonusCredits;
 
 	public string DisplayName => BonusCredits > 0
@@ -42,7 +46,7 @@ public struct CreditPack
 			PackId = $"test_{credits}",
 			Credits = credits,
 			BonusCredits = 0,
-			Price = price
+			Price = price,
 		};
 	}
 }
@@ -53,8 +57,11 @@ public struct CreditPack
 public struct PaymentResult
 {
 	public bool IsSuccess { get; init; }
+
 	public string TransactionId { get; init; }
+
 	public string ErrorMessage { get; init; }
+
 	public CreditPack CreditPack { get; init; }
 
 	public static PaymentResult Success(string transactionId, CreditPack creditPack)
@@ -64,7 +71,7 @@ public struct PaymentResult
 			IsSuccess = true,
 			TransactionId = transactionId,
 			ErrorMessage = string.Empty,
-			CreditPack = creditPack
+			CreditPack = creditPack,
 		};
 	}
 
@@ -75,7 +82,7 @@ public struct PaymentResult
 			IsSuccess = false,
 			TransactionId = string.Empty,
 			ErrorMessage = errorMessage,
-			CreditPack = default
+			CreditPack = default,
 		};
 	}
 }
@@ -88,9 +95,13 @@ public struct PaymentResult
 public struct PaymentCheckout
 {
 	public string SessionId { get; init; }
+
 	public string PaymentUrl { get; init; }
+
 	public bool RequiresUserAction => !string.IsNullOrEmpty(PaymentUrl);
+
 	public CreditPack CreditPack { get; init; }
+
 	public DateTime CreatedAtUtc { get; init; }
 }
 

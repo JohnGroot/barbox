@@ -1,5 +1,5 @@
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
@@ -9,21 +9,35 @@ namespace BarBox.Games.Carrom;
 [GlobalClass]
 public partial class CarromPiece : RigidBody2D
 {
-	[Signal] public delegate void PieceCollidedEventHandler(CarromPiece thisPiece, CarromPiece otherPiece, Vector2 impactForce);
+	[Signal]
+	public delegate void PieceCollidedEventHandler(CarromPiece thisPiece, CarromPiece otherPiece, Vector2 impactForce);
 
 	[ExportCategory("Piece Settings")]
-	[Export] public PieceType Type { get; set; } = PieceType.White;
-	[Export] public CarromPhysicsConfig PhysicsConfig { get; set; }
+	[Export]
+	public PieceType Type { get; set; } = PieceType.White;
+
+	[Export]
+	public CarromPhysicsConfig PhysicsConfig { get; set; }
 
 	[ExportCategory("Visual Settings")]
-	[Export] public Color PieceColor { get; set; } = Colors.White;
+	[Export]
+	public Color PieceColor { get; set; } = Colors.White;
 
 	[ExportCategory("Highlight Settings")]
-	[Export] public Color HighlightColor { get; set; } = new Color(1.0f, 1.0f, 0.4f, 0.4f);
-	[Export] public float HighlightFadeInSpeed { get; set; } = 2.0f;
-	[Export] public float HighlightFadeOutSpeed { get; set; } = 5.0f;
-	[Export] public float HighlightRingThickness { get; set; } = 3.0f;
-	[Export] public float HighlightRingOffset { get; set; } = 2.0f;
+	[Export]
+	public Color HighlightColor { get; set; } = new Color(1.0f, 1.0f, 0.4f, 0.4f);
+
+	[Export]
+	public float HighlightFadeInSpeed { get; set; } = 2.0f;
+
+	[Export]
+	public float HighlightFadeOutSpeed { get; set; } = 5.0f;
+
+	[Export]
+	public float HighlightRingThickness { get; set; } = 3.0f;
+
+	[Export]
+	public float HighlightRingOffset { get; set; } = 2.0f;
 
 	// Physics components
 	private CircleShape2D _collisionShape;
@@ -34,20 +48,20 @@ public partial class CarromPiece : RigidBody2D
 	private Vector2 _lastVelocity = Vector2.Zero;
 	private bool _wasMoving = false;
 	private float _stoppedTimer = 0.0f;
-	
+
 	// Reset state management
 	private bool _skipNextStoppedCheck = false;
-	
+
 	// Movement history tracking for meaningful velocity validation
 	private bool _hasEverMoved = false;
 	private float _maxVelocityAchieved = 0.0f;
 	private double _creationTime = 0.0; // Track when piece was created for never-moved timeout
-	
+
 	// Powder-effect friction tracking
 	private float _distanceTraveled = 0.0f; // Total distance traveled for powder friction calculation
 	private Vector2 _lastPositionForFriction = Vector2.Zero; // Previous position for distance calculation
 	private bool _powderFrictionActive = false; // Whether custom friction is currently being applied
-	
+
 	// Cached calculations for performance
 	private float _cachedSpeed = 0.0f; // Cached current speed to avoid multiple Length() calls
 	private float _cachedFrictionCoefficient = 0.0f; // Cached friction coefficient to avoid repeated calculations
@@ -63,11 +77,13 @@ public partial class CarromPiece : RigidBody2D
 	private static readonly bool _isDebugBuild = OS.IsDebugBuild();
 	private System.Diagnostics.Stopwatch _debugPhysicsStopwatch;
 	private static ulong _debugPhysicsFrame;
-	public static double DebugPhysicsFrameTotalMs { get; private set; }  
+
+	public static double DebugPhysicsFrameTotalMs { get; private set; }
+
 	private float _velocityAlertThreshold = 1800.0f;
-	
+
 	// Realistic physics constants - now using PhysicsConfig values
-	
+
 	// Velocity monitoring for tunneling protection validation (used for debugging)
 	private float _maxSpeedAchieved = 0.0f;
 
@@ -79,7 +95,7 @@ public partial class CarromPiece : RigidBody2D
 	private const int MAX_TRAIL_POINTS = 50;
 	private const float TRAIL_SAMPLE_DISTANCE = 2.0f;
 	private const float TRAIL_MAX_AGE = 10.0f; // seconds
-	
+
 	// Trail point data structure
 	private struct TrailPoint
 	{
@@ -105,13 +121,13 @@ public partial class CarromPiece : RigidBody2D
 		SetupVisual();
 		SetupPhysicsMaterial();
 		ConnectSignals();
-		
+
 		// Add to pieces group for easy access
 		AddToGroup("pieces");
-		
+
 		// Record creation time for never-moved timeout
 		_creationTime = Time.GetUnixTimeFromSystem();
-		
+
 		// Initialize powder friction tracking
 		_lastPositionForFriction = GlobalPosition;
 	}
@@ -137,7 +153,7 @@ public partial class CarromPiece : RigidBody2D
 	private void SetupPhysics()
 	{
 		GravityScale = 0.0f; // No gravity for top-down view
-		
+
 		// Use either powder-effect friction OR built-in damping, not both
 		if (PhysicsConfig.EnablePowderEffectFriction)
 		{
@@ -147,15 +163,15 @@ public partial class CarromPiece : RigidBody2D
 		{
 			LinearDamp = PhysicsConfig.LinearDamping; // Use built-in damping when powder friction disabled
 		}
-		
+
 		AngularDamp = PhysicsConfig.AngularDamping;
 		ContactMonitor = PhysicsConfig.ContactMonitor;
 		MaxContactsReported = PhysicsConfig.MaxContactsReported;
-		
+
 		// Enable Continuous Collision Detection for high-speed collision accuracy
 		// CastShape provides better collision detection for circular pieces than CastRay
 		ContinuousCd = CcdMode.CastShape;
-		
+
 		// Set mass based on piece type
 		Mass = PhysicsConfig.GetMassForPieceType(Type);
 	}
@@ -166,10 +182,11 @@ public partial class CarromPiece : RigidBody2D
 	private void SetupCollisionShape()
 	{
 		_collisionShape2D = GetNode<CollisionShape2D>("CollisionShape2D");
-		
+
 		if (_collisionShape2D?.Shape is CircleShape2D existingShape)
 		{
 			_collisionShape = existingShape;
+
 			// Use collision radius with safety margin to prevent tunneling
 			_collisionShape.Radius = PhysicsConfig.GetCollisionRadiusForPieceType(Type);
 		}
@@ -178,12 +195,13 @@ public partial class CarromPiece : RigidBody2D
 			// Fallback: create new collision shape if not found
 			_collisionShape = new CircleShape2D();
 			_collisionShape.Radius = PhysicsConfig.GetCollisionRadiusForPieceType(Type);
-			
+
 			if (_collisionShape2D == null)
 			{
 				_collisionShape2D = new CollisionShape2D();
 				AddChild(_collisionShape2D);
 			}
+
 			_collisionShape2D.Shape = _collisionShape;
 		}
 	}
@@ -199,6 +217,7 @@ public partial class CarromPiece : RigidBody2D
 		if (_pieceLabel != null)
 		{
 			_pieceLabel.Text = GetPieceText();
+
 			// Use visual radius for label sizing (not collision radius)
 			float radius = PhysicsConfig.GetRadiusForPieceType(Type);
 			float size = radius * 2;
@@ -217,7 +236,7 @@ public partial class CarromPiece : RigidBody2D
 	{
 		BodyEntered += OnBodyEntered;
 	}
-	
+
 	private Color GetPieceColor()
 	{
 		return PieceColor;
@@ -234,7 +253,7 @@ public partial class CarromPiece : RigidBody2D
 			PieceType.Black => new Color(0.8f, 0.4f, 1.0f), // Purple
 			PieceType.Red => new Color(1.0f, 0.8f, 0.2f),   // Gold
 			PieceType.Striker => new Color(0.2f, 1.0f, 0.2f), // Bright green
-			_ => Colors.Gray
+			_ => Colors.Gray,
 		};
 	}
 
@@ -246,7 +265,7 @@ public partial class CarromPiece : RigidBody2D
 			PieceType.Black => "B",
 			PieceType.Red => "Q", // Queen
 			PieceType.Striker => "S",
-			_ => "?"
+			_ => "?",
 		};
 	}
 
@@ -280,28 +299,28 @@ public partial class CarromPiece : RigidBody2D
 		{
 			return false;
 		}
-		
+
 		// Special case: Strikers can be considered stopped immediately after setup to allow input
 		if (IsStrikerReadyForInput())
 		{
 			return true;
 		}
-		
+
 		// Handle pieces that never moved significantly but are clearly settled
 		if (!_hasEverMoved)
 		{
 			return CheckNeverMovedPieceSettlement();
 		}
-		
+
 		// Use physics config to determine if piece is stopped (includes hysteresis)
 		return PhysicsConfig.IsPieceStopped(LinearVelocity, AngularVelocity, _wasMoving);
 	}
-	
+
 	private bool IsStrikerReadyForInput()
 	{
 		return Type == PieceType.Striker && !_hasEverMoved && LinearVelocity.Length() < _minVelocityThreshold;
 	}
-	
+
 	/// <summary>
 	/// Check if a piece that has never moved significantly should be considered settled
 	/// </summary>
@@ -309,14 +328,14 @@ public partial class CarromPiece : RigidBody2D
 	{
 		float currentVelocity = LinearVelocity.Length();
 		float currentAngularVel = Mathf.Abs(AngularVelocity);
-		
+
 		// Enhanced never-moved logic with multiple fallback conditions
 		bool isPhysicallyStationary = currentVelocity < _minVelocityThreshold && currentAngularVel < _angularMinThreshold;
 		bool isCompletelyStill = currentVelocity < 0.01f && currentAngularVel < 0.001f;
-		
+
 		// Calculate time alive once for all checks
 		double timeAlive = Time.GetUnixTimeFromSystem() - _creationTime;
-		
+
 		if (isPhysicallyStationary)
 		{
 			// Progressive timeout: stricter conditions for shorter times, more lenient for longer times
@@ -333,16 +352,15 @@ public partial class CarromPiece : RigidBody2D
 				return true;
 			}
 		}
-		
+
 		// Ultimate fallback - no piece should block settlement indefinitely
 		if (timeAlive > PhysicsConfig.UltimateTimeout)
 		{
 			return true;
 		}
-		
+
 		return false; // Cannot be considered "stopped" if it never moved
 	}
-	
 
 	/// <summary>
 	/// Minimal physics integration with only essential velocity clamping
@@ -351,12 +369,12 @@ public partial class CarromPiece : RigidBody2D
 	{
 		// Only clamp velocities to prevent physics instability - let Godot handle everything else
 		Vector2 velocity = state.LinearVelocity;
-		if (velocity.Length() > _maxVelocityLimit) // Max velocity limit
+		if (velocity.Length() > _maxVelocityLimit)
 		{
 			state.LinearVelocity = velocity.Normalized() * _maxVelocityLimit;
 		}
-		
-		if (Mathf.Abs(state.AngularVelocity) > _maxAngularVelocity) // Max angular velocity limit
+
+		if (Mathf.Abs(state.AngularVelocity) > _maxAngularVelocity)
 		{
 			state.AngularVelocity = Mathf.Sign(state.AngularVelocity) * _maxAngularVelocity;
 		}
@@ -364,14 +382,14 @@ public partial class CarromPiece : RigidBody2D
 
 	/// <summary>
 	/// Apply powder-effect friction based on distance traveled
-	/// 
+	///
 	/// Mimics real carrom physics where board powder creates:
 	/// - Initial "frictionless" feel: Low friction coefficient (μ ≈ 0.05) when powder acts like ball bearings
 	/// - Gradual transition: Friction increases over distance as powder scatters and disperses
 	/// - "Sudden" slowdown: Same constant friction force becomes larger percentage of smaller velocities
 	/// - Physics accuracy: Applies constant deceleration (F = μ × m × g) rather than velocity-proportional damping
-	/// 
-	/// This eliminates the "floaty" feel by using realistic constant-force friction that matches 
+	///
+	/// This eliminates the "floaty" feel by using realistic constant-force friction that matches
 	/// research on carrom board powder physics behavior.
 	/// </summary>
 	public override void _PhysicsProcess(double delta)
@@ -390,7 +408,7 @@ public partial class CarromPiece : RigidBody2D
 
 		Vector2 currentPosition = GlobalPosition;
 		_cachedSpeed = LinearVelocity.Length(); // Cache speed calculation
-		
+
 		// Only apply custom friction when piece is moving significantly
 		if (_cachedSpeed > _minVelocityThreshold)
 		{
@@ -408,11 +426,11 @@ public partial class CarromPiece : RigidBody2D
 				_cachedFrictionCoefficient = PhysicsConfig.CalculatePowderFrictionCoefficient(_distanceTraveled);
 				_frictionCacheValid = true;
 			}
-			
+
 			// Apply realistic friction force: F = μ × m × g
 			float frictionAcceleration = _cachedFrictionCoefficient * PhysicsConfig.GravityConstant;
 			Vector2 frictionForceVector = -LinearVelocity.Normalized() * frictionAcceleration * (float)delta;
-			
+
 			// Prevent friction from reversing direction
 			if (frictionForceVector.Length() > _cachedSpeed)
 			{
@@ -422,19 +440,20 @@ public partial class CarromPiece : RigidBody2D
 			else
 			{
 				LinearVelocity += frictionForceVector;
+
 				// Don't recalculate speed immediately as it will be updated next frame
 			}
-			
+
 			_powderFrictionActive = true;
 		}
 		else
 		{
 			_powderFrictionActive = false;
 		}
-		
+
 		// Update position tracking for next frame
 		_lastPositionForFriction = currentPosition;
-		
+
 		// Update trail if enabled
 		UpdateTrail();
 
@@ -448,7 +467,9 @@ public partial class CarromPiece : RigidBody2D
 	private void RecordDebugPhysicsElapsed()
 	{
 		if (!_isDebugBuild)
+		{
 			return;
+		}
 
 		_debugPhysicsStopwatch.Stop();
 
@@ -458,6 +479,7 @@ public partial class CarromPiece : RigidBody2D
 			_debugPhysicsFrame = frame;
 			DebugPhysicsFrameTotalMs = 0.0;
 		}
+
 		DebugPhysicsFrameTotalMs += _debugPhysicsStopwatch.Elapsed.TotalMilliseconds;
 	}
 
@@ -468,19 +490,19 @@ public partial class CarromPiece : RigidBody2D
 	{
 		// Use cached speed if available from _PhysicsProcess, otherwise calculate
 		float currentSpeed = _cachedSpeed > 0.0f ? _cachedSpeed : LinearVelocity.Length();
-		
+
 		// Track movement history for meaningful velocity validation
 		if (currentSpeed > _maxVelocityAchieved)
 		{
 			_maxVelocityAchieved = currentSpeed;
 		}
-		
+
 		// Mark as having moved if velocity exceeds minimum threshold
 		if (currentSpeed > PhysicsConfig.MinimumMovementValidation && !_hasEverMoved)
 		{
 			_hasEverMoved = true;
 		}
-		
+
 		// Track movement state changes (only after movement validation to prevent false settlement)
 		bool isMoving = currentSpeed > _minVelocityThreshold || Mathf.Abs(AngularVelocity) > _angularMinThreshold;
 		if (isMoving)
@@ -488,8 +510,9 @@ public partial class CarromPiece : RigidBody2D
 			_wasMoving = true;
 			_stoppedTimer = 0.0f;
 		}
-		else if (_wasMoving && _hasEverMoved) // Only allow stopping if piece has actually moved
+		else if (_wasMoving && _hasEverMoved)
 		{
+			// Only allow stopping if piece has actually moved
 			float deltaF = (float)delta;
 			_stoppedTimer += deltaF;
 
@@ -538,20 +561,21 @@ public partial class CarromPiece : RigidBody2D
 					board = foundBoard;
 					break;
 				}
+
 				parent = parent.GetParent();
 			}
-			
+
 			if (board == null)
 			{
 				GD.PrintErr("[CarromPiece] Cannot validate placement: No board reference found");
 				return true; // Assume valid if we can't check
 			}
 		}
-		
+
 		float pieceRadius = PhysicsConfig?.GetRadiusForPieceType(Type) ?? 15.0f;
 		return !board.IsPositionObstructed(position, pieceRadius, this);
 	}
-	
+
 	/// <summary>
 	/// Find a valid position for this piece near the target location
 	/// </summary>
@@ -571,28 +595,29 @@ public partial class CarromPiece : RigidBody2D
 					board = foundBoard;
 					break;
 				}
+
 				parent = parent.GetParent();
 			}
-			
+
 			if (board == null)
 			{
 				GD.PrintErr("[CarromPiece] Cannot find valid position: No board reference found");
 				return targetPosition; // Return original position if we can't check
 			}
 		}
-		
+
 		float pieceRadius = PhysicsConfig?.GetRadiusForPieceType(Type) ?? 15.0f;
-		
+
 		// Check if target position is already valid
 		if (!board.IsPositionObstructed(targetPosition, pieceRadius, this))
 		{
 			return targetPosition;
 		}
-		
+
 		// Use board's spiral search to find alternative position
 		return board.FindValidPositionNearCenter(pieceRadius, this);
 	}
-	
+
 	/// <summary>
 	/// Reset piece to clean state with collision-aware positioning
 	/// </summary>
@@ -603,42 +628,42 @@ public partial class CarromPiece : RigidBody2D
 	public void Reset(Vector2? globalPosition = null, bool immediate = false, bool restoreVisualProperties = true, bool validatePlacement = false)
 	{
 		bool originalContactMonitor = ContactMonitor;
-		
+
 		// Temporarily disable collision monitoring if using immediate mode
 		if (immediate)
 		{
 			ContactMonitor = false;
 		}
-		
+
 		// Stop all movement and clear tracking flags
 		LinearVelocity = Vector2.Zero;
 		AngularVelocity = 0.0f;
 		_wasMoving = false;
 		_stoppedTimer = 0.0f;
-		
+
 		// Reset movement history for fresh settlement detection
 		_hasEverMoved = false;
 		_maxVelocityAchieved = 0.0f;
-		
+
 		// Reset powder friction tracking
 		_distanceTraveled = 0.0f;
 		_powderFrictionActive = false;
-		
+
 		// Invalidate cached calculations
 		_cachedSpeed = 0.0f;
 		_frictionCacheValid = false;
-		
+
 		// Clear trail when resetting piece
 		ClearTrail();
-		
+
 		// Clear reset state flags
 		_skipNextStoppedCheck = false;
-		
+
 		// Handle positioning with optional collision validation
 		if (globalPosition.HasValue)
 		{
 			Vector2 finalPosition = globalPosition.Value;
-			
+
 			// Validate placement if requested
 			if (validatePlacement)
 			{
@@ -652,13 +677,13 @@ public partial class CarromPiece : RigidBody2D
 					GD.PrintErr($"[CarromPiece] Could not find valid position for piece {Type} near {finalPosition}, using original position");
 				}
 			}
-			
+
 			// Use physics server for immediate sync
-			PhysicsServer2D.BodySetState(GetRid(), PhysicsServer2D.BodyState.Transform, 
+			PhysicsServer2D.BodySetState(GetRid(), PhysicsServer2D.BodyState.Transform,
 				new Transform2D(0, finalPosition));
 			GlobalPosition = finalPosition;
 			_lastPositionForFriction = finalPosition;
-			
+
 			// Additional force stop after positioning
 			LinearVelocity = Vector2.Zero;
 			AngularVelocity = 0.0f;
@@ -668,12 +693,12 @@ public partial class CarromPiece : RigidBody2D
 			// Update position tracking for powder friction
 			_lastPositionForFriction = GlobalPosition;
 		}
-		
+
 		// Restore physics and visual state
 		Visible = true;
 		Freeze = false;
 		ContactMonitor = originalContactMonitor;
-		
+
 		// Restore visual properties if requested
 		if (restoreVisualProperties)
 		{
@@ -698,7 +723,7 @@ public partial class CarromPiece : RigidBody2D
 			PieceType.White => 1.0f,
 			PieceType.Black => 1.0f,
 			PieceType.Striker => 0.0f, // Striker has no value (foul if pocketed)
-			_ => 0.0f
+			_ => 0.0f,
 		};
 	}
 
@@ -708,12 +733,12 @@ public partial class CarromPiece : RigidBody2D
 		{
 			return false; // Striker should never be pocketed
 		}
-		
+
 		if (Type == PieceType.Red)
 		{
 			return true; // Queen can be pocketed by anyone (with conditions)
 		}
-		
+
 		return Type == playerPieceType; // Can only pocket assigned pieces
 	}
 
@@ -723,6 +748,7 @@ public partial class CarromPiece : RigidBody2D
 		{
 			return LinearVelocity.Normalized();
 		}
+
 		return Vector2.Zero;
 	}
 
@@ -762,29 +788,32 @@ public partial class CarromPiece : RigidBody2D
 	public static void SetTrailsEnabled(bool enabled)
 	{
 		_globalTrailsEnabled = enabled;
-		
+
 		// Clear all trails when disabling
 		if (!enabled)
 		{
 			// This will be called on each piece individually via ClearTrail()
 		}
 	}
-	
+
 	public static bool AreTrailsEnabled()
 	{
 		return _globalTrailsEnabled;
 	}
-	
+
 	public void ClearTrail()
 	{
 		_trailCount = 0;
 		_trailHead = 0;
 		QueueRedraw(); // Request redraw to remove trail visuals
 	}
-	
+
 	private void UpdateTrail()
 	{
-		if (!_globalTrailsEnabled) return;
+		if (!_globalTrailsEnabled)
+		{
+			return;
+		}
 
 		Vector2 currentPos = GlobalPosition;
 		double currentTime = Time.GetUnixTimeFromSystem();
@@ -802,7 +831,9 @@ public partial class CarromPiece : RigidBody2D
 				_trailHead = (_trailHead + 1) % MAX_TRAIL_POINTS;
 
 				if (_trailCount < MAX_TRAIL_POINTS)
+				{
 					_trailCount++;
+				}
 			}
 		}
 
@@ -812,10 +843,15 @@ public partial class CarromPiece : RigidBody2D
 		{
 			int index = (_trailHead - _trailCount + i + MAX_TRAIL_POINTS) % MAX_TRAIL_POINTS;
 			if ((currentTime - _trailPoints[index].Timestamp) > TRAIL_MAX_AGE)
+			{
 				removeCount++;
+			}
 			else
+			{
 				break; // Points are chronological, stop at first valid point
+			}
 		}
+
 		_trailCount -= removeCount;
 
 		// Request redraw if we have trail points
@@ -824,10 +860,13 @@ public partial class CarromPiece : RigidBody2D
 			QueueRedraw();
 		}
 	}
-	
+
 	private void DrawTrail()
 	{
-		if (!_globalTrailsEnabled || _trailCount < 2) return;
+		if (!_globalTrailsEnabled || _trailCount < 2)
+		{
+			return;
+		}
 
 		Color trailColor = GetTrailColor();
 		double currentTime = Time.GetUnixTimeFromSystem();
@@ -883,10 +922,10 @@ public partial class CarromPiece : RigidBody2D
 	public override void _ExitTree()
 	{
 		base._ExitTree();
-		
+
 		// Remove from pieces group
 		RemoveFromGroup("pieces");
-		
+
 		// Disconnect signals - no need for IsInstanceValid check as _ExitTree means object is still valid
 		BodyEntered -= OnBodyEntered;
 	}

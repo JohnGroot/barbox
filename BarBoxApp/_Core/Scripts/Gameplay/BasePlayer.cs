@@ -3,13 +3,19 @@ using Godot;
 [GlobalClass]
 public abstract partial class BasePlayer : Node2D
 {
-	[Signal] public delegate void PlayerReadyEventHandler();
-	[Signal] public delegate void PlayerDestroyedEventHandler();
+	[Signal]
+	public delegate void PlayerReadyEventHandler();
+
+	[Signal]
+	public delegate void PlayerDestroyedEventHandler();
 
 	[ExportCategory("Player Identity")]
-	[Export] public string PlayerId { get; set; } = "player1";
-	[Export] public string PlayerName { get; set; } = "Player";
-	
+	[Export]
+	public string PlayerId { get; set; } = "player1";
+
+	[Export]
+	public string PlayerName { get; set; } = "Player";
+
 	protected UserSession _userSession;
 	protected bool _isActive = true;
 
@@ -19,7 +25,9 @@ public abstract partial class BasePlayer : Node2D
 		EmitSignal(SignalName.PlayerReady);
 	}
 
-	protected virtual void InitializePlayer() { }
+	protected virtual void InitializePlayer()
+	{
+	}
 
 	public virtual void SetUserSession(UserSession userSession)
 	{
@@ -34,6 +42,8 @@ public abstract partial class BasePlayer : Node2D
 	}
 
 	public UserSession GetUserSession() => _userSession;
+
 	public bool IsActive() => _isActive;
+
 	public void SetActive(bool active) => _isActive = active;
 }

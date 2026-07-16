@@ -1,56 +1,74 @@
-using Godot;
-using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BarBox.Core.UI;
+using Godot;
+using LightResults;
 
-namespace BarBox.Games.Racing
+namespace BarBox.Games.Racing;
+
+/// <summary>
+/// Manages all UI elements for racing games including overlays, status displays, and controls
+/// Extracted from RacingGame to follow single responsibility principle
+/// </summary>
+[GlobalClass]
+public partial class RacingUIManager : Node
 {
-	/// <summary>
-	/// Manages all UI elements for racing games including overlays, status displays, and controls
-	/// Extracted from RacingGame to follow single responsibility principle
-	/// </summary>
-	[GlobalClass]
-	public partial class RacingUIManager : Node
-	{
 	// ================================================================
 	// SIGNALS
 	// ================================================================
-	
-	[Signal] public delegate void TimeTrialRequestedEventHandler();
-	[Signal] public delegate void RestartRequestedEventHandler();
-	[Signal] public delegate void TrackSwitchRequestedEventHandler(int trackIndex);
-	[Signal] public delegate void ResumeRequestedEventHandler();
-	[Signal] public delegate void MainMenuRequestedEventHandler();
-	[Signal] public delegate void RaceAgainRequestedEventHandler();
-	[Signal] public delegate void PracticeModeRequestedEventHandler();
-	[Signal] public delegate void TracksLeaderboardRequestedEventHandler();
-	[Signal] public delegate void TrackLoadFromOverlayRequestedEventHandler(string trackId);
-	[Signal] public delegate void AddCreditsRequestedEventHandler();
+	[Signal]
+	public delegate void TimeTrialRequestedEventHandler();
+
+	[Signal]
+	public delegate void RestartRequestedEventHandler();
+
+	[Signal]
+	public delegate void TrackSwitchRequestedEventHandler(int trackIndex);
+
+	[Signal]
+	public delegate void ResumeRequestedEventHandler();
+
+	[Signal]
+	public delegate void MainMenuRequestedEventHandler();
+
+	[Signal]
+	public delegate void RaceAgainRequestedEventHandler();
+
+	[Signal]
+	public delegate void PracticeModeRequestedEventHandler();
+
+	[Signal]
+	public delegate void TracksLeaderboardRequestedEventHandler();
+
+	[Signal]
+	public delegate void TrackLoadFromOverlayRequestedEventHandler(string trackId);
+
+	[Signal]
+	public delegate void AddCreditsRequestedEventHandler();
 
 	// ================================================================
 	// EXPORT PROPERTIES
 	// ================================================================
-	
 	[ExportCategory("UI Settings")]
-	[Export] public int TimeTrialCreditCost { get; set; } = 1;
+	[Export]
+	public int TimeTrialCreditCost { get; set; } = 1;
 
 	// ================================================================
 	// CONSTANTS
 	// ================================================================
-	
+
 	// Total height reserved for TopMenuBar (100px) + ContextButtonBar (50px)
 	private const float TOP_MENU_HEIGHT = 150.0f;
-	
+
 	// ================================================================
 	// PRIVATE FIELDS - UI COMPONENTS
 	// ================================================================
 
 	// Main UI layer
 	private CanvasLayer _uiLayer;
-	
+
 	// Arc-based HUD renderer
 	private RacingHUDArcRenderer _hudArcRenderer;
 
@@ -58,7 +76,7 @@ namespace BarBox.Games.Racing
 	private Control _timerDisplayContainer;
 	private Panel _timerBackground;
 	private Label _timerLabel;
-	
+
 	// Control buttons
 	private Button _timeTrialButton;
 	private Button _restartButton;
@@ -72,7 +90,7 @@ namespace BarBox.Games.Racing
 	// Track selection data
 	private List<PackedScene> _trackScenes;
 	private int _currentTrackIndex = 0;
-	
+
 	// Tracks & Leaderboard overlay data
 	private RacingTracksLeaderboardUI _tracksLeaderboardOverlay;
 	private Dictionary<string, TrackMetadata> _trackMetadataCache = [];
@@ -106,14 +124,22 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public class TrackMetadata
 	{
-		public string TrackId { get; set; } = "";
-		public string TrackName { get; set; } = "";
+		public string TrackId { get; set; } = string.Empty;
+
+		public string TrackName { get; set; } = string.Empty;
+
 		public int DefaultLaps { get; set; } = 3;
+
 		public PackedScene Scene { get; set; }
+
 		public int Index { get; set; } = -1;
+
 		public float BestRaceTime { get; set; } = 0f;
+
 		public bool HasPlayerScores { get; set; } = false;
+
 		public bool IsCurrentTrack { get; set; } = false;
+
 		public int RaceCount { get; set; } = 0;
 	}
 
@@ -122,35 +148,44 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public class LeaderboardEntry
 	{
-		public string TrackId { get; set; } = "";
-		public string TrackName { get; set; } = "";
+		public string TrackId { get; set; } = string.Empty;
+
+		public string TrackName { get; set; } = string.Empty;
+
 		public float Time { get; set; } = 0f;
-		public string Type { get; set; } = ""; // "Best Race"
+
+		public string Type { get; set; } = string.Empty; // "Best Race"
+
 		public int Laps { get; set; } = 0;
+
 		public bool IsCurrentPlayer { get; set; } = false;
+
 		public DateTime SetDate { get; set; } = DateTime.UtcNow;
-		public string Username { get; set; } = "";
+
+		public string Username { get; set; } = string.Empty;
 
 		// Rank for display purposes
-		public string DisplayRank { get; set; } = "";
+		public string DisplayRank { get; set; } = string.Empty;
 
 		public string FormattedTime => Time > 0f ? $"{Time:F3}s" : "No time";
+
 		public string CategoryDisplay => $"Best Race ({Laps} laps)";
 	}
 
 	// ================================================================
 	// PUBLIC PROPERTIES
 	// ================================================================
-
 	public bool IsPauseOverlayVisible => _pauseOverlay.Visible;
+
 	public bool IsGameOverOverlayVisible => _raceCompleteOverlay.IsVisible;
+
 	public bool IsRaceCompleteOverlayVisible => _raceCompleteOverlay.IsVisible;
+
 	public bool IsCountdownOverlayVisible => _countdownOverlay.Visible;
 
 	// ================================================================
 	// INITIALIZATION
 	// ================================================================
-
 	public void Initialize(List<PackedScene> trackScenes = null, int currentTrackIndex = 0, int timeTrialCreditCost = 1)
 	{
 		_trackScenes = trackScenes;
@@ -316,9 +351,9 @@ namespace BarBox.Games.Racing
 		string timeTrialText = "Start Time Trial (3 Laps)";
 		if (TimeTrialCreditCost > 0 && !GameHost.ShouldBypassCredits())
 		{
-			timeTrialText += $" - {TimeTrialCreditCost} Credit{(TimeTrialCreditCost != 1 ? "s" : "")}";
+			timeTrialText += $" - {TimeTrialCreditCost} Credit{(TimeTrialCreditCost != 1 ? "s" : string.Empty)}";
 		}
-		
+
 		_timeTrialButton = new Button() { Text = timeTrialText };
 		_timeTrialButton.Pressed += () => EmitSignal(SignalName.TimeTrialRequested);
 		parent.AddChild(_timeTrialButton);
@@ -331,7 +366,8 @@ namespace BarBox.Games.Racing
 	private void SetupRestartButton(Container parent)
 	{
 		_restartButton = new Button() { Text = "Restart Practice" };
-		_restartButton.Pressed += () => {
+		_restartButton.Pressed += () =>
+		{
 			ResetUserIdleTimer();
 			EmitSignal(SignalName.RestartRequested);
 		};
@@ -345,7 +381,8 @@ namespace BarBox.Games.Racing
 	private void SetupTracksLeaderboardButton(Container parent)
 	{
 		_tracksLeaderboardButton = new Button() { Text = "Tracks & Leaderboard" };
-		_tracksLeaderboardButton.Pressed += () => {
+		_tracksLeaderboardButton.Pressed += () =>
+		{
 			ResetUserIdleTimer();
 			ShowTracksLeaderboard();
 		};
@@ -449,14 +486,16 @@ namespace BarBox.Games.Racing
 		vbox.AddChild(resumeButton);
 
 		var restartButton = new Button() { Text = "Restart" };
-		restartButton.Pressed += () => { 
+		restartButton.Pressed += () =>
+		{
 			ResetUserIdleTimer();
 			EmitSignal(SignalName.RestartRequested);
 		};
 		vbox.AddChild(restartButton);
-		
+
 		var mainMenuButton = new Button() { Text = "Main Menu" };
-		mainMenuButton.Pressed += () => {
+		mainMenuButton.Pressed += () =>
+		{
 			ResetUserIdleTimer();
 			EmitSignal(SignalName.MainMenuRequested);
 		};
@@ -472,17 +511,20 @@ namespace BarBox.Games.Racing
 		_raceCompleteOverlay.CreateOverlay(_uiLayer);
 
 		// Connect button signals
-		_raceCompleteOverlay.TryAgainButton.Pressed += () => {
+		_raceCompleteOverlay.TryAgainButton.Pressed += () =>
+		{
 			ResetUserIdleTimer();
 			EmitSignal(SignalName.RaceAgainRequested);
 		};
 
-		_raceCompleteOverlay.AddCreditsButton.Pressed += () => {
+		_raceCompleteOverlay.AddCreditsButton.Pressed += () =>
+		{
 			ResetUserIdleTimer();
 			EmitSignal(SignalName.AddCreditsRequested);
 		};
 
-		_raceCompleteOverlay.ReturnToPracticeButton.Pressed += () => {
+		_raceCompleteOverlay.ReturnToPracticeButton.Pressed += () =>
+		{
 			ResetUserIdleTimer();
 			EmitSignal(SignalName.PracticeModeRequested);
 		};
@@ -509,7 +551,7 @@ namespace BarBox.Games.Racing
 		if (_hudArcRenderer != null && IsInstanceValid(_hudArcRenderer))
 		{
 			var timeText = $"{timeLabel}: {timeDisplay:F1}s";
-			var isPracticeMode = (gameMode == RacingMode.Practice);
+			var isPracticeMode = gameMode == RacingMode.Practice;
 			_hudArcRenderer.UpdateHUDState(carSpeed, maxSpeed, currentLap, targetLaps, lapProgress, timeText, isPracticeMode);
 		}
 	}
@@ -579,8 +621,11 @@ namespace BarBox.Games.Racing
 	/// <param name="isInCountdown">Whether countdown is active</param>
 	public void UpdateTracksLeaderboardButton(bool isActiveTimeTrial, bool isInCountdown)
 	{
-		if (_tracksLeaderboardButton == null) return;
-		
+		if (_tracksLeaderboardButton == null)
+		{
+			return;
+		}
+
 		// Disable during active time trial or countdown
 		bool shouldDisable = isActiveTimeTrial || isInCountdown;
 		_tracksLeaderboardButton.Disabled = shouldDisable;
@@ -589,7 +634,6 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	// OVERLAY CONTROL
 	// ================================================================
-
 	public void SetPauseOverlayVisible(bool visible)
 	{
 		_pauseOverlay.Visible = visible;
@@ -597,7 +641,6 @@ namespace BarBox.Games.Racing
 
 	public void SetRaceCompleteOverlayVisible(bool visible, float finalTime = 0f, bool canAffordReplay = true, string currentTrackId = "", int creditCost = 1)
 	{
-
 		if (visible && !_raceCompleteOverlayWasVisible)
 		{
 			// Overlay transitioning from hidden to visible - load data once
@@ -625,7 +668,7 @@ namespace BarBox.Games.Racing
 		// Keep the old simple overlay for non-time-trial modes if needed
 		if (visible)
 		{
-			SetRaceCompleteOverlayVisible(visible, finalTime, canAffordReplay, "", TimeTrialCreditCost);
+			SetRaceCompleteOverlayVisible(visible, finalTime, canAffordReplay, string.Empty, TimeTrialCreditCost);
 		}
 		else
 		{
@@ -701,7 +744,10 @@ namespace BarBox.Games.Racing
 	{
 		// Concurrency guard - prevent overlapping requests
 		if (_isLoadingRaceComplete)
+		{
 			return;
+		}
+
 		_isLoadingRaceComplete = true;
 
 		// Circuit breaker - stop after too many failures
@@ -712,6 +758,7 @@ namespace BarBox.Games.Racing
 			_isLoadingRaceComplete = false;
 			return;
 		}
+
 		try
 		{
 			// Get current player's phone number (set by RacingGame via UpdateTrackMetadataWithLeaderboard)
@@ -736,12 +783,10 @@ namespace BarBox.Games.Racing
 					trackId,
 					"best_race",
 					trackLaps,
-					limit: 10
-				);
+					limit: 10);
 
 				if (leaderboardResult.IsSuccess(out var leaderboard))
 				{
-
 					// Convert to LeaderboardEntry format
 					for (int i = 0; i < leaderboard.Leaderboard.Count; i++)
 					{
@@ -755,14 +800,14 @@ namespace BarBox.Games.Racing
 							Laps = trackLaps,
 							Username = entry.Username,
 							IsCurrentPlayer = entry.PlayerId.ToString() == playerId,
-							DisplayRank = (i + 1).ToString()
+							DisplayRank = (i + 1).ToString(),
 						});
 
 						// Calculate player position
 						if (entry.PlayerId.ToString() == playerId)
 						{
 							playerPosition = i + 1;
-							isNewHighScore = (i == 0); // First place
+							isNewHighScore = i == 0; // First place
 						}
 					}
 
@@ -808,7 +853,9 @@ namespace BarBox.Games.Racing
 	private void UpdateRaceCompleteUI(string trackName, float finalTime, int position, bool isNewHighScore, List<LeaderboardEntry> highScores, string currentPlayerPhoneNumber)
 	{
 		if (_raceCompleteOverlay == null)
+		{
 			return;
+		}
 
 		// Update race results display
 		_raceCompleteOverlay.UpdateRaceResults(finalTime, trackName, position, isNewHighScore);
@@ -823,7 +870,9 @@ namespace BarBox.Games.Racing
 	private void UpdateRaceCompleteUIFallback(string trackId, float finalTime)
 	{
 		if (_raceCompleteOverlay == null)
+		{
 			return;
+		}
 
 		var trackName = GetTrackNameFromId(trackId);
 
@@ -849,7 +898,6 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	// TRACK MANAGEMENT
 	// ================================================================
-
 	public void SetCurrentTrackIndex(int trackIndex)
 	{
 		_currentTrackIndex = trackIndex;
@@ -859,6 +907,7 @@ namespace BarBox.Games.Racing
 	public void UpdateTrackScenes(List<PackedScene> trackScenes)
 	{
 		_trackScenes = trackScenes;
+
 		// Note: This would require rebuilding the track selection buttons
 		// For now, assume this is called during initialization
 	}
@@ -878,7 +927,8 @@ namespace BarBox.Games.Racing
 		var buttons = new List<ContextButtonData>();
 
 		// Standard "Return to Menu" button
-		buttons.Add(GameContextButton.CreateReturnToMenuButton(() => {
+		buttons.Add(GameContextButton.CreateReturnToMenuButton(() =>
+		{
 			ResetUserIdleTimer();
 			EmitSignal(SignalName.MainMenuRequested);
 		}));
@@ -888,13 +938,15 @@ namespace BarBox.Games.Racing
 		{
 			if (isGamePaused)
 			{
-				buttons.Add(GameContextButton.CreateResumeButton(() => {
+				buttons.Add(GameContextButton.CreateResumeButton(() =>
+				{
 					EmitSignal(SignalName.ResumeRequested);
 				}));
 			}
 			else
 			{
-				buttons.Add(GameContextButton.CreatePauseButton(() => {
+				buttons.Add(GameContextButton.CreatePauseButton(() =>
+				{
 					// Note: Pause signal would need to be added if needed
 				}));
 			}
@@ -903,19 +955,19 @@ namespace BarBox.Games.Racing
 		// Restart button
 		if (isGameActive)
 		{
-			buttons.Add(new ContextButtonData("Restart", () => {
+			buttons.Add(new ContextButtonData("Restart", () =>
+			{
 				ResetUserIdleTimer();
 				EmitSignal(SignalName.RestartRequested);
 			}));
 		}
 
-		return buttons.ToArray();
+		return [.. buttons];
 	}
 
 	// ================================================================
 	// UTILITY METHODS
 	// ================================================================
-
 	private void ResetUserIdleTimer()
 	{
 		SessionManager.GetInstance()?.ResetAllIdleTimers();
@@ -937,7 +989,7 @@ namespace BarBox.Games.Racing
 		{
 			_tracksLeaderboardOverlay = new RacingTracksLeaderboardUI();
 			_tracksLeaderboardOverlay.CreateOverlay(_uiLayer);
-			
+
 			// Connect signals
 			_tracksLeaderboardOverlay.CloseButton.Pressed += HideTracksLeaderboard;
 			_tracksLeaderboardOverlay.LoadTrackButton.Pressed += OnLoadTrackFromOverlay;
@@ -951,11 +1003,13 @@ namespace BarBox.Games.Racing
 	public void ShowTracksLeaderboard()
 	{
 		if (_tracksLeaderboardOverlay == null)
+		{
 			return;
+		}
 
 		// Reset idle timer when opening premium UI
 		ResetUserIdleTimer();
-		
+
 		_tracksLeaderboardOverlay.ShowOverlay();
 		EmitSignal(SignalName.TracksLeaderboardRequested);
 	}
@@ -971,11 +1025,11 @@ namespace BarBox.Games.Racing
 	public void UpdateTrackMetadata(Dictionary<string, TrackMetadata> trackMetadata, string currentTrackId)
 	{
 		_trackMetadataCache = trackMetadata;
-		
+
 		if (_tracksLeaderboardOverlay?.IsVisible == true)
 		{
 			PopulateTrackList(currentTrackId);
-			
+
 			// Refresh leaderboard for currently selected track
 			if (!string.IsNullOrEmpty(_tracksLeaderboardOverlay.SelectedTrackId))
 			{
@@ -987,7 +1041,9 @@ namespace BarBox.Games.Racing
 	private void PopulateTrackList(string currentTrackId)
 	{
 		if (_tracksLeaderboardOverlay == null)
+		{
 			return;
+		}
 
 		// Clear existing buttons
 		_tracksLeaderboardOverlay.ClearTrackButtons();
@@ -997,7 +1053,7 @@ namespace BarBox.Games.Racing
 		{
 			bool isCurrent = track.TrackId == currentTrackId;
 			_tracksLeaderboardOverlay.AddTrackButton(track.TrackId, track.TrackName, isCurrent, track.HasPlayerScores);
-			
+
 			// Connect button signal
 			var button = _tracksLeaderboardOverlay.GetTrackButton(track.TrackId);
 			if (button != null)
@@ -1010,7 +1066,7 @@ namespace BarBox.Games.Racing
 		// Select first track or current track by default
 		if (_trackMetadataCache.Count > 0)
 		{
-			var defaultTrack = _trackMetadataCache.Values.FirstOrDefault(t => t.TrackId == currentTrackId) ?? 
+			var defaultTrack = _trackMetadataCache.Values.FirstOrDefault(t => t.TrackId == currentTrackId) ??
 							   _trackMetadataCache.Values.OrderBy(t => t.Index).First();
 			OnTrackSelected(defaultTrack.TrackId);
 		}
@@ -1019,7 +1075,9 @@ namespace BarBox.Games.Racing
 	private void OnTrackSelected(string trackId)
 	{
 		if (!_trackMetadataCache.TryGetValue(trackId, out var track))
+		{
 			return;
+		}
 
 		bool canLoad = !track.IsCurrentTrack;
 		_tracksLeaderboardOverlay?.UpdateSelectedTrack(trackId, track.TrackName, canLoad);
@@ -1029,7 +1087,9 @@ namespace BarBox.Games.Racing
 	private void OnLoadTrackFromOverlay()
 	{
 		if (_tracksLeaderboardOverlay == null || string.IsNullOrEmpty(_tracksLeaderboardOverlay.SelectedTrackId))
+		{
 			return;
+		}
 
 		ResetUserIdleTimer();
 		EmitSignal(SignalName.TrackLoadFromOverlayRequested, _tracksLeaderboardOverlay.SelectedTrackId);
@@ -1039,7 +1099,9 @@ namespace BarBox.Games.Racing
 	private void UpdateLeaderboardForTrack(string trackId)
 	{
 		if (_tracksLeaderboardOverlay == null || !_trackMetadataCache.TryGetValue(trackId, out var track))
+		{
 			return;
+		}
 
 		// Load leaderboard data asynchronously
 		LoadLeaderboardDataAsync(trackId);
@@ -1052,7 +1114,10 @@ namespace BarBox.Games.Racing
 	{
 		// Concurrency guard - prevent overlapping requests
 		if (_isLoadingTracksLeaderboard)
+		{
 			return;
+		}
+
 		_isLoadingTracksLeaderboard = true;
 
 		try
@@ -1106,8 +1171,7 @@ namespace BarBox.Games.Racing
 						trackId,
 						"best_race",
 						trackLaps,
-						limit: 10
-					);
+						limit: 10);
 
 					if (leaderboardResult.HasValue && leaderboardResult.Value.IsSuccess(out _))
 					{
@@ -1155,6 +1219,7 @@ namespace BarBox.Games.Racing
 				if (finalLeaderboard.Leaderboard == null || finalLeaderboard.Leaderboard.Count == 0)
 				{
 					GD.Print($"[RacingUIManager] Leaderboard for {trackId} is empty (no scores yet)");
+
 					// Show empty leaderboard (not an error)
 					var emptyCallable = Callable.From(() => _tracksLeaderboardOverlay?.UpdateLeaderboard(lapEntries, raceEntries));
 					emptyCallable.CallDeferred();
@@ -1174,7 +1239,7 @@ namespace BarBox.Games.Racing
 							Laps = trackLaps,
 							Username = entry.Username,
 							IsCurrentPlayer = playerId != null && entry.PlayerId.ToString() == playerId,
-							DisplayRank = (i + 1).ToString()
+							DisplayRank = (i + 1).ToString(),
 						});
 					}
 
@@ -1215,11 +1280,13 @@ namespace BarBox.Games.Racing
 	private void UpdateLeaderboardFallback(string trackId)
 	{
 		if (_tracksLeaderboardOverlay?.SelectedTrackId != trackId)
+		{
 			return;
+		}
 
 		var emptyLapEntries = new List<LeaderboardEntry>();
 		var emptyRaceEntries = new List<LeaderboardEntry>();
-		
+
 		_tracksLeaderboardOverlay.UpdateLeaderboard(emptyLapEntries, emptyRaceEntries);
 	}
 
@@ -1227,12 +1294,12 @@ namespace BarBox.Games.Racing
 	/// Get current player ID (this should be set by the game during initialization)
 	/// </summary>
 	private string _currentPlayerId = "player1";
-	
+
 	public void SetCurrentPlayerId(string playerId)
 	{
 		_currentPlayerId = playerId;
 	}
-	
+
 	private string GetCurrentPlayerId()
 	{
 		return _currentPlayerId;
@@ -1252,7 +1319,9 @@ namespace BarBox.Games.Racing
 
 			// Check validity after async operation - scene could be destroyed
 			if (!IsInstanceValid(this))
+			{
 				return;
+			}
 
 			// Update cache and UI
 			_trackMetadataCache = enhancedMetadata;
@@ -1291,7 +1360,7 @@ namespace BarBox.Games.Racing
 				DefaultLaps = kvp.Value.DefaultLaps,
 				Scene = kvp.Value.Scene,
 				Index = kvp.Value.Index,
-				IsCurrentTrack = kvp.Value.IsCurrentTrack
+				IsCurrentTrack = kvp.Value.IsCurrentTrack,
 			};
 		}
 
@@ -1328,8 +1397,9 @@ namespace BarBox.Games.Racing
 			string timeTrialText = "Start Time Trial (3 Laps)";
 			if (TimeTrialCreditCost > 0 && !GameHost.ShouldBypassCredits())
 			{
-				timeTrialText += $" - {TimeTrialCreditCost} Credit{(TimeTrialCreditCost != 1 ? "s" : "")}";
+				timeTrialText += $" - {TimeTrialCreditCost} Credit{(TimeTrialCreditCost != 1 ? "s" : string.Empty)}";
 			}
+
 			_timeTrialButton.Text = timeTrialText;
 		}
 	}
@@ -1357,8 +1427,8 @@ namespace BarBox.Games.Racing
 	{
 		int minutes = (int)(timeSeconds / 60.0f);
 		float seconds = timeSeconds % 60.0f;
+
 		// Pad minutes to 2 digits for consistent text width
 		return $"{minutes:00}:{seconds:00.000}";
 	}
-}
 }

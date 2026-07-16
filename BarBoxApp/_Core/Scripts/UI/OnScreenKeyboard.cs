@@ -1,7 +1,7 @@
-namespace BarBox.Core.UI;
-
-using Godot;
 using System.Collections.Generic;
+using Godot;
+
+namespace BarBox.Core.UI;
 
 /// <summary>
 /// High-performance on-screen keyboard using custom rendering
@@ -99,12 +99,12 @@ public partial class OnScreenKeyboard : Control
 	#region Private Fields
 
 	// Layout data
-	private KeyboardLayout[] _layouts = System.Array.Empty<KeyboardLayout>();
+	private KeyboardLayout[] _layouts = [];
 	private int _activeLayoutIndex;
 	private string _previousLayoutName;
 
 	// Cached key rectangles for active layout
-	private KeyRect[] _keyRects = System.Array.Empty<KeyRect>();
+	private KeyRect[] _keyRects = [];
 
 	// Input state
 	private int _hoveredKeyIndex = -1;
@@ -180,15 +180,20 @@ public partial class OnScreenKeyboard : Control
 				GetTree().NodeAdded -= OnNodeAdded;
 				GetTree().NodeRemoved -= OnNodeRemoved;
 				if (GetTree().Root != null)
+				{
 					GetTree().Root.SizeChanged -= OnViewportSizeChanged;
+				}
 			}
 
 			// Clean up field monitors
 			foreach (var field in _monitoredFields)
 			{
 				if (IsInstanceValid(field))
+				{
 					DisconnectFieldSignals(field);
+				}
 			}
+
 			_monitoredFields.Clear();
 		}
 	}
@@ -212,11 +217,13 @@ public partial class OnScreenKeyboard : Control
 		}
 	}
 
-	private void DrawKey(in KeyRect keyRect)
+	private void DrawKey(KeyRect keyRect)
 	{
 		// Skip spacers - they're empty non-interactive areas
 		if (keyRect.Data.Type == KeyType.Spacer)
+		{
 			return;
+		}
 
 		var index = System.Array.IndexOf(_keyRects, keyRect);
 		var isHovered = index == _hoveredKeyIndex;
@@ -264,10 +271,13 @@ public partial class OnScreenKeyboard : Control
 		}
 	}
 
-	private void DrawKeyIcon(in KeyRect keyRect, Color color)
+	private void DrawKeyIcon(KeyRect keyRect, Color color)
 	{
 		var icon = GetIconTexture(keyRect.Data);
-		if (icon == null) return;
+		if (icon == null)
+		{
+			return;
+		}
 
 		// Center icon in key rect with padding
 		var iconPadding = 8f;
@@ -279,17 +289,19 @@ public partial class OnScreenKeyboard : Control
 		var scaledSize = iconSize * scale;
 
 		var iconRect = new Rect2(
-			keyRect.Rect.Position + (keyRect.Rect.Size - scaledSize) / 2,
-			scaledSize
-		);
+			keyRect.Rect.Position + ((keyRect.Rect.Size - scaledSize) / 2),
+			scaledSize);
 
 		DrawTextureRect(icon, iconRect, false, color);
 	}
 
-	private void DrawKeyText(in KeyRect keyRect, Color color)
+	private void DrawKeyText(KeyRect keyRect, Color color)
 	{
 		var text = keyRect.Data.GetDisplayText(_uppercase);
-		if (string.IsNullOrEmpty(text)) return;
+		if (string.IsNullOrEmpty(text))
+		{
+			return;
+		}
 
 		var font = KeyFont ?? ThemeDB.FallbackFont;
 		var fontSize = FontSize;
@@ -299,14 +311,13 @@ public partial class OnScreenKeyboard : Control
 
 		// Center text in key rect
 		var textPos = new Vector2(
-			keyRect.Rect.Position.X + (keyRect.Rect.Size.X - textSize.X) / 2,
-			keyRect.Rect.Position.Y + (keyRect.Rect.Size.Y + textSize.Y) / 2 - textSize.Y * 0.2f
-		);
+			keyRect.Rect.Position.X + ((keyRect.Rect.Size.X - textSize.X) / 2),
+			keyRect.Rect.Position.Y + ((keyRect.Rect.Size.Y + textSize.Y) / 2) - (textSize.Y * 0.2f));
 
 		DrawString(font, textPos, text, HorizontalAlignment.Left, -1, fontSize, color);
 	}
 
-	private Texture2D GetIconTexture(in KeyData keyData)
+	private Texture2D GetIconTexture(KeyData keyData)
 	{
 		// Check predefined icons
 		var icon = keyData.Icon switch
@@ -317,10 +328,13 @@ public partial class OnScreenKeyboard : Control
 			PredefinedIcon.Right => _iconRight,
 			PredefinedIcon.Hide => _iconHide,
 			PredefinedIcon.Enter => _iconEnter,
-			_ => null
+			_ => null,
 		};
 
-		if (icon != null) return icon;
+		if (icon != null)
+		{
+			return icon;
+		}
 
 		// Check custom icon path
 		if (!string.IsNullOrEmpty(keyData.CustomIconPath))
@@ -329,8 +343,11 @@ public partial class OnScreenKeyboard : Control
 			{
 				icon = GD.Load<Texture2D>(keyData.CustomIconPath);
 				if (icon != null)
+				{
 					_customIconCache[keyData.CustomIconPath] = icon;
+				}
 			}
+
 			return icon;
 		}
 
@@ -355,7 +372,10 @@ public partial class OnScreenKeyboard : Control
 
 	private void HandleMouseButton(InputEventMouseButton mb)
 	{
-		if (mb.ButtonIndex != MouseButton.Left) return;
+		if (mb.ButtonIndex != MouseButton.Left)
+		{
+			return;
+		}
 
 		var keyIndex = FindKeyAtPosition(mb.Position);
 
@@ -371,6 +391,7 @@ public partial class OnScreenKeyboard : Control
 			{
 				HandleKeyPress(_keyRects[keyIndex].Data);
 			}
+
 			_pressedKeyIndex = -1;
 			QueueRedraw();
 		}
@@ -394,24 +415,33 @@ public partial class OnScreenKeyboard : Control
 		{
 			// Skip spacers - they're not interactive
 			if (_keyRects[i].Data.Type == KeyType.Spacer)
+			{
 				continue;
+			}
 
 			if (_keyRects[i].Rect.HasPoint(pos))
+			{
 				return i;
+			}
 		}
+
 		return -1;
 	}
 
-	private void HandleKeyPress(in KeyData keyData)
+	private void HandleKeyPress(KeyData keyData)
 	{
 		switch (keyData.Type)
 		{
 			case KeyType.Char:
 			case KeyType.Special:
 				DispatchKeyEvent(keyData);
+
 				// Disable uppercase after typing a character
 				if (keyData.Type == KeyType.Char)
+				{
 					SetUppercase(false);
+				}
+
 				break;
 
 			case KeyType.SpecialShift:
@@ -428,9 +458,12 @@ public partial class OnScreenKeyboard : Control
 		}
 	}
 
-	private void DispatchKeyEvent(in KeyData keyData)
+	private void DispatchKeyEvent(KeyData keyData)
 	{
-		if (string.IsNullOrEmpty(keyData.Output)) return;
+		if (string.IsNullOrEmpty(keyData.Output))
+		{
+			return;
+		}
 
 		var inputEvent = new InputEventKey
 		{
@@ -438,7 +471,7 @@ public partial class OnScreenKeyboard : Control
 			AltPressed = false,
 			MetaPressed = false,
 			CtrlPressed = false,
-			Pressed = true
+			Pressed = true,
 		};
 
 		var keyCode = KeyCodeMap.GetKeyCodeWithCase(keyData.Output, _uppercase);
@@ -507,7 +540,7 @@ public partial class OnScreenKeyboard : Control
 	{
 		if (_layouts.Length == 0 || _activeLayoutIndex >= _layouts.Length)
 		{
-			_keyRects = System.Array.Empty<KeyRect>();
+			_keyRects = [];
 			return;
 		}
 
@@ -516,13 +549,13 @@ public partial class OnScreenKeyboard : Control
 
 		if (layout.Rows == null || layout.Rows.Length == 0)
 		{
-			_keyRects = System.Array.Empty<KeyRect>();
+			_keyRects = [];
 			return;
 		}
 
-		var contentWidth = Size.X - Padding * 2;
-		var contentHeight = Size.Y - Padding * 2;
-		var rowHeight = (contentHeight - KeySeparation * (layout.Rows.Length - 1)) / layout.Rows.Length;
+		var contentWidth = Size.X - (Padding * 2);
+		var contentHeight = Size.Y - (Padding * 2);
+		var rowHeight = (contentHeight - (KeySeparation * (layout.Rows.Length - 1))) / layout.Rows.Length;
 
 		float y = Padding;
 
@@ -542,7 +575,7 @@ public partial class OnScreenKeyboard : Control
 				totalStretch += key.StretchRatio > 0 ? key.StretchRatio : 1f;
 			}
 
-			var availableWidth = contentWidth - KeySeparation * (row.Keys.Length - 1);
+			var availableWidth = contentWidth - (KeySeparation * (row.Keys.Length - 1));
 			float x = Padding;
 
 			for (int keyIdx = 0; keyIdx < row.Keys.Length; keyIdx++)
@@ -557,7 +590,7 @@ public partial class OnScreenKeyboard : Control
 					LayoutIndex = _activeLayoutIndex,
 					RowIndex = rowIdx,
 					KeyIndex = keyIdx,
-					Data = key
+					Data = key,
 				});
 
 				x += keyWidth + KeySeparation;
@@ -566,7 +599,7 @@ public partial class OnScreenKeyboard : Control
 			y += rowHeight + KeySeparation;
 		}
 
-		_keyRects = keyList.ToArray();
+		_keyRects = [.. keyList];
 	}
 
 	#endregion
@@ -575,7 +608,11 @@ public partial class OnScreenKeyboard : Control
 
 	private void SetUppercase(bool value)
 	{
-		if (_uppercase == value) return;
+		if (_uppercase == value)
+		{
+			return;
+		}
+
 		_uppercase = value;
 		QueueRedraw();
 	}
@@ -591,7 +628,10 @@ public partial class OnScreenKeyboard : Control
 
 	public void ShowKeyboard()
 	{
-		if (Visible && Position.Y <= _shownPosition.Y) return;
+		if (Visible && Position.Y <= _shownPosition.Y)
+		{
+			return;
+		}
 
 		Visible = true;
 
@@ -609,7 +649,10 @@ public partial class OnScreenKeyboard : Control
 
 	public void HideKeyboard()
 	{
-		if (!Visible) return;
+		if (!Visible)
+		{
+			return;
+		}
 
 		SetUppercase(false);
 
@@ -707,7 +750,10 @@ public partial class OnScreenKeyboard : Control
 
 	private void MonitorField(Control field)
 	{
-		if (_monitoredFields.Contains(field)) return;
+		if (_monitoredFields.Contains(field))
+		{
+			return;
+		}
 
 		ConnectFieldSignals(field);
 		_monitoredFields.Add(field);
@@ -735,8 +781,15 @@ public partial class OnScreenKeyboard : Control
 
 	private void OnFieldFocusEntered(Control field)
 	{
-		if (!AutoShow) return;
-		if (!IsKeyboardTargetField(field)) return;
+		if (!AutoShow)
+		{
+			return;
+		}
+
+		if (!IsKeyboardTargetField(field))
+		{
+			return;
+		}
 
 		_focusedField = field;
 
@@ -759,12 +812,18 @@ public partial class OnScreenKeyboard : Control
 
 	private async void OnFieldFocusExited(Control field)
 	{
-		if (!AutoShow) return;
+		if (!AutoShow)
+		{
+			return;
+		}
 
 		// Wait one frame for new focus owner to be set
 		await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
 
-		if (!IsInstanceValid(this)) return;
+		if (!IsInstanceValid(this))
+		{
+			return;
+		}
 
 		var newFocus = GetViewport()?.GuiGetFocusOwner();
 		if (!IsKeyboardTargetField(newFocus))
@@ -818,6 +877,7 @@ public partial class OnScreenKeyboard : Control
 			GD.PrintErr($"OnScreenKeyboard: Icon not found: {path}");
 			return null;
 		}
+
 		return GD.Load<Texture2D>(path);
 	}
 

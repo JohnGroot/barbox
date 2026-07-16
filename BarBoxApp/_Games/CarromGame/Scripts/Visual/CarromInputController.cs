@@ -1,6 +1,6 @@
-using Godot;
 using System;
 using System.Collections.Generic;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
@@ -10,19 +10,23 @@ namespace BarBox.Games.Carrom;
 [GlobalClass]
 public partial class CarromInputController : Node2D
 {
-	[Signal] public delegate void StrikeExecutedEventHandler(Vector2 force);
-	[Signal] public delegate void AimingStateChangedEventHandler(bool isAiming, Vector2 aimDirection, float power);
-	[Signal] public delegate void StrikerPositionChangedEventHandler(Vector2 newPosition);
+	[Signal]
+	public delegate void StrikeExecutedEventHandler(Vector2 force);
 
-	
+	[Signal]
+	public delegate void AimingStateChangedEventHandler(bool isAiming, Vector2 aimDirection, float power);
+
+	[Signal]
+	public delegate void StrikerPositionChangedEventHandler(Vector2 newPosition);
+
 	// Physics config reference for strike power and angle
 	private CarromPhysicsConfig _physicsConfig;
 
-	// Visual parameters - set by CarromGame.cs  
+	// Visual parameters - set by CarromGame.cs
 	private float _aimLineLength = 100.0f;
 	private float _powerBarWidth = 60.0f;
 	private float _powerBarHeight = 8.0f;
-	
+
 	// Trajectory prediction parameters
 	private float _trajectoryMaxDistance = 300.0f;
 	private float _trajectoryPostCollisionDistance = 25.0f;
@@ -30,48 +34,111 @@ public partial class CarromInputController : Node2D
 	private int _trajectoryMaxSteps = 100;
 
 	[ExportCategory("Visual Feedback")]
-	[Export] public bool ShowAimingLine { get; set; } = true;
-	[Export] public bool ShowPowerIndicator { get; set; } = true;
-	[Export] public Color AimingLineColor { get; set; } = Colors.Yellow;
-	[Export] public Color PowerBarColor { get; set; } = Colors.Green;
-	[Export] public float AimingLineWidth { get; set; } = 3.0f;
-	
+	[Export]
+	public bool ShowAimingLine { get; set; } = true;
+
+	[Export]
+	public bool ShowPowerIndicator { get; set; } = true;
+
+	[Export]
+	public Color AimingLineColor { get; set; } = Colors.Yellow;
+
+	[Export]
+	public Color PowerBarColor { get; set; } = Colors.Green;
+
+	[Export]
+	public float AimingLineWidth { get; set; } = 3.0f;
+
 	[ExportCategory("Trajectory Prediction")]
-	[Export] public float TrajectoryMaxDistance { get; set; } = 300.0f;
-	[Export] public float TrajectoryPostCollisionDistance { get; set; } = 25.0f;
-	[Export] public Color TrajectoryColor { get; set; } = Colors.Yellow;
-	[Export] public Color PostCollisionTrajectoryColor { get; set; } = Colors.Orange;
-	[Export] public Color CollisionMarkerColor { get; set; } = Colors.Red;
-	[Export] public Color HitPieceTrajectoryColor { get; set; } = Colors.Cyan;
-	[Export] public float HitPieceTrajectoryDistance { get; set; } = 150.0f;
-	[Export] public bool ShowHitPieceTrajectory { get; set; } = true;
-	
+	[Export]
+	public float TrajectoryMaxDistance { get; set; } = 300.0f;
+
+	[Export]
+	public float TrajectoryPostCollisionDistance { get; set; } = 25.0f;
+
+	[Export]
+	public Color TrajectoryColor { get; set; } = Colors.Yellow;
+
+	[Export]
+	public Color PostCollisionTrajectoryColor { get; set; } = Colors.Orange;
+
+	[Export]
+	public Color CollisionMarkerColor { get; set; } = Colors.Red;
+
+	[Export]
+	public Color HitPieceTrajectoryColor { get; set; } = Colors.Cyan;
+
+	[Export]
+	public float HitPieceTrajectoryDistance { get; set; } = 150.0f;
+
+	[Export]
+	public bool ShowHitPieceTrajectory { get; set; } = true;
+
 	[ExportCategory("Gradient Colors")]
-	[Export] public Color PowerGradientLow { get; set; } = Colors.Green;
-	[Export] public Color PowerGradientMid { get; set; } = Colors.Yellow;
-	[Export] public Color PowerGradientHigh { get; set; } = Colors.Red;
-	[Export] public bool UseGradientForAimLine { get; set; } = true;
-	
+	[Export]
+	public Color PowerGradientLow { get; set; } = Colors.Green;
+
+	[Export]
+	public Color PowerGradientMid { get; set; } = Colors.Yellow;
+
+	[Export]
+	public Color PowerGradientHigh { get; set; } = Colors.Red;
+
+	[Export]
+	public bool UseGradientForAimLine { get; set; } = true;
+
 	[ExportCategory("Input Parameters")]
-	[Export] public float DeadZone { get; set; } = 40.0f;
-	[Export] public float MaxAimDistance { get; set; } = 200.0f;
-	[Export] public float LateralSensitivity { get; set; } = 1.5f;
-	[Export(PropertyHint.Range, "5.0,90.0,1.0")] public float LateralAngleThreshold { get; set; } = 55.0f;
+	[Export]
+	public float DeadZone { get; set; } = 40.0f;
+
+	[Export]
+	public float MaxAimDistance { get; set; } = 200.0f;
+
+	[Export]
+	public float LateralSensitivity { get; set; } = 1.5f;
+
+	[Export(PropertyHint.Range, "5.0,90.0,1.0")]
+	public float LateralAngleThreshold { get; set; } = 55.0f;
 
 	[ExportCategory("Deadzone Visualization")]
-	[Export] public bool ShowDeadzoneRing { get; set; } = true;
-	[Export] public Color DeadzoneRingColor { get; set; } = Colors.Gray;
-	[Export] public Color LateralAngleLineColor { get; set; } = Colors.White;
-	[Export] public Color LateralAngleArcColor { get; set; } = new Color(1.0f, 1.0f, 1.0f, 0.3f);
-	[Export] public Color PowerAimingZoneColor { get; set; } = new Color(0.2f, 0.8f, 0.2f, 0.3f);
-	[Export] public Color LateralMovementZoneColor { get; set; } = new Color(0.8f, 0.2f, 0.2f, 0.3f);
-	[Export] public float DeadzoneRingWidth { get; set; } = 2.0f;
-	[Export] public float LateralAngleLineWidth { get; set; } = 1.5f;
-	[Export] public float LateralAngleLineLength { get; set; } = 30.0f;
-	[Export] public float ZoneArcRadiusMultiplier { get; set; } = 1.2f;
-	[Export] public float ZoneArcWidthMultiplier { get; set; } = 1.5f;
-	[Export] public int ZoneArcSegments { get; set; } = 16;
-	[Export] public float FeedbackDimmingFactor { get; set; } = 0.6f;
+	[Export]
+	public bool ShowDeadzoneRing { get; set; } = true;
+
+	[Export]
+	public Color DeadzoneRingColor { get; set; } = Colors.Gray;
+
+	[Export]
+	public Color LateralAngleLineColor { get; set; } = Colors.White;
+
+	[Export]
+	public Color LateralAngleArcColor { get; set; } = new Color(1.0f, 1.0f, 1.0f, 0.3f);
+
+	[Export]
+	public Color PowerAimingZoneColor { get; set; } = new Color(0.2f, 0.8f, 0.2f, 0.3f);
+
+	[Export]
+	public Color LateralMovementZoneColor { get; set; } = new Color(0.8f, 0.2f, 0.2f, 0.3f);
+
+	[Export]
+	public float DeadzoneRingWidth { get; set; } = 2.0f;
+
+	[Export]
+	public float LateralAngleLineWidth { get; set; } = 1.5f;
+
+	[Export]
+	public float LateralAngleLineLength { get; set; } = 30.0f;
+
+	[Export]
+	public float ZoneArcRadiusMultiplier { get; set; } = 1.2f;
+
+	[Export]
+	public float ZoneArcWidthMultiplier { get; set; } = 1.5f;
+
+	[Export]
+	public int ZoneArcSegments { get; set; } = 16;
+
+	[Export]
+	public float FeedbackDimmingFactor { get; set; } = 0.6f;
 
 	// Input state
 	private CarromPiece _striker;
@@ -81,26 +148,26 @@ public partial class CarromInputController : Node2D
 	private Vector2 _currentAimPosition;
 	private Vector2 _strikerStartPosition;
 	private InputMode _currentInputMode = InputMode.None;
-	
+
 	// Kinematic movement state
 	private Vector2 _targetStrikerPosition;
 	private bool _isMovingStriker = false;
 	private const float STRIKER_MOVE_SPEED = 2500.0f; // Pixels per second
-	
+
 	private const float TRAJECTORY_CACHE_DIRECTION_TOLERANCE_SQUARED = 0.000001f;
 	private const float TRAJECTORY_CACHE_POWER_TOLERANCE = 0.001f;
-	
+
 	// Simplified state management - single source of truth
 	private ICarromGameState _gameState;
-	
+
 	// Visual update batching
 	private bool _needsVisualUpdate = false;
-	
+
 	// Coordinate conversion caching
 	private Vector2 _lastScreenPosition;
 	private Vector2 _lastBoardPosition;
 	private bool _hasValidConversionCache = false;
-	
+
 	// OPTIMIZATION: Trajectory calculation with pooled buffers
 	private Vector2 _lastTrajectoryDirection;
 	private float _lastTrajectoryPower;
@@ -125,33 +192,33 @@ public partial class CarromInputController : Node2D
 	{
 		None,
 		LateralMovement,  // Moving striker along baseline
-		PowerAiming       // Aiming for strike power
+		PowerAiming, // Aiming for strike power
 	}
 
 	// Baseline tracking
-	private Vector2[] _baselinePositions = new Vector2[0];
+	private Vector2[] _baselinePositions = [];
 	private int _currentPlayerIndex = 0;
 	private CarromBoard _board;
 	private CarromCameraController _cameraController;
-	
+
 	// Cached baseline geometry for performance optimization
 	private Vector2 _cachedBaselineStart;
 	private Vector2 _cachedBaselineEnd;
 	private Vector2 _cachedBaselineVector;
 	private float _cachedBaselineLength;
 	private bool _baselineGeometryCached = false;
-	
+
 	// Collision feedback state
 	private bool _showCollisionFeedback = false;
 	private Vector2 _lastTargetPosition = Vector2.Zero;
 	private bool _lastPositionWasValid = true;
-	
+
 	// Input blocked visual state
 	private bool _isInputBlocked = false;
 	private float _inputBlockedAlpha = 0.5f;
-	private readonly Color INPUT_BLOCKED_COLOR = new Color(0.9f, 0.2f, 0.1f, 0.6f);
-	private readonly Color INPUT_READY_COLOR = new Color(0.2f, 0.9f, 0.3f, 0.3f);
-	
+	private readonly Color _iNPUT_BLOCKED_COLOR = new Color(0.9f, 0.2f, 0.1f, 0.6f);
+	private readonly Color _iNPUT_READY_COLOR = new Color(0.2f, 0.9f, 0.3f, 0.3f);
+
 	// Memory management tracking
 	private bool _isDisposed = false;
 
@@ -160,11 +227,11 @@ public partial class CarromInputController : Node2D
 		SetProcessInput(true);
 		SetPhysicsProcess(true); // Enable physics processing for smooth movement
 		SetProcess(true); // Enable process for batched visual updates
-		
+
 		// Initialize memory tracking
 		_isDisposed = false;
 	}
-	
+
 	/// <summary>
 	/// Handle batched visual updates
 	/// </summary>
@@ -177,7 +244,7 @@ public partial class CarromInputController : Node2D
 			_needsVisualUpdate = false;
 		}
 	}
-	
+
 	/// <summary>
 	/// Request a visual update - will be batched until next frame
 	/// </summary>
@@ -185,7 +252,7 @@ public partial class CarromInputController : Node2D
 	{
 		_needsVisualUpdate = true;
 	}
-	
+
 	/// <summary>
 	/// Convert screen position to board position with caching
 	/// </summary>
@@ -196,17 +263,17 @@ public partial class CarromInputController : Node2D
 		{
 			return _lastBoardPosition;
 		}
-		
+
 		// Calculate new conversion and cache result
 		Vector2 boardPosition = _cameraController?.ScreenToBoardPosition(screenPosition) ?? screenPosition;
-		
+
 		_lastScreenPosition = screenPosition;
 		_lastBoardPosition = boardPosition;
 		_hasValidConversionCache = true;
-		
+
 		return boardPosition;
 	}
-	
+
 	/// <summary>
 	/// Handle smooth kinematic striker movement during physics updates
 	/// </summary>
@@ -217,14 +284,14 @@ public partial class CarromInputController : Node2D
 		{
 			return;
 		}
-		
+
 		if (_isMovingStriker && _striker != null && IsInstanceValid(_striker))
 		{
 			Vector2 currentPosition = _striker.GlobalPosition;
 			Vector2 newPosition = new Vector2(
-				Mathf.MoveToward(currentPosition.X, _targetStrikerPosition.X, STRIKER_MOVE_SPEED * (float)delta), 
+				Mathf.MoveToward(currentPosition.X, _targetStrikerPosition.X, STRIKER_MOVE_SPEED * (float)delta),
 				Mathf.MoveToward(currentPosition.Y, _targetStrikerPosition.Y, STRIKER_MOVE_SPEED * (float)delta));
-			
+
 			_striker.GlobalPosition = newPosition;
 
 			// Ensure physics velocities are zeroed during kinematic movement
@@ -256,11 +323,11 @@ public partial class CarromInputController : Node2D
 		_aimLineLength = aimLineLength;
 		_powerBarWidth = powerBarWidth;
 		_powerBarHeight = powerBarHeight;
-		
+
 		// Update trajectory parameters from exports
 		_trajectoryMaxDistance = TrajectoryMaxDistance;
 		_trajectoryPostCollisionDistance = TrajectoryPostCollisionDistance;
-		
+
 		// Invalidate trajectory cache when parameters change
 		_trajectoryCacheValid = false;
 	}
@@ -307,7 +374,7 @@ public partial class CarromInputController : Node2D
 			CacheBaselineGeometry();
 		}
 	}
-	
+
 	/// <summary>
 	/// Cache baseline geometry for fast position calculations
 	/// </summary>
@@ -318,22 +385,22 @@ public partial class CarromInputController : Node2D
 			_baselineGeometryCached = false;
 			return;
 		}
-		
+
 		// Get baseline center and geometry from board
 		Vector2 baselineCenter = _board.GetBaselinePosition(_currentPlayerIndex);
 		float baselineLength = _board.BaselineLength - (_board.BaselineCapRadius * 2);
 		Vector2 baselineDirection = GetBaselineDirection();
-		
+
 		// Calculate baseline endpoints using actual board geometry
 		float halfLength = baselineLength / 2;
-		_cachedBaselineStart = baselineCenter - baselineDirection * halfLength;
-		_cachedBaselineEnd = baselineCenter + baselineDirection * halfLength;
+		_cachedBaselineStart = baselineCenter - (baselineDirection * halfLength);
+		_cachedBaselineEnd = baselineCenter + (baselineDirection * halfLength);
 		_cachedBaselineVector = _cachedBaselineEnd - _cachedBaselineStart;
 		_cachedBaselineLength = _cachedBaselineVector.LengthSquared(); // Store squared length for dot product optimization
-		
+
 		_baselineGeometryCached = true;
 	}
-	
+
 	/// <summary>
 	/// Fast baseline position calculation using cached geometry
 	/// </summary>
@@ -344,18 +411,18 @@ public partial class CarromInputController : Node2D
 			// Fallback to board method if cache not available
 			return _board?.GetClosestPositionOnBaseline(position, _currentPlayerIndex) ?? position;
 		}
-		
+
 		// Project position onto baseline line segment using cached values
 		Vector2 positionVector = position - _cachedBaselineStart;
-		
+
 		// Calculate projection parameter (0.0 = start, 1.0 = end)
 		float projectionParam = positionVector.Dot(_cachedBaselineVector) / _cachedBaselineLength;
-		
+
 		// Clamp to baseline segment bounds
 		projectionParam = Mathf.Clamp(projectionParam, 0.0f, 1.0f);
-		
+
 		// Calculate final projected position
-		return _cachedBaselineStart + _cachedBaselineVector * projectionParam;
+		return _cachedBaselineStart + (_cachedBaselineVector * projectionParam);
 	}
 
 	/// <summary>
@@ -363,7 +430,10 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	public override void _Input(InputEvent @event)
 	{
-		if (!CanAcceptInput() || _striker == null) return;
+		if (!CanAcceptInput() || _striker == null)
+		{
+			return;
+		}
 
 		HandleMouseInput(@event);
 		HandleTouchInput(@event);
@@ -426,13 +496,15 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private void StartInput(Vector2 screenPosition)
 	{
-		if (!CanStartInput()) 
+		if (!CanStartInput())
+		{
 			return;
+		}
 
 		// Convert screen position to board coordinates using cached conversion
 		Vector2 boardPosition = ScreenToBoardPositionCached(screenPosition);
 		Vector2 strikerPosition = _striker.GlobalPosition; // Striker is already in board coordinates
-		
+
 		// Check if input is near striker
 		float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
 		if (strikerPosition.DistanceTo(boardPosition) > strikerRadius + 50.0f)
@@ -456,7 +528,7 @@ public partial class CarromInputController : Node2D
 	{
 		// Convert screen position to board coordinates using cached conversion
 		_currentAimPosition = ScreenToBoardPositionCached(screenPosition);
-		
+
 		Vector2 inputVector = _currentAimPosition - _aimStartPosition;
 		float inputDistance = inputVector.Length();
 
@@ -474,6 +546,7 @@ public partial class CarromInputController : Node2D
 				break;
 			case InputMode.PowerAiming:
 				HandlePowerAiming(inputVector);
+
 				// Invalidate trajectory cache when direction changes
 				InvalidateTrajectoryCache();
 				break;
@@ -481,7 +554,7 @@ public partial class CarromInputController : Node2D
 
 		RequestVisualUpdate(); // Update visual feedback
 	}
-	
+
 	/// <summary>
 	/// Invalidate trajectory cache to force recalculation
 	/// </summary>
@@ -494,7 +567,7 @@ public partial class CarromInputController : Node2D
 	/// Determine input mode based on initial movement direction relative to baseline.
 	/// Uses lateral angle threshold to distinguish between striker positioning (lateral movement)
 	/// and strike power aiming (forward/backward movement along the baseline direction).
-	/// 
+	///
 	/// Input vectors within the threshold angle are treated as power aiming,
 	/// while vectors beyond the threshold are treated as lateral positioning.
 	/// </summary>
@@ -503,11 +576,11 @@ public partial class CarromInputController : Node2D
 	{
 		Vector2 baselineDirection = -GetForwardDirection();
 		Vector2 normalizedInput = inputVector.Normalized();
-		
+
 		// Calculate angle from baseline direction to input vector
 		float angleFromBaseline = Mathf.Abs(baselineDirection.AngleTo(normalizedInput));
 		float angleFromBaselineDegrees = Mathf.RadToDeg(angleFromBaseline);
-		
+
 		// Check if input angle is greater than lateral threshold
 		bool isLateralInput = angleFromBaselineDegrees > LateralAngleThreshold;
 		if (isLateralInput)
@@ -520,6 +593,7 @@ public partial class CarromInputController : Node2D
 			if (_isMovingStriker)
 			{
 				_isMovingStriker = false;
+
 				// Ensure striker physics are ready for force application
 				if (_striker != null && IsInstanceValid(_striker))
 				{
@@ -527,6 +601,7 @@ public partial class CarromInputController : Node2D
 					_striker.AngularVelocity = 0.0f;
 				}
 			}
+
 			_currentInputMode = InputMode.PowerAiming;
 		}
 	}
@@ -536,25 +611,27 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private void HandleLateralMovement(Vector2 inputVector)
 	{
-		if (_board == null || _striker == null) 
+		if (_board == null || _striker == null)
+		{
 			return;
-		
+		}
+
 		// Use cached geometry for fast position calculation
 		Vector2 targetPosition = GetClosestPositionOnBaselineCached(_currentAimPosition);
 		float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
-		
+
 		// Check if original target position would be obstructed
 		bool originalPositionValid = !_board.IsPositionObstructed(targetPosition, strikerRadius, _striker);
-		
+
 		// Check if target position is obstructed and find nearest valid position
 		Vector2? validPosition = _board.FindNearestValidPositionOnBaseline(
 			targetPosition, _currentPlayerIndex, strikerRadius, _striker);
-		
+
 		// Update collision feedback state
 		_showCollisionFeedback = true;
 		_lastTargetPosition = targetPosition;
 		_lastPositionWasValid = originalPositionValid;
-		
+
 		if (validPosition.HasValue)
 		{
 			// Use kinematic movement to valid position
@@ -568,13 +645,13 @@ public partial class CarromInputController : Node2D
 			GD.PrintErr($"[CarromInputController] No valid baseline position found for player {_currentPlayerIndex}");
 			_lastPositionWasValid = false;
 		}
-		
+
 		// Update aiming feedback - no aiming direction for lateral movement
 		Vector2 aimDirection = Vector2.Zero;
 		float power = 0.0f;
 		EmitSignal(SignalName.AimingStateChanged, false, aimDirection, power);
 	}
-	
+
 	/// <summary>
 	/// Start smooth kinematic movement to target position
 	/// </summary>
@@ -594,20 +671,20 @@ public partial class CarromInputController : Node2D
 		{
 			_isMovingStriker = false;
 		}
-		
+
 		// Calculate power based on total input distance
 		float inputDistance = inputVector.Length();
 		float clampedDistance = Mathf.Clamp(inputDistance, 0, MaxAimDistance);
 		float power = clampedDistance / MaxAimDistance;
-		
+
 		// Calculate aim direction from input vector, then clamp to valid angle range
 		Vector2 rawAimDirection = -inputVector.Normalized(); // Opposite of pull direction
 		Vector2 forwardDirection = GetForwardDirection();
-		
+
 		// Clamp aim direction to valid angle range (±maxStrikeAngle from forward)
 		float maxAngleRad = Mathf.DegToRad(GetMaxStrikeAngle());
 		float currentAngle = forwardDirection.AngleTo(rawAimDirection);
-		
+
 		Vector2 aimDirection;
 		if (Mathf.Abs(currentAngle) <= maxAngleRad)
 		{
@@ -620,7 +697,7 @@ public partial class CarromInputController : Node2D
 			float clampedAngle = Mathf.Sign(currentAngle) * maxAngleRad;
 			aimDirection = forwardDirection.Rotated(clampedAngle);
 		}
-		
+
 		EmitSignal(SignalName.AimingStateChanged, true, aimDirection, power);
 	}
 
@@ -629,7 +706,10 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	private void EndInput()
 	{
-		if (!_isAiming) return;
+		if (!_isAiming)
+		{
+			return;
+		}
 
 		if (_currentInputMode == InputMode.PowerAiming)
 		{
@@ -640,16 +720,16 @@ public partial class CarromInputController : Node2D
 		_isAiming = false;
 		_activeFingerId = -1;
 		_currentInputMode = InputMode.None;
-		
+
 		// Stop any ongoing kinematic movement
 		_isMovingStriker = false;
-		
+
 		// Clear trajectory cache
 		InvalidateTrajectoryCache();
-		
+
 		// Clear collision feedback state
 		_showCollisionFeedback = false;
-		
+
 		// Clear visual feedback and emit state change signals
 		EmitSignal(SignalName.AimingStateChanged, false, Vector2.Zero, 0.0f);
 		RequestVisualUpdate(); // Hide aiming indicators
@@ -664,20 +744,22 @@ public partial class CarromInputController : Node2D
 		float inputDistance = inputVector.Length();
 
 		if (!(inputDistance > DeadZone))
+		{
 			return;
+		}
 
 		float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
 		float powerRatio = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
 		float strikePower = Mathf.Lerp(GetMinStrikePower(), GetMaxStrikePower(), powerRatio);
-			
+
 		// Calculate strike direction with angle clamping (same as HandlePowerAiming)
 		Vector2 rawStrikeDirection = -inputVector.Normalized(); // Opposite of pull direction
 		Vector2 forwardDirection = GetForwardDirection();
-			
+
 		// Clamp strike direction to valid angle range (±maxStrikeAngle from forward)
 		float maxAngleRad = Mathf.DegToRad(GetMaxStrikeAngle());
 		float currentAngle = forwardDirection.AngleTo(rawStrikeDirection);
-			
+
 		Vector2 strikeDirection;
 		if (Mathf.Abs(currentAngle) <= maxAngleRad)
 		{
@@ -690,12 +772,12 @@ public partial class CarromInputController : Node2D
 			float clampedAngle = Mathf.Sign(currentAngle) * maxAngleRad;
 			strikeDirection = forwardDirection.Rotated(clampedAngle);
 		}
-			
+
 		Vector2 strikeForce = strikeDirection * strikePower;
-			
+
 		// Emit signal first to apply force before state transition
 		EmitSignal(SignalName.StrikeExecuted, strikeForce);
-			
+
 		// Defer state machine notification to ensure force is applied
 		CallDeferred(MethodName.NotifyStrikeExecuted);
 	}
@@ -731,11 +813,9 @@ public partial class CarromInputController : Node2D
 			1 => Vector2.Down,  // Player 2: move down toward center
 			2 => Vector2.Right, // Player 3: move right toward center
 			3 => Vector2.Left,  // Player 4: move left toward center
-			_ => Vector2.Up
+			_ => Vector2.Up,
 		};
 	}
-
-
 
 	/// <summary>
 	/// Check if input can be started
@@ -745,7 +825,7 @@ public partial class CarromInputController : Node2D
 		bool hasStriker = _striker != null;
 		bool strikerStopped = hasStriker && _striker.IsStopped();
 		bool canAccept = CanAcceptInput();
-		
+
 		// Input validation - early exit conditions
 		if (!hasStriker)
 		{
@@ -762,10 +842,10 @@ public partial class CarromInputController : Node2D
 			// Phase manager blocking input - wait for active phase
 			return false;
 		}
-		
+
 		return hasStriker && strikerStopped && canAccept;
 	}
-	
+
 	/// <summary>
 	/// Check if input can be accepted - polls game state directly
 	/// </summary>
@@ -794,8 +874,11 @@ public partial class CarromInputController : Node2D
 		{
 			DrawInputStateIndicator();
 		}
-		
-		if (!_isAiming || _striker == null) return;
+
+		if (!_isAiming || _striker == null)
+		{
+			return;
+		}
 
 		// Since board is at origin, striker positions are already in the right coordinate space
 		Vector2 strikerPos = _striker.GlobalPosition;
@@ -806,7 +889,7 @@ public partial class CarromInputController : Node2D
 		{
 			Vector2 inputVector = currentPos - _aimStartPosition;
 			float inputDistance = inputVector.Length();
-			
+
 			if (inputDistance <= DeadZone)
 			{
 				DrawDeadzoneRing(strikerPos);
@@ -837,43 +920,43 @@ public partial class CarromInputController : Node2D
 	{
 		Vector2 inputVector = currentPos - _aimStartPosition;
 		float inputDistance = inputVector.Length();
-		
+
 		// Only draw dotted line when outside the deadzone
 		if (inputDistance > DeadZone)
 		{
 			float clampedDistance = Mathf.Clamp(inputDistance, 0, MaxAimDistance);
-			Vector2 clampedInputPos = _aimStartPosition + inputVector.Normalized() * clampedDistance;
-			
+			Vector2 clampedInputPos = _aimStartPosition + (inputVector.Normalized() * clampedDistance);
+
 			// Calculate power for color matching
 			float power = Mathf.Clamp((inputDistance - DeadZone) / (MaxAimDistance - DeadZone), 0.0f, 1.0f);
-			
+
 			// Start line from opposite edge of striker (offset by radius)
 			Vector2 lineDirection = (clampedInputPos - strikerPos).Normalized();
 			float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
-			Vector2 lineStart = strikerPos + lineDirection * strikerRadius;
-			
+			Vector2 lineStart = strikerPos + (lineDirection * strikerRadius);
+
 			if (UseGradientForAimLine)
 			{
 				DrawGradientDottedLine(lineStart, clampedInputPos, power, AimingLineWidth);
 			}
 			else
 			{
-				Color lineColor = power > 0.8f ? Colors.Red : 
+				Color lineColor = power > 0.8f ? Colors.Red :
 								 power > 0.5f ? Colors.Yellow : PowerBarColor;
 				DrawDottedLine(lineStart, clampedInputPos, lineColor, AimingLineWidth);
 			}
 		}
-		
+
 		if (inputDistance > DeadZone)
 		{
 			// Calculate aim direction with angle clamping (same as HandlePowerAiming)
 			Vector2 rawAimDirection = -inputVector.Normalized(); // Opposite of pull direction
 			Vector2 forwardDirection = GetForwardDirection();
-			
+
 			// Clamp aim direction to valid angle range (±maxStrikeAngle from forward)
 			float maxAngleRad = Mathf.DegToRad(GetMaxStrikeAngle());
 			float currentAngle = forwardDirection.AngleTo(rawAimDirection);
-			
+
 			Vector2 aimDirection;
 			if (Mathf.Abs(currentAngle) <= maxAngleRad)
 			{
@@ -886,7 +969,7 @@ public partial class CarromInputController : Node2D
 				float clampedAngle = Mathf.Sign(currentAngle) * maxAngleRad;
 				aimDirection = forwardDirection.Rotated(clampedAngle);
 			}
-			
+
 			// Calculate power level
 			float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
 			float power = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
@@ -916,7 +999,7 @@ public partial class CarromInputController : Node2D
 			}
 		}
 	}
-	
+
 	/// <summary>
 	/// Draw trajectory path as connected line segments
 	/// GC OPTIMIZATION: Overload that accepts buffer + count to avoid array allocation
@@ -924,7 +1007,9 @@ public partial class CarromInputController : Node2D
 	private void DrawTrajectoryPath(Vector2[] buffer, int count, Color color)
 	{
 		if (count < 2)
+		{
 			return;
+		}
 
 		// Draw individual lines from buffer to avoid creating a new array for DrawPolyline
 		for (int i = 0; i < count - 1; i++)
@@ -939,12 +1024,14 @@ public partial class CarromInputController : Node2D
 	private void DrawTrajectoryPath(Vector2[] points, Color color)
 	{
 		if (points.Length < 2)
+		{
 			return;
+		}
 
 		// Draw as solid polyline for main trajectory
 		DrawPolyline(points, color, AimingLineWidth, true);
 	}
-	
+
 	/// <summary>
 	/// Draw collision marker
 	/// </summary>
@@ -963,31 +1050,31 @@ public partial class CarromInputController : Node2D
 		float dashLength = 8.0f;
 		float gapLength = 4.0f;
 		float totalPattern = dashLength + gapLength;
-		
+
 		Vector2 direction = (to - from).Normalized();
 		float totalDistance = from.DistanceTo(to);
-		
+
 		// Calculate how many complete dash-gap patterns we can fit
 		int completePatterns = Mathf.FloorToInt(totalDistance / totalPattern);
 		float remainingDistance = totalDistance - (completePatterns * totalPattern);
-		
+
 		// Draw complete patterns
 		for (int i = 0; i < completePatterns; i++)
 		{
-			Vector2 dashStart = from + direction * (i * totalPattern);
-			Vector2 dashEnd = dashStart + direction * dashLength;
+			Vector2 dashStart = from + (direction * (i * totalPattern));
+			Vector2 dashEnd = dashStart + (direction * dashLength);
 			DrawLine(dashStart, dashEnd, color, width, true);
 		}
-		
+
 		// Draw final dash if there's remaining space
 		if (remainingDistance > 0)
 		{
-			Vector2 finalDashStart = from + direction * (completePatterns * totalPattern);
-			Vector2 finalDashEnd = finalDashStart + direction * Mathf.Min(dashLength, remainingDistance);
+			Vector2 finalDashStart = from + (direction * (completePatterns * totalPattern));
+			Vector2 finalDashEnd = finalDashStart + (direction * Mathf.Min(dashLength, remainingDistance));
 			DrawLine(finalDashStart, finalDashEnd, color, width, true);
 		}
 	}
-	
+
 	/// <summary>
 	/// Draw gradient dotted line between two points with consistent dash sizes
 	/// </summary>
@@ -997,48 +1084,48 @@ public partial class CarromInputController : Node2D
 		float dashLength = 8.0f;
 		float gapLength = 4.0f;
 		float totalPattern = dashLength + gapLength;
-		
+
 		Vector2 direction = (to - from).Normalized();
 		float totalDistance = from.DistanceTo(to);
-		
+
 		// Calculate how many complete dash-gap patterns we can fit
 		int completePatterns = Mathf.FloorToInt(totalDistance / totalPattern);
 		float remainingDistance = totalDistance - (completePatterns * totalPattern);
-		
+
 		// Draw complete patterns with gradient
 		for (int i = 0; i < completePatterns; i++)
 		{
 			float patternStart = i * totalPattern;
 			float patternMid = patternStart + (dashLength / 2.0f);
-			
+
 			// Calculate gradient position for this dash
 			float gradientT = patternMid / totalDistance;
 			float colorT = Mathf.Lerp(0.0f, power, gradientT);
 			Color dashColor = GetPowerGradientColor(colorT);
-			
-			Vector2 dashStart = from + direction * patternStart;
-			Vector2 dashEnd = dashStart + direction * dashLength;
+
+			Vector2 dashStart = from + (direction * patternStart);
+			Vector2 dashEnd = dashStart + (direction * dashLength);
 			DrawLine(dashStart, dashEnd, dashColor, width, true);
 		}
-		
+
 		// Draw final dash if there's remaining space
 		if (remainingDistance > 0)
 		{
 			float finalDashLength = Mathf.Min(dashLength, remainingDistance);
 			float finalPatternStart = completePatterns * totalPattern;
 			float finalPatternMid = finalPatternStart + (finalDashLength / 2.0f);
-			
+
 			// Calculate gradient for final dash
 			float gradientT = finalPatternMid / totalDistance;
 			float colorT = Mathf.Lerp(0.0f, power, gradientT);
 			Color dashColor = GetPowerGradientColor(colorT);
-			
-			Vector2 finalDashStart = from + direction * finalPatternStart;
-			Vector2 finalDashEnd = finalDashStart + direction * finalDashLength;
+
+			Vector2 finalDashStart = from + (direction * finalPatternStart);
+			Vector2 finalDashEnd = finalDashStart + (direction * finalDashLength);
 			DrawLine(finalDashStart, finalDashEnd, dashColor, width, true);
 		}
 	}
-	
+
 	/// <summary>
 	/// Get gradient color based on power level
 	/// </summary>
@@ -1057,7 +1144,7 @@ public partial class CarromInputController : Node2D
 			return PowerGradientMid.Lerp(PowerGradientHigh, t);
 		}
 	}
-	
+
 	/// <summary>
 	/// Draw hit piece trajectory as dotted line with fading
 	/// GC OPTIMIZATION: Overload that accepts buffer + count to avoid array allocation
@@ -1065,7 +1152,9 @@ public partial class CarromInputController : Node2D
 	private void DrawHitPieceTrajectory(Vector2[] buffer, int count, Color color)
 	{
 		if (count < 2)
+		{
 			return;
+		}
 
 		// Define consistent dash pattern for hit piece
 		float dashLength = 5.0f;
@@ -1089,8 +1178,8 @@ public partial class CarromInputController : Node2D
 			int dashCount = Mathf.FloorToInt(segmentLength / totalPattern);
 			for (int j = 0; j < dashCount; j++)
 			{
-				Vector2 dashStart = segmentStart + direction * (j * totalPattern);
-				Vector2 dashEnd = dashStart + direction * dashLength;
+				Vector2 dashStart = segmentStart + (direction * (j * totalPattern));
+				Vector2 dashEnd = dashStart + (direction * dashLength);
 				DrawLine(dashStart, dashEnd, fadedColor, AimingLineWidth * 0.8f, true);
 			}
 
@@ -1098,8 +1187,8 @@ public partial class CarromInputController : Node2D
 			float remaining = segmentLength - (dashCount * totalPattern);
 			if (remaining > 0)
 			{
-				Vector2 finalDashStart = segmentStart + direction * (dashCount * totalPattern);
-				Vector2 finalDashEnd = finalDashStart + direction * Mathf.Min(dashLength, remaining);
+				Vector2 finalDashStart = segmentStart + (direction * (dashCount * totalPattern));
+				Vector2 finalDashEnd = finalDashStart + (direction * Mathf.Min(dashLength, remaining));
 				DrawLine(finalDashStart, finalDashEnd, fadedColor, AimingLineWidth * 0.8f, true);
 			}
 		}
@@ -1112,33 +1201,35 @@ public partial class CarromInputController : Node2D
 	{
 		DrawHitPieceTrajectory(points, points.Length, color);
 	}
-	
+
 	/// <summary>
 	/// Draw deadzone ring with lateral angle indicators
 	/// </summary>
 	private void DrawDeadzoneRing(Vector2 strikerPos)
 	{
-		if (!ShowDeadzoneRing) 
+		if (!ShowDeadzoneRing)
+		{
 			return;
-		
+		}
+
 		// Draw deadzone ring
 		DrawArc(strikerPos, DeadZone, 0, Mathf.Tau, 32, DeadzoneRingColor, DeadzoneRingWidth, true);
-		
+
 		// Get forward direction (toward board center)
 		Vector2 forwardDirection = GetForwardDirection();
-		
+
 		// Calculate lateral angle threshold lines - these should be on the forward side
 		float lateralAngleRad = Mathf.DegToRad(LateralAngleThreshold);
-		
+
 		// Left and right angle lines rotated from the forward direction (not offset from it)
 		Vector2 leftAngleDirection = forwardDirection.Rotated(-lateralAngleRad);
 		Vector2 rightAngleDirection = forwardDirection.Rotated(lateralAngleRad);
-		
+
 		// Draw dashed angle indicator lines extending from deadzone ring
-		Vector2 leftLineEnd = strikerPos - leftAngleDirection * (DeadZone + LateralAngleLineLength);
-		Vector2 rightLineEnd = strikerPos - rightAngleDirection * (DeadZone + LateralAngleLineLength);
-		Vector2 leftLineStart = strikerPos - leftAngleDirection * DeadZone;
-		Vector2 rightLineStart = strikerPos - rightAngleDirection * DeadZone;
+		Vector2 leftLineEnd = strikerPos - (leftAngleDirection * (DeadZone + LateralAngleLineLength));
+		Vector2 rightLineEnd = strikerPos - (rightAngleDirection * (DeadZone + LateralAngleLineLength));
+		Vector2 leftLineStart = strikerPos - (leftAngleDirection * DeadZone);
+		Vector2 rightLineStart = strikerPos - (rightAngleDirection * DeadZone);
 
 		// Use dotted lines for angle indicators with consistent dash sizes
 		DrawDottedLine(leftLineStart, leftLineEnd, LateralAngleLineColor, LateralAngleLineWidth);
@@ -1154,7 +1245,7 @@ public partial class CarromInputController : Node2D
 		// Calculate colors based on current input direction within deadzone
 		Color powerAimingArcColor = PowerAimingZoneColor;
 		Color lateralMovementArcColor = LateralMovementZoneColor;
-		
+
 		// Check if currently in deadzone with active input
 		Vector2 inputVector = _currentAimPosition - _aimStartPosition;
 		float inputDistance = inputVector.Length();
@@ -1162,11 +1253,11 @@ public partial class CarromInputController : Node2D
 		{
 			Vector2 baselineDirection = -GetForwardDirection();
 			Vector2 normalizedInput = inputVector.Normalized();
-			
+
 			// Calculate angle from baseline direction to input vector
 			float angleFromBaseline = Mathf.Abs(baselineDirection.AngleTo(normalizedInput));
 			float angleFromBaselineDegrees = Mathf.RadToDeg(angleFromBaseline);
-			
+
 			// Check which direction input is more angled towards
 			bool isLateralInput = angleFromBaselineDegrees > LateralAngleThreshold;
 			if (isLateralInput)
@@ -1195,27 +1286,33 @@ public partial class CarromInputController : Node2D
 		float inputDistance = inputVector.Length();
 
 		if (!(inputDistance > DeadZone))
+		{
 			return;
+		}
 
 		float clampedDistance = Mathf.Clamp(inputDistance, DeadZone, MaxAimDistance);
 		float power = (clampedDistance - DeadZone) / (MaxAimDistance - DeadZone);
-			
+
 		// Draw power bar
-		Vector2 barPosition = strikerPos + Vector2.Up * 40;
+		Vector2 barPosition = strikerPos + (Vector2.Up * 40);
 		float barWidth = _powerBarWidth;
 		float barHeight = _powerBarHeight;
-			
+
 		// Background
-		DrawRect(new Rect2(barPosition - Vector2.Right * barWidth / 2, 
+		DrawRect(
+			new Rect2(
+			barPosition - (Vector2.Right * barWidth / 2),
 			new Vector2(barWidth, barHeight)), Colors.Gray, true, -1f, true);
-			
+
 		// Power fill
-		Color powerColor = power > 0.8f ? Colors.Red : 
+		Color powerColor = power > 0.8f ? Colors.Red :
 			power > 0.5f ? Colors.Yellow : PowerBarColor;
-		DrawRect(new Rect2(barPosition - Vector2.Right * barWidth / 2, 
+		DrawRect(
+			new Rect2(
+			barPosition - (Vector2.Right * barWidth / 2),
 			new Vector2(barWidth * power, barHeight)), powerColor, true, -1f, true);
 	}
-	
+
 	/// <summary>
 	/// Draw input state indicator around striker
 	/// </summary>
@@ -1224,33 +1321,36 @@ public partial class CarromInputController : Node2D
 		// Input state feedback is now handled entirely by the score bar
 		// No visual indicators around the striker to avoid gameplay confusion
 	}
-	
+
 	/// <summary>
 	/// Draw collision feedback for lateral movement
 	/// </summary>
 	private void DrawCollisionFeedback()
 	{
-		if (_striker == null) return;
-		
+		if (_striker == null)
+		{
+			return;
+		}
+
 		float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
-		
+
 		// Draw indicator at the last target position
 		Color indicatorColor = _lastPositionWasValid ? Colors.Green : Colors.Red;
 		Color ringColor = _lastPositionWasValid ? new Color(0.0f, 1.0f, 0.0f, 0.3f) : new Color(1.0f, 0.0f, 0.0f, 0.3f);
-		
+
 		// Draw filled circle to show collision area
 		DrawCircle(_lastTargetPosition, strikerRadius, ringColor);
-		
+
 		// Draw outline ring
 		DrawArc(_lastTargetPosition, strikerRadius, 0, Mathf.Tau, 32, indicatorColor, 3.0f, true);
-		
+
 		// If position was invalid, draw an X to indicate collision
 		if (!_lastPositionWasValid)
 		{
 			float crossSize = strikerRadius * 0.6f;
 			Vector2 offset1 = new Vector2(crossSize, crossSize);
 			Vector2 offset2 = new Vector2(crossSize, -crossSize);
-			
+
 			DrawLine(_lastTargetPosition - offset1, _lastTargetPosition + offset1, Colors.Red, 4.0f);
 			DrawLine(_lastTargetPosition - offset2, _lastTargetPosition + offset2, Colors.Red, 4.0f);
 		}
@@ -1261,7 +1361,7 @@ public partial class CarromInputController : Node2D
 			Vector2 checkStart = _lastTargetPosition + new Vector2(-checkSize * 0.5f, 0);
 			Vector2 checkMid = _lastTargetPosition + new Vector2(-checkSize * 0.2f, checkSize * 0.3f);
 			Vector2 checkEnd = _lastTargetPosition + new Vector2(checkSize * 0.5f, -checkSize * 0.3f);
-			
+
 			DrawLine(checkStart, checkMid, Colors.Green, 4.0f, true);
 			DrawLine(checkMid, checkEnd, Colors.Green, 4.0f, true);
 		}
@@ -1281,14 +1381,16 @@ public partial class CarromInputController : Node2D
 	public void SetCurrentPlayer(int playerIndex)
 	{
 		if (_currentPlayerIndex == playerIndex)
+		{
 			return;
+		}
 
 		_currentPlayerIndex = playerIndex;
 		UpdateBaselinePositions(); // Update immediately
 		InvalidateTrajectoryCache(); // Player change affects trajectory calculation
 		GD.Print($"[CarromInputController] Switched to player {playerIndex}, baseline updated immediately");
 	}
-	
+
 	/// <summary>
 	/// Check if currently aiming
 	/// </summary>
@@ -1307,9 +1409,11 @@ public partial class CarromInputController : Node2D
 
 	// Helper methods for physics config access
 	private float GetMaxStrikePower() => _physicsConfig?.MaxStrikePower ?? 2000.0f;
+
 	private float GetMinStrikePower() => _physicsConfig?.MinStrikePower ?? 200.0f;
+
 	private float GetMaxStrikeAngle() => _physicsConfig?.MaxStrikeAngle ?? 60.0f;
-	
+
 	/// <summary>
 	/// Calculate trajectory points with collision detection (constant distance)
 	/// GC OPTIMIZATION: Populates class-level buffers and returns counts instead of allocating new arrays
@@ -1346,7 +1450,7 @@ public partial class CarromInputController : Node2D
 		// GC OPTIMIZATION: Return counts - buffers are populated by SimulateConstantTrajectoryPath
 		return (result.trajectoryCount, result.collisionPoint, result.postCollisionCount, result.hitPieceCount);
 	}
-	
+
 	/// <summary>
 	/// OPTIMIZATION: Simulate constant distance trajectory path using pooled buffers
 	/// </summary>
@@ -1367,7 +1471,7 @@ public partial class CarromInputController : Node2D
 		// Step along the direction until we hit max distance or collision
 		while (distanceTraveled < _trajectoryMaxDistance && _trajectoryPointCount < _trajectoryPointsBuffer.Length)
 		{
-			Vector2 nextPosition = position + direction * _trajectoryStepSize;
+			Vector2 nextPosition = position + (direction * _trajectoryStepSize);
 
 			// Check for collisions
 			var collision = GetFirstCollision(position, nextPosition, strikerRadius);
@@ -1391,10 +1495,11 @@ public partial class CarromInputController : Node2D
 
 					// Start trajectory from far edge of hit piece
 					float hitPieceRadius = _physicsConfig.GetRadiusForPieceType(hitPiece.Type);
-					Vector2 trajectoryStartPos = hitPiece.GlobalPosition + hitPieceDirection * hitPieceRadius;
+					Vector2 trajectoryStartPos = hitPiece.GlobalPosition + (hitPieceDirection * hitPieceRadius);
 
 					SimulateHitPieceTrajectory(trajectoryStartPos, hitPieceDirection);
 				}
+
 				break;
 			}
 
@@ -1402,12 +1507,14 @@ public partial class CarromInputController : Node2D
 			position = nextPosition;
 			distanceTraveled += _trajectoryStepSize;
 			if (_trajectoryPointCount < _trajectoryPointsBuffer.Length)
+			{
 				_trajectoryPointsBuffer[_trajectoryPointCount++] = position;
+			}
 		}
 
 		return (_trajectoryPointCount, collisionPoint, _postCollisionCount, hitPiece, _hitPieceTrajectoryCount);
 	}
-	
+
 	/// <summary>
 	/// Get first collision along trajectory path
 	/// </summary>
@@ -1417,14 +1524,14 @@ public partial class CarromInputController : Node2D
 		{
 			return (false, Vector2.Zero, Vector2.Zero, null);
 		}
-		
+
 		// Check board boundaries first
 		var boardCollision = CheckBoardBoundaryCollision(from, to, radius);
 		if (boardCollision.hasCollision)
 		{
 			return (boardCollision.hasCollision, boardCollision.point, boardCollision.normal, null);
 		}
-		
+
 		// Use physics ray casting for other pieces
 		var spaceState = GetWorld2D()?.DirectSpaceState;
 		if (spaceState != null)
@@ -1443,7 +1550,7 @@ public partial class CarromInputController : Node2D
 			{
 				Vector2 collisionPoint = result["position"].AsVector2();
 				Vector2 normal = result["normal"].AsVector2();
-				
+
 				// Try to get the hit piece
 				CarromPiece hitPiece = null;
 				if (result.ContainsKey("collider"))
@@ -1451,14 +1558,14 @@ public partial class CarromInputController : Node2D
 					var collider = result["collider"].AsGodotObject();
 					hitPiece = collider as CarromPiece;
 				}
-				
+
 				return (true, collisionPoint, normal, hitPiece);
 			}
 		}
-		
+
 		return (false, Vector2.Zero, Vector2.Zero, null);
 	}
-	
+
 	/// <summary>
 	/// Check collision with board boundaries
 	/// </summary>
@@ -1466,58 +1573,57 @@ public partial class CarromInputController : Node2D
 	{
 		float boardHalfSize = _board.BoardHalfSize;
 		float effectiveBoundary = boardHalfSize - radius;
-		
+
 		// Check each boundary
 		Vector2 direction = (to - from).Normalized();
-		
+
 		// Right boundary
 		if (to.X > effectiveBoundary && direction.X > 0)
 		{
 			float t = (effectiveBoundary - from.X) / direction.X;
 			if (t is >= 0 and <= 1)
 			{
-				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
+				Vector2 intersectionPoint = from + (direction * t * from.DistanceTo(to));
 				return (true, intersectionPoint, Vector2.Left);
 			}
 		}
-		
+
 		// Left boundary
 		if (to.X < -effectiveBoundary && direction.X < 0)
 		{
 			float t = (-effectiveBoundary - from.X) / direction.X;
 			if (t is >= 0 and <= 1)
 			{
-				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
+				Vector2 intersectionPoint = from + (direction * t * from.DistanceTo(to));
 				return (true, intersectionPoint, Vector2.Right);
 			}
 		}
-		
+
 		// Top boundary
 		if (to.Y < -effectiveBoundary && direction.Y < 0)
 		{
 			float t = (-effectiveBoundary - from.Y) / direction.Y;
 			if (t is >= 0 and <= 1)
 			{
-				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
+				Vector2 intersectionPoint = from + (direction * t * from.DistanceTo(to));
 				return (true, intersectionPoint, Vector2.Down);
 			}
 		}
-		
+
 		// Bottom boundary
 		if (to.Y > effectiveBoundary && direction.Y > 0)
 		{
 			float t = (effectiveBoundary - from.Y) / direction.Y;
 			if (t is >= 0 and <= 1)
 			{
-				Vector2 intersectionPoint = from + direction * t * from.DistanceTo(to);
+				Vector2 intersectionPoint = from + (direction * t * from.DistanceTo(to));
 				return (true, intersectionPoint, Vector2.Up);
 			}
 		}
-		
+
 		return (false, Vector2.Zero, Vector2.Zero);
 	}
-	
-	
+
 	/// <summary>
 	/// Simulate simple post-collision trajectory path (constant distance)
 	/// GC OPTIMIZATION: Writes directly to class-level buffer instead of allocating List + ToArray
@@ -1536,7 +1642,7 @@ public partial class CarromInputController : Node2D
 			_postCollisionBuffer[_postCollisionCount++] = position;
 		}
 	}
-	
+
 	/// <summary>
 	/// Calculate the direction the hit piece will move after collision
 	/// Uses simplified physics for momentum transfer
@@ -1545,19 +1651,19 @@ public partial class CarromInputController : Node2D
 	{
 		// Calculate the impact vector from collision point to hit piece center
 		Vector2 impactVector = (hitPiecePosition - collisionPoint).Normalized();
-		
+
 		// For simplicity, assume elastic collision with equal masses
 		// The hit piece will move in the direction of the impact vector
 		// with some influence from the striker's original direction
-		
+
 		// Blend between pure impact direction and striker direction
 		// More power means more direct transfer of striker's momentum
 		float directionalInfluence = Mathf.Clamp(power, 0.3f, 0.7f);
 		Vector2 resultDirection = impactVector.Lerp(strikerDirection, directionalInfluence).Normalized();
-		
+
 		return resultDirection;
 	}
-	
+
 	/// <summary>
 	/// Simulate hit piece trajectory after being struck
 	/// GC OPTIMIZATION: Writes directly to class-level buffer instead of allocating List + ToArray
@@ -1586,31 +1692,34 @@ public partial class CarromInputController : Node2D
 	/// </summary>
 	public override void _ExitTree()
 	{
-		if (_isDisposed) return;
+		if (_isDisposed)
+		{
+			return;
+		}
 
 		// Clear game state reference
 		_gameState = null;
-		
+
 		// Clear all cached data to prevent memory leaks
 		ClearAllCaches();
-		
+
 		// Clear piece references
 		_striker = null;
 		_board = null;
 		_cameraController = null;
 		_physicsConfig = null;
-		
+
 		// Stop all processing
 		SetProcessInput(false);
 		SetPhysicsProcess(false);
 		SetProcess(false);
-		
+
 		_isDisposed = true;
 		GD.Print($"[CarromInputController] Cleanup completed");
-		
+
 		base._ExitTree();
 	}
-	
+
 	/// <summary>
 	/// Clear all cached data to free memory
 	/// </summary>
@@ -1620,7 +1729,7 @@ public partial class CarromInputController : Node2D
 		_hasValidConversionCache = false;
 		_lastScreenPosition = Vector2.Zero;
 		_lastBoardPosition = Vector2.Zero;
-		
+
 		// Clear trajectory calculation cache
 		_trajectoryCacheValid = false;
 		_trajectoryPointCount = 0;
@@ -1630,23 +1739,28 @@ public partial class CarromInputController : Node2D
 		_cachedHitPiece = null;
 		_lastTrajectoryDirection = Vector2.Zero;
 		_lastTrajectoryPower = 0.0f;
-		
+
 		// Clear baseline geometry cache
 		_baselineGeometryCached = false;
-		_baselinePositions = new Vector2[0];
+		_baselinePositions = [];
 		_cachedBaselineStart = Vector2.Zero;
 		_cachedBaselineEnd = Vector2.Zero;
 		_cachedBaselineVector = Vector2.Zero;
 		_cachedBaselineLength = 0.0f;
-		
+
 		GD.Print($"[CarromInputController] All caches cleared");
 	}
-	
+
 	// Public accessors
 	public bool IsInputEnabled() => !_isDisposed && CanAcceptInput();
+
 	public CarromPiece GetStriker() => _isDisposed ? null : _striker;
+
 	public float GetMaxStrikePowerValue() => GetMaxStrikePower();
+
 	public float GetDeadZone() => DeadZone;
+
 	public string GetGameStateStatus() => _gameState?.GetCurrentStateName() ?? "No game state";
+
 	public bool HasGameState() => !_isDisposed && _gameState != null;
 }

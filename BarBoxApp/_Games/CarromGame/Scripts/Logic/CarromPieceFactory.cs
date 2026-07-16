@@ -1,5 +1,5 @@
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
@@ -9,8 +9,11 @@ namespace BarBox.Games.Carrom;
 [GlobalClass]
 public partial class CarromPieceFactory : Node2D
 {
-	[Signal] public delegate void PieceCreatedEventHandler(CarromPiece piece);
-	[Signal] public delegate void PieceDestroyedEventHandler(CarromPiece piece);
+	[Signal]
+	public delegate void PieceCreatedEventHandler(CarromPiece piece);
+
+	[Signal]
+	public delegate void PieceDestroyedEventHandler(CarromPiece piece);
 
 	// Dependencies
 	private CarromBoard _board;
@@ -53,7 +56,7 @@ public partial class CarromPieceFactory : Node2D
 			(whiteTemplate, "white"),
 			(blackTemplate, "black"),
 			(redTemplate, "red"),
-			(strikerTemplate, "striker")
+			(strikerTemplate, "striker"),
 		};
 
 		foreach (var (template, name) in templates)
@@ -71,15 +74,14 @@ public partial class CarromPieceFactory : Node2D
 		_blackPieceTemplate = blackTemplate;
 		_redPieceTemplate = redTemplate;
 		_strikerTemplate = strikerTemplate;
-		
+
 		// Configure physics config with official board scaling for proportional piece sizes
 		if (_board != null && _physicsConfig != null)
 		{
 			_physicsConfig.SetBoardScaling(
 				_board.ScaleFactor,
 				_board.PieceRadius,
-				_board.OfficialStrikerRadius
-			);
+				_board.OfficialStrikerRadius);
 		}
 	}
 
@@ -108,7 +110,7 @@ public partial class CarromPieceFactory : Node2D
 			GD.PrintErr($"[CarromPieceFactory] No template found for piece type: {type}");
 			return null;
 		}
-		
+
 		if (!GodotObject.IsInstanceValid(pieceTemplate))
 		{
 			GD.PrintErr($"[CarromPieceFactory] Piece template for {type} is invalid");
@@ -125,7 +127,7 @@ public partial class CarromPieceFactory : Node2D
 			GD.PrintErr($"[CarromPieceFactory] Failed to instantiate piece {type}: {ex.Message}");
 			return null;
 		}
-		
+
 		if (piece == null || !GodotObject.IsInstanceValid(piece))
 		{
 			GD.PrintErr($"[CarromPieceFactory] Failed to create valid piece instance for type: {type}");
@@ -143,7 +145,6 @@ public partial class CarromPieceFactory : Node2D
 
 		piece.SetPhysicsLimits(_minVelocityThreshold, _angularMinThreshold,
 			_maxVelocityLimit, _maxAngularVelocity, _velocityAlertThreshold);
-
 
 		try
 		{
@@ -172,7 +173,7 @@ public partial class CarromPieceFactory : Node2D
 			PieceType.Black => _blackPieceTemplate,
 			PieceType.Red => _redPieceTemplate,
 			PieceType.Striker => _strikerTemplate,
-			_ => null
+			_ => null,
 		};
 	}
 
@@ -186,6 +187,7 @@ public partial class CarromPieceFactory : Node2D
 				piece.QueueFree();
 			}
 		}
+
 		_allPieces.Clear();
 	}
 
@@ -214,11 +216,13 @@ public partial class CarromPieceFactory : Node2D
 		foreach (var p in _allPieces)
 		{
 			if (GodotObject.IsInstanceValid(p) && p.Type == type)
+			{
 				result.Add(p);
+			}
 		}
+
 		return result;
 	}
-
 
 	public override void _Notification(int what)
 	{

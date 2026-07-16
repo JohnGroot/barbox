@@ -1,13 +1,18 @@
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 [GlobalClass]
 public partial class MainController : Control
 {
 	[ExportCategory("UI References")]
-	[Export] public Control GameSelectionPanel { get; set; }
-	[Export] public VBoxContainer GameList { get; set; }
-	[Export] public Label UserInfoLabel { get; set; }
+	[Export]
+	public Control GameSelectionPanel { get; set; }
+
+	[Export]
+	public VBoxContainer GameList { get; set; }
+
+	[Export]
+	public Label UserInfoLabel { get; set; }
 
 	private const string GAME_BUTTON_TEXT_FORMAT = "{0}\nPractice Mode: FREE\nPremium features: {1} credit{2}";
 	private const string USER_INFO_FORMAT = "User: {0}\nCredits: {1}";
@@ -21,7 +26,7 @@ public partial class MainController : Control
 	private CreditService _creditService;
 	private Node _onscreenKeyboard;
 	private readonly List<Button> _activeGameButtons = new();
-	
+
 	public override void _Ready()
 	{
 		// Check for test mode
@@ -69,23 +74,23 @@ public partial class MainController : Control
 		_gameRegistry = GameRegistry.GetAutoload();
 		_gameHost = GameHost.GetInstance();
 		_creditService = CreditService.GetInstance();
-		
+
 		// Services loaded and initialized
 
 		// Get reference to onscreen keyboard
 		_onscreenKeyboard = GetNode<Node>("KeyboardLayer/OnscreenKeyboard");
-		
+
 		// Enable keyboard for main menu (disabled by default in scene)
 		EnableKeyboardAutoShow();
-		
+
 		// Get UIManager reference - it's now an autoload service
 		_uiManager = UIManager.GetInstance();
-		
+
 		if (_uiManager != null)
 		{
 			_uiManager.LogoutRequested += OnLogoutRequested;
 		}
-		
+
 		ConnectSignals();
 		SetupUI();
 		UpdateUI();
@@ -136,12 +141,13 @@ public partial class MainController : Control
 		}
 	}
 
-
 	private void SetupUI()
 	{
 		// Always show game selection panel - login is handled by UIManager modal
 		if (GameSelectionPanel != null)
+		{
 			GameSelectionPanel.Visible = true; // Always show game selection
+		}
 
 		// Always populate game list, regardless of login status
 		PopulateGameList();
@@ -150,7 +156,9 @@ public partial class MainController : Control
 	private void PopulateGameList()
 	{
 		if (GameList == null || _gameRegistry == null)
+		{
 			return;
+		}
 
 		// Clear existing game buttons properly
 		ClearGameList();
@@ -177,13 +185,14 @@ public partial class MainController : Control
 				button.QueueFree();
 			}
 		}
+
 		_activeGameButtons.Clear();
 	}
 
 	private void CreateGameButton(GameMetadata gameData)
 	{
 		var button = new Button();
-		var creditPlural = gameData.CreditCost != 1 ? "s" : "";
+		var creditPlural = gameData.CreditCost != 1 ? "s" : string.Empty;
 		button.Text = string.Format(GAME_BUTTON_TEXT_FORMAT, gameData.DisplayName, gameData.CreditCost, creditPlural);
 		button.CustomMinimumSize = new Vector2(250, 100);
 
@@ -196,7 +205,10 @@ public partial class MainController : Control
 	private void OnGameSelected(string gameId)
 	{
 		var gameData = _gameRegistry?.GetGameData(gameId);
-		if (gameData == null) return;
+		if (gameData == null)
+		{
+			return;
+		}
 
 		// Get primary user session if logged in (single-user main menu context)
 		var currentUserSession = _sessionManager?.GetPrimarySession();
@@ -232,6 +244,7 @@ public partial class MainController : Control
 						credits = balance;
 					}
 				}
+
 				UserInfoLabel.Text = string.Format(USER_INFO_FORMAT, currentUserSession.UserName, credits);
 			}
 			else
@@ -273,7 +286,7 @@ public partial class MainController : Control
 			{
 				GD.PrintErr("[MainController DEBUG] _sessionManager is NULL, cannot logout");
 			}
-			
+
 			// UI will be updated via UserLoggedOut signal - no need for immediate UpdateUI()
 			// The signal-driven update ensures proper timing after logout completion
 		}
@@ -288,7 +301,6 @@ public partial class MainController : Control
 	/// </summary>
 	public void ForceUIManagerConnection()
 	{
-		
 		if (_uiManager != null)
 		{
 			// Disconnect any existing connection first
@@ -296,7 +308,7 @@ public partial class MainController : Control
 			{
 				_uiManager.LogoutRequested -= OnLogoutRequested;
 			}
-			
+
 			// Reconnect to ensure signal works
 			_uiManager.LogoutRequested += OnLogoutRequested;
 		}
@@ -304,7 +316,7 @@ public partial class MainController : Control
 		{
 			// Try to get UIManager reference if not available
 			_uiManager = UIManager.GetInstance();
-			
+
 			if (_uiManager != null)
 			{
 				_uiManager.LogoutRequested += OnLogoutRequested;
@@ -312,12 +324,8 @@ public partial class MainController : Control
 		}
 
 		// Ensure SessionManager reference is available for logout functionality
-		if (_sessionManager == null)
-		{
-			_sessionManager = SessionManager.GetInstance();
-		}
+		_sessionManager ??= SessionManager.GetInstance();
 	}
-
 
 	/// <summary>
 	/// Hide the main UI when a game is loaded - called by GameHost
@@ -326,7 +334,6 @@ public partial class MainController : Control
 	{
 		// NOTE: Keyboard auto_show remains enabled during gameplay to support modals (login, etc.)
 		// Games that need to disable keyboard can call DisableKeyboardAutoShow() explicitly
-
 		var uiContainer = GetNode<VBoxContainer>("UI");
 		if (uiContainer != null)
 		{
@@ -382,5 +389,4 @@ public partial class MainController : Control
 			_onscreenKeyboard.Set("auto_show", true);
 		}
 	}
-	
 }

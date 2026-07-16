@@ -1,11 +1,11 @@
-using Godot;
-using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Godot;
+using LightResults;
 
 namespace BarBox.Core.Autoloads;
 
@@ -33,7 +33,7 @@ public partial class BackendClient : AutoloadBase
 
 	public static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
 	{
-		PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
 	};
 
 	private HttpClient _httpClient;
@@ -70,7 +70,9 @@ public partial class BackendClient : AutoloadBase
 
 		// Load box identity from LocationManager (reuse variable from above)
 		if (locationManager == null || !locationManager.IsConfigLoaded)
+		{
 			throw new InvalidOperationException("LocationManager is required but not available or not initialized");
+		}
 
 		try
 		{
@@ -100,12 +102,7 @@ public partial class BackendClient : AutoloadBase
 		}
 
 		// Wait for BackendManager to be ready
-		var backendManager = BackendManager.GetInstance();
-		if (backendManager == null)
-		{
-			throw new InvalidOperationException("BackendManager not found - BackendClient requires BackendManager");
-		}
-
+		var backendManager = BackendManager.GetInstance() ?? throw new InvalidOperationException("BackendManager not found - BackendClient requires BackendManager");
 		LogInfo("Waiting for BackendManager to become ready...");
 		var backendReady = await backendManager.WaitForReadyAsync(timeoutSeconds: 30.0f, cancellationToken);
 
@@ -124,11 +121,13 @@ public partial class BackendClient : AutoloadBase
 	public async Task<Result<TResponse>> QueryAsync<TResponse>(
 		string endpoint,
 		Dictionary<string, string> queryParams = null,
-		Guid? playerId = null
-	) where TResponse : class
+		Guid? playerId = null)
+		where TResponse : class
 	{
 		if (!IsReady)
+		{
 			return Result.Failure<TResponse>(NotReadyError);
+		}
 
 		try
 		{
@@ -137,7 +136,8 @@ public partial class BackendClient : AutoloadBase
 			var url = endpoint;
 			if (queryParams != null && queryParams.Count > 0)
 			{
-				var query = string.Join("&",
+				var query = string.Join(
+					"&",
 					queryParams.Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
 				url = $"{endpoint}?{query}";
 			}
@@ -148,7 +148,9 @@ public partial class BackendClient : AutoloadBase
 
 			var error = _httpClient.Request(HttpClient.Method.Get, url, headersArray);
 			if (error != Godot.Error.Ok)
+			{
 				return Result.Failure<TResponse>($"Query request failed: {error}");
+			}
 
 			await WaitForResponseAsync();
 
@@ -189,11 +191,12 @@ public partial class BackendClient : AutoloadBase
 	public async Task<Result<string>> QueryRawAsync(
 		string endpoint,
 		Dictionary<string, string> queryParams = null,
-		Guid? playerId = null
-	)
+		Guid? playerId = null)
 	{
 		if (!IsReady)
+		{
 			return Result.Failure<string>(NotReadyError);
+		}
 
 		try
 		{
@@ -202,7 +205,8 @@ public partial class BackendClient : AutoloadBase
 			var url = endpoint;
 			if (queryParams != null && queryParams.Count > 0)
 			{
-				var query = string.Join("&",
+				var query = string.Join(
+					"&",
 					queryParams.Select(kv => $"{kv.Key}={Uri.EscapeDataString(kv.Value)}"));
 				url = $"{endpoint}?{query}";
 			}
@@ -213,7 +217,9 @@ public partial class BackendClient : AutoloadBase
 
 			var error = _httpClient.Request(HttpClient.Method.Get, url, headersArray);
 			if (error != Godot.Error.Ok)
+			{
 				return Result.Failure<string>($"Query request failed: {error}");
+			}
 
 			await WaitForResponseAsync();
 
@@ -256,6 +262,7 @@ public partial class BackendClient : AutoloadBase
 							{
 								GD.PrintErr($"  Details: {errorDict["details"]}");
 							}
+
 							GD.PrintErr($"  Endpoint: {endpoint}");
 						}
 						else
@@ -301,11 +308,13 @@ public partial class BackendClient : AutoloadBase
 		string endpoint,
 		TRequest requestBody,
 		int expectedStatusCode = 201,
-		Guid? playerId = null
-	) where TResponse : class
+		Guid? playerId = null)
+		where TResponse : class
 	{
 		if (!IsReady)
+		{
 			return Result.Failure<TResponse>(NotReadyError);
+		}
 
 		try
 		{
@@ -317,7 +326,9 @@ public partial class BackendClient : AutoloadBase
 
 			var error = _httpClient.Request(HttpClient.Method.Post, endpoint, headers, json);
 			if (error != Godot.Error.Ok)
+			{
 				return Result.Failure<TResponse>($"POST request failed: {error}");
+			}
 
 			await WaitForResponseAsync();
 
@@ -372,11 +383,13 @@ public partial class BackendClient : AutoloadBase
 		TRequest requestBody,
 		int expectedStatusCode = 200,
 		Guid? playerId = null,
-		IEnumerable<string> extraHeaders = null
-	) where TResponse : class
+		IEnumerable<string> extraHeaders = null)
+		where TResponse : class
 	{
 		if (!IsReady)
+		{
 			return Result.Failure<TResponse>(NotReadyError);
+		}
 
 		try
 		{
@@ -386,12 +399,17 @@ public partial class BackendClient : AutoloadBase
 
 			var headerList = BuildJsonHeaders(playerId);
 			if (extraHeaders != null)
+			{
 				headerList.AddRange(extraHeaders);
+			}
+
 			var headers = headerList.ToArray();
 
 			var error = _httpClient.Request(HttpClient.Method.Put, endpoint, headers, json);
 			if (error != Godot.Error.Ok)
+			{
 				return Result.Failure<TResponse>($"PUT request failed: {error}");
+			}
 
 			await WaitForResponseAsync();
 
@@ -429,7 +447,9 @@ public partial class BackendClient : AutoloadBase
 	public async Task<Result<string>> PostToSessionAsync(Guid sessionId, string json, Guid? playerId = null)
 	{
 		if (!IsReady)
+		{
 			return Result.Failure<string>(NotReadyError);
+		}
 
 		try
 		{
@@ -440,7 +460,9 @@ public partial class BackendClient : AutoloadBase
 
 			var error = _httpClient.Request(HttpClient.Method.Post, url, headers, json);
 			if (error != Godot.Error.Ok)
+			{
 				return Result.Failure<string>($"Session event submission request failed: {error}");
+			}
 
 			await WaitForResponseAsync();
 
@@ -450,7 +472,7 @@ public partial class BackendClient : AutoloadBase
 
 			if (responseCode != 201)
 			{
-				var suffix = string.IsNullOrEmpty(bodyText) ? "" : $": {bodyText}";
+				var suffix = string.IsNullOrEmpty(bodyText) ? string.Empty : $": {bodyText}";
 				return Result.Failure<string>($"Session event submission failed with code {responseCode}{suffix}");
 			}
 
@@ -480,11 +502,13 @@ public partial class BackendClient : AutoloadBase
 		{
 			$"X-Box-API-Key: {_boxApiKey}",
 			$"X-Box-ID: {_boxId}",
-			"User-Agent: BarBox-Client/1.0"
+			"User-Agent: BarBox-Client/1.0",
 		};
 
 		if (!playerId.HasValue || playerId.Value == Guid.Empty)
+		{
 			return headers;
+		}
 
 		var jwtToken = JwtTokenProvider?.Invoke(playerId.Value);
 		if (string.IsNullOrEmpty(jwtToken))
@@ -552,7 +576,9 @@ public partial class BackendClient : AutoloadBase
 				// Direct call intentional - chunked reading in loop
 				var chunk = _httpClient.ReadResponseBodyChunk();
 				if (chunk.Length == 0)
+				{
 					break; // No more data available
+				}
 
 				totalBytesDiscarded += chunk.Length;
 
@@ -609,12 +635,16 @@ public partial class BackendClient : AutoloadBase
 
 		var error = _httpClient.ConnectToHost(_backendHost, _backendPort, tlsOptions);
 		if (error != Godot.Error.Ok)
+		{
 			throw new InvalidOperationException($"Failed to connect to backend: {error}");
+		}
 
 		// Use aggressive polling utility - exits immediately when connected
 		bool connected = await _httpClient.PollUntilConnectedAsync(timeoutSeconds: 5.0f);
 		if (!connected)
+		{
 			throw new InvalidOperationException("Connection timeout");
+		}
 
 #if DEBUG_HTTP_LIFECYCLE
 		LogInfo("[HTTP] New connection established successfully");
@@ -631,8 +661,7 @@ public partial class BackendClient : AutoloadBase
 
 		// Use aggressive polling utility - exits immediately when response ready
 		bool ready = await _httpClient.PollUntilResponseReadyAsync(
-			timeoutSeconds: REQUEST_TIMEOUT_MS / 1000.0f
-		);
+			timeoutSeconds: REQUEST_TIMEOUT_MS / 1000.0f);
 
 		if (!ready)
 		{
@@ -661,7 +690,7 @@ public partial class BackendClient : AutoloadBase
 		if (string.IsNullOrEmpty(apiKey))
 		{
 			LogWarning("BARBOX_API_KEY not set - authenticated requests will fail");
-			return "";
+			return string.Empty;
 		}
 
 		return apiKey;

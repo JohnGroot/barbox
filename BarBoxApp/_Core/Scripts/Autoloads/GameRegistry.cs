@@ -1,14 +1,17 @@
-using Godot;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 
 namespace BarBox.Core.Autoloads;
 
 public partial class GameRegistry : AutoloadBase
 {
-	[Signal] public delegate void GameLoadedEventHandler(string gameId);
-	[Signal] public delegate void GameUnloadedEventHandler(string gameId);
+	[Signal]
+	public delegate void GameLoadedEventHandler(string gameId);
+
+	[Signal]
+	public delegate void GameUnloadedEventHandler(string gameId);
 
 	private Dictionary<string, GameMetadata> _availableGames = new();
 	private string _currentGameId = string.Empty;
@@ -59,7 +62,7 @@ public partial class GameRegistry : AutoloadBase
 
 	public GameMetadata[] GetAvailableGames()
 	{
-		return _availableGames.Values.ToArray();
+		return [.. _availableGames.Values];
 	}
 
 	public GameMetadata GetGameData(string gameId)
@@ -85,9 +88,9 @@ public partial class GameRegistry : AutoloadBase
 			{
 				EmitSignal(SignalName.GameUnloaded, _currentGameId);
 			}
-			
+
 			_currentGameId = gameId;
-			
+
 			if (!string.IsNullOrEmpty(_currentGameId))
 			{
 				EmitSignal(SignalName.GameLoaded, _currentGameId);
@@ -109,7 +112,7 @@ public partial class GameRegistry : AutoloadBase
 			CreditCost = 1000,
 			IsActive = true,
 			Category = "Racing",
-			DifficultyRating = 2.0f
+			DifficultyRating = 2.0f,
 		});
 
 		// Traditional board game with physics-based gameplay
@@ -124,7 +127,7 @@ public partial class GameRegistry : AutoloadBase
 			CreditCost = 1000,
 			IsActive = true,
 			Category = "Board",
-			DifficultyRating = 3.0f
+			DifficultyRating = 3.0f,
 		});
 
 		// Idle mining game with upgrades and gem collection
@@ -139,7 +142,7 @@ public partial class GameRegistry : AutoloadBase
 			CreditCost = 1000,
 			IsActive = true,
 			Category = "Idle",
-			DifficultyRating = 1.5f
+			DifficultyRating = 1.5f,
 		});
 
 		// Card prediction game with time-based jackpot
@@ -154,7 +157,7 @@ public partial class GameRegistry : AutoloadBase
 			CreditCost = 100,
 			IsActive = true,
 			Category = "Card",
-			DifficultyRating = 2.0f
+			DifficultyRating = 2.0f,
 		});
 	}
 }

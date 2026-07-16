@@ -16,6 +16,13 @@
     <Folder Include="addons\" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Style analyzers: skipped during regular builds, run by the pre-commit hook.
+         See Directory.Build.props and .editorconfig for the gate and rule set. -->
+    <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556" PrivateAssets="all" />
+    <PackageReference Include="Roslynator.Analyzers" Version="4.15.0" PrivateAssets="all" />
+    <AdditionalFiles Include="stylecop.json" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="LightResults" Version="9.0.0" />
     <PackageReference Include="ZLinq.Godot" Version="1.5.2" />
     <PackageReference Include="Chickensoft.GoDotTest" Version="2.0.21" />

@@ -55,13 +55,19 @@ public static class BuildContext
 	public static string GetContextDescription()
 	{
 		if (IsEditorToolContext)
+		{
 			return "Development: Editor tool script context";
+		}
 
 		if (IsLaunchedFromEditor)
+		{
 			return "Development: Launched from Godot editor";
+		}
 
 		if (IsExportedBuild)
+		{
 			return "Production: Exported standalone build";
+		}
 
 		return "Unknown: Unable to determine build context";
 	}

@@ -6,10 +6,12 @@ using Godot;
 /// </summary>
 public partial class GameTimerComponent : Node
 {
-	[Signal] public delegate void TimeUpEventHandler();
+	[Signal]
+	public delegate void TimeUpEventHandler();
 
 	[ExportCategory("Timer Settings")]
-	[Export] public float TimeLimit { get; set; } = 0.0f; // 0 = no time limit
+	[Export]
+	public float TimeLimit { get; set; } = 0.0f; // 0 = no time limit
 
 	private Timer _timer;
 	private bool _isActive = false;
@@ -17,7 +19,9 @@ public partial class GameTimerComponent : Node
 	public override void _Ready()
 	{
 		if (TimeLimit <= 0)
+		{
 			return;
+		}
 
 		_timer = new Timer();
 		_timer.WaitTime = TimeLimit;
@@ -29,7 +33,9 @@ public partial class GameTimerComponent : Node
 	public void StartTimer()
 	{
 		if (_timer == null || TimeLimit <= 0)
+		{
 			return;
+		}
 
 		_timer.Start();
 		_isActive = true;
@@ -38,7 +44,9 @@ public partial class GameTimerComponent : Node
 	public void StopTimer()
 	{
 		if (_timer == null)
+		{
 			return;
+		}
 
 		_timer.Stop();
 		_isActive = false;
@@ -47,7 +55,9 @@ public partial class GameTimerComponent : Node
 	public void PauseTimer()
 	{
 		if (_timer == null)
+		{
 			return;
+		}
 
 		_timer.Paused = true;
 	}
@@ -55,7 +65,9 @@ public partial class GameTimerComponent : Node
 	public void ResumeTimer()
 	{
 		if (_timer == null)
+		{
 			return;
+		}
 
 		_timer.Paused = false;
 	}

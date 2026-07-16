@@ -1,14 +1,14 @@
-using Godot;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
 /// <summary>
 /// Manages competitive mode functionality for Carrom game
-/// 
+///
 /// ARCHITECTURE NOTES:
 /// - Striker positioning: Uses base class PositionStrikerAtBaseline() with player-specific indexing
 /// - Phase transitions: Relies on base class ExecuteSettlement() - DO NOT manually transition phases
@@ -17,12 +17,23 @@ namespace BarBox.Games.Carrom;
 [GlobalClass]
 public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 {
-	[Signal] public delegate void TurnChangedEventHandler(string playerId, int turnNumber);
-	[Signal] public delegate void TurnReadyForPassEventHandler(string playerId, int turnNumber);
-	[Signal] public delegate void PlayerWonEventHandler(string playerId);
-	[Signal] public delegate void FoulCommittedEventHandler(string playerId);
-	[Signal] public delegate void CompetitiveModeSetupCompleteEventHandler();
-	[Signal] public delegate void NotificationRequestedEventHandler(int notificationType, string message);
+	[Signal]
+	public delegate void TurnChangedEventHandler(string playerId, int turnNumber);
+
+	[Signal]
+	public delegate void TurnReadyForPassEventHandler(string playerId, int turnNumber);
+
+	[Signal]
+	public delegate void PlayerWonEventHandler(string playerId);
+
+	[Signal]
+	public delegate void FoulCommittedEventHandler(string playerId);
+
+	[Signal]
+	public delegate void CompetitiveModeSetupCompleteEventHandler();
+
+	[Signal]
+	public delegate void NotificationRequestedEventHandler(int notificationType, string message);
 
 	// Reference to GameStateManager for state delegation
 	private GameStateManager _gameState;
@@ -39,17 +50,17 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	private PackedScene _blackPieceTemplate;
 	private PackedScene _redPieceTemplate;
 	private PackedScene _strikerTemplate;
-	
+
 	// Penalty piece tween tracking
 	private List<CarromPiece> _piecesNeedingTweenReturn = [];
 
 	// Settings
 	private int _competitiveCreditCost = 1;
 	private int _playerCount = 2; // Can be 2 or 4 players
-	
+
 	// Global analytics tracking
 	private SessionManager _sessionManager;
-	
+
 	// UI Dependencies
 	private CarromScoreDisplay _scoreDisplay;
 
@@ -63,7 +74,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 						   PackedScene strikerTemplate, int creditCost)
 	{
 		_gameState = gameState;  // Store reference to single source of truth
-		base.Initialize(board, inputController, physicsConfig);
+		Initialize(board, inputController, physicsConfig);
 		_whitePieceTemplate = whiteTemplate;
 		_blackPieceTemplate = blackTemplate;
 		_redPieceTemplate = redTemplate;
@@ -73,7 +84,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		// Get session manager for global data tracking
 		_sessionManager = SessionManager.GetInstance();
 	}
-	
+
 	/// <summary>
 	/// Set the score display for direct floating text calls
 	/// </summary>
@@ -85,7 +96,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	// ================================================================
 	// ABSTRACT METHOD IMPLEMENTATIONS
 	// ================================================================
-
 	protected override void CreateModeSpecificPieces()
 	{
 		_competitivePieces.Clear();
@@ -97,7 +107,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 
 	protected override List<CarromPiece> GetManagedPieces()
 	{
-		return new List<CarromPiece>(_competitivePieces);
+		return [.. _competitivePieces];
 	}
 
 	protected override void ClearModeSpecificPieces()
@@ -109,9 +119,10 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 				piece.QueueFree();
 			}
 		}
+
 		_competitivePieces.Clear();
 	}
-	
+
 	/// <summary>
 	/// Handle competitive mode settlement - pure data processing only
 	/// State machine controls all state transitions and striker restoration
@@ -147,14 +158,14 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		else
 		{
 			// Emit TurnReadyForPass signal for external UI handling
-		int turnNumber = _gameState.GetCurrentTurnNumber();
+			int turnNumber = _gameState.GetCurrentTurnNumber();
 			EmitSignal(SignalName.TurnReadyForPass, currentPlayerId, turnNumber);
 		}
 
 		// Stroke flags now managed by GameStateManager
 		// No need to reset here - GameStateManager handles this in ProcessSettlement
 	}
-	
+
 	/// <summary>
 	/// Check if win condition is met for competitive mode
 	/// Official Carrom Rules: Player/team wins by pocketing all assigned pieces and covering queen if pocketed
@@ -291,7 +302,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		// This ensures physics engine state is immediately synchronized
 		_striker.Reset(globalPosition);
 	}
-	
+
 	/// <summary>
 	/// Handle competitive-specific piece pocketing logic
 	/// Implements official carrom rules for piece pocketing, fouls, and turn continuation
@@ -497,13 +508,12 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	{
 		// Official carrom setup: 9 white, 9 black, 1 red queen
 		// Following traditional carrom arrangement rules from the reference image
-		
 		Vector2 center = Vector2.Zero;
 		float pieceSpacing = _board?.PieceRadius * 2.1f ?? 24.0f; // Pieces touching with slight gap
-		
+
 		// 1. Queen (red) in center
 		CreateCompetitivePiece(PieceType.Red, center);
-		
+
 		// 2. First row: 6 pieces around Queen, alternating black and white starting with black
 		Vector2[] firstRowPositions =
 		[
@@ -514,28 +524,28 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			new Vector2(-pieceSpacing * 0.866f, pieceSpacing * 0.5f), // Bottom left (240°)
 			new Vector2(-pieceSpacing * 0.866f, -pieceSpacing * 0.5f) // Top left (300°)
 		];
-		
+
 		// Alternate black and white in first row starting with black at top
 		for (int i = 0; i < firstRowPositions.Length; i++)
 		{
 			PieceType pieceType = i % 2 == 0 ? PieceType.Black : PieceType.White;
 			CreateCompetitivePiece(pieceType, firstRowPositions[i]);
 		}
-		
+
 		// 3. Second row: 12 pieces with white Y-shape formation
 		var secondRowRadius = pieceSpacing * 2.0f;
-		
+
 		// Create the Y-shape by placing 3 white pieces that form Y with the first row whites
 		// From the reference image, the Y is formed by white pieces at specific angles
 		// that align with the white pieces from first row (positions 1, 3, 5)
 		int[] yShapeIndices = [2, 6, 10]; // These create the Y-shape extending from first row whites
-		
+
 		// Second row piece arrangement - fill all 12 positions
 		for (int i = 0; i < 12; i++)
 		{
 			float angle = i * Mathf.Pi / 6; // 12 pieces = 30° each (π/6 radians)
-			Vector2 pos = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * secondRowRadius;
-			
+			Vector2 pos = center + (new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * secondRowRadius);
+
 			PieceType pieceType;
 			if (yShapeIndices.Contains(i))
 			{
@@ -557,11 +567,11 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 					pieceType = PieceType.Black;
 				}
 			}
-			
+
 			CreateCompetitivePiece(pieceType, pos);
 		}
 	}
-	
+
 	/// <summary>
 	/// Count white pieces created so far (for balancing during creation)
 	/// </summary>
@@ -576,13 +586,13 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	private CarromPiece CreateCompetitivePiece(PieceType type, Vector2 position)
 	{
 		var piece = CreatePiece(type, position);
-		
+
 		// Track competitive pieces (factory handles board addition and physics setup)
 		if (piece != null && type != PieceType.Striker)
 		{
 			_competitivePieces.Add(piece);
 		}
-		
+
 		return piece;
 	}
 
@@ -597,7 +607,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			PieceType.Black => _blackPieceTemplate,
 			PieceType.Red => _redPieceTemplate,
 			PieceType.Striker => _strikerTemplate,
-			_ => null
+			_ => null,
 		};
 	}
 
@@ -611,7 +621,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			_playerCount = playerCount;
 		}
 	}
-	
 
 	/// <summary>
 	/// Setup players for competitive mode with proper piece type assignments
@@ -631,7 +640,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			player1.ResetGameStats();
 			player1.QueenCoveredSuccessfully += OnQueenCoveredSuccessfully;
 			_players.Add(player1);
-			
+
 			var player2 = new CarromPlayer();
 			player2.PlayerId = "player2";
 			player2.AssignPieceType(PieceType.Black);
@@ -644,7 +653,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			// 4-player doubles mode: Players sit opposite as partners
 			// Team 1: Player 1 and Player 3 (white pieces)
 			// Team 2: Player 2 and Player 4 (black pieces)
-
 			var player1 = new CarromPlayer();
 			player1.PlayerId = "player1";
 			player1.AssignPieceType(PieceType.White);
@@ -673,7 +681,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			player4.QueenCoveredSuccessfully += OnQueenCoveredSuccessfully;
 			_players.Add(player4);
 		}
-		
+
 		// Player index now managed by GameStateManager
 		// Initial player setup happens in GameStateManager.SetupPlayers()
 		_gameState.SetupPlayers(_players);
@@ -739,7 +747,6 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		return _competitivePieces.Count(p => p.Visible);
 	}
 
-
 	/// <summary>
 	/// Get current player's CarromPlayer node
 	/// Delegates to GameStateManager for state, returns corresponding player node
@@ -779,14 +786,16 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	private CarromPlayer GetOpponentPlayer(CarromPlayer currentPlayer)
 	{
 		if (currentPlayer == null || _players.Count != 2)
+		{
 			return null;
+		}
 
 		return _players.Find(p => p != null && p.PlayerId != currentPlayer.PlayerId);
 	}
 
 	public List<CarromPiece> GetCompetitivePieces()
 	{
-		return [.._competitivePieces];
+		return [.. _competitivePieces];
 	}
 
 	protected override void ClearModeSpecificState()
@@ -850,6 +859,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 					GD.Print($"[CarromCompetitive] Breaking failed after {MAX_BREAKING_ATTEMPTS} attempts - {result.Reason}");
 					EmitSignal(SignalName.NotificationRequested, (int)NotificationType.BreakingFailed, "✗ Breaking Failed - Turn Passes");
 				}
+
 				shouldContinueTurn = false;
 				break;
 
@@ -869,10 +879,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 
 		// Stroke flags now managed by GameStateManager
 		// Reset happens in GameStateManager.ProcessSettlement()
-
 		return shouldContinueTurn;
 	}
-	
+
 	/// <summary>
 	/// Check if the central piece formation was disturbed
 	/// A simple heuristic: if any piece moved from its original position significantly
@@ -883,11 +892,14 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		var managedPieces = GetManagedPieces();
 		Vector2 centerPosition = _board?.GetCenterPosition() ?? Vector2.Zero;
 		float disturbanceThreshold = (_board?.PieceRadius ?? 15.0f) * 3.0f; // 3 piece radii
-		
+
 		foreach (var piece in managedPieces)
 		{
-			if (!GodotObject.IsInstanceValid(piece) || !piece.Visible) continue;
-			
+			if (!GodotObject.IsInstanceValid(piece) || !piece.Visible)
+			{
+				continue;
+			}
+
 			// If any piece is far from center, formation was disturbed
 			float distanceFromCenter = piece.GlobalPosition.DistanceTo(centerPosition);
 			if (distanceFromCenter > disturbanceThreshold)
@@ -895,17 +907,16 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 				return true;
 			}
 		}
-		
+
 		return false;
 	}
-	
-	
+
 	/// <summary>
 	/// Get all players
 	/// </summary>
 	public List<CarromPlayer> GetPlayers()
 	{
-		return [.._players];
+		return [.. _players];
 	}
 
 	// ================================================================
@@ -923,7 +934,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	private void ApplyFoulPenalty(CarromPlayer foulPlayer, FoulType foulType = FoulType.General)
 	{
 		if (foulPlayer == null)
+		{
 			return;
+		}
 
 		// Convert to rule engine data structure
 		var playerState = PlayerState.FromPlayer(foulPlayer);
@@ -941,7 +954,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			GD.Print($"[FOUL PENALTY] {foulPlayer.PlayerId} - {penalty.Reason}");
 		}
 	}
-	
+
 	/// <summary>
 	/// Apply standard penalty - return one of the player's pocketed pieces to center
 	/// </summary>
@@ -980,7 +993,10 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			return;
 		}
 
-		if (_board == null) return;
+		if (_board == null)
+		{
+			return;
+		}
 
 		// FIRST: Try to find and restore an existing hidden piece of this type
 		var hiddenPiece = FindHiddenPieceOfType(pieceType);
@@ -989,7 +1005,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			// Find a safe position near center that doesn't overlap with existing pieces
 			Vector2 centerPosition = _board.GetCenterPosition();
 			Vector2 safePosition = FindSafePositionNearCenter(centerPosition, pieceType);
-			
+
 			if (deferTweening)
 			{
 				// Position piece off-screen and add to tween list
@@ -1000,6 +1016,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 				// Restore the existing hidden piece immediately
 				hiddenPiece.Reset(safePosition, validatePlacement: true);
 			}
+
 			return;
 		}
 
@@ -1007,10 +1024,10 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		Vector2 fallbackPosition = FindSafePositionNearCenter(_board.GetCenterPosition(), pieceType);
 		var returnedPiece = CreatePiece(pieceType, fallbackPosition);
 		if (returnedPiece != null && pieceType != PieceType.Striker)
-		{ 
+		{
 			// Add to competitive pieces list so it's tracked
 			_competitivePieces.Add(returnedPiece);
-			
+
 			if (deferTweening)
 			{
 				// Position new piece off-screen and add to tween list
@@ -1033,6 +1050,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			{
 				return _striker;
 			}
+
 			return null;
 		}
 
@@ -1058,15 +1076,19 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		for (int attempt = 0; attempt < maxAttempts; attempt++)
 		{
 			bool positionFree = true;
-			
+
 			// Check against all existing competitive pieces
 			foreach (var existingPiece in _competitivePieces)
 			{
 				if (!IsInstanceValid(existingPiece) || !existingPiece.Visible)
+				{
 					continue;
+				}
 
 				float distance = testPosition.DistanceTo(existingPiece.GlobalPosition);
-				if (distance < pieceRadius * 2.2f) // Pieces need to be separated
+
+				// Pieces need to be separated
+				if (distance < pieceRadius * 2.2f)
 				{
 					positionFree = false;
 					break;
@@ -1082,9 +1104,8 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 			float angle = attempt * 0.5f; // Spiral pattern
 			testPosition = center + new Vector2(
 				Mathf.Cos(angle) * searchRadius,
-				Mathf.Sin(angle) * searchRadius
-			);
-			
+				Mathf.Sin(angle) * searchRadius);
+
 			// Increase search radius for next attempt
 			searchRadius += pieceRadius * 0.5f;
 		}
@@ -1115,28 +1136,28 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 
 		// Use piece's current position (should be at pocket center) as starting point
 		Vector2 pocketPosition = piece.GlobalPosition;
-		
-		// If piece position seems invalid, find nearest pocket position
-		if (pocketPosition.Length() < 10.0f) // Too close to origin, probably invalid
+
+		// If piece position seems invalid (too close to origin), find nearest pocket position
+		if (pocketPosition.Length() < 10.0f)
 		{
 			pocketPosition = FindNearestPocketPosition(finalPosition);
 		}
-		
+
 		// Reset piece physics state but keep it hidden until tween starts
 		piece.Reset(pocketPosition, immediate: true, restoreVisualProperties: false, validatePlacement: false);
-		
+
 		// Keep piece hidden in pocket until tween animation begins
 		piece.Visible = false;
 		piece.Scale = Vector2.Zero;
 		piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
-		
+
 		// Store both the start and target positions as metadata
 		piece.SetMeta("tween_start_position", pocketPosition);
 		piece.SetMeta("tween_target_position", finalPosition);
-		
+
 		// Add to tween list
 		_piecesNeedingTweenReturn.Add(piece);
-		
+
 		GD.Print($"[PENALTY TWEEN] Prepared hidden {piece.Type} piece for tween return from pocket at {pocketPosition} (kept hidden)");
 	}
 
@@ -1161,23 +1182,23 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 
 		// For new pieces, find a reasonable pocket position to start from
 		Vector2 pocketPosition = FindNearestPocketPosition(finalPosition);
-		
+
 		// Move piece to pocket position
 		piece.GlobalPosition = pocketPosition;
-		
+
 		// Start hidden like pocketed pieces, will be revealed when tween starts
 		piece.Visible = false;
 		piece.Freeze = false;
 		piece.Scale = Vector2.Zero;
 		piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
-		
+
 		// Store both the start and target positions as metadata
 		piece.SetMeta("tween_start_position", pocketPosition);
 		piece.SetMeta("tween_target_position", finalPosition);
-		
+
 		// Add to tween list
 		_piecesNeedingTweenReturn.Add(piece);
-		
+
 		GD.Print($"[PENALTY TWEEN] Prepared new {piece.Type} piece for tween return from pocket at {pocketPosition} (kept hidden)");
 	}
 
@@ -1186,16 +1207,22 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	/// </summary>
 	private Vector2 FindNearestPocketPosition(Vector2 centerPosition)
 	{
-		if (_board == null) return new Vector2(centerPosition.X, -200.0f); // Fallback to off-screen
-		
+		if (_board == null)
+		{
+			return new Vector2(centerPosition.X, -200.0f); // Fallback to off-screen
+		}
+
 		// Get pocket positions from board
 		var pockets = _board.GetPockets();
-		if (pockets.Count == 0) return new Vector2(centerPosition.X, -200.0f); // Fallback
-		
+		if (pockets.Count == 0)
+		{
+			return new Vector2(centerPosition.X, -200.0f); // Fallback
+		}
+
 		// Find the pocket closest to the center position (reasonable visual choice)
 		Vector2 nearestPocketPosition = pockets[0].GlobalPosition;
 		float nearestDistance = centerPosition.DistanceTo(nearestPocketPosition);
-		
+
 		foreach (var pocket in pockets)
 		{
 			if (pocket != null && GodotObject.IsInstanceValid(pocket))
@@ -1209,7 +1236,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 				}
 			}
 		}
-		
+
 		return nearestPocketPosition;
 	}
 
@@ -1220,9 +1247,9 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 	{
 		// Clean up any invalid pieces first
 		_piecesNeedingTweenReturn.RemoveAll(p => !GodotObject.IsInstanceValid(p));
-		
+
 		// Return a copy to avoid modification during iteration
-		return new List<CarromPiece>(_piecesNeedingTweenReturn);
+		return [.. _piecesNeedingTweenReturn];
 	}
 
 	public void ClearTweenReturnList()
@@ -1238,14 +1265,17 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		// Emit notification for queen covered
 		EmitSignal(SignalName.NotificationRequested, (int)NotificationType.QueenCovered, "👑✓ Queen Covered!");
 	}
-	
+
 	/// <summary>
 	/// Track global competitive game for analytics (NEW PATTERN)
 	/// Replaces table credit spending with persistent global tracking
 	/// </summary>
 	private void TrackGlobalCompetitiveGame()
 	{
-		if (_sessionManager == null) return;
+		if (_sessionManager == null)
+		{
+			return;
+		}
 
 		var userSession = _sessionManager.GetPrimarySession();
 		if (userSession != null)

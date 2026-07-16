@@ -1,8 +1,8 @@
-using Godot;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
@@ -19,40 +19,70 @@ public partial class CarromGame : GameController
 	// ================================================================
 
 	// Domain-specific lifecycle signals
-	[Signal] public delegate void RoundStartedEventHandler();
-	[Signal] public delegate void RoundEndedEventHandler();
+	[Signal]
+	public delegate void RoundStartedEventHandler();
+
+	[Signal]
+	public delegate void RoundEndedEventHandler();
 
 	// Game event signals
-	[Signal] public delegate void PiecePocketedEventHandler(string playerId, CarromPiece piece);
-	[Signal] public delegate void StrikerFoulEventHandler(string playerId);
-	[Signal] public delegate void TurnChangedEventHandler(string playerId, int turnNumber);
-	[Signal] public delegate void PenaltyPiecesTweenCompletedEventHandler();
+	[Signal]
+	public delegate void PiecePocketedEventHandler(string playerId, CarromPiece piece);
+
+	[Signal]
+	public delegate void StrikerFoulEventHandler(string playerId);
+
+	[Signal]
+	public delegate void TurnChangedEventHandler(string playerId, int turnNumber);
+
+	[Signal]
+	public delegate void PenaltyPiecesTweenCompletedEventHandler();
 
 	// ================================================================
 	// EXPORT PROPERTIES - CARROM SETTINGS
 	// ================================================================
-
 	[ExportCategory("Carrom Settings")]
-	[Export] public bool ShowPracticeMode { get; set; } = true;
-	[Export] public int CompetitiveCreditCost { get; set; } = 1;
-	[Export] public float TurnTimeLimit { get; set; } = 30.0f;
-	[Export] public CarromPhysicsConfig PhysicsConfig { get; set; }
-	
+	[Export]
+	public bool ShowPracticeMode { get; set; } = true;
+
+	[Export]
+	public int CompetitiveCreditCost { get; set; } = 1;
+
+	[Export]
+	public float TurnTimeLimit { get; set; } = 30.0f;
+
+	[Export]
+	public CarromPhysicsConfig PhysicsConfig { get; set; }
 
 	[ExportCategory("Physics Limits")]
-	[Export] public float MaxVelocityLimit { get; set; } = 2000.0f;
-	[Export] public float MaxAngularVelocity { get; set; } = 50.0f;
-	[Export] public float VelocityAlertThreshold { get; set; } = 1800.0f;
-	[Export] public float MinVelocityThreshold { get; set; } = 1.0f;
-	[Export] public float AngularMinThreshold { get; set; } = 0.1f;
+	[Export]
+	public float MaxVelocityLimit { get; set; } = 2000.0f;
+
+	[Export]
+	public float MaxAngularVelocity { get; set; } = 50.0f;
+
+	[Export]
+	public float VelocityAlertThreshold { get; set; } = 1800.0f;
+
+	[Export]
+	public float MinVelocityThreshold { get; set; } = 1.0f;
+
+	[Export]
+	public float AngularMinThreshold { get; set; } = 0.1f;
 
 	[ExportCategory("Visual Feedback")]
-	[Export] public float AimLineLength { get; set; } = 100.0f;
-	[Export] public float PowerBarWidth { get; set; } = 60.0f;
-	[Export] public float PowerBarHeight { get; set; } = 8.0f;
+	[Export]
+	public float AimLineLength { get; set; } = 100.0f;
+
+	[Export]
+	public float PowerBarWidth { get; set; } = 60.0f;
+
+	[Export]
+	public float PowerBarHeight { get; set; } = 8.0f;
 
 	[ExportCategory("Debug Options")]
-	[Export] public bool EnableTrails { get; set; } = false;
+	[Export]
+	public bool EnableTrails { get; set; } = false;
 
 	// Board settings are now managed by the CarromBoard component itself
 
@@ -62,15 +92,21 @@ public partial class CarromGame : GameController
 	public override bool CanLogout => !IsRoundActive();
 
 	[ExportCategory("Piece Templates")]
-	[Export(PropertyHint.ResourceType, "PackedScene")] public PackedScene WhitePieceTemplate { get; set; }
-	[Export(PropertyHint.ResourceType, nameof(PackedScene))] public PackedScene BlackPieceTemplate { get; set; }
-	[Export(PropertyHint.ResourceType, nameof(PackedScene))] public PackedScene RedPieceTemplate { get; set; }
-	[Export(PropertyHint.ResourceType, nameof(PackedScene))] public PackedScene StrikerTemplate { get; set; }
+	[Export(PropertyHint.ResourceType, "PackedScene")]
+	public PackedScene WhitePieceTemplate { get; set; }
+
+	[Export(PropertyHint.ResourceType, nameof(PackedScene))]
+	public PackedScene BlackPieceTemplate { get; set; }
+
+	[Export(PropertyHint.ResourceType, nameof(PackedScene))]
+	public PackedScene RedPieceTemplate { get; set; }
+
+	[Export(PropertyHint.ResourceType, nameof(PackedScene))]
+	public PackedScene StrikerTemplate { get; set; }
 
 	// ================================================================
 	// PRIVATE FIELDS - GAME LOGIC
 	// ================================================================
-
 	private CarromGameMode _carromGameMode = CarromGameMode.Practice;
 	private CarromBoard _board;
 	private CarromInputController _inputController;
@@ -90,12 +126,12 @@ public partial class CarromGame : GameController
 
 	// Optional GameController components (minimal usage - Carrom has own player system)
 	private PlayerManagementComponent _playerMgmt;
-	
+
 	// UI Components
 	private CarromScoreDisplay _scoreDisplay;
 	private CarromPlayerSetupMenu _playerSetupMenu;
 	private int _pendingPlayerCount = 2; // Track player count for menu → game transition
-	
+
 	// Game state is now managed entirely by GameStateManager
 
 	// Animation components
@@ -152,10 +188,7 @@ public partial class CarromGame : GameController
 	protected override void OnInitializeComponents()
 	{
 		// Initialize physics config early (needed for exports)
-		if (PhysicsConfig == null)
-		{
-			PhysicsConfig = new CarromPhysicsConfig();
-		}
+		PhysicsConfig ??= new CarromPhysicsConfig();
 
 		// Create minimal GameController components for compatibility
 		_playerMgmt = new PlayerManagementComponent();
@@ -207,16 +240,15 @@ public partial class CarromGame : GameController
 		{
 			// Get board from scene tree instead of creating it
 			_board = GetNode<CarromBoard>("CarromBoard");
-			
+
 			if (!GodotObject.IsInstanceValid(_board))
 			{
 				GD.PrintErr("[CarromGame] Failed to find CarromBoard in scene tree");
 				_board = null;
 				return;
 			}
-			
+
 			// Board should be self-contained with its own export properties
-			
 			var pockets = _board.GetPockets();
 			foreach (var pocket in pockets)
 			{
@@ -238,19 +270,22 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void SetupCameraController()
 	{
-		if (_board == null) return;
+		if (_board == null)
+		{
+			return;
+		}
 
 		// Ensure board stays at origin (0,0)
 		_board.GlobalPosition = Vector2.Zero;
-		
+
 		// Create and initialize camera controller
 		_cameraController = new CarromCameraController();
 		AddChild(_cameraController);
 		_cameraController.Initialize(_board);
-		
+
 		// Connect camera signals
 		_cameraController.CameraTransitionCompleted += OnCameraTransitionCompleted;
-		
+
 		// Connect penalty tween signals
 		PenaltyPiecesTweenCompleted += OnPenaltyPiecesTweenCompleted;
 	}
@@ -264,18 +299,17 @@ public partial class CarromGame : GameController
 		{
 			// Get input controller from scene tree instead of creating it
 			_inputController = GetNode<CarromInputController>("CarromInputController");
-			
+
 			if (!IsInstanceValid(_inputController))
 			{
 				GD.PrintErr("[CarromGame] Failed to find CarromInputController in scene tree");
 				_inputController = null;
 				return;
 			}
-			
+
 			// Connect input signals
 			_inputController.StrikeExecuted += OnStrikeExecuted;
 			_inputController.AimingStateChanged += OnAimingStateChanged;
-			
 		}
 		catch (System.Exception ex)
 		{
@@ -301,8 +335,7 @@ public partial class CarromGame : GameController
 				PhysicsConfig.SetBoardScaling(
 					_board.ScaleFactor,
 					_board.PieceRadius,
-					_board.OfficialStrikerRadius
-				);
+					_board.OfficialStrikerRadius);
 
 				// Pass physics config to board pockets for enhanced physics
 				_board.SetPocketPhysicsConfig(PhysicsConfig);
@@ -314,6 +347,7 @@ public partial class CarromGame : GameController
 		{
 			_inputController.InitializeWithBoard(_board);
 			_inputController.SetCameraController(_cameraController);
+
 			// NOTE: SetGameState moved to InitializeGameStateMachine() after GameStateManager is created
 			_inputController.SetPhysicsConfig(PhysicsConfig);
 
@@ -332,10 +366,10 @@ public partial class CarromGame : GameController
 	{
 		// Enable trails globally based on debug setting
 		CarromPiece.SetTrailsEnabled(EnableTrails);
-		
+
 		// Trail system initialized
 	}
-	
+
 	/// <summary>
 	/// Clear all piece trails
 	/// </summary>
@@ -368,10 +402,10 @@ public partial class CarromGame : GameController
 				}
 			}
 		}
-		
+
 		// All piece trails cleared
 	}
-	
+
 	/// <summary>
 	/// PHASE 3: Initialize game state manager (after PieceFactory initialized)
 	/// </summary>
@@ -425,7 +459,7 @@ public partial class CarromGame : GameController
 		_playerSetupMenu.GameStartRequested += OnPlayerSetupMenuGameStartRequested;
 		_playerSetupMenu.MenuCancelled += OnPlayerSetupMenuCancelled;
 	}
-	
+
 	/// <summary>
 	/// PHASE 1: Create all manager objects and add them to scene tree
 	/// Does NOT initialize them - that happens in Phase 2
@@ -486,7 +520,7 @@ public partial class CarromGame : GameController
 		// Practice mode signals
 		_practiceModeManager.PracticeResetRequested += OnPracticeResetRequested;
 		_practiceModeManager.PracticeModeSetupComplete += OnPracticeModeSetupComplete;
-		
+
 		// Competitive mode signals
 		_competitiveModeManager.TurnChanged += OnTurnChanged;
 		_competitiveModeManager.TurnReadyForPass += OnTurnReadyForPass;
@@ -494,7 +528,7 @@ public partial class CarromGame : GameController
 		_competitiveModeManager.FoulCommitted += OnFoulCommitted;
 		_competitiveModeManager.CompetitiveModeSetupComplete += OnCompetitiveModeSetupComplete;
 		_competitiveModeManager.NotificationRequested += OnNotificationRequested;
-		
+
 		// Piece factory signals
 		_pieceFactory.PieceCreated += OnPieceCreated;
 		_pieceFactory.PieceDestroyed += OnPieceDestroyed;
@@ -512,7 +546,7 @@ public partial class CarromGame : GameController
 		// Delegate to current mode manager using polymorphism
 		return _currentModeManager?.AreAllPiecesStopped() ?? true;
 	}
-	
+
 	/// <summary>
 	/// Get the current striker (delegated to current mode manager)
 	/// </summary>
@@ -528,32 +562,36 @@ public partial class CarromGame : GameController
 	protected override HelpContentData GetHelpContent()
 	{
 		return new HelpContentData("CARROM HOW-TO - Traditional Rules with ICF Scoring")
-			.AddSection("🎯 WELCOME TO CARROM 🎯",
+			.AddSection(
+				"🎯 WELCOME TO CARROM 🎯",
 				"• Pocket all your assigned pieces (⚪ White or ⚫ Black) to win the game",
 				"• Use the striker to hit pieces into corner pockets",
 				"• The red piece (👑 Queen) is worth 3 points and must be 'covered' by your piece",
 				"• Practice Mode lets you play freely - Competitive Mode follows official ICF rules!")
 
-			.AddSection("🎱 HOW TO PLAY 🎱",
+			.AddSection(
+				"🎱 HOW TO PLAY 🎱",
 				"• Drag DOWN from the striker to aim, then release to shoot",
 				"• Drag LEFT or RIGHT on the Striker to reposition it on the baseline",
 				"• Pocket your color pieces while avoiding opponent pieces and fouls",
 				"• Valid shots require hitting your own pieces first or pocketing any piece")
 
-			.AddSection("⚠️ RULES & FOULS ⚠️",
+			.AddSection(
+				"⚠️ RULES & FOULS ⚠️",
 				"• CONTINUE TURN: Pocket your piece(s) legally = shoot again!",
 				"• FOUL CONDITIONS: Striker pocketed, opponent piece hit first, or leaves the board",
 				"• FOUL PENALTY: Lose your turn + return one of your pocketed pieces to center",
 				"• QUEEN COVERING: Must pocket your own piece immediately after Queen in same turn",
 				"• BREAKING RULE: 3 attempts maximum to disturb pieces, then turn passes")
 
-			.AddSection("🏆 COMPETITIVE MODES 🏆",
+			.AddSection(
+				"🏆 COMPETITIVE MODES 🏆",
 				"• 2-Player Singles: Each player owns one color (White vs Black pieces)",
 				"• 4-Player Doubles: Teams of 2, partners sit opposite (White team vs Black team)",
 				"• WIN CONDITION: Pocket all 9 of your pieces + cover Queen if pocketed",
 				"• Queen worth 3 points when properly covered");
 	}
-	
+
 	/// <summary>
 	/// Update input controller with current striker from mode manager
 	/// </summary>
@@ -576,8 +614,8 @@ public partial class CarromGame : GameController
 		// Only competitive rounds are considered "active rounds"
 		// Practice mode is free-play and shouldn't block competitive mode start
 		return _gameStateManager != null &&
-		       _gameStateManager.CurrentState != GameStateManager.GamePhase.Initializing &&
-		       _carromGameMode == CarromGameMode.Competitive;
+			   _gameStateManager.CurrentState != GameStateManager.GamePhase.Initializing &&
+			   _carromGameMode == CarromGameMode.Competitive;
 	}
 
 	// ================================================================
@@ -663,8 +701,7 @@ public partial class CarromGame : GameController
 				"Return to Practice",
 				"Are you sure you want to return to practice mode?\n\nThe current competitive match will be cancelled.",
 				"Return to Practice",
-				"Cancel"
-			);
+				"Cancel");
 
 			if (!confirmed)
 			{
@@ -690,16 +727,15 @@ public partial class CarromGame : GameController
 	public virtual void StartCompetitiveMode(int playerCount = 2)
 	{
 		if (IsRoundActive())
+		{
 			return;
+		}
 
 		// Store player count for when menu signals game start
 		_pendingPlayerCount = playerCount;
 
 		// Show player setup menu instead of immediately starting
-		if (_playerSetupMenu != null)
-		{
-			_playerSetupMenu.ShowMenu(playerCount, CompetitiveCreditCost);
-		}
+		_playerSetupMenu?.ShowMenu(playerCount, CompetitiveCreditCost);
 	}
 
 	/// <summary>
@@ -708,7 +744,9 @@ public partial class CarromGame : GameController
 	private void StartCompetitiveModeInternal(int playerCount)
 	{
 		if (IsRoundActive())
+		{
 			return;
+		}
 
 		// Clean up practice mode before switching
 		_practiceModeManager?.CleanupMode();
@@ -743,7 +781,7 @@ public partial class CarromGame : GameController
 		// Game state machine will handle state resets automatically
 		// No manual state flags needed
 	}
-	
+
 	/// <summary>
 	/// Request practice mode reset - relies on state machine guarantees for safe timing
 	/// </summary>
@@ -754,18 +792,17 @@ public partial class CarromGame : GameController
 			GD.PrintErr("[CarromGame] Cannot request practice reset - practice manager not initialized");
 			return;
 		}
-		
+
 		// State machine guarantees safe timing for resets
 		ExecutePracticeReset();
 	}
-	
+
 	/// <summary>
 	/// Execute the actual practice reset
 	/// </summary>
 	private void ExecutePracticeReset()
 	{
 		// Executing practice reset
-
 		try
 		{
 			_practiceModeManager?.RequestExplicitReset();
@@ -887,20 +924,20 @@ public partial class CarromGame : GameController
 			GD.PrintErr("[CarromGame] OnPiecePocketed called with invalid piece");
 			return;
 		}
-		
+
 		string pieceType = piece.Type.ToString();
 		bool isStriker = piece.Type == PieceType.Striker;
 		string playerId = GetCurrentPlayerId();
 
 		// Delegate to current mode manager using polymorphism
 		_currentModeManager?.OnPiecePocketed(piece);
-		
+
 		// Update score display in competitive mode
 		if (_carromGameMode == CarromGameMode.Competitive && _scoreDisplay != null && _competitiveModeManager != null)
 		{
 			_scoreDisplay.UpdateAllPlayerScores(_competitiveModeManager.GetPlayers());
 		}
-		
+
 		// Emit main game signal
 		EmitSignal(SignalName.PiecePocketed, playerId, piece);
 	}
@@ -912,11 +949,10 @@ public partial class CarromGame : GameController
 	{
 		// Handle collision effects (sound, particles, etc.)
 		float impactMagnitude = impactForce.Length();
-		
+
 		// Play collision sound based on impact force
 		// Add particle effects, etc.
 	}
-
 
 	/// <summary>
 	/// Get point value for a piece type (Official ICF Rules)
@@ -928,7 +964,7 @@ public partial class CarromGame : GameController
 			PieceType.Red => 3.0f,  // Queen worth 3 points per ICF rules
 			PieceType.White => 1.0f,
 			PieceType.Black => 1.0f,
-			_ => 0.0f
+			_ => 0.0f,
 		};
 	}
 
@@ -937,8 +973,11 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void ResetPieceToStart(CarromPiece piece, Vector2 startPosition)
 	{
-		if (!GodotObject.IsInstanceValid(piece)) return;
-		
+		if (!GodotObject.IsInstanceValid(piece))
+		{
+			return;
+		}
+
 		// Use the immediate synchronous reset method with global coordinates
 		piece.Reset(ToGlobal(startPosition));
 	}
@@ -1044,7 +1083,7 @@ public partial class CarromGame : GameController
 			return false;
 		}
 	}
-	
+
 	/// <summary>
 	/// Mark recent restoration in current mode manager's settlement context
 	/// </summary>
@@ -1054,6 +1093,7 @@ public partial class CarromGame : GameController
 		if (_currentModeManager is CarromModeManagerBase modeManager)
 		{
 			modeManager.MarkRecentRestoration(piece);
+
 			// Marked piece as recently restored in settlement context
 		}
 		else
@@ -1061,7 +1101,7 @@ public partial class CarromGame : GameController
 			GD.PrintErr($"[CarromGame] MarkRecentRestoration: Could not cast mode manager to base class");
 		}
 	}
-	
+
 	/// <summary>
 	/// Validate that striker restoration was successful - focuses on position and visibility, not physics state
 	/// </summary>
@@ -1071,21 +1111,21 @@ public partial class CarromGame : GameController
 		{
 			return false;
 		}
-		
+
 		// Check visibility was restored
 		if (!striker.Visible)
 		{
 			GD.PrintErr("[CarromGame] Striker restoration validation failed: Still invisible");
 			return false;
 		}
-		
+
 		// Check freeze state was cleared
 		if (striker.Freeze)
 		{
 			GD.PrintErr("[CarromGame] Striker restoration validation failed: Still frozen");
 			return false;
 		}
-		
+
 		// Check position is reasonable (within tolerance)
 		float positionTolerance = 100.0f; // Allow 100 pixel tolerance for validation
 		float actualDistance = striker.GlobalPosition.DistanceTo(expectedPosition);
@@ -1094,13 +1134,12 @@ public partial class CarromGame : GameController
 			GD.PrintErr($"[CarromGame] Striker restoration validation failed: Position too far from expected - Distance: {actualDistance:F2}, Expected: {expectedPosition}, Actual: {striker.GlobalPosition}");
 			return false;
 		}
-		
+
 		// NOTE: We don't check IsStopped() here because with deferred physics reset,
 		// the striker may still have velocity that will be cleared later
-		
 		return true;
 	}
-	
+
 	/// <summary>
 	/// Smoothly tween striker to baseline position for cinematic camera transitions
 	/// Now includes collision detection to prevent tweening into other pieces
@@ -1176,11 +1215,11 @@ public partial class CarromGame : GameController
 			striker.Visible = true;
 			striker.Freeze = false;
 			striker.ContactMonitor = true; // Re-enable collision detection
-			
+
 			// Restore visual properties (pocket may have made it invisible/scaled to zero)
 			striker.Scale = Vector2.One;
 			striker.Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f); // Fully opaque
-			
+
 			// Mark this restoration in the mode manager's settlement context
 			MarkRecentRestoration(striker);
 
@@ -1189,8 +1228,9 @@ public partial class CarromGame : GameController
 			{
 				_strikerTween.Kill();
 			}
+
 			_strikerTween = null;
-			
+
 			// Create and configure tween
 			_strikerTween = CreateTween();
 			if (_strikerTween == null)
@@ -1216,6 +1256,7 @@ public partial class CarromGame : GameController
 				if (currentPlayer != null)
 				{
 					string pieceIcon = currentPlayer.AssignedPieceType == PieceType.White ? "⚪" : "⚫";
+
 					// Get turn number from current player index + 1 for display
 					int turnNumber = _competitiveModeManager.GetPlayers().Count > 0 ?
 						(_competitiveModeManager.GetPlayers().IndexOf(currentPlayer) + 1) : 1;
@@ -1241,7 +1282,8 @@ public partial class CarromGame : GameController
 			if (propertyTweener != null)
 			{
 				// Validate final position after tween completes
-				_strikerTween.TweenCallback(Callable.From(() => {
+				_strikerTween.TweenCallback(Callable.From(() =>
+				{
 					// Validate final position (don't interfere with physics - let tween handle positioning)
 					if (GodotObject.IsInstanceValid(striker))
 					{
@@ -1267,6 +1309,7 @@ public partial class CarromGame : GameController
 		catch (System.Exception ex)
 		{
 			GD.PrintErr($"[CarromGame] TweenStrikerToBaseline: Exception during tween setup: {ex.Message}");
+
 			// Fallback to immediate restoration
 			RestoreStrikerToBaseline(playerIndexOverride);
 		}
@@ -1304,6 +1347,7 @@ public partial class CarromGame : GameController
 			{
 				GD.PrintErr($"[PENALTY TWEEN] {penaltyPieces.Count} penalty pieces were invalid - skipping animation");
 			}
+
 			EmitSignal(SignalName.PenaltyPiecesTweenCompleted);
 			return;
 		}
@@ -1324,6 +1368,7 @@ public partial class CarromGame : GameController
 		{
 			_penaltyPiecesTween.Kill();
 		}
+
 		_penaltyPiecesTween = null;
 
 		// Create and configure tween for sequential animation
@@ -1389,6 +1434,7 @@ public partial class CarromGame : GameController
 		else
 		{
 			GD.Print("[PENALTY TWEEN] No valid pieces to animate - completing immediately");
+
 			// Kill the empty tween and complete immediately
 			_penaltyPiecesTween?.Kill();
 			_penaltyPiecesTween = null;
@@ -1401,13 +1447,16 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private void RevealPieceForAnimation(CarromPiece piece)
 	{
-		if (!GodotObject.IsInstanceValid(piece)) return;
-		
+		if (!GodotObject.IsInstanceValid(piece))
+		{
+			return;
+		}
+
 		// Restore piece visibility and visual properties from pocket state
 		piece.Visible = true;
 		piece.Scale = Vector2.One;
 		piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f);
-		
+
 		// Revealed penalty piece for animation
 	}
 
@@ -1417,23 +1466,24 @@ public partial class CarromGame : GameController
 	private void OnAllPenaltyPiecesTweenCompleted()
 	{
 		// All penalty pieces tween animation completed
-		
+
 		// Clear the competitive mode manager's tween list
 		if (_competitiveModeManager is CarromCompetitiveModeManager competitiveModeManager)
 		{
 			competitiveModeManager.ClearTweenReturnList();
 		}
-		
+
 		// Reset animation state
 		_penaltyPieceIndex = 0;
-		
+
 		// Clean up tween
 		if (_penaltyPiecesTween != null && _penaltyPiecesTween.IsValid())
 		{
 			_penaltyPiecesTween.Kill();
 		}
+
 		_penaltyPiecesTween = null;
-		
+
 		// Signal completion to trigger camera transition
 		EmitSignal(SignalName.PenaltyPiecesTweenCompleted);
 	}
@@ -1463,6 +1513,7 @@ public partial class CarromGame : GameController
 				_playerMgmt.AddPlayer(player);
 			}
 		}
+
 		// Development context: No auto-player creation
 		// Require actual login for data persistence and game functionality
 	}
@@ -1488,7 +1539,10 @@ public partial class CarromGame : GameController
 	private async void SaveGameResultAsync(string playerId, bool isWin)
 	{
 		string phoneNumber = GetCurrentUserPhoneNumber();
-		if (string.IsNullOrEmpty(phoneNumber)) return;
+		if (string.IsNullOrEmpty(phoneNumber))
+		{
+			return;
+		}
 
 		try
 		{
@@ -1503,16 +1557,20 @@ public partial class CarromGame : GameController
 			}
 
 			var mode = _carromGameMode.ToString().ToLowerInvariant();
-			var winnerId = isWin ? playerId : "";
+			var winnerId = isWin ? playerId : string.Empty;
 
 			// Emit result through the shared guarded path (event-sourced persistence)
 			var result = await _carromEventService.EmitRoundFinishAsync(mode, winnerId, scores);
 
 			// Thread-safe logging via CallDeferred
 			if (result.IsFailure(out var error))
+			{
 				CallDeferred(MethodName.LogAsyncError, $"Failed to emit round_finish event: {error.Message}");
+			}
 			else
+			{
 				CallDeferred(MethodName.LogSavedData, $"Emitted round_finish event - Win: {isWin}");
+			}
 		}
 		catch (System.Exception ex)
 		{
@@ -1526,12 +1584,15 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private int GetCurrentWinStreak(string playerId)
 	{
-		if (_competitiveModeManager == null) return 0;
-		
+		if (_competitiveModeManager == null)
+		{
+			return 0;
+		}
+
 		var player = _competitiveModeManager.GetPlayers()?.FirstOrDefault(p => p.PlayerId == playerId);
 		return player != null ? 1 : 0; // Simple implementation - just return 1 for existing players
 	}
-	
+
 	/// <summary>
 	/// Thread-safe logging method for loaded data
 	/// </summary>
@@ -1539,7 +1600,7 @@ public partial class CarromGame : GameController
 	{
 		GD.Print($"[CarromGame] {message}");
 	}
-	
+
 	/// <summary>
 	/// Thread-safe logging method for saved data
 	/// </summary>
@@ -1547,7 +1608,7 @@ public partial class CarromGame : GameController
 	{
 		GD.Print($"[CarromGame] {message}");
 	}
-	
+
 	/// <summary>
 	/// Thread-safe logging method for async errors
 	/// </summary>
@@ -1578,6 +1639,7 @@ public partial class CarromGame : GameController
 		{
 			GD.PrintErr($"[CarromGame] Error getting current user phone number: {ex.Message}");
 		}
+
 		// Return null if no user is logged in - no fallbacks
 		return null;
 	}
@@ -1594,7 +1656,8 @@ public partial class CarromGame : GameController
 		var buttons = new List<ContextButtonData>();
 
 		// Standard "Return to Menu" button
-		buttons.Add(GameContextButton.CreateReturnToMenuButton(() => {
+		buttons.Add(GameContextButton.CreateReturnToMenuButton(() =>
+		{
 			var sessionManager = Platform.Session;
 			sessionManager?.ResetAllIdleTimers();
 			ReturnToMainMenu();
@@ -1603,19 +1666,22 @@ public partial class CarromGame : GameController
 		// Mode-specific buttons
 		if (_carromGameMode == CarromGameMode.Practice)
 		{
-			buttons.Add(new ContextButtonData("Reset", () => {
+			buttons.Add(new ContextButtonData("Reset", () =>
+			{
 				var sessionManager = Platform.Session;
 				sessionManager?.ResetAllIdleTimers();
 				RequestPracticeReset();
 			}, "🔄", true, "Reset practice session"));
-			
-			buttons.Add(new ContextButtonData("2-Player Match", () => {
+
+			buttons.Add(new ContextButtonData("2-Player Match", () =>
+			{
 				var sessionManager = Platform.Session;
 				sessionManager?.ResetAllIdleTimers();
 				StartCompetitiveMode(2);
 			}, "👥", true, "Start 2-player competitive match"));
-			
-			buttons.Add(new ContextButtonData("4-Player Match", () => {
+
+			buttons.Add(new ContextButtonData("4-Player Match", () =>
+			{
 				var sessionManager = Platform.Session;
 				sessionManager?.ResetAllIdleTimers();
 				StartCompetitiveMode(4);
@@ -1624,19 +1690,21 @@ public partial class CarromGame : GameController
 		else if (_carromGameMode == CarromGameMode.Competitive)
 		{
 			// Show scores
-			buttons.Add(new ContextButtonData("Scores", () => {
+			buttons.Add(new ContextButtonData("Scores", () =>
+			{
 				ShowScoreboard();
 			}, "📊", true, "View current scores"));
-			
+
 			// Return to practice mode
-			buttons.Add(new ContextButtonData("Return to Practice", () => {
+			buttons.Add(new ContextButtonData("Return to Practice", () =>
+			{
 				var sessionManager = Platform.Session;
 				sessionManager?.ResetAllIdleTimers();
 				ReturnToPractice();
 			}, "🔄", true, "Return to practice mode"));
 		}
 
-		return buttons.ToArray();
+		return [.. buttons];
 	}
 
 	/// <summary>
@@ -1675,22 +1743,21 @@ public partial class CarromGame : GameController
 		dialog.Title = "📊 Current Scores";
 		dialog.DialogText = scoreText;
 		dialog.Size = new Vector2I(400, 350);
-		
+
 		// Center the dialog
 		var viewport = GetViewport();
 		if (viewport != null)
 		{
 			var screenSize = viewport.GetVisibleRect().Size;
 			dialog.Position = new Vector2I(
-				(int)(screenSize.X / 2 - 200), 
-				(int)(screenSize.Y / 2 - 175)
-			);
+				(int)((screenSize.X / 2) - 200),
+				(int)((screenSize.Y / 2) - 175));
 		}
 
 		// Add dialog to scene tree and show
 		GetTree().CurrentScene.AddChild(dialog);
 		dialog.PopupCentered();
-		
+
 		// Auto-remove dialog when closed
 		dialog.Confirmed += () => dialog.QueueFree();
 		dialog.Canceled += () => dialog.QueueFree();
@@ -1703,29 +1770,33 @@ public partial class CarromGame : GameController
 	private void ShowTurnTransition(string playerId, int turnNumber)
 	{
 		if (_carromGameMode != CarromGameMode.Competitive || _competitiveModeManager == null)
+		{
 			return;
+		}
 
 		var currentPlayer = _competitiveModeManager.GetCurrentPlayer();
-		if (currentPlayer == null) 
+		if (currentPlayer == null)
+		{
 			return;
+		}
 
 		// Build compact transition message for the score bar
 		string pieceIcon = currentPlayer.AssignedPieceType == PieceType.White ? "⚪" : "⚫";
 		string transitionMessage = $"🎯 {currentPlayer.PlayerId.ToUpper()}'S TURN {pieceIcon} - Turn {turnNumber}";
-		
+
 		// Show transition in the score display bar - this shows the pass turn button
 		if (_scoreDisplay != null)
 		{
 			_scoreDisplay.ShowTurnTransition(transitionMessage, 3.0f);
-			
+
 			// Update all player scores during transition
 			var players = _competitiveModeManager.GetPlayers();
 			_scoreDisplay.UpdateAllPlayerScores(players);
 		}
-		
+
 		// Camera rotation now happens in OnPassTurnRequested when turn is actually advanced
 	}
-	
+
 	/// <summary>
 	/// Handle manual pass turn request from score display
 	/// Now includes proper camera rotation timing after turn switch
@@ -1734,7 +1805,9 @@ public partial class CarromGame : GameController
 	{
 		// Only process pass turn requests in competitive mode when all pieces have settled
 		if (_carromGameMode != CarromGameMode.Competitive || _gameStateManager == null)
+		{
 			return;
+		}
 
 		// Check if we're in a state where turn can be passed (all pieces stopped)
 		bool allPiecesStopped = AreAllPiecesStopped();
@@ -1754,21 +1827,26 @@ public partial class CarromGame : GameController
 		// Striker restoration happens after camera transition via CameraTransitionCompleted signal
 	}
 
-
 	/// <summary>
 	/// Show comprehensive game over screen with final statistics
 	/// </summary>
 	private void ShowGameOverScreen(string winnerPlayerId)
 	{
-		if (_competitiveModeManager == null) return;
+		if (_competitiveModeManager == null)
+		{
+			return;
+		}
 
 		var players = _competitiveModeManager.GetPlayers();
 		var winner = players.FirstOrDefault(p => p.PlayerId == winnerPlayerId);
-		if (winner == null) return;
+		if (winner == null)
+		{
+			return;
+		}
 
 		int playerCount = players.Count;
 		string modeText = playerCount == 4 ? "Doubles" : "Singles";
-		
+
 		var gameOverMessage = new System.Text.StringBuilder($"🏆 GAME OVER - {modeText.ToUpper()} 🏆\n\n");
 		gameOverMessage.AppendLine($"WINNER: {winner.PlayerId.ToUpper()}");
 		gameOverMessage.AppendLine($"Team: {winner.AssignedPieceType} Pieces");
@@ -1791,17 +1869,18 @@ public partial class CarromGame : GameController
 			string position = (i + 1) switch
 			{
 				1 => "1st",
-				2 => "2nd", 
+				2 => "2nd",
 				3 => "3rd",
 				4 => "4th",
-				_ => $"{i + 1}th"
+				_ => $"{i + 1}th",
 			};
-			
+
 			gameOverMessage.Append($"{position}: {player.PlayerId} - {player.PiecesPocketed}/9 pieces");
 			if (player.HasQueen)
 			{
 				gameOverMessage.Append(player.QueenCovered ? " + Queen ✓" : " + Queen ✗");
 			}
+
 			gameOverMessage.AppendLine($" (Accuracy: {player.GetAccuracy():P1})");
 		}
 
@@ -1818,29 +1897,29 @@ public partial class CarromGame : GameController
 		dialog.Title = "🏆 COMPETITIVE CARROM - GAME COMPLETE 🏆";
 		dialog.DialogText = message;
 		dialog.Size = new Vector2I(500, 400);
-		
+
 		// Center the dialog
 		var viewport = GetViewport();
 		if (viewport != null)
 		{
 			var screenSize = viewport.GetVisibleRect().Size;
 			dialog.Position = new Vector2I(
-				(int)(screenSize.X / 2 - 250), 
-				(int)(screenSize.Y / 2 - 200)
-			);
+				(int)((screenSize.X / 2) - 250),
+				(int)((screenSize.Y / 2) - 200));
 		}
 
 		// Add dialog to scene tree and show
 		GetTree().CurrentScene.AddChild(dialog);
 		dialog.PopupCentered();
-		
+
 		// Auto-remove dialog when closed
 		dialog.Confirmed += () => dialog.QueueFree();
 		dialog.Canceled += () => dialog.QueueFree();
-		
+
 		// Also add a "Play Again" button if possible
 		dialog.AddButton("Return to Practice", false, "practice");
-		dialog.CustomAction += (action) => {
+		dialog.CustomAction += (action) =>
+		{
 			if (action.ToString() == "practice")
 			{
 				dialog.QueueFree();
@@ -1848,8 +1927,6 @@ public partial class CarromGame : GameController
 			}
 		};
 	}
-	
-	
 
 	/// <summary>
 	/// Override to provide carrom game title (simplified without player info)
@@ -1874,7 +1951,6 @@ public partial class CarromGame : GameController
 	// SIGNAL HANDLERS FOR MANAGERS
 	// ================================================================
 
-	
 	/// <summary>
 	/// Handle phase changes from GameStateManager
 	/// </summary>
@@ -1883,7 +1959,9 @@ public partial class CarromGame : GameController
 	private void OnPhaseChanged(string oldPhase, string newPhase)
 	{
 		if (_isDebugBuild)
+		{
 			PushDebugMetrics();
+		}
 
 		// Update score display with current state
 		if (_scoreDisplay != null)
@@ -1909,6 +1987,7 @@ public partial class CarromGame : GameController
 				// Practice mode: Direct striker reset (no camera movement)
 				RestoreStrikerToBaseline();
 			}
+
 			// Competitive mode: Uses TweenStrikerToBaseline via OnCameraTransitionCompleted
 		}
 	}
@@ -1928,14 +2007,14 @@ public partial class CarromGame : GameController
 			"player2" => 1,
 			"player3" => 2,
 			"player4" => 3,
-			_ => 0
+			_ => 0,
 		};
 
 		_cameraController?.TransitionToPlayerWithZoom(playerIndex, 1.2f);
 	}
 
 	// NOTE: OnPlayerWon and OnFoulCommitted handlers exist later in the file with full implementation
-	
+
 	/// <summary>
 	/// Handle settlement completion from state machine
 	/// State machine automatically transitions to Ready, no manual control needed
@@ -1946,7 +2025,7 @@ public partial class CarromGame : GameController
 		// Mode managers have processed their logic, UI can react to state changes
 		// No manual state control needed here
 	}
-	
+
 	/// <summary>
 	/// Handle camera transition completion - smoothly tween striker to new player's baseline
 	/// </summary>
@@ -1962,7 +2041,7 @@ public partial class CarromGame : GameController
 	private void OnPenaltyPiecesTweenCompleted()
 	{
 		// Penalty pieces tween completed, proceeding to camera transition
-		
+
 		// Start cinematic camera transition to the new player's perspective
 		var newCurrentPlayer = _competitiveModeManager?.GetCurrentPlayer();
 		if (newCurrentPlayer != null && _cameraController != null)
@@ -1971,12 +2050,12 @@ public partial class CarromGame : GameController
 			int playerIndex = newCurrentPlayer.PlayerId switch
 			{
 				"player1" => 0, // Bottom
-				"player2" => 1, // Top  
+				"player2" => 1, // Top
 				"player3" => 2, // Left
 				"player4" => 3, // Right
-				_ => 0
+				_ => 0,
 			};
-			
+
 			// Start cinematic zoom transition (striker restoration happens when transition completes)
 			_cameraController.TransitionToPlayerWithZoom(playerIndex, 1.2f);
 		}
@@ -2012,35 +2091,35 @@ public partial class CarromGame : GameController
 			RecoverInputControllerSynchronization();
 		}
 	}
-	
+
 	/// <summary>
 	/// Validate that input controller is properly synchronized with all dependencies
 	/// </summary>
 	private bool ValidateInputControllerSynchronization()
 	{
 		// Starting input controller validation
-		
+
 		// Check input controller exists and is valid
 		if (_inputController == null || !GodotObject.IsInstanceValid(_inputController))
 		{
 			GD.PrintErr("[CarromGame] Validation failed: Input controller is null or invalid");
 			return false;
 		}
-		
+
 		// Check phase manager exists and is valid
 		if (_gameStateManager == null || !GodotObject.IsInstanceValid(_gameStateManager))
 		{
 			GD.PrintErr("[CarromGame] Validation failed: Game state machine is null or invalid");
 			return false;
 		}
-		
+
 		// Check current mode manager exists and is valid
 		if (_currentModeManager == null)
 		{
 			GD.PrintErr("[CarromGame] Validation failed: Current mode manager is null");
 			return false;
 		}
-		
+
 		// Check striker exists and is valid
 		var striker = _currentModeManager.GetStriker();
 		if (striker == null || !GodotObject.IsInstanceValid(striker))
@@ -2048,45 +2127,47 @@ public partial class CarromGame : GameController
 			GD.PrintErr("[CarromGame] Validation failed: Striker is null or invalid");
 			return false;
 		}
-		
+
 		// Validate input controller has proper references
 		if (!_inputController.HasGameState())
 		{
 			GD.PrintErr("[CarromGame] Validation failed: Input controller lacks game state reference");
 			return false;
 		}
-		
+
 		// Check that input is in a valid state
 		if (!_inputController.IsInputEnabled())
 		{
 			// Input currently disabled - this may be normal during setup
 		}
-		
+
 		// Input controller validation: All validations passed
 		return true;
 	}
-	
+
 	/// <summary>
 	/// Attempt to recover input controller synchronization if validation fails
 	/// </summary>
 	private void RecoverInputControllerSynchronization()
 	{
 		// Starting input controller recovery
-		
+
 		// Re-establish game state reference
 		if (_inputController != null && _gameStateManager != null)
 		{
 			_inputController.SetGameState(_gameStateManager);
+
 			// Recovery: Re-established game state reference
 		}
-		
+
 		// Update striker reference
 		UpdateInputControllerStriker();
+
 		// Recovery: Updated striker reference
-		
+
 		// Re-validate after recovery
 		bool recoverySuccessful = ValidateInputControllerSynchronization();
-		
+
 		if (recoverySuccessful)
 		{
 			// Recovery successful - starting game
@@ -2095,6 +2176,7 @@ public partial class CarromGame : GameController
 		else
 		{
 			GD.PrintErr("[CarromGame] Recovery failed - game may not function properly");
+
 			// Force start anyway to prevent complete blockage
 			// State machine handles game start automatically
 		}
@@ -2123,7 +2205,7 @@ public partial class CarromGame : GameController
 		// Refresh UI to show updated player turn and title
 		RefreshUI();
 	}
-	
+
 	/// <summary>
 	/// Handle turn ready for pass - shows pass turn button without changing players
 	/// PHASE 0 FIX: Trust GameStateManager's signal parameters instead of querying CompetitiveModeManager
@@ -2133,7 +2215,9 @@ public partial class CarromGame : GameController
 	{
 		// Show only the pass turn button, no camera rotation or player switching
 		if (_carromGameMode != CarromGameMode.Competitive)
+		{
 			return;
+		}
 
 		// Set flag to indicate we're waiting for turn transition animation
 		// This prevents highlights from appearing prematurely in OnReadyForInput
@@ -2144,10 +2228,7 @@ public partial class CarromGame : GameController
 		string transitionMessage = $"🎯 {playerId.ToUpper()}'S TURN - Turn {turnNumber}";
 
 		// Show ONLY the pass turn button, no other UI updates
-		if (_scoreDisplay != null)
-		{
-			_scoreDisplay.ShowTurnTransition(transitionMessage, 3.0f);
-		}
+		_scoreDisplay?.ShowTurnTransition(transitionMessage, 3.0f);
 	}
 
 	/// <summary>
@@ -2192,10 +2273,7 @@ public partial class CarromGame : GameController
 		ShowCarromNotification(NotificationType.Foul, $"⚠️ Foul by {playerId.ToUpper()}!");
 
 		// Also show floating text above player's score for emphasis
-		if (_scoreDisplay != null)
-		{
-			_scoreDisplay.ShowFloatingText(playerId, "Foul! ⚠️", Colors.Red);
-		}
+		_scoreDisplay?.ShowFloatingText(playerId, "Foul! ⚠️", Colors.Red);
 	}
 
 	/// <summary>
@@ -2261,7 +2339,6 @@ public partial class CarromGame : GameController
 		_gameStateManager?.TransitionToPhase(GameStateManager.GamePhase.Ready);
 		GD.Print("[CarromGame] Competitive mode setup complete - transitioned to Ready phase");
 	}
-	
 
 	/// <summary>
 	/// Handle piece creation from factory (mode managers handle tracking)
@@ -2270,7 +2347,7 @@ public partial class CarromGame : GameController
 	{
 		// Connect piece signals for main game events
 		piece.PieceCollided += OnPieceCollided;
-		
+
 		// Update input controller if this is a striker
 		if (piece.Type == PieceType.Striker)
 		{
@@ -2288,7 +2365,7 @@ public partial class CarromGame : GameController
 		{
 			piece.PieceCollided -= OnPieceCollided;
 		}
-		
+
 		// Update input controller if striker was destroyed
 		if (piece?.Type == PieceType.Striker)
 		{
@@ -2307,7 +2384,7 @@ public partial class CarromGame : GameController
 			_practiceModeManager.PracticeResetRequested -= OnPracticeResetRequested;
 			_practiceModeManager.PracticeModeSetupComplete -= OnPracticeModeSetupComplete;
 		}
-		
+
 		// Competitive mode signals
 		if (_competitiveModeManager != null && GodotObject.IsInstanceValid(_competitiveModeManager))
 		{
@@ -2317,7 +2394,7 @@ public partial class CarromGame : GameController
 			_competitiveModeManager.CompetitiveModeSetupComplete -= OnCompetitiveModeSetupComplete;
 			_competitiveModeManager.NotificationRequested -= OnNotificationRequested;
 		}
-		
+
 		// Piece factory signals
 		if (_pieceFactory != null && GodotObject.IsInstanceValid(_pieceFactory))
 		{
@@ -2397,7 +2474,9 @@ public partial class CarromGame : GameController
 	protected override void OnGameTeardown()
 	{
 		if (_isDebugBuild)
+		{
 			ClearDebugMetrics();
+		}
 
 		// Backend session close is handled automatically by the base class.
 
@@ -2463,5 +2542,4 @@ public partial class CarromGame : GameController
 		// Clean up manager signals
 		DisconnectManagerSignals();
 	}
-
 }

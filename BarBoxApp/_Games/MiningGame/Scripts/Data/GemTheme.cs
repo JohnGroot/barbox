@@ -1,6 +1,6 @@
-namespace BarBox.Games.MiningGame;
-
 using Godot;
+
+namespace BarBox.Games.MiningGame;
 
 /// <summary>
 /// Static utility for deriving deterministic UI themes from gem types.
@@ -16,7 +16,7 @@ public static class GemTheme
 		GemType.Emerald => new Color(0.1f, 0.7f, 0.2f),
 		GemType.Diamond => new Color(0.9f, 0.9f, 0.95f),
 		GemType.Amethyst => new Color(0.6f, 0.2f, 0.8f),
-		_ => Colors.Gray
+		_ => Colors.Gray,
 	};
 
 	public static string GetGemEmoji(GemType gemType) => gemType switch
@@ -26,7 +26,7 @@ public static class GemTheme
 		GemType.Emerald => "🟢",
 		GemType.Diamond => "💎",
 		GemType.Amethyst => "🟣",
-		_ => "💠"
+		_ => "💠",
 	};
 
 	public static string GetGemIconPath(GemType gemType) =>
@@ -39,8 +39,7 @@ public static class GemTheme
 			baseColor.R * 0.15f,
 			baseColor.G * 0.15f,
 			baseColor.B * 0.15f,
-			0.95f
-		);
+			0.95f);
 	}
 
 	public static Color GetPrimaryAccent(GemType gemType) =>
@@ -69,7 +68,7 @@ public static class GemTheme
 		UpgradeType.Capacity => "💼",
 		UpgradeType.MiningSpeed => "⚡",
 		UpgradeType.MiningAmount => "🪨",
-		_ => ""
+		_ => string.Empty,
 	};
 
 	public static string GetUpgradeDisplayName(UpgradeType upgradeType) => upgradeType switch
@@ -77,7 +76,7 @@ public static class GemTheme
 		UpgradeType.Capacity => $"{GetUpgradeEmoji(upgradeType)} Gem Capacity",
 		UpgradeType.MiningSpeed => $"{GetUpgradeEmoji(upgradeType)} Mining Speed",
 		UpgradeType.MiningAmount => $"{GetUpgradeEmoji(upgradeType)} Gems Per Tick",
-		_ => $"{GetUpgradeEmoji(upgradeType)} {FormatEnumName(upgradeType.ToString())}"
+		_ => $"{GetUpgradeEmoji(upgradeType)} {FormatEnumName(upgradeType.ToString())}",
 	};
 
 	public static string GetUpgradeDescription(UpgradeType upgradeType) => upgradeType switch
@@ -85,7 +84,7 @@ public static class GemTheme
 		UpgradeType.Capacity => "Increases maximum gem storage capacity",
 		UpgradeType.MiningSpeed => "Reduces time between mining ticks",
 		UpgradeType.MiningAmount => "Increases gems earned per tick",
-		_ => "Improves mining operations"
+		_ => "Improves mining operations",
 	};
 
 	private static string FormatEnumName(string enumName) =>

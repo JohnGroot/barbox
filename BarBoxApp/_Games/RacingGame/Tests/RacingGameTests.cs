@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BarBox.Games.Racing;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
-using BarBox.Games.Racing;
 using Shouldly;
 
 namespace BarBox.Games.Racing.Tests;
@@ -17,33 +17,31 @@ public class RacingGameTests : GameSessionTestBase
 {
 	private const string GAME_TAG = "racing";
 	private const string DEFAULT_TRACK_ID = "oval";
+
 	protected override string GameTag => GAME_TAG;
 
-	private SessionEventService _eventService => EventService;
-	private RacingEventService _racingEventService => new(EventService);
-	private Guid _testBoxId => TestBoxId;
-	private Guid _testPlayerId => TestPlayerId;
-	private Guid _testSessionId => TestSessionId;
+	private RacingEventService RacingEventService => new(EventService);
 
-	public RacingGameTests(Node testScene) : base(testScene)
+	public RacingGameTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
 	[Test]
 	public async Task StartRaceSession_EmitsBeginEvent()
 	{
-		if (_eventService == null || _testSessionId == Guid.Empty)
+		if (EventService == null || TestSessionId == Guid.Empty)
 		{
 			TestHelpers.LogTestInfo("Skipping - Session not created");
 			return;
 		}
 
 		// Emit race start event
-		var result = await _eventService.EmitEventAsync("play/begin", new
+		var result = await EventService.EmitEventAsync("play/begin", new
 		{
 			game = GAME_TAG,
 			track = "oval",
-			mode = "time_trial"
+			mode = "time_trial",
 		});
 
 		if (result.IsSuccess(out var _))
@@ -59,32 +57,32 @@ public class RacingGameTests : GameSessionTestBase
 	[Test]
 	public async Task RecordCheckpointHit_EmitsCheckpointEvent()
 	{
-		if (_eventService == null || _testSessionId == Guid.Empty)
+		if (EventService == null || TestSessionId == Guid.Empty)
 		{
 			TestHelpers.LogTestInfo("Skipping - Session not created");
 			return;
 		}
 
 		// Emit checkpoint events
-		var checkpoint1 = await _eventService.EmitEventAsync("racing/checkpoint", new
+		var checkpoint1 = await EventService.EmitEventAsync("racing/checkpoint", new
 		{
 			checkpoint_id = 1,
 			time_elapsed = 5.2f,
-			position = new { x = 100, y = 200 }
+			position = new { x = 100, y = 200 },
 		});
 
-		var checkpoint2 = await _eventService.EmitEventAsync("racing/checkpoint", new
+		var checkpoint2 = await EventService.EmitEventAsync("racing/checkpoint", new
 		{
 			checkpoint_id = 2,
 			time_elapsed = 10.8f,
-			position = new { x = 300, y = 400 }
+			position = new { x = 300, y = 400 },
 		});
 
-		var checkpoint3 = await _eventService.EmitEventAsync("racing/checkpoint", new
+		var checkpoint3 = await EventService.EmitEventAsync("racing/checkpoint", new
 		{
 			checkpoint_id = 3,
 			time_elapsed = 14.5f,
-			position = new { x = 500, y = 600 }
+			position = new { x = 500, y = 600 },
 		});
 
 		if (checkpoint1.IsSuccess(out var _) && checkpoint2.IsSuccess(out var __) && checkpoint3.IsSuccess(out var ___))
@@ -100,7 +98,7 @@ public class RacingGameTests : GameSessionTestBase
 	[Test]
 	public async Task RecordLapCompletion_EmitsLapEvent()
 	{
-		if (_racingEventService == null || _testSessionId == Guid.Empty)
+		if (RacingEventService == null || TestSessionId == Guid.Empty)
 		{
 			TestHelpers.LogTestInfo("Skipping - Session not created");
 			return;
@@ -108,13 +106,13 @@ public class RacingGameTests : GameSessionTestBase
 
 		// Emit lap completion events with proper checkpoint data
 		var lap1Checkpoints = CreateTestCheckpoints(15.3f);
-		var lap1 = await _racingEventService.EmitLapCompleteAsync(DEFAULT_TRACK_ID, 1, 15.3f, lap1Checkpoints);
+		var lap1 = await RacingEventService.EmitLapCompleteAsync(DEFAULT_TRACK_ID, 1, 15.3f, lap1Checkpoints);
 
 		var lap2Checkpoints = CreateTestCheckpoints(14.8f);
-		var lap2 = await _racingEventService.EmitLapCompleteAsync(DEFAULT_TRACK_ID, 2, 14.8f, lap2Checkpoints);
+		var lap2 = await RacingEventService.EmitLapCompleteAsync(DEFAULT_TRACK_ID, 2, 14.8f, lap2Checkpoints);
 
 		var lap3Checkpoints = CreateTestCheckpoints(15.0f);
-		var lap3 = await _racingEventService.EmitLapCompleteAsync(DEFAULT_TRACK_ID, 3, 15.0f, lap3Checkpoints);
+		var lap3 = await RacingEventService.EmitLapCompleteAsync(DEFAULT_TRACK_ID, 3, 15.0f, lap3Checkpoints);
 
 		if (lap1.IsSuccess(out var _) && lap2.IsSuccess(out var __) && lap3.IsSuccess(out var ___))
 		{
@@ -156,7 +154,7 @@ public class RacingGameTests : GameSessionTestBase
 	public async Task PendingSaveQueue_LapOneCompletesThenQuitsBeforeLapTwo_PersistsLapOneTime()
 	{
 		// Arrange
-		if (_racingEventService == null || _testSessionId == Guid.Empty)
+		if (RacingEventService == null || TestSessionId == Guid.Empty)
 		{
 			TestHelpers.LogTestInfo("Skipping - Session not created");
 			return;
@@ -173,11 +171,15 @@ public class RacingGameTests : GameSessionTestBase
 		// backend save is queued instead of started immediately.
 		queue.Enqueue(async () =>
 		{
-			var result = await _racingEventService.EmitLapCompleteAsync(trackId, 1, lap1Time, lap1Checkpoints);
+			var result = await RacingEventService.EmitLapCompleteAsync(trackId, 1, lap1Time, lap1Checkpoints);
 			if (result.IsSuccess(out var _))
+			{
 				lap1Succeeded = true;
+			}
 			else if (result.IsFailure(out var error))
+			{
 				lap1Error = error.Message;
+			}
 		});
 
 		// Act - player quits here, before lap 2 ever starts. Nothing else
@@ -193,7 +195,7 @@ public class RacingGameTests : GameSessionTestBase
 		// confirm the lap_complete event with lap 1's time actually landed.
 		lap1Succeeded.ShouldBeTrue($"Lap 1 save must persist even though the player quit before lap 2: {lap1Error}");
 
-		var sessionJsonResult = await _eventService.QueryRawAsync($"/box/session/{_testSessionId}?include_events=true");
+		var sessionJsonResult = await EventService.QueryRawAsync($"/box/session/{TestSessionId}?include_events=true");
 		sessionJsonResult.IsSuccess(out var sessionJson).ShouldBeTrue("Should be able to read the session back to confirm the event landed");
 
 		var sessionDict = Json.ParseString(sessionJson).AsGodotDictionary();
@@ -204,7 +206,9 @@ public class RacingGameTests : GameSessionTestBase
 		{
 			var evtDict = evt.AsGodotDictionary();
 			if (evtDict["type"].AsString() != "racing/lap_complete")
+			{
 				continue;
+			}
 
 			var payload = evtDict["payload"].AsGodotDictionary();
 			if (payload.ContainsKey("lap_time") && System.Math.Abs(payload["lap_time"].AsSingle() - lap1Time) < 0.001f)
@@ -213,7 +217,8 @@ public class RacingGameTests : GameSessionTestBase
 				break;
 			}
 		}
-		foundLap1Event.ShouldBeTrue($"Expected a racing/lap_complete event with lap_time {lap1Time}s to be persisted in session {_testSessionId}");
+
+		foundLap1Event.ShouldBeTrue($"Expected a racing/lap_complete event with lap_time {lap1Time}s to be persisted in session {TestSessionId}");
 	}
 
 	/// <summary>
@@ -237,7 +242,7 @@ public class RacingGameTests : GameSessionTestBase
 	[Test]
 	public async Task RecordRaceFinish_EmitsFinishEventWithLapTimes()
 	{
-		if (_eventService == null || _testSessionId == Guid.Empty)
+		if (EventService == null || TestSessionId == Guid.Empty)
 		{
 			TestHelpers.LogTestInfo("Skipping - Session not created");
 			return;
@@ -247,12 +252,12 @@ public class RacingGameTests : GameSessionTestBase
 		var lapTimes = new List<float> { 15.3f, 14.8f, 15.0f };
 		var finalTime = 45.1f;
 
-		var result = await _eventService.EmitEventAsync("play/finish", new
+		var result = await EventService.EmitEventAsync("play/finish", new
 		{
 			final_time = finalTime,
 			lap_times = lapTimes,
 			checkpoints_hit = 12, // 4 checkpoints per lap * 3 laps
-			track = "oval"
+			track = "oval",
 		});
 
 		if (result.IsSuccess(out var _))
@@ -279,7 +284,6 @@ public class RacingGameTests : GameSessionTestBase
 		//     "rank": 1
 		//   }
 		// ]
-
 		TestHelpers.LogTestInfo("Leaderboard query test - requires backend endpoint");
 		TestHelpers.LogTestInfo("Expected: GET /game/leaderboard/racing?track=oval");
 		TestHelpers.LogTestInfo("Returns: Sorted by best_time (ascending)");
@@ -290,12 +294,11 @@ public class RacingGameTests : GameSessionTestBase
 	{
 		// This test verifies leaderboard ordering logic
 		// Best times (lowest) should appear first
-
 		var times = new List<(string playerId, float time)>
 		{
 			("player1", 45.1f),
 			("player2", 42.3f), // Best time - should be rank 1
-			("player3", 48.7f)
+			("player3", 48.7f),
 		};
 
 		// Sort by time ascending
@@ -316,12 +319,14 @@ public class RacingGameTests : GameSessionTestBase
 	{
 		// Leaderboard should show individual lap times for analysis
 		// This allows players to see where they can improve
-
 		var lapTimes = new List<float> { 15.3f, 14.8f, 15.0f };
 		var bestLap = 999f;
 		foreach (var time in lapTimes)
 		{
-			if (time < bestLap) bestLap = time;
+			if (time < bestLap)
+			{
+				bestLap = time;
+			}
 		}
 
 		TestHelpers.LogTestInfo($"Best lap time: {bestLap}s");
@@ -331,7 +336,7 @@ public class RacingGameTests : GameSessionTestBase
 	[Test]
 	public async Task CompleteRacingGameFlow_AllOperationsSucceed()
 	{
-		if (_eventService == null)
+		if (EventService == null)
 		{
 			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
@@ -340,9 +345,9 @@ public class RacingGameTests : GameSessionTestBase
 		TestHelpers.LogTestInfo("=== Starting Complete Racing Game Flow ===");
 
 		// Step 1: Create session
-		var sessionResult = await _eventService.CreateActivitySessionAsync(
-			_testBoxId,
-			_testPlayerId,
+		var sessionResult = await EventService.CreateActivitySessionAsync(
+			TestBoxId,
+			TestPlayerId,
 			GAME_TAG);
 
 		if (sessionResult.IsSuccess(out var flowSessionId))
@@ -350,10 +355,10 @@ public class RacingGameTests : GameSessionTestBase
 			TestHelpers.LogTestInfo($"Step 1 - Session Created: ✓ ({flowSessionId})");
 
 			// Step 2: Start race
-			var beginResult = await _eventService.EmitEventAsync("play/begin", new
+			var beginResult = await EventService.EmitEventAsync("play/begin", new
 			{
 				game = GAME_TAG,
-				track = "oval"
+				track = "oval",
 			});
 
 			TestHelpers.LogTestInfo($"Step 2 - Race Begin: {(beginResult.IsSuccess(out var _) ? "✓" : "✗")}");
@@ -363,33 +368,33 @@ public class RacingGameTests : GameSessionTestBase
 			{
 				for (int checkpoint = 1; checkpoint <= 4; checkpoint++)
 				{
-					await _eventService.EmitEventAsync("racing/checkpoint", new
+					await EventService.EmitEventAsync("racing/checkpoint", new
 					{
 						checkpoint_id = checkpoint,
 						lap = lap,
-						time_elapsed = (lap - 1) * 15.0f + checkpoint * 3.75f
+						time_elapsed = ((lap - 1) * 15.0f) + (checkpoint * 3.75f),
 					});
 				}
 
 				// Complete lap using RacingEventService
 				var checkpoints = CreateTestCheckpoints(15.0f);
-				await _racingEventService.EmitLapCompleteAsync(DEFAULT_TRACK_ID, lap, 15.0f, checkpoints);
+				await RacingEventService.EmitLapCompleteAsync(DEFAULT_TRACK_ID, lap, 15.0f, checkpoints);
 			}
 
 			TestHelpers.LogTestInfo("Step 3 - Checkpoints & Laps Recorded: ✓");
 
 			// Step 4: Finish race
-			var finishResult = await _eventService.EmitEventAsync("play/finish", new
+			var finishResult = await EventService.EmitEventAsync("play/finish", new
 			{
 				final_time = 45.0f,
 				lap_times = new List<float> { 15.0f, 15.0f, 15.0f },
-				checkpoints_hit = 12
+				checkpoints_hit = 12,
 			});
 
 			TestHelpers.LogTestInfo($"Step 4 - Race Finish: {(finishResult.IsSuccess(out var __) ? "✓" : "✗")}");
 
 			// Step 5: Close session
-			var closeResult = await _eventService.CloseActivitySessionAsync(flowSessionId);
+			var closeResult = await EventService.CloseActivitySessionAsync(flowSessionId);
 			TestHelpers.LogTestInfo($"Step 5 - Session Closed: {(closeResult.IsSuccess(out var ___) ? "✓" : "✗")}");
 		}
 		else if (sessionResult.IsFailure(out var sessionError))
@@ -403,7 +408,7 @@ public class RacingGameTests : GameSessionTestBase
 	[Test]
 	public async Task RaceFinish_WithValidLapTimes_SavesSuccessfully()
 	{
-		if (_eventService == null)
+		if (EventService == null)
 		{
 			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
@@ -412,9 +417,9 @@ public class RacingGameTests : GameSessionTestBase
 		TestHelpers.LogTestInfo("=== Testing Race Finish with Valid Lap Times ===");
 
 		// Create a session for this test (SessionEventService requires active session for EmitEventAsync)
-		var sessionResult = await _eventService.CreateActivitySessionAsync(
-			_testBoxId,
-			_testPlayerId,
+		var sessionResult = await EventService.CreateActivitySessionAsync(
+			TestBoxId,
+			TestPlayerId,
 			GAME_TAG);
 
 		if (!sessionResult.IsSuccess(out var sessionId))
@@ -434,7 +439,7 @@ public class RacingGameTests : GameSessionTestBase
 			for (int i = 0; i < lapTimes.Count; i++)
 			{
 				var checkpoints = CreateTestCheckpoints(lapTimes[i]);
-				var lapResult = await _racingEventService.EmitLapCompleteAsync(trackId, i + 1, lapTimes[i], checkpoints);
+				var lapResult = await RacingEventService.EmitLapCompleteAsync(trackId, i + 1, lapTimes[i], checkpoints);
 
 				if (lapResult.IsSuccess(out var _))
 				{
@@ -447,12 +452,12 @@ public class RacingGameTests : GameSessionTestBase
 			}
 
 			// Emit race finish event
-			var raceResult = await _eventService.EmitEventAsync("racing/race_finish", new
+			var raceResult = await EventService.EmitEventAsync("racing/race_finish", new
 			{
 				track_id = trackId,
 				total_time = totalTime,
 				total_laps = 3,
-				lap_times = lapTimes
+				lap_times = lapTimes,
 			});
 
 			var raceSuccess = raceResult.IsSuccess(out var _);
@@ -469,14 +474,14 @@ public class RacingGameTests : GameSessionTestBase
 		}
 		finally
 		{
-			await _eventService.CloseActivitySessionAsync(sessionId);
+			await EventService.CloseActivitySessionAsync(sessionId);
 		}
 	}
 
 	[Test]
 	public async Task RaceFinish_WithFastLapTimes_SavesSuccessfully()
 	{
-		if (_eventService == null)
+		if (EventService == null)
 		{
 			TestHelpers.LogTestInfo("Skipping - SessionEventService not available");
 			return;
@@ -485,9 +490,9 @@ public class RacingGameTests : GameSessionTestBase
 		TestHelpers.LogTestInfo("=== Testing Race Finish with Fast Lap Times (Previously Blocked) ===");
 
 		// Create a session for this test (SessionEventService requires active session for EmitEventAsync)
-		var sessionResult = await _eventService.CreateActivitySessionAsync(
-			_testBoxId,
-			_testPlayerId,
+		var sessionResult = await EventService.CreateActivitySessionAsync(
+			TestBoxId,
+			TestPlayerId,
 			GAME_TAG);
 
 		if (!sessionResult.IsSuccess(out var sessionId))
@@ -509,12 +514,12 @@ public class RacingGameTests : GameSessionTestBase
 			TestHelpers.LogTestInfo($"Saving race with fast lap times: {string.Join(", ", lapTimes)}");
 
 			// Emit race finish event - this should NOW SUCCEED (we trust physics)
-			var raceResult = await _eventService.EmitEventAsync("racing/race_finish", new
+			var raceResult = await EventService.EmitEventAsync("racing/race_finish", new
 			{
 				track_id = trackId,
 				total_time = totalTime,
 				total_laps = 3,
-				lap_times = lapTimes
+				lap_times = lapTimes,
 			});
 
 			var fastRaceSuccess = raceResult.IsSuccess(out var _);
@@ -526,6 +531,7 @@ public class RacingGameTests : GameSessionTestBase
 			else if (raceResult.IsFailure(out var fastRaceError))
 			{
 				TestHelpers.LogTestError($"Race incorrectly rejected: {fastRaceError.Message}");
+
 				// Fast laps should now be accepted
 				fastRaceSuccess.ShouldBeTrue($"Fast laps should be accepted, but got error: {fastRaceError.Message}");
 			}
@@ -534,14 +540,14 @@ public class RacingGameTests : GameSessionTestBase
 		}
 		finally
 		{
-			await _eventService.CloseActivitySessionAsync(sessionId);
+			await EventService.CloseActivitySessionAsync(sessionId);
 		}
 	}
 
 	[Test]
 	public async Task RaceFinish_WithDataIntegrityError_FailsValidation()
 	{
-		if (_racingEventService == null)
+		if (RacingEventService == null)
 		{
 			TestHelpers.LogTestInfo("Skipping - RacingEventService not available");
 			return;
@@ -550,9 +556,9 @@ public class RacingGameTests : GameSessionTestBase
 		TestHelpers.LogTestInfo("=== Testing Data Integrity Validation ===");
 
 		// Create a session for this test (SessionEventService requires active session for EmitEventAsync)
-		var sessionResult = await _eventService.CreateActivitySessionAsync(
-			_testBoxId,
-			_testPlayerId,
+		var sessionResult = await EventService.CreateActivitySessionAsync(
+			TestBoxId,
+			TestPlayerId,
 			GAME_TAG);
 
 		if (!sessionResult.IsSuccess(out var sessionId))
@@ -575,15 +581,14 @@ public class RacingGameTests : GameSessionTestBase
 				RaceId: Guid.NewGuid().ToString(),
 				Date: DateTime.UtcNow,
 				TrackId: trackId,
-				PlayerId: _testPlayerId.ToString(),
+				PlayerId: TestPlayerId.ToString(),
 				Username: "TestPlayer",
 				TotalLaps: 3,
 				TotalTime: totalTime,
 				LapTimes: lapTimes,
-				Checkpoints: CreateTestCheckpoints(lapTimes[0])
-			);
+				Checkpoints: CreateTestCheckpoints(lapTimes[0]));
 
-			var result1 = await _racingEventService.EmitRaceFinishAsync(invalidEntry1);
+			var result1 = await RacingEventService.EmitRaceFinishAsync(invalidEntry1);
 
 			var result1Success = result1.IsSuccess(out var _);
 			result1Success.ShouldBeFalse("Mismatched total time should be rejected");
@@ -603,15 +608,14 @@ public class RacingGameTests : GameSessionTestBase
 				RaceId: Guid.NewGuid().ToString(),
 				Date: DateTime.UtcNow,
 				TrackId: trackId,
-				PlayerId: _testPlayerId.ToString(),
+				PlayerId: TestPlayerId.ToString(),
 				Username: "TestPlayer",
 				TotalLaps: 3,
 				TotalTime: validTotalTime,
 				LapTimes: invalidLapTimes,
-				Checkpoints: CreateTestCheckpoints(invalidLapTimes[0])
-			);
+				Checkpoints: CreateTestCheckpoints(invalidLapTimes[0]));
 
-			var result2 = await _racingEventService.EmitRaceFinishAsync(invalidEntry2);
+			var result2 = await RacingEventService.EmitRaceFinishAsync(invalidEntry2);
 
 			var result2Success = result2.IsSuccess(out var _);
 			result2Success.ShouldBeFalse("Negative lap time should be rejected");
@@ -625,8 +629,7 @@ public class RacingGameTests : GameSessionTestBase
 		}
 		finally
 		{
-			await _eventService.CloseActivitySessionAsync(sessionId);
+			await EventService.CloseActivitySessionAsync(sessionId);
 		}
 	}
-
 }

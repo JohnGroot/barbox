@@ -1,8 +1,8 @@
-using Godot;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
@@ -16,27 +16,40 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// SIGNALS
 	// ================================================================
+	[Signal]
+	public delegate void PhaseChangedEventHandler(string oldPhase, string newPhase);
 
-	[Signal] public delegate void PhaseChangedEventHandler(string oldPhase, string newPhase);
-	[Signal] public delegate void TurnChangedEventHandler(string playerId, int turnNumber);
-	[Signal] public delegate void TurnReadyForPassEventHandler(string playerId, int turnNumber);
-	[Signal] public delegate void TurnAdvancedEventHandler(string newPlayerId);
-	[Signal] public delegate void ContinueTurnRequestedEventHandler(string playerId);
-	[Signal] public delegate void PlayerWonEventHandler(string playerId);
-	[Signal] public delegate void FoulCommittedEventHandler(string playerId);
-	[Signal] public delegate void SettlementCompletedEventHandler();
+	[Signal]
+	public delegate void TurnChangedEventHandler(string playerId, int turnNumber);
+
+	[Signal]
+	public delegate void TurnReadyForPassEventHandler(string playerId, int turnNumber);
+
+	[Signal]
+	public delegate void TurnAdvancedEventHandler(string newPlayerId);
+
+	[Signal]
+	public delegate void ContinueTurnRequestedEventHandler(string playerId);
+
+	[Signal]
+	public delegate void PlayerWonEventHandler(string playerId);
+
+	[Signal]
+	public delegate void FoulCommittedEventHandler(string playerId);
+
+	[Signal]
+	public delegate void SettlementCompletedEventHandler();
 
 	// ================================================================
 	// ENUMS
 	// ================================================================
-
 	public enum GamePhase
 	{
 		Initializing,
 		Ready,
 		Strike,
 		Physics,
-		Settlement
+		Settlement,
 	}
 
 	// ================================================================
@@ -45,6 +58,7 @@ public partial class GameStateManager : Node, ICarromGameState
 
 	// Phase state
 	public GamePhase CurrentPhase { get; private set; } = GamePhase.Initializing;
+
 	public bool CanAcceptInput => CurrentPhase == GamePhase.Ready;
 
 	// Player state
@@ -73,7 +87,6 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// PRIVATE FIELDS
 	// ================================================================
-
 	private int _currentTurnNumber = 1;
 
 	// Dependencies
@@ -85,7 +98,6 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// INITIALIZATION
 	// ================================================================
-
 	public void Initialize(CarromBoard board, CarromInputController inputController, CarromGameMode gameMode, CarromPieceFactory pieceFactory)
 	{
 		_board = board;
@@ -114,7 +126,9 @@ public partial class GameStateManager : Node, ICarromGameState
 		foreach (var player in players)
 		{
 			if (player == null || string.IsNullOrEmpty(player.PlayerId))
+			{
 				continue;
+			}
 
 			var playerState = PlayerState.FromPlayer(player);
 			_players[player.PlayerId] = playerState;
@@ -134,10 +148,12 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// PHASE TRANSITIONS
 	// ================================================================
-
 	public void TransitionToPhase(GamePhase newPhase)
 	{
-		if (CurrentPhase == newPhase) return;
+		if (CurrentPhase == newPhase)
+		{
+			return;
+		}
 
 		var oldPhase = CurrentPhase;
 		ExitPhase(oldPhase);
@@ -195,7 +211,6 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// PHYSICS MONITORING (delegated to CarromPhysicsMonitor)
 	// ================================================================
-
 	private void OnAllPiecesStopped()
 	{
 		// Physics monitor detected all pieces have stopped
@@ -208,7 +223,6 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// SETTLEMENT PROCESSING
 	// ================================================================
-
 	private async void ProcessSettlementWithSync()
 	{
 		// Wait for one physics frame to ensure all piece velocities are truly zero
@@ -242,6 +256,7 @@ public partial class GameStateManager : Node, ICarromGameState
 				GD.Print($"[GameStateManager] Turn ready for pass - Phase: {CurrentPhase}, Player: {currentPlayerId}, Turn: {_currentTurnNumber}");
 				GD.Print($"[GameStateManager] Emitting TurnReadyForPass signal");
 				EmitSignal(SignalName.TurnReadyForPass, currentPlayerId, _currentTurnNumber);
+
 				// Stay in Settlement phase - don't transition yet
 				return;
 			}
@@ -260,8 +275,7 @@ public partial class GameStateManager : Node, ICarromGameState
 				AdvanceToNextPlayer();
 			}
 
-		// Stroke flags reset in EnterPhase(GamePhase.Ready) - single authoritative location
-
+			// Stroke flags reset in EnterPhase(GamePhase.Ready) - single authoritative location
 			EmitSignal(SignalName.SettlementCompleted);
 			TransitionToPhase(GamePhase.Ready);
 		}
@@ -339,7 +353,6 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// TURN MANAGEMENT
 	// ================================================================
-
 	private bool ShouldContinueTurn(string playerId)
 	{
 		GD.Print($"[GameStateManager] ShouldContinueTurn called - Player: {playerId}, Breaking: {_isBreakingTurn}");
@@ -422,7 +435,9 @@ public partial class GameStateManager : Node, ICarromGameState
 	internal void AdvanceToNextPlayer()
 	{
 		if (_playerOrder.Count == 0)
+		{
 			return;
+		}
 
 		// Handle end of turn for current player
 		var currentPlayer = GetCurrentPlayer();
@@ -476,11 +491,12 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// PIECE POCKET HANDLING
 	// ================================================================
-
 	public void OnPiecePocketed(CarromPiece piece)
 	{
 		if (piece == null || !GodotObject.IsInstanceValid(piece))
+		{
 			return;
+		}
 
 		var currentPlayer = GetCurrentPlayer();
 		if (currentPlayer == null)
@@ -505,7 +521,9 @@ public partial class GameStateManager : Node, ICarromGameState
 	{
 		var currentPlayer = GetCurrentPlayer();
 		if (currentPlayer == null)
+		{
 			return;
+		}
 
 		if (evaluation.IsValid)
 		{
@@ -554,11 +572,15 @@ public partial class GameStateManager : Node, ICarromGameState
 	private void ApplyPenalty(PenaltyAction penalty)
 	{
 		if (penalty.PiecesToReturn <= 0)
+		{
 			return;
+		}
 
 		var currentPlayer = GetCurrentPlayer();
 		if (currentPlayer == null || currentPlayer.PiecesPocketed == 0)
+		{
 			return;
+		}
 
 		// Return pieces (implementation simplified for now)
 		int piecesToReturn = Math.Min(penalty.PiecesToReturn, currentPlayer.PiecesPocketed);
@@ -570,12 +592,13 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// WIN CONDITION
 	// ================================================================
-
 	private void CheckAndHandleWinCondition(string playerId)
 	{
 		var playerState = GetPlayerState(playerId);
 		if (playerState == null)
+		{
 			return;
+		}
 
 		var winCondition = CarromRuleEngine.CheckWinCondition_Singles(playerState);
 		if (winCondition.HasWon)
@@ -588,7 +611,6 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// SERIALIZATION
 	// ================================================================
-
 	public string Serialize()
 	{
 		var snapshot = new SerializableGameState
@@ -602,16 +624,15 @@ public partial class GameStateManager : Node, ICarromGameState
 			Players = _players.ToDictionary(
 				kvp => kvp.Key,
 				kvp => PlayerSnapshot.FromPlayerState(kvp.Value)),
-			Pieces = (_pieceFactory?.GetAllPieces() ?? (IReadOnlyList<CarromPiece>)Array.Empty<CarromPiece>())
+			Pieces = [.. (_pieceFactory?.GetAllPieces() ?? (IReadOnlyList<CarromPiece>)[])
 				.Where(p => GodotObject.IsInstanceValid(p))
 				.Select(p => PieceSnapshot.FromPiece(p))
-				.Where(s => s != null)
-				.ToList()
+				.Where(s => s != null)],
 		};
 
 		return JsonSerializer.Serialize(snapshot, new JsonSerializerOptions
 		{
-			WriteIndented = true
+			WriteIndented = true,
 		});
 	}
 
@@ -691,11 +712,12 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// ACCESSORS
 	// ================================================================
-
 	public PlayerState GetCurrentPlayer()
 	{
 		if (_playerOrder.Count == 0 || _currentPlayerIndex >= _playerOrder.Count)
+		{
 			return null;
+		}
 
 		var playerId = _playerOrder[_currentPlayerIndex];
 		return _players.GetValueOrDefault(playerId);
@@ -731,7 +753,6 @@ public partial class GameStateManager : Node, ICarromGameState
 	// ================================================================
 	// ICARROMGAMESTATE INTERFACE IMPLEMENTATION
 	// ================================================================
-
 	public GamePhase GetCurrentPhase() => CurrentPhase;
 
 	public string GetCurrentStateName() => CurrentPhase.ToString();
@@ -756,7 +777,7 @@ public partial class GameStateManager : Node, ICarromGameState
 	/// <summary>
 	/// Get all active piece nodes for physics monitoring
 	/// </summary>
-	public IReadOnlyList<CarromPiece> GetActivePieces() => _pieceFactory?.GetAllPieces() ?? (IReadOnlyList<CarromPiece>)Array.Empty<CarromPiece>();
+	public IReadOnlyList<CarromPiece> GetActivePieces() => _pieceFactory?.GetAllPieces() ?? (IReadOnlyList<CarromPiece>)[];
 
 	/// <summary>
 	/// Trigger settlement from external systems (for compatibility)
@@ -796,7 +817,9 @@ public partial class GameStateManager : Node, ICarromGameState
 	public CarromPlayer GetCurrentPlayerNode()
 	{
 		if (_playerOrder.Count == 0 || _currentPlayerIndex >= _playerOrder.Count)
+		{
 			return null;
+		}
 
 		var playerId = _playerOrder[_currentPlayerIndex];
 		return GetPlayerNode(playerId);
@@ -824,9 +847,14 @@ public partial class GameStateManager : Node, ICarromGameState
 internal class PieceState
 {
 	public Guid Id { get; set; } = Guid.NewGuid();
+
 	public PieceType Type { get; set; }
+
 	public Vector2 Position { get; set; }
+
 	public Vector2 Velocity { get; set; }
+
 	public float AngularVelocity { get; set; }
+
 	public bool Visible { get; set; } = true;
 }

@@ -1,5 +1,5 @@
-using Godot;
 using Chickensoft.GoDotTest;
+using Godot;
 using Shouldly;
 
 namespace BarBox.Games.Racing.Tests;
@@ -12,7 +12,8 @@ public class RacingTrackValidationSystemTests : TestClass
 {
 	private RacingTrackValidationSystem _validationSystem;
 
-	public RacingTrackValidationSystemTests(Node testScene) : base(testScene)
+	public RacingTrackValidationSystemTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -38,7 +39,6 @@ public class RacingTrackValidationSystemTests : TestClass
 	// ================================================================
 	// INITIALIZATION TESTS
 	// ================================================================
-
 	[Test]
 	public void InitialState_IsNotInitialized()
 	{
@@ -83,7 +83,6 @@ public class RacingTrackValidationSystemTests : TestClass
 	// ================================================================
 	// RESET PENALTY TESTS
 	// ================================================================
-
 	[Test]
 	public void ResetPenalties_RestoresDefaultMultipliers()
 	{
@@ -100,7 +99,6 @@ public class RacingTrackValidationSystemTests : TestClass
 	// ================================================================
 	// ZONE MANAGER INTEGRATION TESTS
 	// ================================================================
-
 	[Test]
 	public void GetZoneManager_ReturnsNull_WhenNotSet()
 	{
@@ -128,7 +126,6 @@ public class RacingTrackValidationSystemTests : TestClass
 	// ================================================================
 	// MODIFIER GETTER TESTS (WITHOUT TRACK)
 	// ================================================================
-
 	[Test]
 	public void GetSpeedModifier_ReturnsCurrentPenalty_WhenNoZoneManager()
 	{
@@ -161,7 +158,6 @@ public class RacingTrackValidationSystemTests : TestClass
 	// ================================================================
 	// TRACK VALIDATION TESTS (WITHOUT TRACK)
 	// ================================================================
-
 	[Test]
 	public void IsOnTrack_ReturnsFalse_WhenNoTrackDefinition()
 	{
@@ -185,8 +181,7 @@ public class RacingTrackValidationSystemTests : TestClass
 		var isOffTrack = _validationSystem.IsCarCompletelyOffTrack(
 			Vector2.Zero,
 			0.0f,
-			new Vector2(50, 30)
-		);
+			new Vector2(50, 30));
 
 		isOffTrack.ShouldBeTrue();
 	}
@@ -194,7 +189,6 @@ public class RacingTrackValidationSystemTests : TestClass
 	// ================================================================
 	// INPUT BLOCKED TESTS
 	// ================================================================
-
 	[Test]
 	public void IsInputBlocked_ReturnsFalse_WhenNoZoneManager()
 	{
@@ -211,13 +205,11 @@ public class RacingTrackValidationSystemTests : TestClass
 	// ================================================================
 	// PENALTY LERPING TESTS
 	// ================================================================
-
 	[Test]
 	public void UpdateOffTrackPenalties_LerpsPenaltiesGradually()
 	{
 		// Without track, car is completely off track
 		// Penalties should lerp toward OffTrackSpeedPenalty (0.3f)
-
 		_validationSystem.ResetPenalties();
 
 		// Use non-zero position to trigger cache recalculation
@@ -286,7 +278,6 @@ public class RacingTrackValidationSystemTests : TestClass
 	// ================================================================
 	// CAR SIZE VARIATION TESTS
 	// ================================================================
-
 	[Test]
 	public void IsCarCompletelyOffTrack_HandlesLargeCars()
 	{
@@ -294,8 +285,7 @@ public class RacingTrackValidationSystemTests : TestClass
 		var isOffTrack = _validationSystem.IsCarCompletelyOffTrack(
 			Vector2.Zero,
 			0.0f,
-			new Vector2(200, 100) // Large car
-		);
+			new Vector2(200, 100)); // Large car
 
 		isOffTrack.ShouldBeTrue(); // Still off track when no track defined
 	}
@@ -306,8 +296,7 @@ public class RacingTrackValidationSystemTests : TestClass
 		var isOffTrack = _validationSystem.IsCarCompletelyOffTrack(
 			Vector2.Zero,
 			0.0f,
-			new Vector2(10, 5) // Small car
-		);
+			new Vector2(10, 5)); // Small car
 
 		isOffTrack.ShouldBeTrue();
 	}
@@ -321,8 +310,7 @@ public class RacingTrackValidationSystemTests : TestClass
 		var isOffTrack = _validationSystem.IsCarCompletelyOffTrack(
 			new Vector2(100, 100),
 			rotation,
-			new Vector2(50, 30)
-		);
+			new Vector2(50, 30));
 
 		isOffTrack.ShouldBeTrue(); // Off track when no track defined
 	}
@@ -330,7 +318,6 @@ public class RacingTrackValidationSystemTests : TestClass
 	// ================================================================
 	// COMBINED MODIFIER TESTS
 	// ================================================================
-
 	[Test]
 	public void GetSpeedModifier_WithBody_ReturnsTrackModifier_WhenNoZoneManager()
 	{
@@ -378,7 +365,6 @@ public class RacingTrackValidationSystemTests : TestClass
 	// ================================================================
 	// EXPORT PROPERTY TESTS
 	// ================================================================
-
 	[Test]
 	public void ExportProperties_CanBeModified()
 	{
@@ -423,7 +409,6 @@ public class RacingTrackValidationSystemTests : TestClass
 	// ================================================================
 	// LINE2D GEOMETRY REGRESSION TESTS
 	// ================================================================
-
 	private RacingTrackDefinition CreateTrackWithLine(Vector2[] points, float width, bool closed = false)
 	{
 		var trackDef = new RacingTrackDefinition();
@@ -433,7 +418,10 @@ public class RacingTrackValidationSystemTests : TestClass
 		line.Width = width;
 		line.Closed = closed;
 		foreach (var p in points)
+		{
 			line.AddPoint(p);
+		}
+
 		trackDef.AddChild(line);
 		trackDef.TrackLine = line;
 
@@ -455,6 +443,7 @@ public class RacingTrackValidationSystemTests : TestClass
 
 		// Center of track
 		trackDef.IsValidTrackPoint(new Vector2(100, 0)).ShouldBeTrue();
+
 		// Near edge but within half-width (20)
 		trackDef.IsValidTrackPoint(new Vector2(100, 19)).ShouldBeTrue();
 		trackDef.IsValidTrackPoint(new Vector2(100, -19)).ShouldBeTrue();
@@ -471,6 +460,7 @@ public class RacingTrackValidationSystemTests : TestClass
 		// Outside half-width (20) + margin
 		trackDef.IsValidTrackPoint(new Vector2(100, 25)).ShouldBeFalse();
 		trackDef.IsValidTrackPoint(new Vector2(100, -25)).ShouldBeFalse();
+
 		// Way off track
 		trackDef.IsValidTrackPoint(new Vector2(100, 100)).ShouldBeFalse();
 
@@ -481,17 +471,20 @@ public class RacingTrackValidationSystemTests : TestClass
 	public void IsValidTrackPoint_WorksOnMultiSegmentTrack()
 	{
 		// L-shaped track
-		var points = new[] {
+		var points = new[]
+		{
 			new Vector2(0, 0),
 			new Vector2(100, 0),
-			new Vector2(100, 100)
+			new Vector2(100, 100),
 		};
 		var trackDef = CreateTrackWithLine(points, 30f);
 
 		// On horizontal segment
 		trackDef.IsValidTrackPoint(new Vector2(50, 0)).ShouldBeTrue();
+
 		// On vertical segment
 		trackDef.IsValidTrackPoint(new Vector2(100, 50)).ShouldBeTrue();
+
 		// Off both segments
 		trackDef.IsValidTrackPoint(new Vector2(0, 100)).ShouldBeFalse();
 
@@ -502,18 +495,21 @@ public class RacingTrackValidationSystemTests : TestClass
 	public void IsValidTrackPoint_WorksOnClosedLoop()
 	{
 		// Triangle loop
-		var points = new[] {
+		var points = new[]
+		{
 			new Vector2(0, 0),
 			new Vector2(200, 0),
-			new Vector2(100, 173)
+			new Vector2(100, 173),
 		};
 		var trackDef = CreateTrackWithLine(points, 30f, closed: true);
 
 		// On bottom edge
 		trackDef.IsValidTrackPoint(new Vector2(100, 0)).ShouldBeTrue();
+
 		// On closing segment (last point to first point)
 		// Midpoint of closing segment: (50, 86.5)
 		trackDef.IsValidTrackPoint(new Vector2(50, 86)).ShouldBeTrue();
+
 		// Center of triangle (should be off-track for narrow width)
 		trackDef.IsValidTrackPoint(new Vector2(100, 57)).ShouldBeFalse();
 
@@ -531,6 +527,7 @@ public class RacingTrackValidationSystemTests : TestClass
 
 		// On track
 		_validationSystem.IsOnTrack(new Vector2(150, 0)).ShouldBeTrue();
+
 		// Off track
 		_validationSystem.IsOnTrack(new Vector2(150, 50)).ShouldBeFalse();
 
@@ -592,6 +589,7 @@ public class RacingTrackValidationSystemTests : TestClass
 			float a = Mathf.Tau * i / pointCount;
 			pts[i] = center + new Vector2(Mathf.Cos(a) * radiusX, Mathf.Sin(a) * radiusY);
 		}
+
 		return pts;
 	}
 
@@ -617,9 +615,12 @@ public class RacingTrackValidationSystemTests : TestClass
 		{
 			Vector2 a = loop[i];
 			Vector2 b = loop[(i + 1) % n];
-			Vector2 tangent = (b - a);
+			Vector2 tangent = b - a;
 			if (tangent.LengthSquared() < 0.0001f)
+			{
 				continue;
+			}
+
 			tangent = tangent.Normalized();
 			Vector2 normal = new Vector2(-tangent.Y, tangent.X);
 
@@ -630,11 +631,12 @@ public class RacingTrackValidationSystemTests : TestClass
 
 				foreach (var off in lateralOffsets)
 				{
-					positions.Add(onLine + normal * off);
-					positions.Add(onLine - normal * off);
+					positions.Add(onLine + (normal * off));
+					positions.Add(onLine - (normal * off));
 				}
 			}
 		}
+
 		return positions;
 	}
 
@@ -659,10 +661,18 @@ public class RacingTrackValidationSystemTests : TestClass
 			bool newResult = trackDef.IsValidTrackPointFast(p);
 
 			if (oldResult != newResult)
+			{
 				mismatches++;
+			}
 
-			if (oldResult) onTrackCount++;
-			else offTrackCount++;
+			if (oldResult)
+			{
+				onTrackCount++;
+			}
+			else
+			{
+				offTrackCount++;
+			}
 		}
 
 		// Bit-identical classification at every sampled position.
@@ -692,6 +702,7 @@ public class RacingTrackValidationSystemTests : TestClass
 		var trackDef = CreateTrackWithLine(points, width, closed: false);
 
 		var scripted = ScriptLapPositions(points, width / 2f, subStepsPerSegment: 8);
+
 		// Also probe the exact endpoints and just beyond them (open-track ends).
 		scripted.Add(points[0]);
 		scripted.Add(points[^1]);
@@ -702,8 +713,11 @@ public class RacingTrackValidationSystemTests : TestClass
 		foreach (var p in scripted)
 		{
 			if (trackDef.IsValidTrackPoint(p) != trackDef.IsValidTrackPointFast(p))
+			{
 				mismatches++;
+			}
 		}
+
 		mismatches.ShouldBe(0);
 
 		trackDef.QueueFree();
@@ -726,7 +740,10 @@ public class RacingTrackValidationSystemTests : TestClass
 			{
 				var p = new Vector2(x, y);
 				if (trackDef.IsValidTrackPoint(p) != trackDef.IsValidTrackPointFast(p))
+				{
 					mismatches++;
+				}
+
 				sampleCount++;
 			}
 		}
@@ -745,7 +762,9 @@ public class RacingTrackValidationSystemTests : TestClass
 		// the RacingGame Stopwatch + OS.IsDebugBuild timing idiom. No assertion on
 		// timing - environment-dependent; correctness is covered by the tests above.
 		if (!OS.IsDebugBuild())
+		{
 			return;
+		}
 
 		float width = 60f;
 		var loop = BuildOvalLoop(new Vector2(500, 350), 300f, 180f, 48);
@@ -757,15 +776,25 @@ public class RacingTrackValidationSystemTests : TestClass
 
 		sw.Restart();
 		for (int it = 0; it < Iterations; it++)
+		{
 			foreach (var p in scripted)
+			{
 				_ = trackDef.IsValidTrackPoint(p);
+			}
+		}
+
 		sw.Stop();
 		double oldMs = sw.Elapsed.TotalMilliseconds;
 
 		sw.Restart();
 		for (int it = 0; it < Iterations; it++)
+		{
 			foreach (var p in scripted)
+			{
 				_ = trackDef.IsValidTrackPointFast(p);
+			}
+		}
+
 		sw.Stop();
 		double newMs = sw.Elapsed.TotalMilliseconds;
 
@@ -780,16 +809,16 @@ public class RacingTrackValidationSystemTests : TestClass
 	// Same 8 car-bounds sample offsets + rotation the validation system uses internally,
 	// mirrored here to build a faithful full-scan baseline for the live-path timing below.
 	private static readonly Vector2[] _boundsUnitOffsets =
-	{
+	[
 		new(-1, -1), new(1, -1), new(1, 1), new(-1, 1),
 		new(0, -1), new(1, 0), new(0, 1), new(-1, 0),
-	};
+	];
 
 	private static Vector2 RotateOffset(Vector2 point, float rotation)
 	{
 		float cos = Mathf.Cos(rotation);
 		float sin = Mathf.Sin(rotation);
-		return new Vector2(point.X * cos - point.Y * sin, point.X * sin + point.Y * cos);
+		return new Vector2((point.X * cos) - (point.Y * sin), (point.X * sin) + (point.Y * cos));
 	}
 
 	[Test]
@@ -802,7 +831,9 @@ public class RacingTrackValidationSystemTests : TestClass
 		// targets. "after" = live fast path; "before" = the same 9-point sampling via the full-scan
 		// IsValidTrackPoint (old IsOnTrack routing). Debug-build only, no timing assertion.
 		if (!OS.IsDebugBuild())
+		{
 			return;
+		}
 
 		float width = 60f;
 		var loop = BuildOvalLoop(new Vector2(500, 350), 300f, 180f, 48);
@@ -831,17 +862,24 @@ public class RacingTrackValidationSystemTests : TestClass
 				{
 					var scaled = new Vector2(_boundsUnitOffsets[i].X * halfSize.X, _boundsUnitOffsets[i].Y * halfSize.Y);
 					var world = carCenter + RotateOffset(scaled, carRotation);
-					if (trackDef.IsValidTrackPoint(world)) break;
+					if (trackDef.IsValidTrackPoint(world))
+					{
+						break;
+					}
 				}
 			}
 		}
+
 		sw.Stop();
 		double oldMs = sw.Elapsed.TotalMilliseconds;
 
 		// After: live spatial-index path through the real validation-system entry point.
 		sw.Restart();
 		for (int it = 0; it < Iterations; it++)
+		{
 			_ = _validationSystem.IsCarCompletelyOffTrack(carCenter, carRotation, carSize);
+		}
+
 		sw.Stop();
 		double newMs = sw.Elapsed.TotalMilliseconds;
 

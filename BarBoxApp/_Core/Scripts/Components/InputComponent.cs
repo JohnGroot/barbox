@@ -3,13 +3,21 @@ using Godot;
 [GlobalClass]
 public partial class InputComponent : Node
 {
-	[Signal] public delegate void InputStartedEventHandler(Vector2 position);
-	[Signal] public delegate void InputMovedEventHandler(Vector2 position);
-	[Signal] public delegate void InputEndedEventHandler(Vector2 position);
+	[Signal]
+	public delegate void InputStartedEventHandler(Vector2 position);
+
+	[Signal]
+	public delegate void InputMovedEventHandler(Vector2 position);
+
+	[Signal]
+	public delegate void InputEndedEventHandler(Vector2 position);
 
 	[ExportCategory("Input Settings")]
-	[Export] public float InputRadius { get; set; } = 50.0f;
-	[Export] public bool AcceptInput { get; set; } = true;
+	[Export]
+	public float InputRadius { get; set; } = 50.0f;
+
+	[Export]
+	public bool AcceptInput { get; set; } = true;
 
 	private BasePlayer _player;
 	private InputManager _inputManager;
@@ -33,6 +41,7 @@ public partial class InputComponent : Node
 		{
 			DisconnectInputSignals();
 		}
+
 		base._ExitTree();
 	}
 
@@ -56,7 +65,10 @@ public partial class InputComponent : Node
 
 	private void OnTouchStarted(Vector2 position, int fingerId)
 	{
-		if (!AcceptInput || !_player.IsActive()) return;
+		if (!AcceptInput || !_player.IsActive())
+		{
+			return;
+		}
 
 		if (!_isDragging && IsPositionInRange(position))
 		{
@@ -68,7 +80,10 @@ public partial class InputComponent : Node
 
 	private void OnTouchMoved(Vector2 position, int fingerId)
 	{
-		if (!AcceptInput || !_player.IsActive()) return;
+		if (!AcceptInput || !_player.IsActive())
+		{
+			return;
+		}
 
 		if (_isDragging && fingerId == _activeFingerId)
 		{
@@ -78,7 +93,10 @@ public partial class InputComponent : Node
 
 	private void OnTouchEnded(Vector2 position, int fingerId)
 	{
-		if (!AcceptInput || !_player.IsActive()) return;
+		if (!AcceptInput || !_player.IsActive())
+		{
+			return;
+		}
 
 		if (_isDragging && fingerId == _activeFingerId)
 		{
@@ -104,6 +122,8 @@ public partial class InputComponent : Node
 	}
 
 	public bool IsInputActive() => _isDragging;
+
 	public void SetInputRadius(float radius) => InputRadius = radius;
+
 	public void SetAcceptInput(bool accept) => AcceptInput = accept;
 }

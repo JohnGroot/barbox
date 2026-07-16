@@ -1,5 +1,5 @@
-using Godot;
 using System;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
@@ -86,6 +86,7 @@ public partial class CarromDebugOverlay : CanvasLayer
 			{
 				_debugPanel.Visible = _isVisible;
 			}
+
 			GetViewport().SetInputAsHandled();
 
 			GD.Print($"[CarromDebugOverlay] Debug overlay {(_isVisible ? "shown" : "hidden")}");
@@ -253,12 +254,14 @@ public partial class CarromDebugOverlay : CanvasLayer
 		button.Text = text;
 		button.CustomMinimumSize = new Vector2(260, 28);
 		button.AddThemeFontSizeOverride("font_size", 12);
-		button.Pressed += () => {
+		button.Pressed += () =>
+		{
 			if (_currentGame == null || !IsInstanceValid(_currentGame))
 			{
 				GD.PrintErr("[CarromDebugOverlay] Game instance not valid");
 				return;
 			}
+
 			onPressed?.Invoke();
 		};
 		return button;
@@ -274,7 +277,6 @@ public partial class CarromDebugOverlay : CanvasLayer
 	// ================================================================
 	// STATE DISPLAY
 	// ================================================================
-
 	private void UpdateStateDisplay()
 	{
 		if (_currentGame == null || !IsInstanceValid(_currentGame))
@@ -283,6 +285,7 @@ public partial class CarromDebugOverlay : CanvasLayer
 			{
 				_stateLabel.Text = "Game instance not found";
 			}
+
 			return;
 		}
 
@@ -296,7 +299,6 @@ public partial class CarromDebugOverlay : CanvasLayer
 	// ================================================================
 	// TEST SCENARIOS
 	// ================================================================
-
 	private void TestScenario_StrikerFoul()
 	{
 		GD.Print("[CarromDebugOverlay] Setting up striker foul scenario");
@@ -349,7 +351,6 @@ public partial class CarromDebugOverlay : CanvasLayer
 	// ================================================================
 	// PLAYER STATE MANIPULATION
 	// ================================================================
-
 	private void SkipToNextPlayer()
 	{
 		if (_currentGame == null || !IsInstanceValid(_currentGame))
@@ -364,7 +365,9 @@ public partial class CarromDebugOverlay : CanvasLayer
 		// Parse current player index from state (looks for "Current Player: playerX")
 		int currentPlayerIndex = 0;
 		if (state.Contains("Current Player: player2"))
+		{
 			currentPlayerIndex = 1;
+		}
 
 		// Switch to the other player (toggle between 0 and 1 for 2-player games)
 		int nextPlayerIndex = (currentPlayerIndex + 1) % 2;
@@ -389,7 +392,6 @@ public partial class CarromDebugOverlay : CanvasLayer
 	// ================================================================
 	// UTILITIES
 	// ================================================================
-
 	private void ReturnToPractice()
 	{
 		GD.Print("[CarromDebugOverlay] Returning to practice mode");

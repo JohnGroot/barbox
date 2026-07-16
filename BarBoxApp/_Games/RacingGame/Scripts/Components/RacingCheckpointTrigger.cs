@@ -9,17 +9,19 @@ namespace BarBox.Games.Racing;
 [GlobalClass]
 public partial class RacingCheckpointTrigger : RacingLineTrigger
 {
-
 	public enum CheckpointState
 	{
 		Future,      // Not yet required (yellow)
 		NextRequired, // Next required checkpoint (bright/enhanced)
-		Crossed      // Already crossed (green)
+		Crossed, // Already crossed (green)
 	}
 
 	[ExportCategory("Checkpoint State")]
-	[Export] public int CheckpointIndex { get; set; } = 0;
-	[Export] public bool IsCrossed { get; set; } = false;
+	[Export]
+	public int CheckpointIndex { get; set; } = 0;
+
+	[Export]
+	public bool IsCrossed { get; set; } = false;
 
 	private Color _uncrossedColor = Colors.Yellow;
 	private Color _crossedColor = Colors.Green;
@@ -34,7 +36,7 @@ public partial class RacingCheckpointTrigger : RacingLineTrigger
 	public override void _Ready()
 	{
 		base._Ready();
-		
+
 		// Set initial colors based on current visual line color
 		if (VisualLine != null)
 		{
@@ -98,7 +100,7 @@ public partial class RacingCheckpointTrigger : RacingLineTrigger
 		{
 			_nextRequiredColor = nextRequired.Value;
 		}
-		
+
 		// Update current color based on current state
 		UpdateVisualState();
 	}

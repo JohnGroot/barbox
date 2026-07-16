@@ -12,8 +12,11 @@ namespace BarBox.Tests.Fixtures;
 public abstract class BackendTestBase : TestClass
 {
 	protected Guid TestBoxId { get; private set; }
+
 	protected Guid TestPlayerId { get; private set; }
+
 	protected string TestPlayerUsername { get; private set; }
+
 	protected string TestPlayerPhone { get; private set; }
 
 	// Cached service references for performance
@@ -23,7 +26,8 @@ public abstract class BackendTestBase : TestClass
 	private PaymentService _cachedPaymentService;
 	private BackendManager _cachedBackendManager;
 
-	protected BackendTestBase(Node testScene) : base(testScene)
+	protected BackendTestBase(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -50,7 +54,8 @@ public abstract class BackendTestBase : TestClass
 
 		// Wait for services to finish async initialization (BackendManager + SessionEventService)
 		TestHelpers.LogTestInfo("Waiting for services to initialize...");
-		var servicesReady = await TestHelpers.WaitForConditionAsync(() =>
+		var servicesReady = await TestHelpers.WaitForConditionAsync(
+			() =>
 		{
 			var backendManager = GetBackendManager();
 			var eventService = GetEventService();
@@ -164,6 +169,7 @@ public abstract class BackendTestBase : TestClass
 		{
 			TestHelpers.LogTestError("SessionEventService autoload not found!");
 		}
+
 		return _cachedEventService;
 	}
 
@@ -183,6 +189,7 @@ public abstract class BackendTestBase : TestClass
 		{
 			TestHelpers.LogTestError("SessionManager autoload not found!");
 		}
+
 		return _cachedSessionManager;
 	}
 
@@ -202,6 +209,7 @@ public abstract class BackendTestBase : TestClass
 		{
 			TestHelpers.LogTestError("CreditService autoload not found!");
 		}
+
 		return _cachedCreditService;
 	}
 
@@ -221,6 +229,7 @@ public abstract class BackendTestBase : TestClass
 		{
 			TestHelpers.LogTestError("PaymentService autoload not found!");
 		}
+
 		return _cachedPaymentService;
 	}
 
@@ -240,6 +249,7 @@ public abstract class BackendTestBase : TestClass
 		{
 			TestHelpers.LogTestError("BackendManager autoload not found!");
 		}
+
 		return _cachedBackendManager;
 	}
 
@@ -368,5 +378,4 @@ public abstract class BackendTestBase : TestClass
 			TestHelpers.LogTestInfo($"  Backend Info: {backendManager.GetBackendInfo()}");
 		}
 	}
-
 }

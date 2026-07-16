@@ -1,6 +1,6 @@
-using Godot;
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 
 namespace BarBox.Games.Racing;
 
@@ -14,16 +14,21 @@ public partial class RacingZoneManager : Node
 	// ================================================================
 	// SIGNALS
 	// ================================================================
+	[Signal]
+	public delegate void ZoneEnteredEventHandler(Node2D body, RacingZone zone);
 
-	[Signal] public delegate void ZoneEnteredEventHandler(Node2D body, RacingZone zone);
-	[Signal] public delegate void ZoneExitedEventHandler(Node2D body, RacingZone zone);
-	[Signal] public delegate void FrictionlessStartedEventHandler(Node2D body, float duration);
-	[Signal] public delegate void FrictionlessEndedEventHandler(Node2D body);
+	[Signal]
+	public delegate void ZoneExitedEventHandler(Node2D body, RacingZone zone);
+
+	[Signal]
+	public delegate void FrictionlessStartedEventHandler(Node2D body, float duration);
+
+	[Signal]
+	public delegate void FrictionlessEndedEventHandler(Node2D body);
 
 	// ================================================================
 	// PRIVATE FIELDS
 	// ================================================================
-
 	private readonly List<RacingZone> _allZones = [];
 	private readonly List<RacingZone> _kerbZones = [];
 	private readonly Dictionary<Node2D, HashSet<RacingZone>> _bodyZones = new();
@@ -48,29 +53,35 @@ public partial class RacingZoneManager : Node
 	// ================================================================
 	// FRICTIONLESS STATE
 	// ================================================================
-
 	private class FrictionlessState
 	{
 		public bool IsActive { get; set; }
+
 		public float TimeRemaining { get; set; }
+
 		public Vector2 LockedVelocity { get; set; }
+
 		public float LockedRotation { get; set; }
+
 		public RacingZone SourceZone { get; set; }
 	}
 
 	// ================================================================
 	// ZONE REGISTRATION
 	// ================================================================
-
 	public void RegisterZone(RacingZone zone)
 	{
 		if (zone == null || _allZones.Contains(zone))
+		{
 			return;
+		}
 
 		_allZones.Add(zone);
 
 		if (zone.Type == ZoneType.Kerb)
+		{
 			_kerbZones.Add(zone);
+		}
 
 		// Cache collision shape references (avoids per-frame scene tree traversal)
 		var collisionPolygon = zone.GetNodeOrNull<CollisionPolygon2D>("CollisionPolygon2D");
@@ -97,7 +108,9 @@ public partial class RacingZoneManager : Node
 	public void UnregisterZone(RacingZone zone)
 	{
 		if (zone == null)
+		{
 			return;
+		}
 
 		_allZones.Remove(zone);
 		_kerbZones.Remove(zone);
@@ -126,7 +139,6 @@ public partial class RacingZoneManager : Node
 	// ================================================================
 	// ZONE EVENTS
 	// ================================================================
-
 	private void OnZoneBodyEntered(Node2D body, RacingZone zone)
 	{
 		if (!_bodyZones.TryGetValue(body, out var zones))
@@ -164,7 +176,6 @@ public partial class RacingZoneManager : Node
 	// ================================================================
 	// FRICTIONLESS EFFECT MANAGEMENT
 	// ================================================================
-
 	private void StartFrictionlessEffect(Node2D body, RacingZone zone)
 	{
 		// Get current velocity from the car body
@@ -188,7 +199,7 @@ public partial class RacingZoneManager : Node
 			TimeRemaining = zone.Duration > 0 ? zone.Duration : float.MaxValue,
 			LockedVelocity = velocity,
 			LockedRotation = rotation,
-			SourceZone = zone
+			SourceZone = zone,
 		};
 
 		EmitSignal(SignalName.FrictionlessStarted, body, zone.Duration);
@@ -204,7 +215,9 @@ public partial class RacingZoneManager : Node
 			var state = kvp.Value;
 
 			if (!state.IsActive)
+			{
 				continue;
+			}
 
 			// Check if body is still valid
 			if (!GodotObject.IsInstanceValid(body))
@@ -239,6 +252,7 @@ public partial class RacingZoneManager : Node
 		{
 			return (true, state.TimeRemaining, state.LockedVelocity, state.LockedRotation);
 		}
+
 		return (false, 0f, Vector2.Zero, 0f);
 	}
 
@@ -258,39 +272,48 @@ public partial class RacingZoneManager : Node
 	public float GetCombinedSpeedModifier(Node2D body)
 	{
 		if (!_bodyZones.TryGetValue(body, out var zones) || zones.Count == 0)
+		{
 			return 1.0f;
+		}
 
 		float modifier = 1.0f;
 		foreach (var zone in zones)
 		{
 			modifier *= zone.SpeedModifier;
 		}
+
 		return modifier;
 	}
 
 	public float GetCombinedAccelerationModifier(Node2D body)
 	{
 		if (!_bodyZones.TryGetValue(body, out var zones) || zones.Count == 0)
+		{
 			return 1.0f;
+		}
 
 		float modifier = 1.0f;
 		foreach (var zone in zones)
 		{
 			modifier *= zone.AccelerationModifier;
 		}
+
 		return modifier;
 	}
 
 	public float GetCombinedTurnModifier(Node2D body)
 	{
 		if (!_bodyZones.TryGetValue(body, out var zones) || zones.Count == 0)
+		{
 			return 1.0f;
+		}
 
 		float modifier = 1.0f;
 		foreach (var zone in zones)
 		{
 			modifier *= zone.TurnModifier;
 		}
+
 		return modifier;
 	}
 
@@ -298,17 +321,24 @@ public partial class RacingZoneManager : Node
 	{
 		// First check if in active frictionless state (with duration)
 		if (IsInFrictionlessState(body))
+		{
 			return true;
+		}
 
 		// Then check if in any blocking zone
 		if (!_bodyZones.TryGetValue(body, out var zones))
+		{
 			return false;
+		}
 
 		foreach (var zone in zones)
 		{
 			if (zone.BlocksInput)
+			{
 				return true;
+			}
 		}
+
 		return false;
 	}
 
@@ -325,11 +355,16 @@ public partial class RacingZoneManager : Node
 		foreach (var zone in _kerbZones)
 		{
 			if (!GodotObject.IsInstanceValid(zone))
+			{
 				continue;
+			}
 
 			if (IsPointInZone(position, zone))
+			{
 				return true;
+			}
 		}
+
 		return false;
 	}
 
@@ -343,10 +378,14 @@ public partial class RacingZoneManager : Node
 		foreach (var zone in _allZones)
 		{
 			if (!GodotObject.IsInstanceValid(zone))
+			{
 				continue;
+			}
 
 			if (IsPointInZone(position, zone))
+			{
 				_positionQueryResult.Add(zone);
+			}
 		}
 
 		return _positionQueryResult;
@@ -359,7 +398,9 @@ public partial class RacingZoneManager : Node
 
 		// AABB pre-filter: cheap rejection before expensive polygon check
 		if (_zoneAABBs.TryGetValue(zone, out var aabb) && !aabb.HasPoint(localPosition))
+		{
 			return false;
+		}
 
 		// Use cached collision polygon reference (avoids string-based scene tree traversal)
 		if (_zoneCollisionPolygons.TryGetValue(zone, out var collisionPolygon))
@@ -389,21 +430,38 @@ public partial class RacingZoneManager : Node
 	// ================================================================
 	// AABB CACHING
 	// ================================================================
-
 	private void CacheAABBFromPolygon(RacingZone zone, Vector2[] polygon)
 	{
 		if (polygon == null || polygon.Length == 0)
+		{
 			return;
+		}
 
 		var min = polygon[0];
 		var max = polygon[0];
 		for (int i = 1; i < polygon.Length; i++)
 		{
-			if (polygon[i].X < min.X) min.X = polygon[i].X;
-			if (polygon[i].Y < min.Y) min.Y = polygon[i].Y;
-			if (polygon[i].X > max.X) max.X = polygon[i].X;
-			if (polygon[i].Y > max.Y) max.Y = polygon[i].Y;
+			if (polygon[i].X < min.X)
+			{
+				min.X = polygon[i].X;
+			}
+
+			if (polygon[i].Y < min.Y)
+			{
+				min.Y = polygon[i].Y;
+			}
+
+			if (polygon[i].X > max.X)
+			{
+				max.X = polygon[i].X;
+			}
+
+			if (polygon[i].Y > max.Y)
+			{
+				max.Y = polygon[i].Y;
+			}
 		}
+
 		_zoneAABBs[zone] = new Rect2(min, max - min);
 	}
 
@@ -454,13 +512,18 @@ public partial class RacingZoneManager : Node
 	public bool IsInZoneType(Node2D body, ZoneType type)
 	{
 		if (!_bodyZones.TryGetValue(body, out var zones))
+		{
 			return false;
+		}
 
 		foreach (var zone in zones)
 		{
 			if (zone.Type == type)
+			{
 				return true;
+			}
 		}
+
 		return false;
 	}
 

@@ -1,7 +1,7 @@
-using Godot;
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
@@ -73,7 +73,9 @@ public class PieceSnapshot
 	public static PieceSnapshot FromPiece(CarromPiece piece)
 	{
 		if (piece == null || !GodotObject.IsInstanceValid(piece))
+		{
 			return null;
+		}
 
 		return new PieceSnapshot
 		{
@@ -83,7 +85,7 @@ public class PieceSnapshot
 			VelocityX = piece.LinearVelocity.X,
 			VelocityY = piece.LinearVelocity.Y,
 			AngularVelocity = piece.AngularVelocity,
-			Visible = piece.Visible
+			Visible = piece.Visible,
 		};
 	}
 
@@ -147,7 +149,9 @@ public class PlayerSnapshot
 	public static PlayerSnapshot FromPlayerState(PlayerState playerState)
 	{
 		if (playerState == null)
+		{
 			return null;
+		}
 
 		return new PlayerSnapshot
 		{
@@ -159,7 +163,7 @@ public class PlayerSnapshot
 			TotalShots = playerState.TotalShots,
 			ValidPockets = playerState.ValidPockets,
 			Fouls = playerState.Fouls,
-			PocketedPieces = playerState.PocketedPieces.ConvertAll(p => p.ToString())
+			PocketedPieces = playerState.PocketedPieces.ConvertAll(p => p.ToString()),
 		};
 	}
 
@@ -176,7 +180,9 @@ public class PlayerSnapshot
 		foreach (var piece in PocketedPieces)
 		{
 			if (Enum.TryParse<PieceType>(piece, out var parsedType))
+			{
 				pocketedPiecesList.Add(parsedType);
+			}
 		}
 
 		return new PlayerState
@@ -189,7 +195,7 @@ public class PlayerSnapshot
 			TotalShots = TotalShots,
 			ValidPockets = ValidPockets,
 			Fouls = Fouls,
-			PocketedPieces = pocketedPiecesList
+			PocketedPieces = pocketedPiecesList,
 		};
 	}
 }
@@ -230,7 +236,9 @@ public class TurnSnapshot
 	public static TurnSnapshot FromTurnContext(TurnContext turnContext)
 	{
 		if (turnContext == null)
+		{
 			return new TurnSnapshot();
+		}
 
 		return new TurnSnapshot
 		{
@@ -241,7 +249,7 @@ public class TurnSnapshot
 			PiecesDisturbedInBreaking = turnContext.PiecesDisturbedInBreaking,
 			PocketedQueenThisTurn = turnContext.PocketedQueenThisTurn,
 			NeedsQueenCovering = turnContext.NeedsQueenCovering,
-			PiecesThisTurn = turnContext.PiecesThisTurn.ConvertAll(p => p.ToString())
+			PiecesThisTurn = turnContext.PiecesThisTurn.ConvertAll(p => p.ToString()),
 		};
 	}
 
@@ -254,7 +262,9 @@ public class TurnSnapshot
 		foreach (var piece in PiecesThisTurn)
 		{
 			if (Enum.TryParse<PieceType>(piece, out var parsedType))
+			{
 				piecesThisTurnList.Add(parsedType);
+			}
 		}
 
 		return new TurnContext
@@ -266,7 +276,7 @@ public class TurnSnapshot
 			PiecesDisturbedInBreaking = PiecesDisturbedInBreaking,
 			PocketedQueenThisTurn = PocketedQueenThisTurn,
 			NeedsQueenCovering = NeedsQueenCovering,
-			PiecesThisTurn = piecesThisTurnList
+			PiecesThisTurn = piecesThisTurnList,
 		};
 	}
 }

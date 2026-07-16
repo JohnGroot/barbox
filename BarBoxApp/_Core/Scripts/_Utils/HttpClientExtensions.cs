@@ -1,6 +1,6 @@
-using Godot;
 using System;
 using System.Threading.Tasks;
+using Godot;
 
 /// <summary>
 /// Extension methods for Godot.HttpClient to enable responsive polling
@@ -37,8 +37,7 @@ public static class HttpClientExtensions
 		Func<HttpClient.Status, bool> condition,
 		float timeoutSeconds = CONNECTION_TIMEOUT_SECONDS,
 		int pollBurstCount = 10,
-		float yieldDelaySeconds = 0.01f
-	)
+		float yieldDelaySeconds = 0.01f)
 	{
 		var maxAttempts = (int)(timeoutSeconds / yieldDelaySeconds);
 
@@ -53,7 +52,9 @@ public static class HttpClientExtensions
 				var status = client.GetStatus();
 
 				if (condition(status))
+				{
 					return true; // Success - exit immediately
+				}
 			}
 
 			// Minimal yield to prevent frame blocking
@@ -75,16 +76,14 @@ public static class HttpClientExtensions
 		HttpClient.Status targetStatus,
 		float timeoutSeconds = CONNECTION_TIMEOUT_SECONDS,
 		int pollBurstCount = 10,
-		float yieldDelaySeconds = 0.01f
-	)
+		float yieldDelaySeconds = 0.01f)
 	{
 		return PollUntilAsync(
 			client,
 			status => status == targetStatus,
 			timeoutSeconds,
 			pollBurstCount,
-			yieldDelaySeconds
-		);
+			yieldDelaySeconds);
 	}
 
 	/// <summary>
@@ -96,14 +95,12 @@ public static class HttpClientExtensions
 	/// </example>
 	public static Task<bool> PollUntilConnectedAsync(
 		this HttpClient client,
-		float timeoutSeconds = CONNECTION_TIMEOUT_SECONDS
-	)
+		float timeoutSeconds = CONNECTION_TIMEOUT_SECONDS)
 	{
 		return PollUntilAsync(
 			client,
 			status => status == HttpClient.Status.Connected,
-			timeoutSeconds
-		);
+			timeoutSeconds);
 	}
 
 	/// <summary>
@@ -123,8 +120,7 @@ public static class HttpClientExtensions
 	/// </example>
 	public static async Task<bool> PollUntilResponseReadyAsync(
 		this HttpClient client,
-		float timeoutSeconds = RESPONSE_TIMEOUT_SECONDS
-	)
+		float timeoutSeconds = RESPONSE_TIMEOUT_SECONDS)
 	{
 		// Capture initial state to detect keep-alive connections
 		client.Poll();
@@ -142,13 +138,14 @@ public static class HttpClientExtensions
 				{
 					// Exit if request started
 					if (status != HttpClient.Status.Body && status != HttpClient.Status.Connected)
+					{
 						return true;
+					}
 
 					// Continue waiting
 					return false;
 				},
-				timeoutSeconds: KEEPALIVE_TRANSITION_TIMEOUT
-			);
+				timeoutSeconds: KEEPALIVE_TRANSITION_TIMEOUT);
 
 			if (!requestStarted)
 			{
@@ -166,12 +163,14 @@ public static class HttpClientExtensions
 			{
 				// Success states - response is ready
 				if (status == HttpClient.Status.Body || status == HttpClient.Status.Connected)
+				{
 					return true;
+				}
 
 				// Error states - fail fast instead of waiting full timeout
 				if (status == HttpClient.Status.CantConnect ||
-				    status == HttpClient.Status.CantResolve ||
-				    status == HttpClient.Status.ConnectionError)
+					status == HttpClient.Status.CantResolve ||
+					status == HttpClient.Status.ConnectionError)
 				{
 					// Return true to exit polling, caller will check status and handle error
 					return true;
@@ -180,8 +179,7 @@ public static class HttpClientExtensions
 				// Continue waiting for other states (Requesting, Resolving, Connecting)
 				return false;
 			},
-			timeoutSeconds
-		);
+			timeoutSeconds);
 	}
 
 	/// <summary>
@@ -197,13 +195,14 @@ public static class HttpClientExtensions
 	/// </example>
 	public static async Task<byte[]> ReadResponseBodyAsync(
 		this HttpClient client,
-		float timeoutSeconds = BODY_BUFFER_TIMEOUT_SECONDS
-	)
+		float timeoutSeconds = BODY_BUFFER_TIMEOUT_SECONDS)
 	{
 		// Ensure we're in Body status
 		client.Poll();
 		if (client.GetStatus() != HttpClient.Status.Body)
-			return Array.Empty<byte>();
+		{
+			return [];
+		}
 
 		// Burst poll until body is fully buffered using the new status overload
 		// This is much faster than fixed delays because it exits immediately
@@ -213,10 +212,9 @@ public static class HttpClientExtensions
 			HttpClient.Status.Body,
 			timeoutSeconds,
 			pollBurstCount: 10,
-			yieldDelaySeconds: 0.01f
-		);
+			yieldDelaySeconds: 0.01f);
 
 		// Return body bytes if ready, otherwise empty array
-		return bodyReady ? client.ReadResponseBodyChunk() : Array.Empty<byte>();
+		return bodyReady ? client.ReadResponseBodyChunk() : [];
 	}
 }

@@ -29,7 +29,9 @@ public class RacingPendingSaveQueue
 	public void Enqueue(Func<Task> saveAction)
 	{
 		if (saveAction != null)
+		{
 			_pending.Add(saveAction);
+		}
 	}
 
 	/// <summary>
@@ -54,11 +56,15 @@ public class RacingPendingSaveQueue
 	{
 		var actions = Drain();
 		if (actions.Length == 0)
+		{
 			return Task.CompletedTask;
+		}
 
 		var tasks = new Task[actions.Length];
 		for (int i = 0; i < actions.Length; i++)
+		{
 			tasks[i] = actions[i]();
+		}
 
 		return Task.WhenAll(tasks);
 	}
@@ -66,7 +72,9 @@ public class RacingPendingSaveQueue
 	private Func<Task>[] Drain()
 	{
 		if (_pending.Count == 0)
-			return Array.Empty<Func<Task>>();
+		{
+			return [];
+		}
 
 		var actions = _pending.ToArray();
 		_pending.Clear();

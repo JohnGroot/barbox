@@ -7,12 +7,15 @@ public enum ZoneType
 {
 	/// <summary>Reduces car speed and acceleration</summary>
 	Slowdown,
+
 	/// <summary>Increases car speed and acceleration</summary>
 	Boost,
+
 	/// <summary>Locks velocity and blocks input for duration</summary>
 	Frictionless,
+
 	/// <summary>Decorative track edge that counts as on-track</summary>
-	Kerb
+	Kerb,
 }
 
 /// <summary>

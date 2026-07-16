@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Integration;
@@ -19,7 +19,8 @@ public class PlayerRegistrationTests : BackendTestBase
 	private BackendManager _backendManager;
 	private CreditService _creditService;
 
-	public PlayerRegistrationTests(Node testScene) : base(testScene)
+	public PlayerRegistrationTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -64,6 +65,7 @@ public class PlayerRegistrationTests : BackendTestBase
 			{
 				registrationResult.IsSuccess(out var _).ShouldBeTrue($"Registration should succeed or fail with 'already exists', but failed with: {registrationError.Message}");
 			}
+
 			TestHelpers.LogTestInfo($"Player already registered (expected): {registrationError.Message}");
 		}
 		else
@@ -83,12 +85,14 @@ public class PlayerRegistrationTests : BackendTestBase
 				TestHelpers.LogTestInfo("Skipping - rate limit exceeded (5/min backend limit)");
 				return;
 			}
+
 			loginResult.IsSuccess(out var _).ShouldBeTrue($"Login should succeed, but failed: {loginError.Message}");
 		}
 
 		var session = _sessionManager.GetSessionByPhone(TestPlayerPhone);
 		session.ShouldNotBeNull("User session should exist after login");
-		session.LobbySessionId.ShouldNotBe(Guid.Empty,
+		session.LobbySessionId.ShouldNotBe(
+			Guid.Empty,
 			"Lobby session MUST be created during login (session creation 404 bug check!)");
 
 		var playerId = SessionManager.GetPlayerIdFromPhone(TestPlayerPhone);
@@ -129,6 +133,7 @@ public class PlayerRegistrationTests : BackendTestBase
 			{
 				registrationResult.IsSuccess(out var _).ShouldBeTrue($"Registration should succeed or fail with 'already exists', but failed with: {registrationError.Message}");
 			}
+
 			TestHelpers.LogTestInfo($"Player already registered (expected): {registrationError.Message}");
 		}
 		else
@@ -148,6 +153,7 @@ public class PlayerRegistrationTests : BackendTestBase
 				return;
 			}
 		}
+
 		login1.IsSuccess(out var session1).ShouldBeTrue("First login should succeed");
 		session1.LobbySessionId.ShouldNotBe(Guid.Empty, "First login must create lobby session");
 		await _sessionManager.LogoutUserAsync(phone2);
@@ -162,6 +168,7 @@ public class PlayerRegistrationTests : BackendTestBase
 				return;
 			}
 		}
+
 		login2.IsSuccess(out var _).ShouldBeTrue("Second login should succeed (idempotent registration)");
 
 		// Assert - All logins should produce same player ID
@@ -200,6 +207,7 @@ public class PlayerRegistrationTests : BackendTestBase
 			{
 				registrationResult.IsSuccess(out var _).ShouldBeTrue($"Registration should succeed or fail with 'already exists', but failed with: {registrationError.Message}");
 			}
+
 			TestHelpers.LogTestInfo($"Player already registered (expected): {registrationError.Message}");
 		}
 		else
@@ -218,6 +226,7 @@ public class PlayerRegistrationTests : BackendTestBase
 				return;
 			}
 		}
+
 		loginResult.IsSuccess(out var session).ShouldBeTrue("Login should succeed");
 		session.LobbySessionId.ShouldNotBe(Guid.Empty, "Lobby session required for credit operations");
 
@@ -279,6 +288,7 @@ public class PlayerRegistrationTests : BackendTestBase
 				{
 					registrationResult.IsSuccess(out var _).ShouldBeTrue($"Registration should succeed or fail with 'already exists', but failed with: {registrationError.Message}");
 				}
+
 				TestHelpers.LogTestInfo($"Player already registered (expected): {registrationError.Message}");
 			}
 			else
@@ -311,6 +321,7 @@ public class PlayerRegistrationTests : BackendTestBase
 					return;
 				}
 			}
+
 			loginResult.IsSuccess(out var _).ShouldBeTrue("Login should succeed when backend is available");
 			TestHelpers.LogTestInfo("✓ Login with backend available succeeded");
 		}

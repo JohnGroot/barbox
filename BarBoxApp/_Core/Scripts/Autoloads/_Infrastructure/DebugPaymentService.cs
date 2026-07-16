@@ -1,7 +1,7 @@
-using Godot;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Godot;
 using LightResults;
 
 namespace BarBox.Core.Autoloads;
@@ -30,7 +30,7 @@ public class DebugPaymentService : IPaymentService
 			SessionId = $"{TXN_PREFIX}_{DateTime.UtcNow:yyyyMMddHHmmss}_{GD.Randi() % 10000:D4}",
 			PaymentUrl = null,
 			CreditPack = creditPack,
-			CreatedAtUtc = DateTime.UtcNow
+			CreatedAtUtc = DateTime.UtcNow,
 		};
 
 		GD.Print($"[DebugPaymentService] Checkout created - Session ID: {checkout.SessionId}, RequiresUserAction: {checkout.RequiresUserAction}");

@@ -57,7 +57,9 @@ public sealed class RacingTrackSpatialIndex
 		_segEnd = null;
 
 		if (points == null || points.Length < 2 || halfWidth <= 0f)
+		{
 			return;
+		}
 
 		_halfWidthSq = halfWidth * halfWidth;
 
@@ -71,6 +73,7 @@ public sealed class RacingTrackSpatialIndex
 			_segStart[i] = points[i];
 			_segEnd[i] = points[i + 1];
 		}
+
 		if (hasClosing)
 		{
 			_segStart[segCount - 1] = points[points.Length - 1];
@@ -86,6 +89,7 @@ public sealed class RacingTrackSpatialIndex
 			min = new Vector2(Mathf.Min(min.X, points[i].X), Mathf.Min(min.Y, points[i].Y));
 			max = new Vector2(Mathf.Max(max.X, points[i].X), Mathf.Max(max.Y, points[i].Y));
 		}
+
 		_origin = min - new Vector2(halfWidth, halfWidth);
 		Vector2 gridMax = max + new Vector2(halfWidth, halfWidth);
 		Vector2 extent = gridMax - _origin;
@@ -95,11 +99,16 @@ public sealed class RacingTrackSpatialIndex
 		// 2 * half-width guards against cells smaller than the on-track band.
 		float totalLen = 0f;
 		for (int i = 0; i < segCount; i++)
+		{
 			totalLen += _segStart[i].DistanceTo(_segEnd[i]);
+		}
+
 		float avgSegLen = segCount > 0 ? totalLen / segCount : 0f;
 		_cellSize = Mathf.Max(2f * halfWidth, avgSegLen);
 		if (_cellSize <= 0.0001f)
+		{
 			_cellSize = 0.0001f;
+		}
 
 		_cols = Mathf.Max(1, Mathf.CeilToInt(extent.X / _cellSize));
 		_rows = Mathf.Max(1, Mathf.CeilToInt(extent.Y / _cellSize));
@@ -144,7 +153,9 @@ public sealed class RacingTrackSpatialIndex
 
 		_cells = new int[_cols * _rows][];
 		for (int i = 0; i < buckets.Length; i++)
+		{
 			_cells[i] = buckets[i]?.ToArray();
+		}
 
 		_built = true;
 	}
@@ -157,7 +168,9 @@ public sealed class RacingTrackSpatialIndex
 	public bool IsPointNear(Vector2 localPoint)
 	{
 		if (!_built)
+		{
 			return false;
+		}
 
 		int cx = Mathf.FloorToInt((localPoint.X - _origin.X) / _cellSize);
 		int cy = Mathf.FloorToInt((localPoint.Y - _origin.Y) / _cellSize);
@@ -165,18 +178,24 @@ public sealed class RacingTrackSpatialIndex
 		// A point outside the grid is beyond half-width of every segment (grid bounds
 		// were expanded by half-width), so it is off-track.
 		if (cx < 0 || cx >= _cols || cy < 0 || cy >= _rows)
+		{
 			return false;
+		}
 
-		int[] cell = _cells[cy * _cols + cx];
+		int[] cell = _cells[(cy * _cols) + cx];
 		if (cell == null)
+		{
 			return false;
+		}
 
 		for (int i = 0; i < cell.Length; i++)
 		{
 			int s = cell[i];
 			var closest = LineUtils.GetClosestPointOnSegment(localPoint, _segStart[s], _segEnd[s]);
 			if (localPoint.DistanceSquaredTo(closest) <= _halfWidthSq)
+			{
 				return true;
+			}
 		}
 
 		return false;

@@ -38,5 +38,4 @@ public interface IRacingTrackDefinition
 	/// Get the direction vector for the starting line (perpendicular to track)
 	/// </summary>
 	Vector2 GetStartLineDirection();
-
 }

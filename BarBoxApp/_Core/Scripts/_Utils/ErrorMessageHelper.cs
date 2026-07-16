@@ -18,7 +18,9 @@ public static class ErrorMessageHelper
 	public static string GetUserFriendlyError(string rawError)
 	{
 		if (string.IsNullOrWhiteSpace(rawError))
+		{
 			return "An unknown error occurred. Please try again.";
+		}
 
 		// Strip common technical prefixes first
 		var cleanedError = StripTechnicalPrefixes(rawError);
@@ -33,12 +35,16 @@ public static class ErrorMessageHelper
 			{
 				var parsedMessage = TryParseBackendError(jsonPart);
 				if (!string.IsNullOrEmpty(parsedMessage))
+				{
 					return TruncateMessage(parsedMessage);
+				}
 			}
 
 			// Map by status code if JSON parsing failed
 			if (statusCode > 0)
+			{
 				return MapHttpStatusCode(statusCode);
+			}
 		}
 
 		// Try to extract JSON from anywhere in the string
@@ -47,18 +53,24 @@ public static class ErrorMessageHelper
 		{
 			var parsedMessage = TryParseBackendError(extractedJson);
 			if (!string.IsNullOrEmpty(parsedMessage))
+			{
 				return TruncateMessage(parsedMessage);
+			}
 		}
 
 		// Try to parse entire cleaned string as JSON
 		var directParse = TryParseBackendError(cleanedError);
 		if (!string.IsNullOrEmpty(directParse))
+		{
 			return TruncateMessage(directParse);
+		}
 
 		// Map common error patterns
 		var mapped = MapCommonErrorPatterns(cleanedError);
 		if (!string.IsNullOrEmpty(mapped))
+		{
 			return TruncateMessage(mapped);
+		}
 
 		// Fallback: clean up and truncate
 		return TruncateMessage(CleanRawError(cleanedError));
@@ -77,7 +89,7 @@ public static class ErrorMessageHelper
 			"Account creation error:",
 			"Login error:",
 			"Create account error:",
-			"Error:"
+			"Error:",
 		};
 
 		foreach (var prefix in prefixes)
@@ -112,14 +124,19 @@ public static class ErrorMessageHelper
 					var detailJson = detailElement.GetRawText();
 					var detailMessage = TryParseBackendError(detailJson);
 					if (!string.IsNullOrWhiteSpace(detailMessage))
+					{
 						return detailMessage;
+					}
 				}
+
 				// If detail is a string, return it directly
 				else if (detailElement.ValueKind == JsonValueKind.String)
 				{
 					var detailString = detailElement.GetString();
 					if (!string.IsNullOrWhiteSpace(detailString))
+					{
 						return detailString;
+					}
 				}
 			}
 
@@ -128,7 +145,9 @@ public static class ErrorMessageHelper
 			{
 				var message = messageElement.GetString();
 				if (!string.IsNullOrWhiteSpace(message))
+				{
 					return message;
+				}
 			}
 
 			// Try to get code if message is missing
@@ -156,13 +175,16 @@ public static class ErrorMessageHelper
 			{
 				var codeStr = error.Substring(startIndex, endIndex - startIndex).Trim();
 				if (int.TryParse(codeStr, out var code))
+				{
 					return code;
+				}
 			}
 		}
 		catch
 		{
 			// Parsing failed, return 0
 		}
+
 		return 0;
 	}
 
@@ -170,7 +192,10 @@ public static class ErrorMessageHelper
 	{
 		var jsonStart = error.IndexOf('{');
 		if (jsonStart >= 0)
+		{
 			return error.Substring(jsonStart);
+		}
+
 		return null;
 	}
 
@@ -188,7 +213,7 @@ public static class ErrorMessageHelper
 			502 => "Service temporarily unavailable. Please try again.",
 			503 => "Service temporarily unavailable. Please try again.",
 			504 => "Connection timeout. Please check your network and try again.",
-			_ => "An error occurred. Please try again."
+			_ => "An error occurred. Please try again.",
 		};
 	}
 
@@ -206,7 +231,7 @@ public static class ErrorMessageHelper
 			"INVALID_PHONE" => "Please enter a valid 10-digit phone number.",
 			"INVALID_PIN" => "Please enter a valid 4-digit PIN.",
 			"INVALID_USERNAME" => "Username must be 1-7 characters, alphanumeric and underscore only.",
-			_ => "An error occurred. Please try again."
+			_ => "An error occurred. Please try again.",
 		};
 	}
 
@@ -215,28 +240,44 @@ public static class ErrorMessageHelper
 		var lowerError = error.ToLowerInvariant();
 
 		if (lowerError.Contains("timeout"))
+		{
 			return "Connection timeout. Please check your network and try again.";
+		}
 
 		if (lowerError.Contains("already exists") || lowerError.Contains("conflict") || lowerError.Contains("409"))
+		{
 			return "An account with this information already exists.";
+		}
 
 		if (lowerError.Contains("invalid") && lowerError.Contains("phone"))
+		{
 			return "Please enter a valid 10-digit phone number.";
+		}
 
 		if (lowerError.Contains("invalid") && lowerError.Contains("pin"))
+		{
 			return "Please enter a valid 4-digit PIN.";
+		}
 
 		if (lowerError.Contains("username") && lowerError.Contains("taken"))
+		{
 			return "This username is already taken.";
+		}
 
 		if (lowerError.Contains("network") || lowerError.Contains("connection"))
+		{
 			return "Network error. Please check your connection and try again.";
+		}
 
 		if (lowerError.Contains("server error") || lowerError.Contains("500"))
+		{
 			return "Server error. Please try again later.";
+		}
 
 		if (lowerError.Contains("unavailable") || lowerError.Contains("503"))
+		{
 			return "Service temporarily unavailable. Please try again later.";
+		}
 
 		return null;
 	}
@@ -245,15 +286,17 @@ public static class ErrorMessageHelper
 	{
 		// Remove common prefixes
 		error = error.Replace("POST failed with code", "Error")
-					 .Replace("Account creation error:", "")
-					 .Replace("Login error:", "")
-					 .Replace("Validation failed:", "")
+					 .Replace("Account creation error:", string.Empty)
+					 .Replace("Login error:", string.Empty)
+					 .Replace("Validation failed:", string.Empty)
 					 .Trim();
 
 		// Remove request IDs and technical details
 		var requestIdIndex = error.IndexOf("request_id");
 		if (requestIdIndex > 0)
+		{
 			error = error.Substring(0, requestIdIndex).Trim().TrimEnd(',', '{', '}');
+		}
 
 		return error;
 	}
@@ -261,19 +304,25 @@ public static class ErrorMessageHelper
 	private static string TruncateMessage(string message)
 	{
 		if (string.IsNullOrWhiteSpace(message))
+		{
 			return "An error occurred. Please try again.";
+		}
 
 		message = message.Trim();
 
 		if (message.Length <= MAX_ERROR_LENGTH)
+		{
 			return message;
+		}
 
 		// Find last complete word before max length
 		var truncateAt = MAX_ERROR_LENGTH - 3;
 		var lastSpace = message.LastIndexOf(' ', truncateAt);
 
 		if (lastSpace > MAX_ERROR_LENGTH / 2)
+		{
 			return message.Substring(0, lastSpace) + "...";
+		}
 
 		return message.Substring(0, truncateAt) + "...";
 	}
@@ -291,7 +340,7 @@ public static class ErrorMessageHelper
 				? "This username is already taken. Please choose another."
 				: $"Username '{value}' is already taken. Please choose another.",
 			"pin" => "Please enter a valid 4-digit PIN.",
-			_ => !string.IsNullOrWhiteSpace(message) ? TruncateMessage(message) : "Please check your input and try again."
+			_ => !string.IsNullOrWhiteSpace(message) ? TruncateMessage(message) : "Please check your input and try again.",
 		};
 	}
 }

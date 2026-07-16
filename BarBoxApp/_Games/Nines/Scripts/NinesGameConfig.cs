@@ -142,9 +142,8 @@ public partial class NinesGameConfig : Resource
 	#region Computed Properties
 
 	public Vector2 GridTotalSize => new(
-		GridSize * CardSize.X + (GridSize - 1) * GridSpacing,
-		GridSize * CardSize.Y + (GridSize - 1) * GridSpacing
-	);
+		(GridSize * CardSize.X) + ((GridSize - 1) * GridSpacing),
+		(GridSize * CardSize.Y) + ((GridSize - 1) * GridSpacing));
 
 	public int TotalCardsInDeck => 52;
 
@@ -160,6 +159,7 @@ public partial class NinesGameConfig : Resource
 	{
 		// Scale based on viewport height relative to 1080p reference
 		float scale = viewportSize.Y / REFERENCE_HEIGHT;
+
 		// Clamp to reasonable bounds
 		return Mathf.Clamp(scale, 0.5f, 2.5f);
 	}

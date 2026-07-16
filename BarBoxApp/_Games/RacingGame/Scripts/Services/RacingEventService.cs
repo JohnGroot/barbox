@@ -1,10 +1,10 @@
-using Godot;
-using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using BarBox.Core.Utils;
 using BarBox.Games.Racing;
+using Godot;
+using LightResults;
 
 /// <summary>
 /// Racing game-specific event service
@@ -13,7 +13,8 @@ using BarBox.Games.Racing;
 /// </summary>
 public class RacingEventService : GameEventServiceBase
 {
-	public RacingEventService(SessionEventService eventService = null) : base(eventService)
+	public RacingEventService(SessionEventService eventService = null)
+		: base(eventService)
 	{
 	}
 
@@ -21,20 +22,30 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (string.IsNullOrEmpty(trackId))
+		{
 			return Result.Failure<bool>(ValidationMessages.Required("Track ID"));
+		}
 
 		if (lapNum < 1)
+		{
 			return Result.Failure<bool>(ValidationMessages.MinValue("Lap number", 1));
+		}
 
 		if (lapTime < 0)
+		{
 			return Result.Failure<bool>(ValidationMessages.MinValue("Lap time", 0));
+		}
 
 		if (checkpoints == null || checkpoints.Length == 0)
+		{
 			return Result.Failure<bool>(ValidationMessages.Required("Checkpoint data"));
+		}
 
 		// Validate checkpoint data integrity
 		if (!ValidateCheckpointData(checkpoints, out string validationError))
+		{
 			return Result.Failure<bool>(validationError);
+		}
 
 		// Convert checkpoints array to anonymous objects manually (avoid Linq)
 		var checkpointArray = new object[checkpoints.Length];
@@ -44,7 +55,7 @@ public class RacingEventService : GameEventServiceBase
 			{
 				index = checkpoints[i].Index,
 				time = checkpoints[i].Time,
-				gap = checkpoints[i].Gap
+				gap = checkpoints[i].Gap,
 			};
 		}
 
@@ -53,7 +64,7 @@ public class RacingEventService : GameEventServiceBase
 			track_id = trackId,
 			lap_num = lapNum,
 			lap_time = lapTime,
-			checkpoints = checkpointArray
+			checkpoints = checkpointArray,
 		};
 
 		return await SubmitResultAsync("racing/lap_complete", payload);
@@ -103,20 +114,30 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (raceEntry == null)
+		{
 			return Result.Failure<bool>(ValidationMessages.Required("Race entry"));
+		}
 
 		if (string.IsNullOrEmpty(raceEntry.TrackId))
+		{
 			return Result.Failure<bool>(ValidationMessages.Required("Track ID"));
+		}
 
 		if (raceEntry.TotalTime < 0)
+		{
 			return Result.Failure<bool>(ValidationMessages.MinValue("Total time", 0));
+		}
 
 		if (raceEntry.TotalLaps < 1)
+		{
 			return Result.Failure<bool>(ValidationMessages.MinValue("Lap count", 1));
+		}
 
 		// Validate race data integrity
 		if (!ValidateRaceDataIntegrity(raceEntry, out string integrityError))
+		{
 			return Result.Failure<bool>(integrityError);
+		}
 
 		// Convert checkpoints array manually if not null (avoid Linq)
 		object[] checkpointArray = null;
@@ -129,7 +150,7 @@ public class RacingEventService : GameEventServiceBase
 				{
 					index = raceEntry.Checkpoints[i].Index,
 					time = raceEntry.Checkpoints[i].Time,
-					gap = raceEntry.Checkpoints[i].Gap
+					gap = raceEntry.Checkpoints[i].Gap,
 				};
 			}
 		}
@@ -140,7 +161,7 @@ public class RacingEventService : GameEventServiceBase
 			total_time = raceEntry.TotalTime,
 			total_laps = raceEntry.TotalLaps,
 			lap_times = raceEntry.LapTimes,
-			checkpoints = checkpointArray
+			checkpoints = checkpointArray,
 		};
 
 		return await SubmitResultAsync("racing/race_finish", payload);
@@ -199,17 +220,22 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (string.IsNullOrEmpty(trackId))
+		{
 			return Result.Failure<bool>(ValidationMessages.Required("Track ID"));
+		}
 
 		if (string.IsNullOrEmpty(playerId))
+		{
 			return Result.Failure<bool>(ValidationMessages.Required("Player ID"));
+		}
 
 		if (completedLaps < 0)
+		{
 			return Result.Failure<bool>(ValidationMessages.MinValue("Completed laps", 0));
+		}
 
 		// Allow empty lap times array (race abandoned before completing any lap)
-		if (lapTimes == null)
-			lapTimes = System.Array.Empty<float>();
+		lapTimes ??= [];
 
 		var payload = new
 		{
@@ -217,7 +243,7 @@ public class RacingEventService : GameEventServiceBase
 			player_id = playerId,
 			completed_laps = completedLaps,
 			lap_times = lapTimes,
-			reason = reason ?? "unknown"
+			reason = reason ?? "unknown",
 		};
 
 		return await SubmitResultAsync("racing/race_abandoned", payload);
@@ -247,11 +273,15 @@ public class RacingEventService : GameEventServiceBase
 	{
 		// Input validation
 		if (string.IsNullOrEmpty(trackId))
+		{
 			return Result.Failure<RacingLeaderboardData>(ValidationMessages.Required("Track ID"));
+		}
 
 		var limitValidation = ValidateLeaderboardLimit(limit);
 		if (limitValidation.IsFailure(out var limitError))
+		{
 			return Result.Failure<RacingLeaderboardData>(limitError.Message);
+		}
 
 		// Validate lap count if provided
 		if (laps.HasValue && expectedLaps.HasValue && laps.Value != expectedLaps.Value)
@@ -265,35 +295,42 @@ public class RacingEventService : GameEventServiceBase
 		{
 			{ "track_id", trackId },
 			{ "metric", metric },
-			{ "limit", limit.ToString() }
+			{ "limit", limit.ToString() },
 		};
 
 		if (laps.HasValue)
+		{
 			queryParams["laps"] = laps.Value.ToString();
+		}
 
 		return await QueryBackendAsync(
 			ApiPaths.Racing.Leaderboard,
 			queryParams,
-			jsonDict => ParseLeaderboardData(jsonDict, metric)
-		);
+			jsonDict => ParseLeaderboardData(jsonDict, metric));
 	}
 
 	private Result<RacingLeaderboardData> ParseLeaderboardData(Godot.Collections.Dictionary jsonDict, string metric)
 	{
 		if (!jsonDict.ContainsKey(JsonFieldNames.TrackId))
+		{
 			return Result.Failure<RacingLeaderboardData>($"Missing required field: {JsonFieldNames.TrackId}");
+		}
 
 		if (!jsonDict.ContainsKey(JsonFieldNames.Metric))
+		{
 			return Result.Failure<RacingLeaderboardData>($"Missing required field: {JsonFieldNames.Metric}");
+		}
 
 		if (!jsonDict.ContainsKey(JsonFieldNames.Leaderboard))
+		{
 			return Result.Failure<RacingLeaderboardData>($"Missing required field: {JsonFieldNames.Leaderboard}");
+		}
 
 		var leaderboardData = new RacingLeaderboardData
 		{
 			TrackId = jsonDict[JsonFieldNames.TrackId].AsString(),
 			Metric = jsonDict[JsonFieldNames.Metric].AsString(),
-			Leaderboard = new List<RacingLeaderboardEntry>()
+			Leaderboard = new List<RacingLeaderboardEntry>(),
 		};
 
 		var leaderboardArray = jsonDict[JsonFieldNames.Leaderboard].AsGodotArray();
@@ -305,20 +342,34 @@ public class RacingEventService : GameEventServiceBase
 			var entryDateResult = JsonParsingHelpers.ParseDateTime(entryDict, JsonFieldNames.EntryDate);
 
 			if (playerIdResult.IsFailure(out var playerIdError))
+			{
 				return Result.Failure<RacingLeaderboardData>(playerIdError.Message);
+			}
+
 			if (entryDateResult.IsFailure(out var entryDateError))
+			{
 				return Result.Failure<RacingLeaderboardData>(entryDateError.Message);
+			}
 
 			if (!entryDict.ContainsKey(JsonFieldNames.Username))
+			{
 				return Result.Failure<RacingLeaderboardData>($"Missing required field: {JsonFieldNames.Username}");
+			}
 
 			if (!entryDict.ContainsKey(JsonFieldNames.MetricValue))
+			{
 				return Result.Failure<RacingLeaderboardData>($"Missing required field: {JsonFieldNames.MetricValue}");
+			}
 
 			if (!playerIdResult.IsSuccess(out var playerId))
+			{
 				return Result.Failure<RacingLeaderboardData>("Failed to parse player ID");
+			}
+
 			if (!entryDateResult.IsSuccess(out var entryDate))
+			{
 				return Result.Failure<RacingLeaderboardData>("Failed to parse entry date");
+			}
 
 			// Parse lap_times if present (only for best_race metric)
 			float[] lapTimes = null;
@@ -338,7 +389,7 @@ public class RacingEventService : GameEventServiceBase
 				Username = entryDict[JsonFieldNames.Username].AsString(),
 				MetricValue = (float)entryDict[JsonFieldNames.MetricValue].AsDouble(),
 				EntryDate = entryDate,
-				LapTimes = lapTimes
+				LapTimes = lapTimes,
 			};
 
 			leaderboardData.Leaderboard.Add(leaderboardEntry);
@@ -346,21 +397,26 @@ public class RacingEventService : GameEventServiceBase
 
 		return Result.Success(leaderboardData);
 	}
-
 }
 
 public record class RacingLeaderboardData
 {
 	public string TrackId { get; init; }
+
 	public string Metric { get; init; }
+
 	public List<RacingLeaderboardEntry> Leaderboard { get; init; }
 }
 
 public record class RacingLeaderboardEntry
 {
 	public Guid PlayerId { get; init; }
+
 	public string Username { get; init; }
+
 	public float MetricValue { get; init; }
+
 	public DateTime EntryDate { get; init; }
+
 	public float[] LapTimes { get; init; }
 }

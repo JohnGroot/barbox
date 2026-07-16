@@ -14,8 +14,11 @@ namespace BarBox.Core.Gameplay;
 public abstract class PlayerRosterEntry
 {
 	public Guid PlayerId { get; init; }
+
 	public string PhoneNumber { get; set; } = string.Empty;
+
 	public string DisplayName { get; set; } = "Player";
+
 	public int SlotIndex { get; init; }
 
 	public bool IsLoggedIn => PlayerId != Guid.Empty;
@@ -28,18 +31,24 @@ public abstract class PlayerRosterEntry
 /// "player1"/"player2" turn labels, decoupled from session identity) doesn't
 /// map onto this shape and is not migrated here.
 /// </summary>
-public class PlayerRoster<T> where T : PlayerRosterEntry
+public class PlayerRoster<T>
+	where T : PlayerRosterEntry
 {
 	private readonly List<T> _players = [];
 
 	public IReadOnlyList<T> Players => _players;
+
 	public int Count => _players.Count;
 
 	public void Add(T player) => _players.Add(player);
+
 	public bool Remove(T player) => _players.Remove(player);
+
 	public void Clear() => _players.Clear();
 
 	public bool Contains(Guid playerId) => _players.Any(p => p.PlayerId == playerId);
+
 	public T Find(Guid playerId) => _players.FirstOrDefault(p => p.PlayerId == playerId);
+
 	public T FindByPhone(string phoneNumber) => _players.FirstOrDefault(p => p.PhoneNumber == phoneNumber);
 }

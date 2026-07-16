@@ -1,7 +1,7 @@
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Unit.Services;
@@ -12,7 +12,8 @@ namespace BarBox.Tests.Unit.Services;
 /// </summary>
 public class ServiceReadinessTests : BackendTestBase
 {
-	public ServiceReadinessTests(Node testScene) : base(testScene)
+	public ServiceReadinessTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -26,7 +27,7 @@ public class ServiceReadinessTests : BackendTestBase
 			"SessionManager",
 			"PaymentService",
 			"BackendManager",
-			"CreditService"
+			"CreditService",
 		};
 
 		// Act & Assert
@@ -126,7 +127,6 @@ public class ServiceReadinessTests : BackendTestBase
 	{
 		// Validate the complete dependency chain:
 		// BackendManager → SessionEventService → SessionManager → PaymentService
-
 		var backendManager = GetBackendManager();
 		var eventService = GetEventService();
 		var sessionManager = GetSessionManager();
@@ -188,7 +188,6 @@ public class ServiceReadinessTests : BackendTestBase
 	public void ServiceReadiness_MatchesExpectedState()
 	{
 		// Check if all services are in expected state for testing
-
 		var backendManager = GetBackendManager();
 		var eventService = GetEventService();
 		var sessionManager = GetSessionManager();
@@ -228,14 +227,13 @@ public class ServiceReadinessTests : BackendTestBase
 	public void ServiceAutoloadPaths_AreCorrect()
 	{
 		// Validate all services are accessible via expected autoload paths
-
 		var services = new[]
 		{
 			("BackendManager", "/root/BackendManager"),
 			("SessionEventService", "/root/SessionEventService"),
 			("SessionManager", "/root/SessionManager"),
 			("PaymentService", "/root/PaymentService"),
-			("CreditService", "/root/CreditService")
+			("CreditService", "/root/CreditService"),
 		};
 
 		TestHelpers.LogTestInfo("Service autoload path validation:");

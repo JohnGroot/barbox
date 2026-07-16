@@ -1,6 +1,6 @@
+using System.Threading.Tasks;
 using BarBox.Core.Autoloads;
 using Godot;
-using System.Threading.Tasks;
 
 namespace BarBox.Core.Utils;
 

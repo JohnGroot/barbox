@@ -9,9 +9,11 @@ namespace BarBox.Games.MiningGame;
 [GlobalClass]
 public partial class UpgradeCostData : Resource
 {
-	[Export] public int BaseCost { get; set; } = 100;
+	[Export]
+	public int BaseCost { get; set; } = 100;
 
-	[Export] public float CostMultiplier { get; set; } = 1.5f;
+	[Export]
+	public float CostMultiplier { get; set; } = 1.5f;
 
 	/// <summary>
 	/// Calculates the cost for upgrading to the specified level.
@@ -21,7 +23,9 @@ public partial class UpgradeCostData : Resource
 	public int CalculateCost(int currentLevel)
 	{
 		if (currentLevel < 0)
+		{
 			throw new System.ArgumentOutOfRangeException(nameof(currentLevel), "Level cannot be negative");
+		}
 
 		return (int)(BaseCost * Mathf.Pow(CostMultiplier, currentLevel));
 	}

@@ -141,8 +141,7 @@ public partial class NinesUI : CanvasLayer
 	{
 		_confirmationPopup.Show(
 			"Forfeit this round?\nThis counts as a loss for all players.",
-			() => _game?.ForfeitGame()
-		);
+			() => _game?.ForfeitGame());
 	}
 
 	#endregion
@@ -175,7 +174,7 @@ public partial class NinesUI : CanvasLayer
 			var bg = new ColorRect
 			{
 				Color = config.BackgroundColor,
-				MouseFilter = MouseFilterEnum.Ignore
+				MouseFilter = MouseFilterEnum.Ignore,
 			};
 			bg.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 			AddChild(bg);
@@ -184,7 +183,7 @@ public partial class NinesUI : CanvasLayer
 			var containerSize = new Vector2(400, 300) * _scale;
 			var container = new VBoxContainer
 			{
-				CustomMinimumSize = containerSize
+				CustomMinimumSize = containerSize,
 			};
 			container.SetAnchorsAndOffsetsPreset(LayoutPreset.Center);
 			container.Position -= containerSize / 2;
@@ -194,7 +193,7 @@ public partial class NinesUI : CanvasLayer
 			_titleLabel = new Label
 			{
 				Text = "NINES",
-				HorizontalAlignment = HorizontalAlignment.Center
+				HorizontalAlignment = HorizontalAlignment.Center,
 			};
 			_titleLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(48, _scale));
 			container.AddChild(_titleLabel);
@@ -214,7 +213,7 @@ public partial class NinesUI : CanvasLayer
 			_entryCostLabel = new Label
 			{
 				Text = $"Entry: {config.EntryCost:N0} credits per player",
-				HorizontalAlignment = HorizontalAlignment.Center
+				HorizontalAlignment = HorizontalAlignment.Center,
 			};
 			_entryCostLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(18, _scale));
 			_entryCostLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
@@ -227,7 +226,7 @@ public partial class NinesUI : CanvasLayer
 			_jackpotLabel = new Label
 			{
 				Text = "JACKPOT: 0 CREDITS",
-				HorizontalAlignment = HorizontalAlignment.Center
+				HorizontalAlignment = HorizontalAlignment.Center,
 			};
 			_jackpotLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(28, _scale));
 			_jackpotLabel.AddThemeColorOverride("font_color", config.JackpotDisplayColor);
@@ -241,7 +240,7 @@ public partial class NinesUI : CanvasLayer
 			var button = new Button
 			{
 				Text = text,
-				CustomMinimumSize = new Vector2(250, 50) * _scale
+				CustomMinimumSize = new Vector2(250, 50) * _scale,
 			};
 			button.AddThemeFontSizeOverride("font_size", _ui._config.GetScaledFontSize(16, _scale));
 
@@ -251,7 +250,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = cornerRadius,
 				CornerRadiusTopRight = cornerRadius,
 				CornerRadiusBottomLeft = cornerRadius,
-				CornerRadiusBottomRight = cornerRadius
+				CornerRadiusBottomRight = cornerRadius,
 			};
 			button.AddThemeStyleboxOverride("normal", styleNormal);
 
@@ -261,7 +260,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = cornerRadius,
 				CornerRadiusTopRight = cornerRadius,
 				CornerRadiusBottomLeft = cornerRadius,
-				CornerRadiusBottomRight = cornerRadius
+				CornerRadiusBottomRight = cornerRadius,
 			};
 			button.AddThemeStyleboxOverride("hover", styleHover);
 
@@ -292,7 +291,7 @@ public partial class NinesUI : CanvasLayer
 					CornerRadiusTopLeft = cornerRadius,
 					CornerRadiusTopRight = cornerRadius,
 					CornerRadiusBottomLeft = cornerRadius,
-					CornerRadiusBottomRight = cornerRadius
+					CornerRadiusBottomRight = cornerRadius,
 				};
 				button.AddThemeStyleboxOverride("disabled", styleDisabled);
 			}
@@ -338,7 +337,7 @@ public partial class NinesUI : CanvasLayer
 			// Panel background
 			var panel = new Panel
 			{
-				CustomMinimumSize = _popupSize
+				CustomMinimumSize = _popupSize,
 			};
 			var panelStyle = new StyleBoxFlat
 			{
@@ -346,7 +345,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = cornerRadius,
 				CornerRadiusTopRight = cornerRadius,
 				CornerRadiusBottomLeft = cornerRadius,
-				CornerRadiusBottomRight = cornerRadius
+				CornerRadiusBottomRight = cornerRadius,
 			};
 			panel.AddThemeStyleboxOverride("panel", panelStyle);
 			AddChild(panel);
@@ -355,7 +354,7 @@ public partial class NinesUI : CanvasLayer
 			var container = new VBoxContainer
 			{
 				Position = new Vector2(10, 10) * _scale,
-				CustomMinimumSize = new Vector2(180, 160) * _scale
+				CustomMinimumSize = new Vector2(180, 160) * _scale,
 			};
 			panel.AddChild(container);
 
@@ -386,7 +385,7 @@ public partial class NinesUI : CanvasLayer
 			var button = new Button
 			{
 				Text = text,
-				CustomMinimumSize = new Vector2(180, 35) * _scale
+				CustomMinimumSize = new Vector2(180, 35) * _scale,
 			};
 			button.AddThemeFontSizeOverride("font_size", _ui._config.GetScaledFontSize(16, _scale));
 
@@ -396,7 +395,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = cornerRadius,
 				CornerRadiusTopRight = cornerRadius,
 				CornerRadiusBottomLeft = cornerRadius,
-				CornerRadiusBottomRight = cornerRadius
+				CornerRadiusBottomRight = cornerRadius,
 			};
 			button.AddThemeStyleboxOverride("normal", style);
 
@@ -406,7 +405,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = cornerRadius,
 				CornerRadiusTopRight = cornerRadius,
 				CornerRadiusBottomLeft = cornerRadius,
-				CornerRadiusBottomRight = cornerRadius
+				CornerRadiusBottomRight = cornerRadius,
 			};
 			button.AddThemeStyleboxOverride("hover", hoverStyle);
 
@@ -418,7 +417,7 @@ public partial class NinesUI : CanvasLayer
 			// Position popup near the selected stack, but keep on screen
 			var viewportSize = GetViewport().GetVisibleRect().Size;
 
-			var x = Mathf.Clamp(screenPosition.X - _popupSize.X / 2, 10, viewportSize.X - _popupSize.X - 10);
+			var x = Mathf.Clamp(screenPosition.X - (_popupSize.X / 2), 10, viewportSize.X - _popupSize.X - 10);
 			var y = Mathf.Clamp(screenPosition.Y - _popupSize.Y - 20, 10, viewportSize.Y - _popupSize.Y - 10);
 
 			Position = new Vector2(x, y);
@@ -467,7 +466,7 @@ public partial class NinesUI : CanvasLayer
 			var overlay = new ColorRect
 			{
 				Color = new Color(0, 0, 0, 0.7f),
-				MouseFilter = MouseFilterEnum.Stop
+				MouseFilter = MouseFilterEnum.Stop,
 			};
 			overlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 			AddChild(overlay);
@@ -476,7 +475,7 @@ public partial class NinesUI : CanvasLayer
 			var panelSize = new Vector2(350, 250) * _scale;
 			var panel = new Panel
 			{
-				CustomMinimumSize = panelSize
+				CustomMinimumSize = panelSize,
 			};
 			panel.SetAnchorsAndOffsetsPreset(LayoutPreset.Center);
 			panel.Position -= panelSize / 2;
@@ -487,7 +486,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = cornerRadius,
 				CornerRadiusTopRight = cornerRadius,
 				CornerRadiusBottomLeft = cornerRadius,
-				CornerRadiusBottomRight = cornerRadius
+				CornerRadiusBottomRight = cornerRadius,
 			};
 			panel.AddThemeStyleboxOverride("panel", panelStyle);
 			AddChild(panel);
@@ -496,7 +495,7 @@ public partial class NinesUI : CanvasLayer
 			var container = new VBoxContainer
 			{
 				Position = new Vector2(25, 25) * _scale,
-				CustomMinimumSize = new Vector2(300, 200) * _scale
+				CustomMinimumSize = new Vector2(300, 200) * _scale,
 			};
 			panel.AddChild(container);
 
@@ -504,7 +503,7 @@ public partial class NinesUI : CanvasLayer
 			_resultLabel = new Label
 			{
 				Text = "GAME OVER",
-				HorizontalAlignment = HorizontalAlignment.Center
+				HorizontalAlignment = HorizontalAlignment.Center,
 			};
 			_resultLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(36, _scale));
 			container.AddChild(_resultLabel);
@@ -512,8 +511,8 @@ public partial class NinesUI : CanvasLayer
 			// Jackpot label
 			_jackpotLabel = new Label
 			{
-				Text = "",
-				HorizontalAlignment = HorizontalAlignment.Center
+				Text = string.Empty,
+				HorizontalAlignment = HorizontalAlignment.Center,
 			};
 			_jackpotLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(24, _scale));
 			_jackpotLabel.AddThemeColorOverride("font_color", config.JackpotDisplayColor);
@@ -525,7 +524,7 @@ public partial class NinesUI : CanvasLayer
 			// Button container
 			var buttonContainer = new HBoxContainer
 			{
-				Alignment = BoxContainer.AlignmentMode.Center
+				Alignment = BoxContainer.AlignmentMode.Center,
 			};
 			container.AddChild(buttonContainer);
 
@@ -533,7 +532,7 @@ public partial class NinesUI : CanvasLayer
 			_playAgainButton = new Button
 			{
 				Text = "Play Again",
-				CustomMinimumSize = new Vector2(120, 40) * _scale
+				CustomMinimumSize = new Vector2(120, 40) * _scale,
 			};
 			_playAgainButton.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(14, _scale));
 			var playAgainStyle = new StyleBoxFlat
@@ -542,7 +541,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = btnRadius,
 				CornerRadiusTopRight = btnRadius,
 				CornerRadiusBottomLeft = btnRadius,
-				CornerRadiusBottomRight = btnRadius
+				CornerRadiusBottomRight = btnRadius,
 			};
 			_playAgainButton.AddThemeStyleboxOverride("normal", playAgainStyle);
 			_playAgainButton.Pressed += OnPlayAgain;
@@ -555,7 +554,7 @@ public partial class NinesUI : CanvasLayer
 			_menuButton = new Button
 			{
 				Text = "Menu",
-				CustomMinimumSize = new Vector2(120, 40) * _scale
+				CustomMinimumSize = new Vector2(120, 40) * _scale,
 			};
 			_menuButton.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(14, _scale));
 			var menuStyle = new StyleBoxFlat
@@ -564,7 +563,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = btnRadius,
 				CornerRadiusTopRight = btnRadius,
 				CornerRadiusBottomLeft = btnRadius,
-				CornerRadiusBottomRight = btnRadius
+				CornerRadiusBottomRight = btnRadius,
 			};
 			_menuButton.AddThemeStyleboxOverride("normal", menuStyle);
 			_menuButton.Pressed += OnMenu;
@@ -647,7 +646,7 @@ public partial class NinesUI : CanvasLayer
 			_currentPlayerLabel = new Label
 			{
 				Text = "Player 1's Turn",
-				Position = new Vector2(20 * _scale, TOP_MENU_OFFSET * _scale)
+				Position = new Vector2(20 * _scale, TOP_MENU_OFFSET * _scale),
 			};
 			_currentPlayerLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(24, _scale));
 			AddChild(_currentPlayerLabel);
@@ -657,7 +656,7 @@ public partial class NinesUI : CanvasLayer
 			{
 				Text = "JACKPOT: 0",
 				HorizontalAlignment = HorizontalAlignment.Center,
-				GrowHorizontal = GrowDirection.Both
+				GrowHorizontal = GrowDirection.Both,
 			};
 			_jackpotLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(22, _scale));
 			_jackpotLabel.AddThemeColorOverride("font_color", config.JackpotDisplayColor);
@@ -668,9 +667,9 @@ public partial class NinesUI : CanvasLayer
 			// Feedback label (center, hidden by default)
 			_feedbackLabel = new Label
 			{
-				Text = "",
+				Text = string.Empty,
 				HorizontalAlignment = HorizontalAlignment.Center,
-				Visible = false
+				Visible = false,
 			};
 			_feedbackLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(48, _scale));
 			_feedbackLabel.SetAnchorsAndOffsetsPreset(LayoutPreset.Center);
@@ -757,7 +756,7 @@ public partial class NinesUI : CanvasLayer
 			// Panel background
 			_panel = new Panel
 			{
-				CustomMinimumSize = panelSize
+				CustomMinimumSize = panelSize,
 			};
 			var panelStyle = new StyleBoxFlat
 			{
@@ -765,7 +764,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = cornerRadius,
 				CornerRadiusTopRight = cornerRadius,
 				CornerRadiusBottomLeft = cornerRadius,
-				CornerRadiusBottomRight = cornerRadius
+				CornerRadiusBottomRight = cornerRadius,
 			};
 			_panel.AddThemeStyleboxOverride("panel", panelStyle);
 			AddChild(_panel);
@@ -774,7 +773,7 @@ public partial class NinesUI : CanvasLayer
 			var content = new VBoxContainer
 			{
 				Position = new Vector2(10, 10) * _scale,
-				CustomMinimumSize = new Vector2(180, 280) * _scale
+				CustomMinimumSize = new Vector2(180, 280) * _scale,
 			};
 			_panel.AddChild(content);
 
@@ -783,7 +782,7 @@ public partial class NinesUI : CanvasLayer
 			{
 				Text = "PLAYERS  v",
 				Flat = true,
-				CustomMinimumSize = new Vector2(180, 30) * _scale
+				CustomMinimumSize = new Vector2(180, 30) * _scale,
 			};
 			_titleButton.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(18, _scale));
 			_titleButton.Pressed += OnTitlePressed;
@@ -807,7 +806,7 @@ public partial class NinesUI : CanvasLayer
 			_addPlayerButton = new Button
 			{
 				Text = "+ Add Player",
-				CustomMinimumSize = new Vector2(180, 35) * _scale
+				CustomMinimumSize = new Vector2(180, 35) * _scale,
 			};
 			_addPlayerButton.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(14, _scale));
 			var buttonStyle = new StyleBoxFlat
@@ -816,7 +815,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = btnRadius,
 				CornerRadiusTopRight = btnRadius,
 				CornerRadiusBottomLeft = btnRadius,
-				CornerRadiusBottomRight = btnRadius
+				CornerRadiusBottomRight = btnRadius,
 			};
 			_addPlayerButton.AddThemeStyleboxOverride("normal", buttonStyle);
 			_addPlayerButton.Pressed += OnAddPlayerPressed;
@@ -866,7 +865,7 @@ public partial class NinesUI : CanvasLayer
 				{
 					Text = "No players joined",
 					HorizontalAlignment = HorizontalAlignment.Center,
-					Modulate = new Color(1, 1, 1, 0.5f)
+					Modulate = new Color(1, 1, 1, 0.5f),
 				};
 				noPlayersLabel.AddThemeFontSizeOverride("font_size", _ui._config.GetScaledFontSize(14, _scale));
 				_playerContainer.AddChild(noPlayersLabel);
@@ -885,7 +884,7 @@ public partial class NinesUI : CanvasLayer
 				var nameLabel = new Label
 				{
 					Text = player.DisplayName,
-					SizeFlagsHorizontal = SizeFlags.ExpandFill
+					SizeFlagsHorizontal = SizeFlags.ExpandFill,
 				};
 				nameLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(14, _scale));
 				entry.AddChild(nameLabel);
@@ -893,10 +892,11 @@ public partial class NinesUI : CanvasLayer
 				// Turn indicator (filled circle for current turn, empty for others)
 				var statusLabel = new Label
 				{
-					Text = isCurrentTurn ? "●" : "○"
+					Text = isCurrentTurn ? "●" : "○",
 				};
 				statusLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(14, _scale));
-				statusLabel.AddThemeColorOverride("font_color",
+				statusLabel.AddThemeColorOverride(
+					"font_color",
 					isCurrentTurn ? config.JackpotDisplayColor : config.ButtonDisabledColor);
 				entry.AddChild(statusLabel);
 
@@ -905,7 +905,7 @@ public partial class NinesUI : CanvasLayer
 				{
 					var creditsLabel = new Label
 					{
-						Text = $"{player.Credits:N0}c"
+						Text = $"{player.Credits:N0}c",
 					};
 					creditsLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(12, _scale));
 					creditsLabel.AddThemeColorOverride("font_color", config.JackpotDisplayColor);
@@ -964,7 +964,7 @@ public partial class NinesUI : CanvasLayer
 			var overlay = new ColorRect
 			{
 				Color = new Color(0, 0, 0, 0.7f),
-				MouseFilter = MouseFilterEnum.Stop
+				MouseFilter = MouseFilterEnum.Stop,
 			};
 			overlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
 			AddChild(overlay);
@@ -973,7 +973,7 @@ public partial class NinesUI : CanvasLayer
 			var panelSize = new Vector2(300, 180) * _scale;
 			var panel = new Panel
 			{
-				CustomMinimumSize = panelSize
+				CustomMinimumSize = panelSize,
 			};
 			panel.SetAnchorsAndOffsetsPreset(LayoutPreset.Center);
 			panel.Position -= panelSize / 2;
@@ -984,7 +984,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = cornerRadius,
 				CornerRadiusTopRight = cornerRadius,
 				CornerRadiusBottomLeft = cornerRadius,
-				CornerRadiusBottomRight = cornerRadius
+				CornerRadiusBottomRight = cornerRadius,
 			};
 			panel.AddThemeStyleboxOverride("panel", panelStyle);
 			AddChild(panel);
@@ -993,16 +993,16 @@ public partial class NinesUI : CanvasLayer
 			var container = new VBoxContainer
 			{
 				Position = new Vector2(20, 20) * _scale,
-				CustomMinimumSize = new Vector2(260, 140) * _scale
+				CustomMinimumSize = new Vector2(260, 140) * _scale,
 			};
 			panel.AddChild(container);
 
 			// Message label
 			_messageLabel = new Label
 			{
-				Text = "",
+				Text = string.Empty,
 				HorizontalAlignment = HorizontalAlignment.Center,
-				AutowrapMode = TextServer.AutowrapMode.Word
+				AutowrapMode = TextServer.AutowrapMode.Word,
 			};
 			_messageLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(18, _scale));
 			container.AddChild(_messageLabel);
@@ -1013,7 +1013,7 @@ public partial class NinesUI : CanvasLayer
 			// Button container
 			var buttonContainer = new HBoxContainer
 			{
-				Alignment = BoxContainer.AlignmentMode.Center
+				Alignment = BoxContainer.AlignmentMode.Center,
 			};
 			container.AddChild(buttonContainer);
 
@@ -1021,7 +1021,7 @@ public partial class NinesUI : CanvasLayer
 			var yesButton = new Button
 			{
 				Text = "Yes",
-				CustomMinimumSize = new Vector2(100, 40) * _scale
+				CustomMinimumSize = new Vector2(100, 40) * _scale,
 			};
 			yesButton.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(14, _scale));
 			var yesStyle = new StyleBoxFlat
@@ -1030,7 +1030,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = btnRadius,
 				CornerRadiusTopRight = btnRadius,
 				CornerRadiusBottomLeft = btnRadius,
-				CornerRadiusBottomRight = btnRadius
+				CornerRadiusBottomRight = btnRadius,
 			};
 			yesButton.AddThemeStyleboxOverride("normal", yesStyle);
 			yesButton.Pressed += OnYesPressed;
@@ -1043,7 +1043,7 @@ public partial class NinesUI : CanvasLayer
 			var noButton = new Button
 			{
 				Text = "No",
-				CustomMinimumSize = new Vector2(100, 40) * _scale
+				CustomMinimumSize = new Vector2(100, 40) * _scale,
 			};
 			noButton.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(14, _scale));
 			var noStyle = new StyleBoxFlat
@@ -1052,7 +1052,7 @@ public partial class NinesUI : CanvasLayer
 				CornerRadiusTopLeft = btnRadius,
 				CornerRadiusTopRight = btnRadius,
 				CornerRadiusBottomLeft = btnRadius,
-				CornerRadiusBottomRight = btnRadius
+				CornerRadiusBottomRight = btnRadius,
 			};
 			noButton.AddThemeStyleboxOverride("normal", noStyle);
 			noButton.Pressed += OnNoPressed;

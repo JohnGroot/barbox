@@ -1,5 +1,3 @@
-using Godot;
-using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,6 +5,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using BarBox.Core.Utils;
+using Godot;
+using LightResults;
 
 namespace BarBox.Core.Autoloads;
 
@@ -30,7 +30,9 @@ public partial class SessionEventService : AutoloadBase
 	{
 		var locationManager = LocationManager.GetAutoload();
 		if (locationManager == null || !locationManager.IsConfigLoaded)
+		{
 			throw new InvalidOperationException("LocationManager is required but not available or not initialized");
+		}
 
 		_venueName = locationManager.VenueName;
 		_boxName = locationManager.BoxName;
@@ -55,7 +57,6 @@ public partial class SessionEventService : AutoloadBase
 		LogInfo("SessionEventService ready (transport delegated to BackendClient)");
 	}
 
-
 	/// <summary>
 	/// Create new activity session (game launch → exit) with game tag
 	/// This is the NEW recommended method that replaces CreateSessionAsync
@@ -72,10 +73,14 @@ public partial class SessionEventService : AutoloadBase
 		List<string> playerIds = null)
 	{
 		if (!IsReady)
+		{
 			return Result.Failure<Guid>(NotReadyError);
+		}
 
 		if (string.IsNullOrEmpty(gameTag))
+		{
 			return Result.Failure<Guid>("game_tag is required");
+		}
 
 		var sessionId = Guid.NewGuid();
 
@@ -105,11 +110,12 @@ public partial class SessionEventService : AutoloadBase
 			var error = _backend.Request(
 				HttpClient.Method.Put,
 				url,
-				headers
-			);
+				headers);
 
 			if (error != Godot.Error.Ok)
+			{
 				return Result.Failure<Guid>($"Activity session creation request failed: {error}");
+			}
 
 			await _backend.WaitForResponseAsync();
 
@@ -185,7 +191,9 @@ public partial class SessionEventService : AutoloadBase
 	public async Task<Result<bool>> CloseActivitySessionAsync(Guid sessionId)
 	{
 		if (!IsReady)
+		{
 			return Result.Failure<bool>(NotReadyError);
+		}
 
 		try
 		{
@@ -205,11 +213,12 @@ public partial class SessionEventService : AutoloadBase
 			var error = _backend.Request(
 				HttpClient.Method.Post,
 				url,
-				headers
-			);
+				headers);
 
 			if (error != Godot.Error.Ok)
+			{
 				return Result.Failure<bool>($"Session close request failed: {error}");
+			}
 
 			await _backend.WaitForResponseAsync();
 
@@ -256,7 +265,9 @@ public partial class SessionEventService : AutoloadBase
 	public async Task<Result<Guid>> CreateLobbySessionAsync(Guid boxId, Guid playerId)
 	{
 		if (!IsReady)
+		{
 			return Result.Failure<Guid>(NotReadyError);
+		}
 
 		try
 		{
@@ -277,11 +288,12 @@ public partial class SessionEventService : AutoloadBase
 			var error = _backend.Request(
 				HttpClient.Method.Post,
 				url,
-				headers.ToArray()
-			);
+				[.. headers]);
 
 			if (error != Godot.Error.Ok)
+			{
 				return Result.Failure<Guid>($"Lobby session creation request failed: {error}");
+			}
 
 			await _backend.WaitForResponseAsync();
 
@@ -350,10 +362,14 @@ public partial class SessionEventService : AutoloadBase
 	public async Task<Result<bool>> EmitEventAsync(string eventType, object payload)
 	{
 		if (!IsReady)
+		{
 			return Result.Failure<bool>(NotReadyError);
+		}
 
 		if (_currentSessionId == Guid.Empty)
+		{
 			return Result.Failure<bool>("No active session - call CreateSessionAsync first");
+		}
 
 		try
 		{
@@ -361,14 +377,16 @@ public partial class SessionEventService : AutoloadBase
 			{
 				type = eventType,
 				timestamp = DateTime.UtcNow.ToString("O"),
-				payload = payload
+				payload = payload,
 			};
 
 			var json = JsonSerializer.Serialize(eventData, BackendClient.JsonOptions);
 
 			var result = await _backend.PostToSessionAsync(_currentSessionId, json);
 			if (result.IsSuccess(out _))
+			{
 				return Result.Success(true);
+			}
 
 			var error = result.IsFailure(out var e) ? e.Message : UnknownError;
 			LogError($"[SessionEventService] Backend error response: {error}");
@@ -390,7 +408,9 @@ public partial class SessionEventService : AutoloadBase
 	public async Task<Result<bool>> EmitUserEventAsync(Guid playerId, string eventType, object payload, Guid lobbySessionId)
 	{
 		if (!IsReady)
+		{
 			return Result.Failure<bool>(NotReadyError);
+		}
 
 		if (lobbySessionId == Guid.Empty)
 		{
@@ -406,11 +426,12 @@ public partial class SessionEventService : AutoloadBase
 #endif
 
 			var payloadJson = JsonSerializer.Serialize(payload, BackendClient.JsonOptions);
-			var eventJson = JsonSerializer.Serialize(new
-			{
-				type = eventType,
-				payload = JsonSerializer.Deserialize<Dictionary<string, object>>(payloadJson)
-			}, BackendClient.JsonOptions);
+			var eventJson = JsonSerializer.Serialize(
+				new
+				{
+					type = eventType,
+					payload = JsonSerializer.Deserialize<Dictionary<string, object>>(payloadJson),
+				}, BackendClient.JsonOptions);
 
 			// NOTE: playerId is intentionally NOT passed to PostToSessionAsync here - this
 			// preserves existing behavior where user events never attach a JWT (see BuildHeaders()
@@ -460,8 +481,8 @@ public partial class SessionEventService : AutoloadBase
 	public Task<Result<TResponse>> QueryAsync<TResponse>(
 		string endpoint,
 		Dictionary<string, string> queryParams = null,
-		Guid? playerId = null
-	) where TResponse : class
+		Guid? playerId = null)
+		where TResponse : class
 		=> _backend.QueryAsync<TResponse>(endpoint, queryParams, playerId);
 
 	/// <summary>
@@ -472,8 +493,7 @@ public partial class SessionEventService : AutoloadBase
 	public Task<Result<string>> QueryRawAsync(
 		string endpoint,
 		Dictionary<string, string> queryParams = null,
-		Guid? playerId = null
-	) => _backend.QueryRawAsync(endpoint, queryParams, playerId);
+		Guid? playerId = null) => _backend.QueryRawAsync(endpoint, queryParams, playerId);
 
 	/// <summary>
 	/// Execute POST request against backend API with JSON body
@@ -483,8 +503,8 @@ public partial class SessionEventService : AutoloadBase
 		string endpoint,
 		TRequest requestBody,
 		int expectedStatusCode = 201,
-		Guid? playerId = null
-	) where TResponse : class
+		Guid? playerId = null)
+		where TResponse : class
 		=> _backend.PostAsync<TRequest, TResponse>(endpoint, requestBody, expectedStatusCode, playerId);
 
 	/// <summary>

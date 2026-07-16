@@ -14,7 +14,10 @@ public class CarromGameStateIntegrationTests : TestClass
 {
 	private CarromGame _game;
 
-	public CarromGameStateIntegrationTests(Node testScene) : base(testScene) { }
+	public CarromGameStateIntegrationTests(Node testScene)
+		: base(testScene)
+	{
+	}
 
 	[Setup]
 	public void SetupGameInstance()
@@ -40,7 +43,6 @@ public class CarromGameStateIntegrationTests : TestClass
 	// ================================================================
 	// FOUL SCENARIO INTEGRATION TESTS
 	// ================================================================
-
 	[Test]
 	public async Task StrikerFoul_WithPiecesAvailable_ReturnsPenaltyPiece()
 	{
@@ -75,7 +77,6 @@ public class CarromGameStateIntegrationTests : TestClass
 	// ================================================================
 	// QUEEN COVERING INTEGRATION TESTS
 	// ================================================================
-
 	[Test]
 	public async Task QueenCovering_Success_QueenMarkedAsCovered()
 	{
@@ -109,7 +110,6 @@ public class CarromGameStateIntegrationTests : TestClass
 	// ================================================================
 	// BREAKING TURN INTEGRATION TESTS
 	// ================================================================
-
 	[Test]
 	public async Task BreakingTurn_InitialState_Has3Attempts()
 	{
@@ -128,7 +128,6 @@ public class CarromGameStateIntegrationTests : TestClass
 	// ================================================================
 	// WIN CONDITION INTEGRATION TESTS
 	// ================================================================
-
 	[Test]
 	public async Task NearWinState_OneMorePieceNeeded_CorrectState()
 	{
@@ -156,7 +155,6 @@ public class CarromGameStateIntegrationTests : TestClass
 	// ================================================================
 	// PLAYER STATE INTEGRATION TESTS
 	// ================================================================
-
 	[Test]
 	public async Task MidGameState_5Pieces_CorrectAccuracyTracking()
 	{
@@ -187,7 +185,6 @@ public class CarromGameStateIntegrationTests : TestClass
 	// ================================================================
 	// TURN MANAGEMENT INTEGRATION TESTS
 	// ================================================================
-
 	[Test]
 	public async Task SwitchPlayer_ChangesCurrentPlayer()
 	{
@@ -223,7 +220,6 @@ public class CarromGameStateIntegrationTests : TestClass
 	// ================================================================
 	// COMPLEX SCENARIO INTEGRATION TESTS
 	// ================================================================
-
 	[Test]
 	public async Task CompetitiveGameInProgress_BothPlayersWithProgress()
 	{
@@ -274,7 +270,6 @@ public class CarromGameStateIntegrationTests : TestClass
 	// ================================================================
 	// STATE TRANSITION INTEGRATION TESTS
 	// ================================================================
-
 	[Test]
 	public async Task GameStateTransition_PracticeToCompetitive_MaintainsIntegrity()
 	{
@@ -319,7 +314,6 @@ public class CarromGameStateIntegrationTests : TestClass
 	// ================================================================
 	// RULE ENGINE INTEGRATION TESTS
 	// ================================================================
-
 	[Test]
 	public async Task RuleEngine_PieceEvaluation_IntegratesWithGameState()
 	{
@@ -354,7 +348,6 @@ public class CarromGameStateIntegrationTests : TestClass
 	// ================================================================
 	// DEBUG TOOLS VALIDATION TESTS
 	// ================================================================
-
 	[Test]
 	public async Task DebugTools_StateInspection_ReturnsFormattedState()
 	{
@@ -392,7 +385,6 @@ public class CarromGameStateIntegrationTests : TestClass
 	// ================================================================
 	// CLEANUP AND RESET TESTS
 	// ================================================================
-
 	[Test]
 	public async Task ReturnToPractice_ResetsGameState()
 	{

@@ -1,7 +1,7 @@
-using BarBox.Core.UI;
-using Godot;
 using System;
 using System.Collections.Generic;
+using BarBox.Core.UI;
+using Godot;
 
 /// <summary>
 /// Modal login dialog that appears as an overlay above all content
@@ -9,9 +9,14 @@ using System.Collections.Generic;
 /// </summary>
 public partial class LoginModal : Control
 {
-	[Signal] public delegate void LoginAttemptEventHandler(string phoneNumber, string pin);
-	[Signal] public delegate void CreateUserAttemptEventHandler(string phoneNumber, string pin, string username);
-	[Signal] public delegate void ModalClosedEventHandler();
+	[Signal]
+	public delegate void LoginAttemptEventHandler(string phoneNumber, string pin);
+
+	[Signal]
+	public delegate void CreateUserAttemptEventHandler(string phoneNumber, string pin, string username);
+
+	[Signal]
+	public delegate void ModalClosedEventHandler();
 
 	private const string LOGIN_TITLE = "Login to BarBox";
 	private const string CREATE_TITLE = "Create New Account";
@@ -266,16 +271,24 @@ public partial class LoginModal : Control
 	private void ConnectSignals()
 	{
 		if (_loginButton != null)
+		{
 			_loginButton.Pressed += OnLoginPressed;
+		}
 
 		if (_loginCancelButton != null)
+		{
 			_loginCancelButton.Pressed += OnCancelPressed;
+		}
 
 		if (_createAccountButton != null)
+		{
 			_createAccountButton.Pressed += OnCreateAccountPressed;
+		}
 
 		if (_createCancelButton != null)
+		{
 			_createCancelButton.Pressed += OnCancelPressed;
+		}
 
 		if (_sessionManager != null)
 		{
@@ -284,19 +297,29 @@ public partial class LoginModal : Control
 		}
 
 		if (_loginPhoneInput != null)
+		{
 			_loginPhoneInput.TextSubmitted += (_) => OnLoginPressed();
+		}
 
 		if (_loginPinInput != null)
+		{
 			_loginPinInput.TextSubmitted += (_) => OnLoginPressed();
+		}
 
 		if (_createPhoneInput != null)
+		{
 			_createPhoneInput.TextSubmitted += (_) => OnCreateAccountPressed();
+		}
 
 		if (_createPinInput != null)
+		{
 			_createPinInput.TextSubmitted += (_) => OnCreateAccountPressed();
+		}
 
 		if (_createUsernameInput != null)
+		{
 			_createUsernameInput.TextSubmitted += (_) => OnCreateAccountPressed();
+		}
 
 		SetupInputValidation();
 	}
@@ -333,7 +356,10 @@ public partial class LoginModal : Control
 
 	private void OnLoginPhoneChanged(string newText)
 	{
-		if (_loginPhoneInput == null) return;
+		if (_loginPhoneInput == null)
+		{
+			return;
+		}
 
 		var cleaned = InputValidator.CleanPhoneNumber(newText);
 
@@ -352,7 +378,10 @@ public partial class LoginModal : Control
 
 	private void OnLoginPhoneFocusExited()
 	{
-		if (_loginPhoneInput == null) return;
+		if (_loginPhoneInput == null)
+		{
+			return;
+		}
 
 		var cleaned = InputValidator.CleanPhoneNumber(_loginPhoneInput.Text);
 		var formatted = InputValidator.FormatPhoneNumberDisplay(cleaned);
@@ -361,7 +390,10 @@ public partial class LoginModal : Control
 
 	private void OnLoginPinChanged(string newText)
 	{
-		if (_loginPinInput == null) return;
+		if (_loginPinInput == null)
+		{
+			return;
+		}
 
 		var cleaned = InputValidator.CleanPin(newText);
 
@@ -380,7 +412,10 @@ public partial class LoginModal : Control
 
 	private void OnCreatePhoneChanged(string newText)
 	{
-		if (_createPhoneInput == null) return;
+		if (_createPhoneInput == null)
+		{
+			return;
+		}
 
 		var cleaned = InputValidator.CleanPhoneNumber(newText);
 
@@ -399,7 +434,10 @@ public partial class LoginModal : Control
 
 	private void OnCreatePhoneFocusExited()
 	{
-		if (_createPhoneInput == null) return;
+		if (_createPhoneInput == null)
+		{
+			return;
+		}
 
 		var cleaned = InputValidator.CleanPhoneNumber(_createPhoneInput.Text);
 		var formatted = InputValidator.FormatPhoneNumberDisplay(cleaned);
@@ -408,7 +446,10 @@ public partial class LoginModal : Control
 
 	private void OnCreatePinChanged(string newText)
 	{
-		if (_createPinInput == null) return;
+		if (_createPinInput == null)
+		{
+			return;
+		}
 
 		var cleaned = InputValidator.CleanPin(newText);
 
@@ -427,7 +468,10 @@ public partial class LoginModal : Control
 
 	private void OnCreateUsernameChanged(string newText)
 	{
-		if (_createUsernameInput == null) return;
+		if (_createUsernameInput == null)
+		{
+			return;
+		}
 
 		var cleaned = InputValidator.CleanUsername(newText);
 
@@ -448,14 +492,17 @@ public partial class LoginModal : Control
 
 	private void UpdateInputValidationStyle(LineEdit input, InputValidator.ValidationState state)
 	{
-		if (input == null) return;
+		if (input == null)
+		{
+			return;
+		}
 
 		StyleBoxFlat style = state switch
 		{
 			InputValidator.ValidationState.Valid => _validStyle,
 			InputValidator.ValidationState.Incomplete => _incompleteStyle,
 			InputValidator.ValidationState.Invalid => _invalidStyle,
-			_ => _noneStyle
+			_ => _noneStyle,
 		};
 
 		input.AddThemeStyleboxOverride("normal", style);
@@ -463,7 +510,10 @@ public partial class LoginModal : Control
 
 	private void ResetInputValidationStyle(LineEdit input)
 	{
-		if (input == null) return;
+		if (input == null)
+		{
+			return;
+		}
 
 		input.RemoveThemeStyleboxOverride("normal");
 	}
@@ -472,23 +522,19 @@ public partial class LoginModal : Control
 	{
 		_validStyle = CreateStyleBox(
 			new Color(0.2f, 0.4f, 0.2f, 1.0f),
-			new Color(0.4f, 0.8f, 0.4f, 1.0f)
-		);
+			new Color(0.4f, 0.8f, 0.4f, 1.0f));
 
 		_incompleteStyle = CreateStyleBox(
 			new Color(0.3f, 0.3f, 0.2f, 1.0f),
-			new Color(0.6f, 0.6f, 0.4f, 1.0f)
-		);
+			new Color(0.6f, 0.6f, 0.4f, 1.0f));
 
 		_invalidStyle = CreateStyleBox(
 			new Color(0.4f, 0.2f, 0.2f, 1.0f),
-			new Color(0.8f, 0.4f, 0.4f, 1.0f)
-		);
+			new Color(0.8f, 0.4f, 0.4f, 1.0f));
 
 		_noneStyle = CreateStyleBox(
 			new Color(0.2f, 0.2f, 0.2f, 1.0f),
-			new Color(0.4f, 0.4f, 0.4f, 1.0f)
-		);
+			new Color(0.4f, 0.4f, 0.4f, 1.0f));
 	}
 
 	private StyleBoxFlat CreateStyleBox(Color bgColor, Color borderColor)
@@ -577,7 +623,10 @@ public partial class LoginModal : Control
 
 	private void UpdateLoginButtonState()
 	{
-		if (_loginButton == null || _loginPhoneInput == null || _loginPinInput == null) return;
+		if (_loginButton == null || _loginPhoneInput == null || _loginPinInput == null)
+		{
+			return;
+		}
 
 		string phoneNumber = _loginPhoneInput.Text.Trim();
 		string pin = _loginPinInput.Text.Trim();
@@ -594,7 +643,10 @@ public partial class LoginModal : Control
 	private void UpdateCreateAccountButtonState()
 	{
 		if (_createAccountButton == null || _createPhoneInput == null ||
-		    _createPinInput == null || _createUsernameInput == null) return;
+			_createPinInput == null || _createUsernameInput == null)
+		{
+			return;
+		}
 
 		string phoneNumber = _createPhoneInput.Text.Trim();
 		string pin = _createPinInput.Text.Trim();
@@ -613,7 +665,7 @@ public partial class LoginModal : Control
 	}
 
 	private Timer _usernameCheckTimer;
-	private string _lastUsernameToCheck = "";
+	private string _lastUsernameToCheck = string.Empty;
 
 	private void CheckUsernameAvailabilityDebounced(string username)
 	{
@@ -623,6 +675,7 @@ public partial class LoginModal : Control
 			{
 				_usernameCheckTimer.Stop();
 			}
+
 			return;
 		}
 
@@ -642,7 +695,10 @@ public partial class LoginModal : Control
 
 	private async void CheckUsernameAvailabilityAsync(string username)
 	{
-		if (_sessionManager == null || string.IsNullOrEmpty(username)) return;
+		if (_sessionManager == null || string.IsNullOrEmpty(username))
+		{
+			return;
+		}
 
 		try
 		{
@@ -684,10 +740,7 @@ public partial class LoginModal : Control
 
 		Visible = true;
 
-		if (_loginPhoneInput != null)
-		{
-			_loginPhoneInput.GrabFocus();
-		}
+		_loginPhoneInput?.GrabFocus();
 
 		ClearForm();
 		UpdateLoginButtonState();
@@ -704,38 +757,43 @@ public partial class LoginModal : Control
 	{
 		if (_loginPhoneInput != null)
 		{
-			_loginPhoneInput.Text = "";
+			_loginPhoneInput.Text = string.Empty;
 			ResetInputValidationStyle(_loginPhoneInput);
 		}
+
 		if (_loginPinInput != null)
 		{
-			_loginPinInput.Text = "";
+			_loginPinInput.Text = string.Empty;
 			ResetInputValidationStyle(_loginPinInput);
 		}
+
 		if (_loginStatusLabel != null)
 		{
-			_loginStatusLabel.Text = "";
+			_loginStatusLabel.Text = string.Empty;
 			_loginStatusLabel.Modulate = Colors.White;
 		}
 
 		if (_createPhoneInput != null)
 		{
-			_createPhoneInput.Text = "";
+			_createPhoneInput.Text = string.Empty;
 			ResetInputValidationStyle(_createPhoneInput);
 		}
+
 		if (_createPinInput != null)
 		{
-			_createPinInput.Text = "";
+			_createPinInput.Text = string.Empty;
 			ResetInputValidationStyle(_createPinInput);
 		}
+
 		if (_createUsernameInput != null)
 		{
-			_createUsernameInput.Text = "";
+			_createUsernameInput.Text = string.Empty;
 			ResetInputValidationStyle(_createUsernameInput);
 		}
+
 		if (_createStatusLabel != null)
 		{
-			_createStatusLabel.Text = "";
+			_createStatusLabel.Text = string.Empty;
 			_createStatusLabel.Modulate = Colors.White;
 		}
 
@@ -770,7 +828,10 @@ public partial class LoginModal : Control
 
 	private async void OnLoginPressed()
 	{
-		if (_isLoginInProgress) return;
+		if (_isLoginInProgress)
+		{
+			return;
+		}
 
 		if (_loginPhoneInput == null || _loginPinInput == null || _sessionManager == null)
 		{
@@ -831,7 +892,10 @@ public partial class LoginModal : Control
 
 	private async void OnCreateAccountPressed()
 	{
-		if (_isCreateAccountInProgress) return;
+		if (_isCreateAccountInProgress)
+		{
+			return;
+		}
 
 		if (_createPhoneInput == null || _createPinInput == null || _createUsernameInput == null || _sessionManager == null)
 		{
@@ -917,7 +981,7 @@ public partial class LoginModal : Control
 		catch (System.Exception ex)
 		{
 			var userFriendlyError = BarBox.Core.Utils.ErrorMessageHelper.GetUserFriendlyError(ex.Message);
-		ShowCreateStatusMessage(userFriendlyError, false);
+			ShowCreateStatusMessage(userFriendlyError, false);
 		}
 		finally
 		{
@@ -935,14 +999,10 @@ public partial class LoginModal : Control
 			error.Value?.ToString());
 	}
 
-
 	private void OnTabChanged(long tabIndex)
 	{
 		// Get keyboard reference if not cached
-		if (_onscreenKeyboard == null)
-		{
-			_onscreenKeyboard = GetTree().Root.GetNode<Node>("Main/KeyboardLayer/OnscreenKeyboard");
-		}
+		_onscreenKeyboard ??= GetTree().Root.GetNode<Node>("Main/KeyboardLayer/OnscreenKeyboard");
 
 		// Notify keyboard to update position if it's showing
 		if (IsInstanceValid(_onscreenKeyboard) && _onscreenKeyboard.Get("visible").AsBool())
@@ -982,10 +1042,14 @@ public partial class LoginModal : Control
 		}
 
 		if (GodotObject.IsInstanceValid(_loginButton))
+		{
 			_loginButton.Pressed -= OnLoginPressed;
+		}
 
 		if (GodotObject.IsInstanceValid(_loginCancelButton))
+		{
 			_loginCancelButton.Pressed -= OnCancelPressed;
+		}
 
 		if (GodotObject.IsInstanceValid(_loginPhoneInput))
 		{
@@ -999,10 +1063,14 @@ public partial class LoginModal : Control
 		}
 
 		if (GodotObject.IsInstanceValid(_createAccountButton))
+		{
 			_createAccountButton.Pressed -= OnCreateAccountPressed;
+		}
 
 		if (GodotObject.IsInstanceValid(_createCancelButton))
+		{
 			_createCancelButton.Pressed -= OnCancelPressed;
+		}
 
 		if (GodotObject.IsInstanceValid(_createPhoneInput))
 		{

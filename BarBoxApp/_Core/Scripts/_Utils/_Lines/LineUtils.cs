@@ -13,10 +13,12 @@ public static class LineUtils
 	public static Curve2D Line2DToCurve2D(Line2D line)
 	{
 		if (line == null || line.GetPointCount() < 2)
+		{
 			return null;
+		}
 
 		var curve = new Curve2D();
-		
+
 		for (int i = 0; i < line.GetPointCount(); i++)
 		{
 			var point = line.GetPointPosition(i);
@@ -35,7 +37,9 @@ public static class LineUtils
 	public static bool IsPointNearLine2D(Vector2 point, Line2D line)
 	{
 		if (line == null || line.GetPointCount() < 2)
+		{
 			return false;
+		}
 
 		var halfWidth = line.Width / 2.0f;
 		var halfWidthSq = halfWidth * halfWidth;
@@ -43,18 +47,24 @@ public static class LineUtils
 		// Inline segment iteration with early exit (avoids full O(N) scan when on track)
 		for (int i = 0; i < line.GetPointCount() - 1; i++)
 		{
-			var closest = GetClosestPointOnSegment(point,
+			var closest = GetClosestPointOnSegment(
+				point,
 				line.GetPointPosition(i), line.GetPointPosition(i + 1));
 			if (point.DistanceSquaredTo(closest) <= halfWidthSq)
+			{
 				return true;
+			}
 		}
 
 		if (line.Closed && line.GetPointCount() >= 3)
 		{
-			var closest = GetClosestPointOnSegment(point,
+			var closest = GetClosestPointOnSegment(
+				point,
 				line.GetPointPosition(line.GetPointCount() - 1), line.GetPointPosition(0));
 			if (point.DistanceSquaredTo(closest) <= halfWidthSq)
+			{
 				return true;
+			}
 		}
 
 		return false;
@@ -67,20 +77,26 @@ public static class LineUtils
 	public static bool IsPointNearCachedLine(Vector2 point, Vector2[] points, float halfWidthSq, bool closed)
 	{
 		if (points == null || points.Length < 2)
+		{
 			return false;
+		}
 
 		for (int i = 0; i < points.Length - 1; i++)
 		{
 			var closest = GetClosestPointOnSegment(point, points[i], points[i + 1]);
 			if (point.DistanceSquaredTo(closest) <= halfWidthSq)
+			{
 				return true;
+			}
 		}
 
 		if (closed && points.Length >= 3)
 		{
 			var closest = GetClosestPointOnSegment(point, points[points.Length - 1], points[0]);
 			if (point.DistanceSquaredTo(closest) <= halfWidthSq)
+			{
 				return true;
+			}
 		}
 
 		return false;
@@ -95,7 +111,9 @@ public static class LineUtils
 	public static Vector2 GetClosestPointOnLine2D(Vector2 point, Line2D line)
 	{
 		if (line == null || line.GetPointCount() < 2)
+		{
 			return point;
+		}
 
 		var closestPoint = line.GetPointPosition(0);
 		var closestDistance = point.DistanceTo(closestPoint);
@@ -105,7 +123,7 @@ public static class LineUtils
 		{
 			var segmentStart = line.GetPointPosition(i);
 			var segmentEnd = line.GetPointPosition(i + 1);
-			
+
 			var segmentClosest = GetClosestPointOnSegment(point, segmentStart, segmentEnd);
 			var segmentDistance = point.DistanceTo(segmentClosest);
 
@@ -121,10 +139,10 @@ public static class LineUtils
 		{
 			var lastPoint = line.GetPointPosition(line.GetPointCount() - 1);
 			var firstPoint = line.GetPointPosition(0);
-			
+
 			var closingSegmentClosest = GetClosestPointOnSegment(point, lastPoint, firstPoint);
 			var closingSegmentDistance = point.DistanceTo(closingSegmentClosest);
-			
+
 			if (closingSegmentDistance < closestDistance)
 			{
 				closestDistance = closingSegmentDistance;
@@ -146,20 +164,22 @@ public static class LineUtils
 	{
 		var segmentVector = segmentEnd - segmentStart;
 		var pointVector = point - segmentStart;
-		
+
 		var segmentLengthSquared = segmentVector.LengthSquared();
-		
+
 		// If the segment has no length, return the start point
 		if (segmentLengthSquared == 0)
+		{
 			return segmentStart;
-		
+		}
+
 		// Project the point onto the segment
 		var t = pointVector.Dot(segmentVector) / segmentLengthSquared;
-		
+
 		// Clamp t to the segment bounds [0, 1]
 		t = Mathf.Clamp(t, 0.0f, 1.0f);
-		
+
 		// Return the point on the segment
-		return segmentStart + t * segmentVector;
+		return segmentStart + (t * segmentVector);
 	}
 }

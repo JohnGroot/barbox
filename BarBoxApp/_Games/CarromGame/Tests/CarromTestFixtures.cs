@@ -1,5 +1,5 @@
-using Godot;
 using System.Threading.Tasks;
+using Godot;
 
 namespace BarBox.Games.Carrom.Tests;
 
@@ -144,6 +144,7 @@ public static class CarromTestFixtures
 	public static void SetupCompetitiveGameInProgressScenario(CarromGame game)
 	{
 		game.DEBUG_ActivateCompetitiveMode(playerCount: 2);
+
 		// Setup player1 with queen
 		game.DEBUG_ForcePlayerState("player1", piecesPocketed: 6, hasQueen: true, queenCovered: false);
 
@@ -278,7 +279,7 @@ public static class CarromTestFixtures
 						{
 							if (lines[j].Contains("Accuracy:"))
 							{
-								var accuracyStr = lines[j].Split(':')[1].Trim().Replace("%", "");
+								var accuracyStr = lines[j].Split(':')[1].Trim().Replace("%", string.Empty);
 								if (float.TryParse(accuracyStr, out float accuracy))
 								{
 									return accuracy;

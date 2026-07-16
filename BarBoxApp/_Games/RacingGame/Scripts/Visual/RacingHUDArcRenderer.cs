@@ -1,582 +1,633 @@
-using Godot;
 using System;
+using Godot;
 
-namespace BarBox.Games.Racing
+namespace BarBox.Games.Racing;
+
+/// <summary>
+/// Renders colorful, arc-based HUD elements for the racing game including speedometer, countdown timer, and lap progress
+/// Inspired by teenage.engineering design aesthetic with vibrant colors and smooth animations
+/// </summary>
+[GlobalClass]
+public partial class RacingHUDArcRenderer : Node2D
 {
-	/// <summary>
-	/// Renders colorful, arc-based HUD elements for the racing game including speedometer, countdown timer, and lap progress
-	/// Inspired by teenage.engineering design aesthetic with vibrant colors and smooth animations
-	/// </summary>
-	[GlobalClass]
-	public partial class RacingHUDArcRenderer : Node2D
+	// ================================================================
+	// EXPORT PROPERTIES - HUD STYLING
+	// ================================================================
+	[ExportCategory("Speedometer Arc")]
+	[Export]
+	public float SpeedometerRadius { get; set; } = 40.0f; // 50% smaller
+
+	[Export]
+	public float SpeedometerThickness { get; set; } = 12.0f;
+
+	[Export]
+	public Color SpeedLowColor { get; set; } = new Color(0.0f, 1.0f, 0.53f); // Bright green #00FF88
+
+	[Export]
+	public Color SpeedMidColor { get; set; } = new Color(1.0f, 0.84f, 0.0f); // Golden #FFD700
+
+	[Export]
+	public Color SpeedHighColor { get; set; } = new Color(1.0f, 0.27f, 0.0f); // Orange-red #FF4500
+
+	[Export]
+	public Color SpeedMaxColor { get; set; } = new Color(1.0f, 0.0f, 0.0f); // Bright red #FF0000
+
+	[ExportCategory("Countdown Arc")]
+	[Export]
+	public float CountdownRadius { get; set; } = 120.0f;
+
+	[Export]
+	public float CountdownThickness { get; set; } = 8.0f;
+
+	[Export]
+	public Color CountdownColor { get; set; } = new Color(0.0f, 1.0f, 1.0f); // Cyan #00FFFF
+
+	[Export]
+	public Color CountdownGlowColor { get; set; } = new Color(0.0f, 0.8f, 1.0f, 0.5f); // Blue glow
+
+	[ExportCategory("Lap Progress Arc")]
+	[Export]
+	public float LapRadius { get; set; } = 45.0f; // 25% smaller than 60
+
+	[Export]
+	public float LapThickness { get; set; } = 10.0f;
+
+	[Export]
+	public Color LapStartColor { get; set; } = new Color(0.61f, 0.35f, 0.71f); // Purple #9B59B6
+
+	[Export]
+	public Color LapEndColor { get; set; } = new Color(0.91f, 0.30f, 0.24f); // Red #E74C3C
+
+	[ExportCategory("HUD Layout")]
+	[Export]
+	public Vector2 SpeedometerPosition { get; set; } = new Vector2(120, -100);
+
+	[Export]
+	public Vector2 LapProgressPosition { get; set; } = new Vector2(-120, -100);
+
+	[Export]
+	public Vector2 CountdownPosition { get; set; } = Vector2.Zero;
+
+	// ================================================================
+	// PRIVATE FIELDS - STATE TRACKING
+	// ================================================================
+
+	// Current values for smooth interpolation
+	private float _currentSpeedPercent = 0.0f;
+	private float _targetSpeedPercent = 0.0f;
+	private float _currentLapProgress = 0.0f;
+	private float _targetLapProgress = 0.0f;
+
+	// Countdown animation state
+	private float _countdownProgress = 0.0f; // 0.0 = full, 1.0 = empty
+	private float _countdownPulseScale = 1.0f;
+	private bool _isCountdownVisible = false;
+	private int _countdownNumber = 0;
+	private float _countdownAnimTime = 0.0f;
+
+	// Animation timing
+	private float _pulseTime = 0.0f;
+	private float _glowIntensity = 1.0f;
+
+	// Cached values for performance optimization
+	private Vector2 _cachedScreenSize;
+	private bool _screenSizeDirty = true;
+	private Font _cachedFont;
+	private Vector2 _cachedSpeedometerPos;
+	private Vector2 _cachedLapProgressPos;
+	private Vector2 _cachedCountdownPos;
+
+	// Speed text + measured size cache - recomputed only when the displayed integer speed changes
+	private int _cachedSpeedInt = int.MinValue;
+	private string _cachedSpeedText;
+	private Vector2 _cachedSpeedTextSize;
+
+	// GetStringSize caches, keyed by the values that determine the measured text
+	private Vector2? _cachedLapLabelSize;
+	private int _cachedLapValueLap = int.MinValue;
+	private int _cachedLapValueTarget = int.MinValue;
+	private string _cachedLapValueText;
+	private Vector2 _cachedLapValueSize;
+	private int _cachedCountdownNumberValue = int.MinValue;
+	private int _cachedCountdownNumberFontSize = int.MinValue;
+	private string _cachedCountdownNumberText;
+	private Vector2 _cachedCountdownNumberSize;
+	private int _cachedGoTextFontSize = int.MinValue;
+	private Vector2 _cachedGoTextSize;
+
+	// Dirty-flag tracking for QueueRedraw - mirrors the RacingUIState.StateEquals
+	// diff pattern: only redraw when the values that feed _Draw actually changed.
+	private bool _hasDrawnOnce = false;
+	private float _lastDrawnSpeed;
+	private float _lastDrawnSpeedPercent;
+	private float _lastDrawnLapProgress;
+	private float _lastDrawnGlowIntensity;
+	private int _lastDrawnCurrentLap;
+	private int _lastDrawnTargetLaps;
+	private bool _lastDrawnIsPracticeMode;
+	private bool _lastDrawnIsCountdownVisible;
+	private int _lastDrawnCountdownNumber;
+	private float _lastDrawnCountdownProgress;
+	private float _lastDrawnCountdownPulseScale;
+	private float _lastDrawnCountdownAnimTime;
+
+	// Game state
+	private float _currentSpeed = 0.0f;
+	private float _maxSpeed = 100.0f;
+	private int _currentLap = 1;
+	private int _targetLaps = 3;
+	private string _timeText = "0.0s";
+	private bool _isPracticeMode = false;
+
+	// ================================================================
+	// PUBLIC PROPERTIES
+	// ================================================================
+	public bool ShouldRender { get; set; } = true;
+
+	// ================================================================
+	// LIFECYCLE
+	// ================================================================
+	public override void _Notification(int what)
 	{
-		// ================================================================
-		// EXPORT PROPERTIES - HUD STYLING
-		// ================================================================
-
-		[ExportCategory("Speedometer Arc")]
-		[Export] public float SpeedometerRadius { get; set; } = 40.0f; // 50% smaller
-		[Export] public float SpeedometerThickness { get; set; } = 12.0f;
-		[Export] public Color SpeedLowColor { get; set; } = new Color(0.0f, 1.0f, 0.53f); // Bright green #00FF88
-		[Export] public Color SpeedMidColor { get; set; } = new Color(1.0f, 0.84f, 0.0f); // Golden #FFD700
-		[Export] public Color SpeedHighColor { get; set; } = new Color(1.0f, 0.27f, 0.0f); // Orange-red #FF4500
-		[Export] public Color SpeedMaxColor { get; set; } = new Color(1.0f, 0.0f, 0.0f); // Bright red #FF0000
-
-		[ExportCategory("Countdown Arc")]
-		[Export] public float CountdownRadius { get; set; } = 120.0f;
-		[Export] public float CountdownThickness { get; set; } = 8.0f;
-		[Export] public Color CountdownColor { get; set; } = new Color(0.0f, 1.0f, 1.0f); // Cyan #00FFFF
-		[Export] public Color CountdownGlowColor { get; set; } = new Color(0.0f, 0.8f, 1.0f, 0.5f); // Blue glow
-
-		[ExportCategory("Lap Progress Arc")]
-		[Export] public float LapRadius { get; set; } = 45.0f; // 25% smaller than 60
-		[Export] public float LapThickness { get; set; } = 10.0f;
-		[Export] public Color LapStartColor { get; set; } = new Color(0.61f, 0.35f, 0.71f); // Purple #9B59B6
-		[Export] public Color LapEndColor { get; set; } = new Color(0.91f, 0.30f, 0.24f); // Red #E74C3C
-
-		[ExportCategory("HUD Layout")]
-		[Export] public Vector2 SpeedometerPosition { get; set; } = new Vector2(120, -100);
-		[Export] public Vector2 LapProgressPosition { get; set; } = new Vector2(-120, -100);
-		[Export] public Vector2 CountdownPosition { get; set; } = Vector2.Zero;
-
-		// ================================================================
-		// PRIVATE FIELDS - STATE TRACKING
-		// ================================================================
-
-		// Current values for smooth interpolation
-		private float _currentSpeedPercent = 0.0f;
-		private float _targetSpeedPercent = 0.0f;
-		private float _currentLapProgress = 0.0f;
-		private float _targetLapProgress = 0.0f;
-
-		// Countdown animation state
-		private float _countdownProgress = 0.0f; // 0.0 = full, 1.0 = empty
-		private float _countdownPulseScale = 1.0f;
-		private bool _isCountdownVisible = false;
-		private int _countdownNumber = 0;
-		private float _countdownAnimTime = 0.0f;
-
-		// Animation timing
-		private float _pulseTime = 0.0f;
-		private float _glowIntensity = 1.0f;
-
-		// Cached values for performance optimization
-		private Vector2 _cachedScreenSize;
-		private bool _screenSizeDirty = true;
-		private Font _cachedFont;
-		private Vector2 _cachedSpeedometerPos;
-		private Vector2 _cachedLapProgressPos;
-		private Vector2 _cachedCountdownPos;
-
-		// Speed text + measured size cache - recomputed only when the displayed integer speed changes
-		private int _cachedSpeedInt = int.MinValue;
-		private string _cachedSpeedText;
-		private Vector2 _cachedSpeedTextSize;
-
-		// GetStringSize caches, keyed by the values that determine the measured text
-		private Vector2? _cachedLapLabelSize;
-		private int _cachedLapValueLap = int.MinValue;
-		private int _cachedLapValueTarget = int.MinValue;
-		private string _cachedLapValueText;
-		private Vector2 _cachedLapValueSize;
-		private int _cachedCountdownNumberValue = int.MinValue;
-		private int _cachedCountdownNumberFontSize = int.MinValue;
-		private string _cachedCountdownNumberText;
-		private Vector2 _cachedCountdownNumberSize;
-		private int _cachedGoTextFontSize = int.MinValue;
-		private Vector2 _cachedGoTextSize;
-
-		// Dirty-flag tracking for QueueRedraw - mirrors the RacingUIState.StateEquals
-		// diff pattern: only redraw when the values that feed _Draw actually changed.
-		private bool _hasDrawnOnce = false;
-		private float _lastDrawnSpeed;
-		private float _lastDrawnSpeedPercent;
-		private float _lastDrawnLapProgress;
-		private float _lastDrawnGlowIntensity;
-		private int _lastDrawnCurrentLap;
-		private int _lastDrawnTargetLaps;
-		private bool _lastDrawnIsPracticeMode;
-		private bool _lastDrawnIsCountdownVisible;
-		private int _lastDrawnCountdownNumber;
-		private float _lastDrawnCountdownProgress;
-		private float _lastDrawnCountdownPulseScale;
-		private float _lastDrawnCountdownAnimTime;
-
-		// Game state
-		private float _currentSpeed = 0.0f;
-		private float _maxSpeed = 100.0f;
-		private int _currentLap = 1;
-		private int _targetLaps = 3;
-		private string _timeText = "0.0s";
-		private bool _isPracticeMode = false;
-
-		// ================================================================
-		// PUBLIC PROPERTIES
-		// ================================================================
-
-		public bool ShouldRender { get; set; } = true;
-
-		// ================================================================
-		// LIFECYCLE
-		// ================================================================
-
-		public override void _Notification(int what)
+		base._Notification(what);
+		if (what == NotificationWMSizeChanged)
 		{
-			base._Notification(what);
-			if (what == NotificationWMSizeChanged)
-			{
-				_screenSizeDirty = true;
-			}
+			_screenSizeDirty = true;
+		}
+	}
+
+	private void UpdateCachedScreenData()
+	{
+		if (!_screenSizeDirty)
+		{
+			return;
 		}
 
-		private void UpdateCachedScreenData()
+		var viewport = GetViewport();
+		if (viewport == null)
 		{
-			if (!_screenSizeDirty) return;
-
-			var viewport = GetViewport();
-			if (viewport == null) return;
-
-			_cachedScreenSize = viewport.GetVisibleRect().Size;
-			_cachedSpeedometerPos = new Vector2(SpeedometerPosition.X, _cachedScreenSize.Y + SpeedometerPosition.Y);
-			_cachedLapProgressPos = new Vector2(_cachedScreenSize.X + LapProgressPosition.X, _cachedScreenSize.Y + LapProgressPosition.Y);
-			_cachedCountdownPos = _cachedScreenSize * 0.5f + CountdownPosition;
-			_screenSizeDirty = false;
+			return;
 		}
 
-		// ================================================================
-		// UPDATE METHODS
-		// ================================================================
+		_cachedScreenSize = viewport.GetVisibleRect().Size;
+		_cachedSpeedometerPos = new Vector2(SpeedometerPosition.X, _cachedScreenSize.Y + SpeedometerPosition.Y);
+		_cachedLapProgressPos = new Vector2(_cachedScreenSize.X + LapProgressPosition.X, _cachedScreenSize.Y + LapProgressPosition.Y);
+		_cachedCountdownPos = (_cachedScreenSize * 0.5f) + CountdownPosition;
+		_screenSizeDirty = false;
+	}
 
-		/// <summary>
-		/// Update HUD state from racing game data
-		/// </summary>
-		public void UpdateHUDState(float currentSpeed, float maxSpeed, int currentLap, int targetLaps, float lapProgress, string timeText, bool isPracticeMode = false)
+	// ================================================================
+	// UPDATE METHODS
+	// ================================================================
+
+	/// <summary>
+	/// Update HUD state from racing game data
+	/// </summary>
+	public void UpdateHUDState(float currentSpeed, float maxSpeed, int currentLap, int targetLaps, float lapProgress, string timeText, bool isPracticeMode = false)
+	{
+		_currentSpeed = currentSpeed;
+		_maxSpeed = maxSpeed;
+		_currentLap = currentLap;
+		_targetLaps = targetLaps;
+		_timeText = timeText;
+		_isPracticeMode = isPracticeMode;
+
+		// Update target values for smooth interpolation
+		_targetSpeedPercent = Mathf.Clamp(currentSpeed / maxSpeed, 0.0f, 1.0f);
+		_targetLapProgress = Mathf.Clamp(lapProgress, 0.0f, 1.0f);
+	}
+
+	/// <summary>
+	/// Start countdown animation
+	/// </summary>
+	public void StartCountdown(int countdownNumber, float countdownProgress)
+	{
+		_isCountdownVisible = true;
+		_countdownNumber = countdownNumber;
+		_countdownProgress = countdownProgress;
+		_countdownPulseScale = 1.2f; // Start with pulse
+		_countdownAnimTime = 0.0f;
+	}
+
+	/// <summary>
+	/// Update countdown animation
+	/// </summary>
+	public void UpdateCountdown(int countdownNumber, float countdownProgress)
+	{
+		if (!_isCountdownVisible)
 		{
-			_currentSpeed = currentSpeed;
-			_maxSpeed = maxSpeed;
-			_currentLap = currentLap;
-			_targetLaps = targetLaps;
-			_timeText = timeText;
-			_isPracticeMode = isPracticeMode;
-
-			// Update target values for smooth interpolation
-			_targetSpeedPercent = Mathf.Clamp(currentSpeed / maxSpeed, 0.0f, 1.0f);
-			_targetLapProgress = Mathf.Clamp(lapProgress, 0.0f, 1.0f);
+			return;
 		}
 
-		/// <summary>
-		/// Start countdown animation
-		/// </summary>
-		public void StartCountdown(int countdownNumber, float countdownProgress)
+		// Trigger pulse when number changes
+		if (_countdownNumber != countdownNumber)
 		{
-			_isCountdownVisible = true;
 			_countdownNumber = countdownNumber;
-			_countdownProgress = countdownProgress;
-			_countdownPulseScale = 1.2f; // Start with pulse
-			_countdownAnimTime = 0.0f;
+			_countdownPulseScale = 1.3f;
 		}
 
-		/// <summary>
-		/// Update countdown animation
-		/// </summary>
-		public void UpdateCountdown(int countdownNumber, float countdownProgress)
+		_countdownProgress = countdownProgress;
+	}
+
+	/// <summary>
+	/// Hide countdown display
+	/// </summary>
+	public void HideCountdown()
+	{
+		_isCountdownVisible = false;
+		_countdownProgress = 0.0f;
+	}
+
+	/// <summary>
+	/// Update animations and smooth transitions
+	/// </summary>
+	public override void _Process(double delta)
+	{
+		base._Process(delta);
+
+		float deltaF = (float)delta;
+		_pulseTime += deltaF;
+		_countdownAnimTime += deltaF;
+
+		// Smooth interpolation for speedometer
+		_currentSpeedPercent = Mathf.Lerp(_currentSpeedPercent, _targetSpeedPercent, deltaF * 8.0f);
+
+		// Smooth interpolation for lap progress
+		_currentLapProgress = Mathf.Lerp(_currentLapProgress, _targetLapProgress, deltaF * 6.0f);
+
+		// Countdown pulse animation
+		if (_isCountdownVisible)
 		{
-			if (!_isCountdownVisible) return;
-
-			// Trigger pulse when number changes
-			if (_countdownNumber != countdownNumber)
-			{
-				_countdownNumber = countdownNumber;
-				_countdownPulseScale = 1.3f;
-			}
-
-			_countdownProgress = countdownProgress;
+			_countdownPulseScale = Mathf.Lerp(_countdownPulseScale, 1.0f, deltaF * 6.0f);
 		}
 
-		/// <summary>
-		/// Hide countdown display
-		/// </summary>
-		public void HideCountdown()
+		// Global glow pulse for visual interest
+		_glowIntensity = 0.8f + (0.2f * Mathf.Sin(_pulseTime * 3.0f));
+
+		// Queue redraw only when something visible actually changed
+		if (ShouldRender && HasVisualStateChanged())
 		{
-			_isCountdownVisible = false;
-			_countdownProgress = 0.0f;
+			QueueRedraw();
+		}
+	}
+
+	/// <summary>
+	/// Compare current animated/state values against what was last drawn.
+	/// Follows the same diff-based philosophy as RacingUIState.StateEquals.
+	/// </summary>
+	private bool HasVisualStateChanged()
+	{
+		if (!_hasDrawnOnce)
+		{
+			return true;
 		}
 
-		/// <summary>
-		/// Update animations and smooth transitions
-		/// </summary>
-		public override void _Process(double delta)
+		return Math.Abs(_currentSpeed - _lastDrawnSpeed) > 0.01f
+			|| Math.Abs(_currentSpeedPercent - _lastDrawnSpeedPercent) > 0.0005f
+			|| Math.Abs(_currentLapProgress - _lastDrawnLapProgress) > 0.0005f
+			|| Math.Abs(_glowIntensity - _lastDrawnGlowIntensity) > 0.001f
+			|| _currentLap != _lastDrawnCurrentLap
+			|| _targetLaps != _lastDrawnTargetLaps
+			|| _isPracticeMode != _lastDrawnIsPracticeMode
+			|| _isCountdownVisible != _lastDrawnIsCountdownVisible
+			|| _countdownNumber != _lastDrawnCountdownNumber
+			|| Math.Abs(_countdownProgress - _lastDrawnCountdownProgress) > 0.0005f
+			|| Math.Abs(_countdownPulseScale - _lastDrawnCountdownPulseScale) > 0.0005f
+			|| (_isCountdownVisible && Math.Abs(_countdownAnimTime - _lastDrawnCountdownAnimTime) > 0.0001f);
+	}
+
+	/// <summary>
+	/// Snapshot the values that drove this draw call, for the next dirty check.
+	/// </summary>
+	private void RecordDrawnState()
+	{
+		_hasDrawnOnce = true;
+		_lastDrawnSpeed = _currentSpeed;
+		_lastDrawnSpeedPercent = _currentSpeedPercent;
+		_lastDrawnLapProgress = _currentLapProgress;
+		_lastDrawnGlowIntensity = _glowIntensity;
+		_lastDrawnCurrentLap = _currentLap;
+		_lastDrawnTargetLaps = _targetLaps;
+		_lastDrawnIsPracticeMode = _isPracticeMode;
+		_lastDrawnIsCountdownVisible = _isCountdownVisible;
+		_lastDrawnCountdownNumber = _countdownNumber;
+		_lastDrawnCountdownProgress = _countdownProgress;
+		_lastDrawnCountdownPulseScale = _countdownPulseScale;
+		_lastDrawnCountdownAnimTime = _countdownAnimTime;
+	}
+
+	// ================================================================
+	// RENDERING METHODS
+	// ================================================================
+
+	/// <summary>
+	/// Main drawing method
+	/// </summary>
+	public override void _Draw()
+	{
+		if (!ShouldRender)
 		{
-			base._Process(delta);
-
-			float deltaF = (float)delta;
-			_pulseTime += deltaF;
-			_countdownAnimTime += deltaF;
-
-			// Smooth interpolation for speedometer
-			_currentSpeedPercent = Mathf.Lerp(_currentSpeedPercent, _targetSpeedPercent, deltaF * 8.0f);
-
-			// Smooth interpolation for lap progress
-			_currentLapProgress = Mathf.Lerp(_currentLapProgress, _targetLapProgress, deltaF * 6.0f);
-
-			// Countdown pulse animation
-			if (_isCountdownVisible)
-			{
-				_countdownPulseScale = Mathf.Lerp(_countdownPulseScale, 1.0f, deltaF * 6.0f);
-			}
-
-			// Global glow pulse for visual interest
-			_glowIntensity = 0.8f + 0.2f * Mathf.Sin(_pulseTime * 3.0f);
-
-			// Queue redraw only when something visible actually changed
-			if (ShouldRender && HasVisualStateChanged())
-			{
-				QueueRedraw();
-			}
+			return;
 		}
 
-		/// <summary>
-		/// Compare current animated/state values against what was last drawn.
-		/// Follows the same diff-based philosophy as RacingUIState.StateEquals.
-		/// </summary>
-		private bool HasVisualStateChanged()
-		{
-			if (!_hasDrawnOnce) return true;
+		// Update cached screen data only when viewport changes
+		UpdateCachedScreenData();
 
-			return Math.Abs(_currentSpeed - _lastDrawnSpeed) > 0.01f
-				|| Math.Abs(_currentSpeedPercent - _lastDrawnSpeedPercent) > 0.0005f
-				|| Math.Abs(_currentLapProgress - _lastDrawnLapProgress) > 0.0005f
-				|| Math.Abs(_glowIntensity - _lastDrawnGlowIntensity) > 0.001f
-				|| _currentLap != _lastDrawnCurrentLap
-				|| _targetLaps != _lastDrawnTargetLaps
-				|| _isPracticeMode != _lastDrawnIsPracticeMode
-				|| _isCountdownVisible != _lastDrawnIsCountdownVisible
-				|| _countdownNumber != _lastDrawnCountdownNumber
-				|| Math.Abs(_countdownProgress - _lastDrawnCountdownProgress) > 0.0005f
-				|| Math.Abs(_countdownPulseScale - _lastDrawnCountdownPulseScale) > 0.0005f
-				|| (_isCountdownVisible && Math.Abs(_countdownAnimTime - _lastDrawnCountdownAnimTime) > 0.0001f);
+		if (_cachedScreenSize == Vector2.Zero)
+		{
+			return;
 		}
 
-		/// <summary>
-		/// Snapshot the values that drove this draw call, for the next dirty check.
-		/// </summary>
-		private void RecordDrawnState()
+		// Cache font reference once
+		_cachedFont ??= ThemeDB.FallbackFont;
+
+		// Draw speedometer arc
+		DrawSpeedometer(_cachedSpeedometerPos);
+
+		// Draw lap progress arc (only in time trial mode)
+		if (!_isPracticeMode)
 		{
-			_hasDrawnOnce = true;
-			_lastDrawnSpeed = _currentSpeed;
-			_lastDrawnSpeedPercent = _currentSpeedPercent;
-			_lastDrawnLapProgress = _currentLapProgress;
-			_lastDrawnGlowIntensity = _glowIntensity;
-			_lastDrawnCurrentLap = _currentLap;
-			_lastDrawnTargetLaps = _targetLaps;
-			_lastDrawnIsPracticeMode = _isPracticeMode;
-			_lastDrawnIsCountdownVisible = _isCountdownVisible;
-			_lastDrawnCountdownNumber = _countdownNumber;
-			_lastDrawnCountdownProgress = _countdownProgress;
-			_lastDrawnCountdownPulseScale = _countdownPulseScale;
-			_lastDrawnCountdownAnimTime = _countdownAnimTime;
+			DrawLapProgress(_cachedLapProgressPos);
 		}
 
-		// ================================================================
-		// RENDERING METHODS
-		// ================================================================
-
-		/// <summary>
-		/// Main drawing method
-		/// </summary>
-		public override void _Draw()
+		// Draw countdown arc if visible
+		if (_isCountdownVisible)
 		{
-			if (!ShouldRender) return;
-
-			// Update cached screen data only when viewport changes
-			UpdateCachedScreenData();
-
-			if (_cachedScreenSize == Vector2.Zero) return;
-
-			// Cache font reference once
-			_cachedFont ??= ThemeDB.FallbackFont;
-
-			// Draw speedometer arc
-			DrawSpeedometer(_cachedSpeedometerPos);
-
-			// Draw lap progress arc (only in time trial mode)
-			if (!_isPracticeMode)
-			{
-				DrawLapProgress(_cachedLapProgressPos);
-			}
-
-			// Draw countdown arc if visible
-			if (_isCountdownVisible)
-			{
-				DrawCountdown(_cachedCountdownPos);
-			}
-
-			RecordDrawnState();
+			DrawCountdown(_cachedCountdownPos);
 		}
 
-		/// <summary>
-		/// Draw the speedometer arc with gradient colors
-		/// </summary>
-		private void DrawSpeedometer(Vector2 position)
+		RecordDrawnState();
+	}
+
+	/// <summary>
+	/// Draw the speedometer arc with gradient colors
+	/// </summary>
+	private void DrawSpeedometer(Vector2 position)
+	{
+		// Background arc (dark) - reduced from 64 to 32 segments for performance
+		var bgColor = new Color(0.2f, 0.2f, 0.3f, 0.6f);
+		var bgStartAngle = Mathf.Pi; // 180° (left)
+		var bgEndAngle = Mathf.Tau; // 360° (right, equivalent to 0°)
+		DrawArc(position, SpeedometerRadius, bgStartAngle, bgEndAngle, 32, bgColor, SpeedometerThickness);
+
+		// Calculate arc angle based on speed (180 degrees total)
+		// Follow the same path as background: from 180° to 360°
+		var arcStart = Mathf.Pi; // 180° (left)
+		var arcEnd = Mathf.Tau; // 360° (right)
+		var totalRange = arcEnd - arcStart; // Total 180° range
+		var endAngle = arcStart + (totalRange * _currentSpeedPercent);
+
+		if (_currentSpeedPercent > 0.01f)
 		{
-			// Background arc (dark) - reduced from 64 to 32 segments for performance
-			var bgColor = new Color(0.2f, 0.2f, 0.3f, 0.6f);
-			var bgStartAngle = Mathf.Pi; // 180° (left)
-			var bgEndAngle = Mathf.Tau; // 360° (right, equivalent to 0°)
-			DrawArc(position, SpeedometerRadius, bgStartAngle, bgEndAngle, 32, bgColor, SpeedometerThickness);
+			// Get color based on speed percentage
+			var startAngle = arcStart;
+			var speedColor = GetSpeedColor(_currentSpeedPercent);
 
-			// Calculate arc angle based on speed (180 degrees total)
-			// Follow the same path as background: from 180° to 360°
-			var arcStart = Mathf.Pi; // 180° (left)
-			var arcEnd = Mathf.Tau; // 360° (right)
-			var totalRange = arcEnd - arcStart; // Total 180° range
-			var endAngle = arcStart + (totalRange * _currentSpeedPercent);
+			// Add glow effect - reduced from 64 to 32 segments
+			var glowColor = speedColor * new Color(1, 1, 1, _glowIntensity * 0.3f);
+			DrawArc(position, SpeedometerRadius + 3, startAngle, endAngle, 32, glowColor, SpeedometerThickness + 4);
 
-			if (_currentSpeedPercent > 0.01f)
-			{
-				// Get color based on speed percentage
-				var startAngle = arcStart;
-				var speedColor = GetSpeedColor(_currentSpeedPercent);
-
-				// Add glow effect - reduced from 64 to 32 segments
-				var glowColor = speedColor * new Color(1, 1, 1, _glowIntensity * 0.3f);
-				DrawArc(position, SpeedometerRadius + 3, startAngle, endAngle, 32, glowColor, SpeedometerThickness + 4);
-
-				// Main arc - reduced from 64 to 32 segments
-				DrawArc(position, SpeedometerRadius, startAngle, endAngle, 32, speedColor, SpeedometerThickness);
-			}
-
-			// Speed needle (visual indicator pointing to current speed)
-			var needleAngle = endAngle; // Needle points to the end of the progress arc
-			var needleInnerRadius = SpeedometerRadius - SpeedometerThickness * 1.5f;
-			var needleOuterRadius = SpeedometerRadius + SpeedometerThickness * 1.5f;
-			var needleStart = position + Vector2.FromAngle(needleAngle) * needleInnerRadius;
-			var needleEnd = position + Vector2.FromAngle(needleAngle) * needleOuterRadius;
-
-			// Draw needle with glow for better visibility
-			DrawLine(needleStart, needleEnd, Colors.Black, 5.0f); // Shadow/outline
-			DrawLine(needleStart, needleEnd, Colors.White, 3.0f); // Main needle
-
-			// Speed text in center - use cached font, string, and measured size
-			var speedInt = (int)(_currentSpeed * 0.1f);
-			var fontSize = 24;
-			if (speedInt != _cachedSpeedInt)
-			{
-				_cachedSpeedInt = speedInt;
-				_cachedSpeedText = speedInt.ToString();
-				_cachedSpeedTextSize = _cachedFont.GetStringSize(_cachedSpeedText, HorizontalAlignment.Center, -1, fontSize);
-			}
-			var speedText = _cachedSpeedText;
-			var textSize = _cachedSpeedTextSize;
-			var textPos = position + (Vector2.Left * textSize * 0.5f);
-
-			// Main text
-			DrawString(_cachedFont, textPos, speedText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
+			// Main arc - reduced from 64 to 32 segments
+			DrawArc(position, SpeedometerRadius, startAngle, endAngle, 32, speedColor, SpeedometerThickness);
 		}
 
-		/// <summary>
-		/// Draw lap progress arc
-		/// </summary>
-		private void DrawLapProgress(Vector2 position)
+		// Speed needle (visual indicator pointing to current speed)
+		var needleAngle = endAngle; // Needle points to the end of the progress arc
+		var needleInnerRadius = SpeedometerRadius - (SpeedometerThickness * 1.5f);
+		var needleOuterRadius = SpeedometerRadius + (SpeedometerThickness * 1.5f);
+		var needleStart = position + (Vector2.FromAngle(needleAngle) * needleInnerRadius);
+		var needleEnd = position + (Vector2.FromAngle(needleAngle) * needleOuterRadius);
+
+		// Draw needle with glow for better visibility
+		DrawLine(needleStart, needleEnd, Colors.Black, 5.0f); // Shadow/outline
+		DrawLine(needleStart, needleEnd, Colors.White, 3.0f); // Main needle
+
+		// Speed text in center - use cached font, string, and measured size
+		var speedInt = (int)(_currentSpeed * 0.1f);
+		var fontSize = 24;
+		if (speedInt != _cachedSpeedInt)
 		{
-			// Don't show lap counts if we're counting down
-			if (_isCountdownVisible)
-				return;
-
-			// Background arc - reduced from 64 to 32 segments
-			var bgColor = new Color(0.2f, 0.2f, 0.3f, 0.6f);
-			DrawArc(position, LapRadius, 0, Mathf.Tau, 32, bgColor, LapThickness); // Full circle background
-
-			if (_currentLapProgress > 0.01f)
-			{
-				// Progress arc with gradient
-				// Progress ring starts from bottom (-90°) and fills clockwise
-				var startAngle = -Mathf.Pi * 0.5f; // Start from bottom
-				var sweepAngle = Mathf.Tau * _currentLapProgress; // Full circle sweep
-				var endAngle = startAngle + sweepAngle;
-				var lapColor = LapStartColor.Lerp(LapEndColor, _currentLapProgress);
-
-				// Glow effect - reduced from 64 to 32 segments
-				var glowColor = lapColor * new Color(1, 1, 1, _glowIntensity * 0.4f);
-				DrawArc(position, LapRadius + 2, startAngle, endAngle, 32, glowColor, LapThickness + 3);
-
-				// Main arc - reduced from 64 to 32 segments
-				DrawArc(position, LapRadius, startAngle, endAngle, 32, lapColor, LapThickness);
-			}
-
-			// Lap text - use cached font, string, and measured size
-			var fontSize = 18;
-			var lapLabel = "LAP";
-
-			// "LAP" and its font size never change, so this is measured once and reused
-			_cachedLapLabelSize ??= _cachedFont.GetStringSize(lapLabel, HorizontalAlignment.Center, -1, fontSize);
-			var lapLabelSize = _cachedLapLabelSize.Value;
-
-			if (_currentLap != _cachedLapValueLap || _targetLaps != _cachedLapValueTarget)
-			{
-				_cachedLapValueLap = _currentLap;
-				_cachedLapValueTarget = _targetLaps;
-				_cachedLapValueText = $"{_currentLap}/{_targetLaps}";
-				_cachedLapValueSize = _cachedFont.GetStringSize(_cachedLapValueText, HorizontalAlignment.Center, -1, fontSize);
-			}
-			var lapValue = _cachedLapValueText;
-			var lapValueSize = _cachedLapValueSize;
-			var lineHeight = lapLabelSize.Y;
-			var totalHeight = lineHeight * 2;
-
-			// Center the text block accounting for baseline positioning
-			var startY = position.Y - totalHeight * 0.5f + lineHeight * 0.75f; // Adjust baseline like countdown
-			var lapLabelPos = new Vector2(position.X - lapLabelSize.X * 0.5f, startY);
-			var lapValuePos = new Vector2(position.X - lapValueSize.X * 0.5f, startY + lineHeight);
-
-			// Draw both lines
-			DrawString(_cachedFont, lapLabelPos, lapLabel, HorizontalAlignment.Left, -1, fontSize, Colors.White);
-			DrawString(_cachedFont, lapValuePos, lapValue, HorizontalAlignment.Left, -1, fontSize, Colors.White);
+			_cachedSpeedInt = speedInt;
+			_cachedSpeedText = speedInt.ToString();
+			_cachedSpeedTextSize = _cachedFont.GetStringSize(_cachedSpeedText, HorizontalAlignment.Center, -1, fontSize);
 		}
 
-		/// <summary>
-		/// Draw countdown arc and number
-		/// </summary>
-		private void DrawCountdown(Vector2 position)
+		var speedText = _cachedSpeedText;
+		var textSize = _cachedSpeedTextSize;
+		var textPos = position + (Vector2.Left * textSize * 0.5f);
+
+		// Main text
+		DrawString(_cachedFont, textPos, speedText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
+	}
+
+	/// <summary>
+	/// Draw lap progress arc
+	/// </summary>
+	private void DrawLapProgress(Vector2 position)
+	{
+		// Don't show lap counts if we're counting down
+		if (_isCountdownVisible)
 		{
-			// Multiple outer decorative rings
+			return;
+		}
+
+		// Background arc - reduced from 64 to 32 segments
+		var bgColor = new Color(0.2f, 0.2f, 0.3f, 0.6f);
+		DrawArc(position, LapRadius, 0, Mathf.Tau, 32, bgColor, LapThickness); // Full circle background
+
+		if (_currentLapProgress > 0.01f)
+		{
+			// Progress arc with gradient
+			// Progress ring starts from bottom (-90°) and fills clockwise
+			var startAngle = -Mathf.Pi * 0.5f; // Start from bottom
+			var sweepAngle = Mathf.Tau * _currentLapProgress; // Full circle sweep
+			var endAngle = startAngle + sweepAngle;
+			var lapColor = LapStartColor.Lerp(LapEndColor, _currentLapProgress);
+
+			// Glow effect - reduced from 64 to 32 segments
+			var glowColor = lapColor * new Color(1, 1, 1, _glowIntensity * 0.4f);
+			DrawArc(position, LapRadius + 2, startAngle, endAngle, 32, glowColor, LapThickness + 3);
+
+			// Main arc - reduced from 64 to 32 segments
+			DrawArc(position, LapRadius, startAngle, endAngle, 32, lapColor, LapThickness);
+		}
+
+		// Lap text - use cached font, string, and measured size
+		var fontSize = 18;
+		var lapLabel = "LAP";
+
+		// "LAP" and its font size never change, so this is measured once and reused
+		_cachedLapLabelSize ??= _cachedFont.GetStringSize(lapLabel, HorizontalAlignment.Center, -1, fontSize);
+		var lapLabelSize = _cachedLapLabelSize.Value;
+
+		if (_currentLap != _cachedLapValueLap || _targetLaps != _cachedLapValueTarget)
+		{
+			_cachedLapValueLap = _currentLap;
+			_cachedLapValueTarget = _targetLaps;
+			_cachedLapValueText = $"{_currentLap}/{_targetLaps}";
+			_cachedLapValueSize = _cachedFont.GetStringSize(_cachedLapValueText, HorizontalAlignment.Center, -1, fontSize);
+		}
+
+		var lapValue = _cachedLapValueText;
+		var lapValueSize = _cachedLapValueSize;
+		var lineHeight = lapLabelSize.Y;
+		var totalHeight = lineHeight * 2;
+
+		// Center the text block accounting for baseline positioning
+		var startY = position.Y - (totalHeight * 0.5f) + (lineHeight * 0.75f); // Adjust baseline like countdown
+		var lapLabelPos = new Vector2(position.X - (lapLabelSize.X * 0.5f), startY);
+		var lapValuePos = new Vector2(position.X - (lapValueSize.X * 0.5f), startY + lineHeight);
+
+		// Draw both lines
+		DrawString(_cachedFont, lapLabelPos, lapLabel, HorizontalAlignment.Left, -1, fontSize, Colors.White);
+		DrawString(_cachedFont, lapValuePos, lapValue, HorizontalAlignment.Left, -1, fontSize, Colors.White);
+	}
+
+	/// <summary>
+	/// Draw countdown arc and number
+	/// </summary>
+	private void DrawCountdown(Vector2 position)
+	{
+		// Multiple outer decorative rings
+		for (int i = 1; i <= 3; i++)
+		{
+			var ringRadius = CountdownRadius + 12 + (i * 8);
+			var ringAlpha = _glowIntensity * (0.15f / i);
+			var ringPulse = 1.0f + (0.2f * Mathf.Sin((_countdownAnimTime + (i * 0.5f)) * 4.0f));
+			var ringColor = CountdownGlowColor * new Color(1, 1, 1, ringAlpha * ringPulse);
+			DrawCircle(position, ringRadius, ringColor);
+		}
+
+		// Background circle
+		var bgColor = new Color(0.1f, 0.1f, 0.2f, 0.8f);
+		DrawCircle(position, CountdownRadius, bgColor);
+
+		// Progress arc (decreases as countdown progresses)
+		var progressAngle = Mathf.Tau * (1.0f - _countdownProgress);
+
+		// Show arc even when very small
+		if (progressAngle > 0.01f)
+		{
+			// Animated glow - reduced from 64 to 32 segments
+			var glowPulse = 1.0f + (0.3f * Mathf.Sin(_countdownAnimTime * 8.0f));
+			var glowColor = CountdownColor * new Color(1, 1, 1, glowPulse * 0.5f);
+			DrawArc(position, CountdownRadius + 4, -Mathf.Pi * 0.5f, (-Mathf.Pi * 0.5f) + progressAngle, 32, glowColor, CountdownThickness + 6);
+
+			// Main countdown arc - reduced from 64 to 32 segments
+			DrawArc(position, CountdownRadius, -Mathf.Pi * 0.5f, (-Mathf.Pi * 0.5f) + progressAngle, 32, CountdownColor, CountdownThickness);
+		}
+
+		// Countdown number with pulse scale - use cached font, string, and measured size
+		if (_countdownNumber > 0)
+		{
+			var fontSize = (int)(72 * _countdownPulseScale);
+			if (_countdownNumber != _cachedCountdownNumberValue || fontSize != _cachedCountdownNumberFontSize)
+			{
+				_cachedCountdownNumberValue = _countdownNumber;
+				_cachedCountdownNumberFontSize = fontSize;
+				_cachedCountdownNumberText = _countdownNumber.ToString();
+				_cachedCountdownNumberSize = _cachedFont.GetStringSize(_cachedCountdownNumberText, HorizontalAlignment.Center, -1, fontSize);
+			}
+
+			var numberText = _cachedCountdownNumberText;
+			var textSize = _cachedCountdownNumberSize;
+			var textPos = position - (textSize * 0.5f);
+			textPos.Y += textSize.Y * 0.75f; // Adjust for baseline positioning
+
+			// Outer glow
+			var textGlowColor = CountdownColor * new Color(1, 1, 1, 0.8f);
 			for (int i = 1; i <= 3; i++)
 			{
-				var ringRadius = CountdownRadius + 12 + (i * 8);
-				var ringAlpha = _glowIntensity * (0.15f / i);
-				var ringPulse = 1.0f + 0.2f * Mathf.Sin((_countdownAnimTime + i * 0.5f) * 4.0f);
-				var ringColor = CountdownGlowColor * new Color(1, 1, 1, ringAlpha * ringPulse);
-				DrawCircle(position, ringRadius, ringColor);
+				var offset = Vector2.One * i * 2;
+				DrawString(_cachedFont, textPos + offset, numberText, HorizontalAlignment.Center, -1, fontSize, textGlowColor * (0.3f / i));
 			}
 
-			// Background circle
-			var bgColor = new Color(0.1f, 0.1f, 0.2f, 0.8f);
-			DrawCircle(position, CountdownRadius, bgColor);
-
-			// Progress arc (decreases as countdown progresses)
-			var progressAngle = Mathf.Tau * (1.0f - _countdownProgress);
-			if (progressAngle > 0.01f) // Show arc even when very small
-			{
-				// Animated glow - reduced from 64 to 32 segments
-				var glowPulse = 1.0f + 0.3f * Mathf.Sin(_countdownAnimTime * 8.0f);
-				var glowColor = CountdownColor * new Color(1, 1, 1, glowPulse * 0.5f);
-				DrawArc(position, CountdownRadius + 4, -Mathf.Pi * 0.5f, -Mathf.Pi * 0.5f + progressAngle, 32, glowColor, CountdownThickness + 6);
-
-				// Main countdown arc - reduced from 64 to 32 segments
-				DrawArc(position, CountdownRadius, -Mathf.Pi * 0.5f, -Mathf.Pi * 0.5f + progressAngle, 32, CountdownColor, CountdownThickness);
-			}
-
-			// Countdown number with pulse scale - use cached font, string, and measured size
-			if (_countdownNumber > 0)
-			{
-				var fontSize = (int)(72 * _countdownPulseScale);
-				if (_countdownNumber != _cachedCountdownNumberValue || fontSize != _cachedCountdownNumberFontSize)
-				{
-					_cachedCountdownNumberValue = _countdownNumber;
-					_cachedCountdownNumberFontSize = fontSize;
-					_cachedCountdownNumberText = _countdownNumber.ToString();
-					_cachedCountdownNumberSize = _cachedFont.GetStringSize(_cachedCountdownNumberText, HorizontalAlignment.Center, -1, fontSize);
-				}
-				var numberText = _cachedCountdownNumberText;
-				var textSize = _cachedCountdownNumberSize;
-				var textPos = position - textSize * 0.5f;
-				textPos.Y += textSize.Y * 0.75f; // Adjust for baseline positioning
-
-				// Outer glow
-				var textGlowColor = CountdownColor * new Color(1, 1, 1, 0.8f);
-				for (int i = 1; i <= 3; i++)
-				{
-					var offset = Vector2.One * i * 2;
-					DrawString(_cachedFont, textPos + offset, numberText, HorizontalAlignment.Center, -1, fontSize, textGlowColor * (0.3f / i));
-				}
-
-				// Main text
-				DrawString(_cachedFont, textPos, numberText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
-			}
-			else
-			{
-				// "GO!" text - use cached font and measured size ("GO!" itself never changes)
-				var fontSize = (int)(60 * _countdownPulseScale);
-				var goText = "GO!";
-				if (fontSize != _cachedGoTextFontSize)
-				{
-					_cachedGoTextFontSize = fontSize;
-					_cachedGoTextSize = _cachedFont.GetStringSize(goText, HorizontalAlignment.Center, -1, fontSize);
-				}
-				var textSize = _cachedGoTextSize;
-				var textPos = position - textSize * 0.5f;
-				textPos.Y += textSize.Y * 0.75f; // Adjust for baseline positioning
-
-				// Rainbow effect for GO!
-				var rainbowColor = new Color(
-					0.5f + 0.5f * Mathf.Sin(_countdownAnimTime * 6.0f),
-					0.5f + 0.5f * Mathf.Sin(_countdownAnimTime * 6.0f + 2.0f),
-					0.5f + 0.5f * Mathf.Sin(_countdownAnimTime * 6.0f + 4.0f)
-				);
-
-				// Glow effect
-				for (int i = 1; i <= 4; i++)
-				{
-					var offset = Vector2.One * i * 3;
-					DrawString(_cachedFont, textPos + offset, goText, HorizontalAlignment.Center, -1, fontSize, rainbowColor * (0.4f / i));
-				}
-
-				// Main text
-				DrawString(_cachedFont, textPos, goText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
-			}
+			// Main text
+			DrawString(_cachedFont, textPos, numberText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
 		}
-
-		/// <summary>
-		/// Get gradient color based on speed percentage
-		/// </summary>
-		private Color GetSpeedColor(float speedPercent)
+		else
 		{
-			if (speedPercent <= 0.3f)
+			// "GO!" text - use cached font and measured size ("GO!" itself never changes)
+			var fontSize = (int)(60 * _countdownPulseScale);
+			var goText = "GO!";
+			if (fontSize != _cachedGoTextFontSize)
 			{
-				// Green to yellow (0-30%)
-				var t = speedPercent / 0.3f;
-				return SpeedLowColor.Lerp(SpeedMidColor, t);
+				_cachedGoTextFontSize = fontSize;
+				_cachedGoTextSize = _cachedFont.GetStringSize(goText, HorizontalAlignment.Center, -1, fontSize);
 			}
-			else if (speedPercent <= 0.7f)
+
+			var textSize = _cachedGoTextSize;
+			var textPos = position - (textSize * 0.5f);
+			textPos.Y += textSize.Y * 0.75f; // Adjust for baseline positioning
+
+			// Rainbow effect for GO!
+			var rainbowColor = new Color(
+				0.5f + (0.5f * Mathf.Sin(_countdownAnimTime * 6.0f)),
+				0.5f + (0.5f * Mathf.Sin((_countdownAnimTime * 6.0f) + 2.0f)),
+				0.5f + (0.5f * Mathf.Sin((_countdownAnimTime * 6.0f) + 4.0f)));
+
+			// Glow effect
+			for (int i = 1; i <= 4; i++)
 			{
-				// Yellow to orange (30-70%)
-				var t = (speedPercent - 0.3f) / 0.4f;
-				return SpeedMidColor.Lerp(SpeedHighColor, t);
+				var offset = Vector2.One * i * 3;
+				DrawString(_cachedFont, textPos + offset, goText, HorizontalAlignment.Center, -1, fontSize, rainbowColor * (0.4f / i));
 			}
-			else
-			{
-				// Orange to red (70-100%)
-				var t = (speedPercent - 0.7f) / 0.3f;
-				return SpeedHighColor.Lerp(SpeedMaxColor, t);
-			}
+
+			// Main text
+			DrawString(_cachedFont, textPos, goText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
 		}
+	}
 
-		// ================================================================
-		// UTILITY METHODS
-		// ================================================================
-
-		/// <summary>
-		/// Check if the renderer should be visible based on viewport
-		/// </summary>
-		public new bool IsVisible()
+	/// <summary>
+	/// Get gradient color based on speed percentage
+	/// </summary>
+	private Color GetSpeedColor(float speedPercent)
+	{
+		if (speedPercent <= 0.3f)
 		{
-			var viewport = GetViewport();
-			return viewport != null && ShouldRender;
+			// Green to yellow (0-30%)
+			var t = speedPercent / 0.3f;
+			return SpeedLowColor.Lerp(SpeedMidColor, t);
 		}
-
-		/// <summary>
-		/// Reset all animation states
-		/// </summary>
-		public void ResetAnimations()
+		else if (speedPercent <= 0.7f)
 		{
-			_currentSpeedPercent = 0.0f;
-			_targetSpeedPercent = 0.0f;
-			_currentLapProgress = 0.0f;
-			_targetLapProgress = 0.0f;
-			_countdownProgress = 0.0f;
-			_countdownPulseScale = 1.0f;
-			_isCountdownVisible = false;
-			_pulseTime = 0.0f;
+			// Yellow to orange (30-70%)
+			var t = (speedPercent - 0.3f) / 0.4f;
+			return SpeedMidColor.Lerp(SpeedHighColor, t);
 		}
+		else
+		{
+			// Orange to red (70-100%)
+			var t = (speedPercent - 0.7f) / 0.3f;
+			return SpeedHighColor.Lerp(SpeedMaxColor, t);
+		}
+	}
+
+	// ================================================================
+	// UTILITY METHODS
+	// ================================================================
+
+	/// <summary>
+	/// Check if the renderer should be visible based on viewport
+	/// </summary>
+	public new bool IsVisible()
+	{
+		var viewport = GetViewport();
+		return viewport != null && ShouldRender;
+	}
+
+	/// <summary>
+	/// Reset all animation states
+	/// </summary>
+	public void ResetAnimations()
+	{
+		_currentSpeedPercent = 0.0f;
+		_targetSpeedPercent = 0.0f;
+		_currentLapProgress = 0.0f;
+		_targetLapProgress = 0.0f;
+		_countdownProgress = 0.0f;
+		_countdownPulseScale = 1.0f;
+		_isCountdownVisible = false;
+		_pulseTime = 0.0f;
 	}
 }

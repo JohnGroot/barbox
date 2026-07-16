@@ -18,7 +18,8 @@ public abstract class FailureScenarioTestBase : BackendTestBase
 	private bool _originalEventServiceState = false;
 #endif
 
-	protected FailureScenarioTestBase(Node testScene) : base(testScene)
+	protected FailureScenarioTestBase(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -28,7 +29,7 @@ public abstract class FailureScenarioTestBase : BackendTestBase
 	[Setup]
 	public void SetupFailureScenario()
 	{
-		base.SetupTestIdentifiers();
+		SetupTestIdentifiers();
 		_eventService = GetEventService();
 #if DEBUG
 		_eventServiceStateModified = false;

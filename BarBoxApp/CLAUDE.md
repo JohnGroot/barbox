@@ -48,6 +48,18 @@ See `docs/adding-a-game.md` for the full new-game checklist across both codebase
 
 ## Code Style
 
+Machine-enforced via `.editorconfig` + StyleCop/Roslynator (`stylecop.json`, packages in
+`BarBox.csproj`). Regular builds skip the analyzers (`Directory.Build.props`); run them with:
+
+```bash
+RunAnalyzersDuringBuild=true dotnet format BarBox.csproj --severity warn --exclude addons/ShapesRenderer/ --verify-no-changes
+```
+
+Drop `--verify-no-changes` to auto-fix. Gated rules are `warning` severity in
+`.editorconfig`; advisory ones are `suggestion`. Note: `--include`/`--exclude` paths are
+cwd-relative, and fix mode exits 0 even when unfixable violations remain — use
+`--verify-no-changes` to gate.
+
 - **Indentation**: Tabs only
 - **Classes**: PascalCase. **Methods/Properties**: PascalCase
 - **Fields**: Public PascalCase, Private `_camelCase`

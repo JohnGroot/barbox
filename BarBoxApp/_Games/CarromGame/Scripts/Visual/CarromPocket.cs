@@ -1,34 +1,45 @@
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
 /// <summary>
 /// Simplified pocket physics system using zone-based detection:
 /// - Detection Zone: Area2D for entry/exit tracking
-/// - Capture Zone: Position-based capture detection with approach validation  
+/// - Capture Zone: Position-based capture detection with approach validation
 /// - Simple physics simulation where pieces are captured when center crosses threshold
-/// 
+///
 /// The system uses a simple two-zone approach for authentic carrom pocket behavior.
 /// </summary>
 [GlobalClass]
 public partial class CarromPocket : Area2D
 {
-	[Signal] public delegate void PiecePocketedEventHandler(CarromPiece piece);
-	[Signal] public delegate void PieceEnteredPocketAreaEventHandler(CarromPiece piece);
-	[Signal] public delegate void PieceLeftPocketAreaEventHandler(CarromPiece piece);
+	[Signal]
+	public delegate void PiecePocketedEventHandler(CarromPiece piece);
+
+	[Signal]
+	public delegate void PieceEnteredPocketAreaEventHandler(CarromPiece piece);
+
+	[Signal]
+	public delegate void PieceLeftPocketAreaEventHandler(CarromPiece piece);
 
 	[ExportCategory("Pocket Settings")]
-	[Export] public float PocketRadius { get; set; } = 30.0f;
-	[Export] public int PocketIndex { get; set; } = 0;
-	[Export] public float PocketDepth { get; set; } = 0.75f; // How deep pieces must go to be pocketed (0.0-1.0)
+	[Export]
+	public float PocketRadius { get; set; } = 30.0f;
+
+	[Export]
+	public int PocketIndex { get; set; } = 0;
+
+	[Export]
+	public float PocketDepth { get; set; } = 0.75f; // How deep pieces must go to be pocketed (0.0-1.0)
 
 	[ExportCategory("Detection Settings")]
 
 	// Detection components
 	private CircleShape2D _detectionShape;
+
 	private CollisionShape2D _collisionShape2D;
-	
+
 	// Simple piece presence tracking
 	private System.Collections.Generic.HashSet<CarromPiece> _piecesInPocket = new();
 
@@ -46,13 +57,13 @@ public partial class CarromPocket : Area2D
 	{
 		Outside,     // Not in any pocket zone
 		Influence,   // In influence zone - gradual attraction
-		Capture      // In capture zone - hole detection active
+		Capture, // In capture zone - hole detection active
 	}
 
 	// PERFORMANCE OPTIMIZATION: Pre-calculated values for expensive operations
 	private float _captureRadiusSquared;  // Cached for faster distance comparisons
 	private float _holeZoneRadiusSquared; // Cached for faster zone calculations
-	
+
 	private const float INFLUENCE_ZONE_MULTIPLIER = 1.8f;
 	private const float HOLE_ZONE_MULTIPLIER = 0.75f;
 
@@ -70,20 +81,20 @@ public partial class CarromPocket : Area2D
 	private void SetupPocketDetection()
 	{
 		Monitoring = true;
-		
+
 		// Create detection shape - use influence zone radius for initial detection
 		float influenceRadius = GetInfluenceZoneRadius();
 		_detectionShape = new CircleShape2D();
 		_detectionShape.Radius = influenceRadius;
-		
+
 		_collisionShape2D = new CollisionShape2D();
 		_collisionShape2D.Shape = _detectionShape;
 		AddChild(_collisionShape2D);
-		
+
 		// Set collision layers for piece detection
 		CollisionLayer = 0; // Pocket doesn't have collision
 		CollisionMask = 1;  // Detects pieces on layer 1
-		
+
 		// PERFORMANCE: Pre-calculate squared radii to avoid expensive sqrt() in distance comparisons
 		float captureRadius = PocketRadius * PocketDepth;
 		_captureRadiusSquared = captureRadius * captureRadius;
@@ -94,39 +105,39 @@ public partial class CarromPocket : Area2D
 	{
 		_pocketParticles = new GpuParticles2D();
 		AddChild(_pocketParticles);
-		
+
 		// Configure particle emission
 		_pocketParticles.Emitting = false;
 		_pocketParticles.Amount = 20;
 		_pocketParticles.Lifetime = 1.0f;
 		_pocketParticles.OneShot = true;
 		_pocketParticles.Explosiveness = 1.0f;
-		
+
 		// Create process material for particle behavior
 		var processMaterial = new ParticleProcessMaterial();
-		
+
 		// Emission settings - circular burst from pocket center for top-down view
 		processMaterial.EmissionShape = ParticleProcessMaterial.EmissionShapeEnum.Point;
 		processMaterial.Direction = Vector3.Zero; // No preferred direction - radial spread
 		processMaterial.Spread = 45.0f; // Full 360-degree spread
 		processMaterial.InitialVelocityMin = 80.0f;
 		processMaterial.InitialVelocityMax = 150.0f;
-		
+
 		// No gravity for top-down board view
 		processMaterial.Gravity = Vector3.Zero;
-		
+
 		// Use linear acceleration to push particles outward radially
 		processMaterial.LinearAccelMin = -20.0f;
 		processMaterial.LinearAccelMax = -50.0f; // Negative values slow particles over time
-		
+
 		// Damping to slow particles over time (simulates friction)
 		processMaterial.DampingMin = 1.0f;
 		processMaterial.DampingMax = 2.0f;
-		
+
 		// Size and scale settings
 		processMaterial.ScaleMin = 0.3f;
 		processMaterial.ScaleMax = 0.8f;
-		
+
 		_pocketParticles.ProcessMaterial = processMaterial;
 	}
 
@@ -152,7 +163,9 @@ public partial class CarromPocket : Area2D
 	private void OnBodyEntered(Node2D body)
 	{
 		if (body is not CarromPiece piece)
+		{
 			return;
+		}
 
 		_piecesInPocket.Add(piece);
 
@@ -183,9 +196,9 @@ public partial class CarromPocket : Area2D
 				count++;
 			}
 		}
+
 		return count;
 	}
-
 
 	public void ClearPocket()
 	{
@@ -205,19 +218,16 @@ public partial class CarromPocket : Area2D
 	public void SetActive(bool active)
 	{
 		Monitoring = active;
-		
+
 		if (!active)
 		{
 			ClearPocket();
 		}
 	}
 
-
-
 	// ================================================================
 	// ENHANCED PHYSICS METHODS
 	// ================================================================
-
 	private float GetInfluenceZoneRadius()
 	{
 		return PocketRadius * INFLUENCE_ZONE_MULTIPLIER;
@@ -227,7 +237,6 @@ public partial class CarromPocket : Area2D
 	{
 		return PocketRadius * HOLE_ZONE_MULTIPLIER;
 	}
-
 
 	/// <summary>
 	/// Update zone tracking - simplified to check capture opportunities with optimized calculations
@@ -252,11 +261,15 @@ public partial class CarromPocket : Area2D
 
 			// Check if piece is in hole zone using pre-calculated squared radius
 			if (distanceSquared > _holeZoneRadiusSquared)
+			{
 				continue;
+			}
 
 			bool shouldCapture = ShouldCapturePiece(piece, distanceSquared);
 			if (!shouldCapture)
+			{
 				continue;
+			}
 
 			// Let CarromPiece handle its own pocketing
 			piece.ForceStop();
@@ -271,7 +284,7 @@ public partial class CarromPocket : Area2D
 			GD.Print($"[DEBUG] Pocket {PocketIndex} capturing piece {piece.Type} at {piece.GlobalPosition}");
 
 			// FIXED: Use deferred signal emission to prevent race conditions
-			CallDeferred(MethodName._EmitPiecePocketed, piece);
+			CallDeferred(MethodName.EmitPiecePocketed, piece);
 			_piecesToRemoveCache.Add(piece);
 
 			// Trigger particle effect with piece color
@@ -285,7 +298,6 @@ public partial class CarromPocket : Area2D
 		}
 	}
 
-
 	/// <summary>
 	/// Check if piece should be captured - simplified overlap-based detection
 	/// </summary>
@@ -296,32 +308,25 @@ public partial class CarromPocket : Area2D
 		{
 			return false;
 		}
-		
+
 		// Simple overlap check - capture if piece center is within capture radius
 		return distanceSquared <= _captureRadiusSquared;
 	}
 
-
-
-
-	
-
-
-
-
-
 	private void TriggerPocketParticles(Color pieceColor)
 	{
 		if (_pocketParticles == null)
+		{
 			return;
+		}
 
 		// Set particle color to match the entering piece
 		_pocketParticles.Modulate = pieceColor;
-		
+
 		// Start emitting particles
 		_pocketParticles.Emitting = true;
 		_pocketParticles.Restart();
-		
+
 		// Reset and start the timer
 		_particleTimer = 0.0f;
 		_particlesActive = true;
@@ -330,10 +335,12 @@ public partial class CarromPocket : Area2D
 	private void UpdateParticleTimer(float delta)
 	{
 		if (!_particlesActive)
+		{
 			return;
+		}
 
 		_particleTimer += delta;
-		
+
 		if (_particleTimer >= PARTICLE_DURATION)
 		{
 			// Deactivate particles after duration
@@ -341,6 +348,7 @@ public partial class CarromPocket : Area2D
 			{
 				_pocketParticles.Emitting = false;
 			}
+
 			_particlesActive = false;
 			_particleTimer = 0.0f;
 		}
@@ -349,7 +357,7 @@ public partial class CarromPocket : Area2D
 	/// <summary>
 	/// Deferred signal emission method to prevent race conditions
 	/// </summary>
-	private void _EmitPiecePocketed(CarromPiece piece)
+	private void EmitPiecePocketed(CarromPiece piece)
 	{
 		EmitSignal(SignalName.PiecePocketed, piece);
 	}
@@ -357,13 +365,13 @@ public partial class CarromPocket : Area2D
 	public override void _ExitTree()
 	{
 		base._ExitTree();
-		
+
 		if (IsInstanceValid(this))
 		{
 			BodyEntered -= OnBodyEntered;
 			BodyExited -= OnBodyExited;
 		}
-		
+
 		// Clean up particle system
 		if (_pocketParticles != null)
 		{

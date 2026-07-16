@@ -51,8 +51,11 @@ public partial class BackendMockService : Node
 	private bool _simulateConnectionFailure = false;
 	private bool _simulateTimeout = false;
 
-	[Signal] public delegate void MockBackendReadyEventHandler();
-	[Signal] public delegate void MockBackendFailedEventHandler(string error);
+	[Signal]
+	public delegate void MockBackendReadyEventHandler();
+
+	[Signal]
+	public delegate void MockBackendFailedEventHandler(string error);
 
 	/// <summary>
 	/// Set the mock backend to healthy state.
@@ -210,7 +213,7 @@ public partial class BackendMockService : Node
 		return new EventServiceMockState
 		{
 			Exists = exists,
-			IsReady = isReady
+			IsReady = isReady,
 		};
 	}
 
@@ -220,6 +223,7 @@ public partial class BackendMockService : Node
 	public struct EventServiceMockState
 	{
 		public bool Exists { get; set; }
+
 		public bool IsReady { get; set; }
 
 		public override string ToString()

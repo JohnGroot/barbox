@@ -16,7 +16,6 @@ public partial class MiningGame : GameController
 	// ================================================================
 	// CONSTANTS
 	// ================================================================
-
 	private const int CREDITS_PER_PURCHASE = 1000;
 	private const string MAIN_SCENE_PATH = "res://_Core/Scenes/Main.tscn";
 
@@ -31,34 +30,46 @@ public partial class MiningGame : GameController
 	// ================================================================
 
 	// Domain-specific lifecycle signals
-	[Signal] public delegate void MiningSessionStartedEventHandler();
-	[Signal] public delegate void MiningSessionEndedEventHandler();
+	[Signal]
+	public delegate void MiningSessionStartedEventHandler();
+
+	[Signal]
+	public delegate void MiningSessionEndedEventHandler();
 
 	// Game event signals
-	[Signal] public delegate void GemsExtractedEventHandler(int amount, GemType gemType);
-	[Signal] public delegate void CreditPurchasedEventHandler();
-	[Signal] public delegate void UpgradePurchasedEventHandler(UpgradeType upgradeType, int newLevel);
-		
+	[Signal]
+	public delegate void GemsExtractedEventHandler(int amount, GemType gemType);
+
+	[Signal]
+	public delegate void CreditPurchasedEventHandler();
+
+	[Signal]
+	public delegate void UpgradePurchasedEventHandler(UpgradeType upgradeType, int newLevel);
+
 	// ================================================================
 	// EXPORT PROPERTIES
 	// ================================================================
-		
 	[ExportCategory("Game Settings")]
-	[Export] public MiningGameConfig Config { get; set; }
-	[Export] public NodePath UIPath { get; set; }
-	[Export] public bool EnableDebugMode { get; set; } = false;
-	[Export] public bool AutoStartInEditor { get; set; } = true;
+	[Export]
+	public MiningGameConfig Config { get; set; }
+
+	[Export]
+	public NodePath UIPath { get; set; }
+
+	[Export]
+	public bool EnableDebugMode { get; set; } = false;
+
+	[Export]
+	public bool AutoStartInEditor { get; set; } = true;
 
 	/// <summary>
 	/// Allow players to logout during active mining sessions
 	/// </summary>
 	public override bool CanLogout => true;
 
-		
 	// ================================================================
 	// PRIVATE FIELDS
 	// ================================================================
-
 	private MiningGameUI _ui;
 	private MiningEngine _engine;
 	private MiningState _state;
@@ -74,7 +85,7 @@ public partial class MiningGame : GameController
 
 	// Backend-derived location configuration
 	private MiningLocationConfig _locationConfig;
-		
+
 	// ================================================================
 	// INITIALIZATION
 	// ================================================================
@@ -139,7 +150,9 @@ public partial class MiningGame : GameController
 	private void EnsureMainControllerExists()
 	{
 		if (GetTree().Root.GetNodeOrNull<MainController>("MainController") != null)
+		{
 			return;
+		}
 
 		var mainScene = GD.Load<PackedScene>(MAIN_SCENE_PATH);
 		if (mainScene != null)
@@ -148,10 +161,12 @@ public partial class MiningGame : GameController
 			GetTree().Root.CallDeferred(Node.MethodName.AddChild, mainInstance);
 
 			if (mainInstance is CanvasItem canvasItem)
+			{
 				canvasItem.Visible = false;
+			}
 		}
 	}
-		
+
 	/// <summary>
 	/// PHASE 2: Component Initialization
 	/// Creates game components (_engine, _state, _ui)
@@ -177,7 +192,7 @@ public partial class MiningGame : GameController
 			$"UI node is required but not found at path: {UIPath}");
 		_ui.Initialize(this, Config);
 	}
-		
+
 	// ================================================================
 	// DOMAIN-SPECIFIC STATE - Mining Game checks player login status
 	// ================================================================
@@ -193,7 +208,6 @@ public partial class MiningGame : GameController
 	// ================================================================
 	// DOMAIN-SPECIFIC LIFECYCLE - Mining session management
 	// ================================================================
-
 	public void StartMiningSession()
 	{
 		if (!IsPlayerLoggedIn())
@@ -223,7 +237,6 @@ public partial class MiningGame : GameController
 	// ================================================================
 	// GAME SESSION INITIALIZATION
 	// ================================================================
-
 	private async void InitializeGameSession()
 	{
 		try
@@ -250,7 +263,9 @@ public partial class MiningGame : GameController
 			bool isLoggedIn = !string.IsNullOrEmpty(GetCurrentUserPhoneNumber());
 			_ui.SetEnabled(isLoggedIn);
 			if (isLoggedIn)
+			{
 				_ui.UpdateAllUI();
+			}
 
 			// Notify platform that game session started
 			Platform.Host?.NotifyGameStarted();
@@ -266,7 +281,9 @@ public partial class MiningGame : GameController
 	private async Task TryCreateBackendSession()
 	{
 		if (string.IsNullOrEmpty(GetCurrentUserPhoneNumber()))
+		{
 			return;
+		}
 
 		var currentSession = _sessionManager?.GetPrimarySession();
 		if (currentSession?.PlayerId == null || currentSession.PlayerId == Guid.Empty)
@@ -323,7 +340,9 @@ public partial class MiningGame : GameController
 
 			// Check validity after await
 			if (!IsInstanceValid(this))
+			{
 				return;
+			}
 
 			if (result.IsFailure(out var error))
 			{
@@ -350,7 +369,9 @@ public partial class MiningGame : GameController
 
 			// Check validity again
 			if (!IsInstanceValid(this) || !IsInstanceValid(_ui))
+			{
 				return;
+			}
 
 			// Apply location config to UI
 			_ui.ApplyLocationConfig(_locationConfig);
@@ -370,7 +391,9 @@ public partial class MiningGame : GameController
 			GD.PrintErr($"[MiningGame] Error during location registration: {ex.Message}");
 
 			if (!IsInstanceValid(this))
+			{
 				return;
+			}
 
 			if (Platform.IsDevelopment)
 			{
@@ -379,9 +402,13 @@ public partial class MiningGame : GameController
 				{
 					_ui.ApplyLocationConfig(_locationConfig);
 					if (IsPlayerLoggedIn())
+					{
 						StartMiningSession();
+					}
 					else
+					{
 						_ui.SetEnabled(false);
+					}
 				}
 			}
 			else
@@ -406,11 +433,15 @@ public partial class MiningGame : GameController
 	{
 		// Cleanup engine
 		if (IsInstanceValid(_engine))
+		{
 			_engine.StopMining();
+		}
 
 		// Cleanup state
 		if (IsInstanceValid(_state))
+		{
 			_state.ClearAllState();
+		}
 
 		// Note: User signal disconnection and backend session close are handled by the base class
 	}
@@ -420,22 +451,26 @@ public partial class MiningGame : GameController
 		var gemTypeName = _locationConfig?.GetGemType().ToString() ?? "Crystal";
 
 		return new HelpContentData("MINING HOW-TO")
-			.AddSection("⛏️ WELCOME TO THE MINES ⛏️",
+			.AddSection(
+				"⛏️ WELCOME TO THE MINES ⛏️",
 				"• Gems accumulate automatically even while not playing!",
 				$"• This location mines {gemTypeName} gems",
 				"• Each machine has a capacity limit - extract gems regularly!")
 
-			.AddSection("💎 EXTRACTING GEMS 💎",
+			.AddSection(
+				"💎 EXTRACTING GEMS 💎",
 				"• Gems are stored locally on each machine until you extract them:",
 				"• Extracting clears out space in the mining capacity so you can Mine more Gems",
 				"• Extracted Gems can be used at any BarBox location")
 
-			.AddSection("😮‍💨 USING GEMS 🤑",
+			.AddSection(
+				"😮‍💨 USING GEMS 🤑",
 				"• Trade your extracted gems for credits OR upgrade this machine's mine",
 				"• Buy unlimited credits as long as you have enough gems",
 				"• Credits cost the same gem type as the machine produces")
 
-			.AddSection("⬆️ THREE UPGRADE TYPES ⬆️",
+			.AddSection(
+				"⬆️ THREE UPGRADE TYPES ⬆️",
 				"• All upgrades are applied to the current machine you're on. Upgrade the mines at all your favorite spots!",
 				"• 💼 Capacity - Increases maximum mined gem storage on this machine",
 				"• ⚡ Mining Amount - Increases gems produced per 2-hour cycle",
@@ -445,47 +480,65 @@ public partial class MiningGame : GameController
 	// ================================================================
 	// INTERNAL ACCESSORS - Encapsulated access to private fields
 	// ================================================================
-
 	internal MiningEventService GetEventService() => _miningEventService;
+
 	internal LocationManager GetLocationManager() => _locationManager;
+
 	internal MiningGameUI GetUI() => _ui;
+
 	internal MiningGameConfig GetConfig() => Config;
+
 	internal void ShowNotification(string message, NotificationSeverity severity) =>
 		Platform.Notifications?.Show(message, severity);
+
 	internal SessionManager GetSessionManager() => _sessionManager;
+
 	internal bool IsDebugMode() => EnableDebugMode;
+
 	internal MiningState GetState() => _state;
+
 	internal MiningLocationConfig GetLocationConfig() => _locationConfig;
 
 	// ================================================================
 	// PUBLIC API
 	// ================================================================
-
 	public bool CanExtractGems() => _state.CanExtractGems();
+
 	public bool CanPurchaseCredit() => _state.CanPurchaseCredit();
+
 	public bool CanPurchaseUpgrade(UpgradeType upgradeType) => _state.CanPurchaseUpgrade(upgradeType);
 
 	public MiningGlobalDataStore GetGlobalData() => _state.GetGlobalData();
 
 	public float GetMiningProgress() => _engine.GetMiningProgress();
+
 	public float GetTimeUntilNextTick() => _engine.GetTimeUntilNextTick();
 
 	public int GetPendingGems() => _state.PendingGems;
+
 	public int GetMaxCapacity() => _state.GetMaxCapacity();
 
 	public int GetGemsPerTick() => _state.GetGemsPerTick();
+
 	public float GetMiningTickTime() => _state.GetMiningTickTime();
+
 	public int GetUpgradeLevel(UpgradeType upgradeType) => _state.GetUpgradeLevel(upgradeType);
 
 	public GemType GetPrimaryGemType() => _locationConfig?.GetGemType() ?? GemType.Amethyst;
+
 	public int GetCreditsPerPurchase() => CREDITS_PER_PURCHASE;
 
 	public void ExtractGems()
 	{
 		if (_locationConfig == null)
+		{
 			return;
+		}
 
-		if (!CanExtractGems()) return;
+		if (!CanExtractGems())
+		{
+			return;
+		}
 
 		int amount = _state.PendingGems;
 		GemType gemType = _locationConfig.GetGemType();
@@ -497,7 +550,7 @@ public partial class MiningGame : GameController
 			GD.Print($"[MiningGame] Extracted {amount} {gemType} gems");
 		}
 	}
-		
+
 	public async Task PurchaseCreditAsync()
 	{
 		var result = await _state.PurchaseCreditAsync();
@@ -516,7 +569,7 @@ public partial class MiningGame : GameController
 				break;
 		}
 	}
-		
+
 	public void PurchaseUpgrade(UpgradeType upgradeType)
 	{
 		var currentLevel = _state.GetUpgradeLevel(upgradeType);
@@ -528,7 +581,7 @@ public partial class MiningGame : GameController
 			GD.Print($"[MiningGame] {upgradeType} upgraded to level {currentLevel + 1}");
 		}
 	}
-		
+
 	public void UpdateUI()
 	{
 		_ui.UpdateAllUI();
@@ -538,11 +591,10 @@ public partial class MiningGame : GameController
 	{
 		return _sessionManager?.GetPrimarySession()?.PhoneNumber;
 	}
-		
+
 	// ================================================================
 	// EVENT HANDLERS
 	// ================================================================
-		
 	protected override void OnUserLoggedIn(UserSession session)
 	{
 		if (_isProcessingUserChange)
@@ -558,7 +610,9 @@ public partial class MiningGame : GameController
 			_state.ClearAllState();
 
 			if (IsPlayerLoggedIn())
+			{
 				EndMiningSession();
+			}
 
 			StartMiningSession();
 
@@ -599,5 +653,4 @@ public partial class MiningGame : GameController
 			_isProcessingUserChange = false;
 		}
 	}
-		
 }

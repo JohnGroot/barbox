@@ -1,5 +1,5 @@
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
@@ -12,20 +12,21 @@ public partial class CarromPhysicsMonitor : Node
 	// ================================================================
 	// SIGNALS
 	// ================================================================
-
-	[Signal] public delegate void AllPiecesStoppedEventHandler();
+	[Signal]
+	public delegate void AllPiecesStoppedEventHandler();
 
 	// ================================================================
 	// CONFIGURATION
 	// ================================================================
+	[Export]
+	public float StoppedVelocityThreshold { get; set; } = 1.0f;
 
-	[Export] public float StoppedVelocityThreshold { get; set; } = 1.0f;
-	[Export] public int MinimumSettlementFrames { get; set; } = 3;
+	[Export]
+	public int MinimumSettlementFrames { get; set; } = 3;
 
 	// ================================================================
 	// PRIVATE FIELDS
 	// ================================================================
-
 	private bool _isMonitoringActive = false;
 	private int _physicsFramesSinceStart = 0;
 	private CarromPieceFactory _pieceFactory;
@@ -33,12 +34,12 @@ public partial class CarromPhysicsMonitor : Node
 	// Debug timing
 	private static readonly bool _isDebugBuild = OS.IsDebugBuild();
 	private System.Diagnostics.Stopwatch _debugStopwatch;
+
 	public static double DebugElapsedMs { get; private set; }
 
 	// ================================================================
 	// INITIALIZATION
 	// ================================================================
-
 	public void Initialize(CarromPieceFactory pieceFactory)
 	{
 		_pieceFactory = pieceFactory;
@@ -55,7 +56,9 @@ public partial class CarromPhysicsMonitor : Node
 	public void StartMonitoring()
 	{
 		if (_isMonitoringActive)
+		{
 			return;
+		}
 
 		_isMonitoringActive = true;
 		_physicsFramesSinceStart = 0;
@@ -69,7 +72,9 @@ public partial class CarromPhysicsMonitor : Node
 	public void StopMonitoring()
 	{
 		if (!_isMonitoringActive)
+		{
 			return;
+		}
 
 		_isMonitoringActive = false;
 		_physicsFramesSinceStart = 0;
@@ -80,17 +85,20 @@ public partial class CarromPhysicsMonitor : Node
 	// ================================================================
 	// PHYSICS MONITORING
 	// ================================================================
-
 	public override void _PhysicsProcess(double delta)
 	{
 		if (!_isMonitoringActive)
+		{
 			return;
+		}
 
 		_physicsFramesSinceStart++;
 
 		// Wait minimum frames before checking settlement
 		if (_physicsFramesSinceStart < MinimumSettlementFrames)
+		{
 			return;
+		}
 
 		if (_isDebugBuild)
 		{
@@ -142,20 +150,28 @@ public partial class CarromPhysicsMonitor : Node
 		foreach (var piece in allPieces)
 		{
 			if (!GodotObject.IsInstanceValid(piece))
+			{
 				continue;
+			}
 
 			float velSq = piece.LinearVelocity.LengthSquared();
 
 			// Fast rejection: clearly still moving
 			if (velSq > fastThresholdSq)
+			{
 				return false;
+			}
 
 			// Borderline: precise check needed
 			if (velSq > thresholdSq && piece.LinearVelocity.Length() > StoppedVelocityThreshold)
+			{
 				return false;
+			}
 
 			if (Mathf.Abs(piece.AngularVelocity) > StoppedVelocityThreshold)
+			{
 				return false;
+			}
 		}
 
 		return true;
@@ -164,13 +180,11 @@ public partial class CarromPhysicsMonitor : Node
 	// ================================================================
 	// ACCESSORS
 	// ================================================================
-
 	public bool IsMonitoring() => _isMonitoringActive;
 
 	// ================================================================
 	// CLEANUP
 	// ================================================================
-
 	public override void _Notification(int what)
 	{
 		if (what == NotificationExitTree)

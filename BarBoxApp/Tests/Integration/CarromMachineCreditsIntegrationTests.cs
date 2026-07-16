@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Integration;
@@ -27,7 +27,8 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 	private BackendManager _backendManager;
 	private CreditService _creditService;
 
-	public CarromMachineCreditsIntegrationTests(Node testScene) : base(testScene)
+	public CarromMachineCreditsIntegrationTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -230,7 +231,8 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 			"404 error indicates URL path mismatch. " +
 			"Expected: POST /machine-credits/carrom/consume");
 
-		machineState.Balance.ShouldBe(balanceBeforeConsume - 8,
+		machineState.Balance.ShouldBe(
+			balanceBeforeConsume - 8,
 			$"Balance should decrease by 8 (from {balanceBeforeConsume} to {balanceBeforeConsume - 8})");
 
 		TestHelpers.LogTestInfo($"✓ Machine balance correctly decreased to {machineState.Balance}");
@@ -276,6 +278,7 @@ public class CarromMachineCreditsIntegrationTests : BackendTestBase
 		{
 			await _sessionManager.LogoutUserAsync(TestPlayerPhone);
 		}
+
 		await base.CleanupTestResources();
 	}
 }

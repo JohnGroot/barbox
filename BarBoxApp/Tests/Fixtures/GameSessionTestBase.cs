@@ -20,9 +20,11 @@ public abstract class GameSessionTestBase : BackendTestBase
 	protected abstract string GameTag { get; }
 
 	protected Guid TestSessionId { get; private set; }
+
 	protected SessionEventService EventService { get; private set; }
 
-	protected GameSessionTestBase(Node testScene) : base(testScene)
+	protected GameSessionTestBase(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -44,7 +46,9 @@ public abstract class GameSessionTestBase : BackendTestBase
 
 		EventService = GetEventService();
 		if (EventService == null)
+		{
 			return;
+		}
 
 		var (playerId, _, _, _) = TestHelpers.GetSeededTestPlayer(1);
 		var sessionResult = await EventService.CreateActivitySessionAsync(
@@ -68,9 +72,13 @@ public abstract class GameSessionTestBase : BackendTestBase
 		{
 			var result = await EventService.CloseActivitySessionAsync(TestSessionId);
 			if (result.IsSuccess(out var _))
+			{
 				TestHelpers.LogTestInfo($"{GameTag} session closed successfully");
+			}
 			else if (result.IsFailure(out var error))
+			{
 				TestHelpers.LogTestWarning($"Session close failed: {error.Message}");
+			}
 		}
 	}
 }

@@ -15,7 +15,7 @@ public enum NotificationType
 	QueenReturned,    // Timed 2s
 	BreakingAttempt,  // Timed 2s
 	BreakingSuccess,  // Timed 2s
-	BreakingFailed    // Timed 3s
+	BreakingFailed, // Timed 3s
 }
 
 /// <summary>
@@ -42,6 +42,6 @@ public static class CarromNotificationStyle
 		NotificationType.BreakingAttempt => (COLOR_BREAKING, false, 2.0f),
 		NotificationType.BreakingSuccess => (COLOR_BREAKING, false, 2.0f),
 		NotificationType.BreakingFailed => (COLOR_BREAKING, false, 3.0f),
-		_ => (Colors.White, false, 2.0f)
+		_ => (Colors.White, false, 2.0f),
 	};
 }

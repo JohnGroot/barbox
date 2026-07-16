@@ -1,5 +1,5 @@
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 namespace BarBox.Core.Debug;
 
@@ -44,7 +44,9 @@ public partial class DebugPerformanceMonitor : CanvasLayer
 	public override void _ExitTree()
 	{
 		if (Instance == this)
+		{
 			Instance = null;
+		}
 
 		if (_refreshTimer != null && IsInstanceValid(_refreshTimer))
 		{
@@ -64,7 +66,10 @@ public partial class DebugPerformanceMonitor : CanvasLayer
 		{
 			_isVisible = !_isVisible;
 			if (_panel != null)
+			{
 				_panel.Visible = _isVisible;
+			}
+
 			GetViewport().SetInputAsHandled();
 		}
 	}
@@ -72,7 +77,6 @@ public partial class DebugPerformanceMonitor : CanvasLayer
 	// ================================================================
 	// GAME METRICS API
 	// ================================================================
-
 	public void SetMetric(string key, string value)
 	{
 		_gameMetrics[key] = value;
@@ -86,7 +90,6 @@ public partial class DebugPerformanceMonitor : CanvasLayer
 	// ================================================================
 	// UI CONSTRUCTION
 	// ================================================================
-
 	private PanelContainer CreatePanel()
 	{
 		var panel = new PanelContainer();
@@ -127,11 +130,12 @@ public partial class DebugPerformanceMonitor : CanvasLayer
 	// ================================================================
 	// REFRESH
 	// ================================================================
-
 	private void RefreshDisplay()
 	{
 		if (!_isVisible)
+		{
 			return;
+		}
 
 		RefreshBaseMetrics();
 		RefreshGameMetrics();
@@ -154,7 +158,7 @@ public partial class DebugPerformanceMonitor : CanvasLayer
 	{
 		if (_gameMetrics.Count == 0)
 		{
-			_gameMetricsLabel.Text = "";
+			_gameMetricsLabel.Text = string.Empty;
 			return;
 		}
 
@@ -163,6 +167,7 @@ public partial class DebugPerformanceMonitor : CanvasLayer
 		{
 			text += $"\n{kvp.Key}: {kvp.Value}";
 		}
+
 		_gameMetricsLabel.Text = text;
 	}
 }

@@ -1,5 +1,3 @@
-using Godot;
-using LightResults;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,6 +5,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BarBox.Core.Utils;
+using Godot;
+using LightResults;
 
 namespace BarBox.Core.Autoloads;
 
@@ -41,8 +41,11 @@ namespace BarBox.Core.Autoloads;
 /// </summary>
 public partial class SessionManager : AutoloadBase
 {
-	[Signal] public delegate void UserLoggedInEventHandler(string phoneNumber);
-	[Signal] public delegate void UserLoggedOutEventHandler(string phoneNumber);
+	[Signal]
+	public delegate void UserLoggedInEventHandler(string phoneNumber);
+
+	[Signal]
+	public delegate void UserLoggedOutEventHandler(string phoneNumber);
 
 	private SessionEventService _eventService;
 	private BackendClient _backend;
@@ -157,6 +160,7 @@ public partial class SessionManager : AutoloadBase
 		catch (System.Exception ex)
 		{
 			GD.PushError($"SessionManager: Error during graceful shutdown: {ex.Message}");
+
 			// Proceed with shutdown even if error occurred
 			GetTree().Quit();
 		}
@@ -169,17 +173,23 @@ public partial class SessionManager : AutoloadBase
 	public async Task<Result<UserSession>> LoginUserByPhoneAsync(string phoneNumber, string pin)
 	{
 		if (string.IsNullOrEmpty(phoneNumber))
+		{
 			return Result.Failure<UserSession>("Phone number is required");
+		}
 
 		// Clean phone number for consistency
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
+		{
 			return Result.Failure<UserSession>("Invalid phone number format");
+		}
 
 		// Clean PIN for consistency
 		var cleanedPin = InputValidator.CleanPin(pin);
 		if (!InputValidator.IsValidPin(cleanedPin))
+		{
 			return Result.Failure<UserSession>("PIN must be exactly 4 digits");
+		}
 
 		try
 		{
@@ -202,14 +212,13 @@ public partial class SessionManager : AutoloadBase
 			{
 				PhoneNumber = cleanedPhone,
 				Pin = cleanedPin,
-				BoxId = boxId.ToString()
+				BoxId = boxId.ToString(),
 			};
 
 			var loginResult = await _eventService.PostAsync<PlayerLoginRequest, PlayerLoginResponse>(
 				ApiPaths.Player.Login,
 				loginRequest,
-				expectedStatusCode: 200
-			);
+				expectedStatusCode: 200);
 
 			if (loginResult.IsFailure(out var loginError))
 			{
@@ -260,7 +269,7 @@ public partial class SessionManager : AutoloadBase
 				LoginTime = DateTime.UtcNow,
 				LastActivity = DateTime.UtcNow,
 				JwtToken = loginData.AccessToken,
-				TokenExpiration = tokenExpiration
+				TokenExpiration = tokenExpiration,
 			};
 
 			LogInfo($"User authenticated successfully - Token expires at: {tokenExpiration:u}");
@@ -283,7 +292,7 @@ public partial class SessionManager : AutoloadBase
 					var payload = new
 					{
 						username = session.UserName,
-						location_id = CurrentLocationId
+						location_id = CurrentLocationId,
 					};
 					var loginEventResult = await _eventService.EmitUserEventAsync(playerId, "user/login", payload, session.LobbySessionId);
 					if (loginEventResult.IsFailure(out var eventError))
@@ -323,15 +332,21 @@ public partial class SessionManager : AutoloadBase
 		// Validate inputs
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
+		{
 			return Result.Failure<string>("Invalid phone number format");
+		}
 
 		var cleanedPin = InputValidator.CleanPin(pin);
 		if (!InputValidator.IsValidPin(cleanedPin))
+		{
 			return Result.Failure<string>("PIN must be exactly 4 digits");
+		}
 
 		var cleanedUsername = InputValidator.CleanUsername(username);
 		if (!InputValidator.IsValidUsername(cleanedUsername))
+		{
 			return Result.Failure<string>("Username must be 1-7 characters, alphanumeric and underscore only");
+		}
 
 		if (_backend == null)
 		{
@@ -355,6 +370,7 @@ public partial class SessionManager : AutoloadBase
 			}
 
 			var boxId = locationManager.BoxId;
+
 			// Create player account via direct REST call to backend
 			var result = await CreatePlayerBackendAsync(playerId, cleanedUsername, cleanedPhone, cleanedPin, boxId);
 			if (result.IsSuccess(out _))
@@ -368,11 +384,17 @@ public partial class SessionManager : AutoloadBase
 
 				// Provide user-friendly error messages
 				if (error.Message.Contains("409") || error.Message.Contains("already exists"))
+				{
 					return Result.Failure<string>("An account with this phone number or username already exists");
+				}
 				else if (error.Message.Contains("timeout"))
+				{
 					return Result.Failure<string>("Connection timeout - please check your network and try again");
+				}
 				else
+				{
 					return Result.Failure<string>($"Account creation failed: {error.Message}");
+				}
 			}
 
 			return Result.Failure<string>("Unknown error during account creation");
@@ -393,15 +415,21 @@ public partial class SessionManager : AutoloadBase
 		// Clean and validate inputs
 		var cleanedPhone = InputValidator.CleanPhoneNumber(phoneNumber);
 		if (!InputValidator.IsValidPhoneNumber(cleanedPhone))
+		{
 			return Result.Failure<PlayerValidationResponse>("Invalid phone number format");
+		}
 
 		var cleanedPin = InputValidator.CleanPin(pin);
 		if (!InputValidator.IsValidPin(cleanedPin))
+		{
 			return Result.Failure<PlayerValidationResponse>("PIN must be exactly 4 digits");
+		}
 
 		var cleanedUsername = InputValidator.CleanUsername(username);
 		if (!InputValidator.IsValidUsername(cleanedUsername))
+		{
 			return Result.Failure<PlayerValidationResponse>("Username must be 1-7 characters, alphanumeric and underscore only");
+		}
 
 		if (_backend == null)
 		{
@@ -454,7 +482,9 @@ public partial class SessionManager : AutoloadBase
 	{
 		var cleanedUsername = InputValidator.CleanUsername(username);
 		if (!InputValidator.IsValidUsername(cleanedUsername))
+		{
 			return Result.Failure<bool>("Invalid username format");
+		}
 
 		try
 		{
@@ -503,6 +533,7 @@ public partial class SessionManager : AutoloadBase
 				LogInfo($"User {phoneNumber} already logged out - skipping");
 				return false;
 			}
+
 			// Revoke JWT token on backend
 			if (_eventService != null && _eventService.IsReady && !string.IsNullOrEmpty(session.JwtToken))
 			{
@@ -514,8 +545,7 @@ public partial class SessionManager : AutoloadBase
 					ApiPaths.Player.Logout,
 					logoutRequest,
 					expectedStatusCode: 200,
-					playerId: session.PlayerId
-				);
+					playerId: session.PlayerId);
 
 				if (revokeResult.IsFailure(out var revokeError))
 				{
@@ -534,7 +564,7 @@ public partial class SessionManager : AutoloadBase
 				{
 					phone_number = phoneNumber,
 					location_id = CurrentLocationId,
-					session_duration = session.SessionDuration.TotalSeconds
+					session_duration = session.SessionDuration.TotalSeconds,
 				};
 				var logoutResult = await _eventService.EmitUserEventAsync(session.PlayerId, "user/logout", payload, session.LobbySessionId);
 				if (logoutResult.IsFailure(out var logoutError))
@@ -695,9 +725,8 @@ public partial class SessionManager : AutoloadBase
 	/// </summary>
 	public string[] GetActivePhoneNumbers()
 	{
-		return _activeSessions.Keys.ToArray();
+		return [.. _activeSessions.Keys];
 	}
-
 
 	/// <summary>
 	/// Reset idle timer for user activity
@@ -730,7 +759,9 @@ public partial class SessionManager : AutoloadBase
 	{
 		// Skip logging for empty GUID (expected during initialization)
 		if (playerId == Guid.Empty)
+		{
 			return null;
+		}
 
 		if (!_sessionsByPlayerId.TryGetValue(playerId, out var session))
 		{
@@ -756,6 +787,7 @@ public partial class SessionManager : AutoloadBase
 		// Successful token retrieval - use debug level to reduce noise
 		return session.JwtToken;
 	}
+
 	/// <summary>
 	/// Get JWT token for the primary (first logged-in) user
 	/// Returns null if no users logged in or token expired
@@ -764,7 +796,9 @@ public partial class SessionManager : AutoloadBase
 	{
 		var primarySession = GetPrimarySession();
 		if (primarySession == null)
+		{
 			return null;
+		}
 
 		if (primarySession.IsTokenExpired)
 		{
@@ -784,14 +818,17 @@ public partial class SessionManager : AutoloadBase
 	{
 		var result = await _backend.QueryAsync<UsernameAvailabilityResponse>(
 			ApiPaths.Player.UsernameAvailable(username),
-			null
-		);
+			null);
 
 		if (result.IsSuccess(out var response))
+		{
 			return Result.Success(response.IsAvailable);
+		}
 
 		if (result.IsFailure(out var error))
+		{
 			return Result.Failure<bool>(error.Message);
+		}
 
 		return Result.Failure<bool>("Unknown error");
 	}
@@ -808,7 +845,7 @@ public partial class SessionManager : AutoloadBase
 			Tag = username,
 			PhoneNumber = phoneNumber,
 			Pin = pin,
-			OriginId = originBoxId.ToString()
+			OriginId = originBoxId.ToString(),
 		};
 
 		var result = await _backend.PostAsync<PlayerCreateRequest, PlayerValidationResponse>(ApiPaths.Player.Validate, request, 200);
@@ -824,8 +861,10 @@ public partial class SessionManager : AutoloadBase
 				{
 					errorMessages.AppendLine($"  - {validationError.Field}: {validationError.Message}");
 				}
+
 				LogWarning($"Player validation failed: {errorMessages}");
 			}
+
 			return Result.Success(response);
 		}
 
@@ -849,7 +888,7 @@ public partial class SessionManager : AutoloadBase
 			Tag = username,
 			PhoneNumber = phoneNumber,
 			Pin = pin,
-			OriginId = originBoxId.ToString()
+			OriginId = originBoxId.ToString(),
 		};
 
 		var result = await _backend.PostAsync<PlayerCreateRequest, PlayerDetailResponse>(ApiPaths.Player.Create, request, 201);
@@ -950,18 +989,27 @@ public partial class SessionManager : AutoloadBase
 public class UserSession
 {
 	public string PhoneNumber { get; set; } = string.Empty;
+
 	public string UserName { get; set; } = string.Empty;
+
 	public string LocationId { get; set; } = string.Empty;
+
 	public Guid PlayerId { get; set; } = Guid.Empty;
+
 	public Guid LobbySessionId { get; set; } = Guid.Empty;  // Lobby session for user-scoped events
+
 	public DateTime LoginTime { get; set; }
+
 	public DateTime LastActivity { get; set; }
 
 	// JWT authentication fields
 	public string JwtToken { get; set; } = string.Empty;
+
 	public DateTime TokenExpiration { get; set; } = DateTime.MinValue;
+
 	public bool IsTokenExpired => DateTime.UtcNow >= TokenExpiration;
 
 	public TimeSpan SessionDuration => DateTime.UtcNow - LoginTime;
+
 	public TimeSpan IdleTime => DateTime.UtcNow - LastActivity;
 }

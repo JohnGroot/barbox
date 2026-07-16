@@ -16,7 +16,8 @@ public class RacingTimingSystemTests : TestClass
 
 	private RacingTimingSystem _timingSystem;
 
-	public RacingTimingSystemTests(Node testScene) : base(testScene)
+	public RacingTimingSystemTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -42,7 +43,6 @@ public class RacingTimingSystemTests : TestClass
 	// ================================================================
 	// COUNTDOWN SYSTEM TESTS
 	// ================================================================
-
 	[Test]
 	public void StartCountdown_SetsCorrectInitialState()
 	{
@@ -112,7 +112,6 @@ public class RacingTimingSystemTests : TestClass
 	// ================================================================
 	// LAP MANAGEMENT TESTS
 	// ================================================================
-
 	[Test]
 	public void StartPlayerLap_IncrementsLapCount()
 	{
@@ -149,7 +148,7 @@ public class RacingTimingSystemTests : TestClass
 	[Test]
 	public void CompletePlayerLap_AccumulatesMultipleLaps()
 	{
-		float[] expectedTimes = { 15.3f, 14.8f, 15.0f };
+		float[] expectedTimes = [15.3f, 14.8f, 15.0f];
 
 		for (int i = 0; i < expectedTimes.Length; i++)
 		{
@@ -196,8 +195,8 @@ public class RacingTimingSystemTests : TestClass
 
 		// Manually update current lap time by simulating timer update
 		var mockPlayers = new List<BasePlayer>();
-		// Note: We can't easily mock BasePlayer, so test with completed laps only
 
+		// Note: We can't easily mock BasePlayer, so test with completed laps only
 		var totalTime = _timingSystem.GetPlayerTotalTime(TEST_PLAYER_ID);
 		totalTime.ShouldBe(22.0f); // 10 + 12 + 0 (current lap)
 	}
@@ -205,7 +204,6 @@ public class RacingTimingSystemTests : TestClass
 	// ================================================================
 	// STATE MACHINE TESTS
 	// ================================================================
-
 	[Test]
 	public void InitialState_IsIdle()
 	{
@@ -288,7 +286,6 @@ public class RacingTimingSystemTests : TestClass
 	// ================================================================
 	// INPUT ENABLED TESTS
 	// ================================================================
-
 	[Test]
 	public void IsInputEnabled_ReturnsFalse_DuringCountdown()
 	{
@@ -334,7 +331,6 @@ public class RacingTimingSystemTests : TestClass
 	// ================================================================
 	// DATA RESET TESTS
 	// ================================================================
-
 	[Test]
 	public void ResetRacingData_ClearsAllPlayerData()
 	{
@@ -357,7 +353,6 @@ public class RacingTimingSystemTests : TestClass
 	// ================================================================
 	// EDGE CASE TESTS
 	// ================================================================
-
 	[Test]
 	public void GetPlayerCurrentLap_ReturnsZero_ForUnknownPlayer()
 	{
@@ -373,7 +368,7 @@ public class RacingTimingSystemTests : TestClass
 	[Test]
 	public void GetPlayerCurrentLap_ReturnsZero_ForEmptyPlayerId()
 	{
-		_timingSystem.GetPlayerCurrentLap("").ShouldBe(0);
+		_timingSystem.GetPlayerCurrentLap(string.Empty).ShouldBe(0);
 	}
 
 	[Test]
@@ -400,7 +395,6 @@ public class RacingTimingSystemTests : TestClass
 	// ================================================================
 	// CHECKPOINT TESTS
 	// ================================================================
-
 	[Test]
 	public void OnPlayerCheckpointCrossed_RecordsCheckpointData()
 	{
@@ -427,7 +421,6 @@ public class RacingTimingSystemTests : TestClass
 	// ================================================================
 	// TARGET LAPS TESTS
 	// ================================================================
-
 	[Test]
 	public void TargetLaps_DefaultsToThree()
 	{
@@ -452,7 +445,6 @@ public class RacingTimingSystemTests : TestClass
 	// ================================================================
 	// SCORE CALCULATION TESTS
 	// ================================================================
-
 	[Test]
 	public void CalculatePlayerScore_PracticeMode_ReturnsBestLapTime()
 	{
@@ -484,7 +476,6 @@ public class RacingTimingSystemTests : TestClass
 	// ================================================================
 	// MULTI-PLAYER TESTS
 	// ================================================================
-
 	[Test]
 	public void MultiplePlayersCanTrackIndependently()
 	{

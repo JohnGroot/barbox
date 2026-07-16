@@ -1,9 +1,9 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Unit.Services;
@@ -16,7 +16,8 @@ public class SessionManagerLogoutTests : BackendTestBase
 {
 	private SessionManager _sessionManager;
 
-	public SessionManagerLogoutTests(Node testScene) : base(testScene)
+	public SessionManagerLogoutTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -97,7 +98,8 @@ public class SessionManagerLogoutTests : BackendTestBase
 
 		// Track logout signal emissions
 		int logoutSignalCount = 0;
-		_sessionManager.UserLoggedOut += (phone) => {
+		_sessionManager.UserLoggedOut += (phone) =>
+		{
 			if (phone == secondaryPhone)
 			{
 				logoutSignalCount++;
@@ -110,6 +112,7 @@ public class SessionManagerLogoutTests : BackendTestBase
 		await _sessionManager.LogoutNonPrimaryUsersAsync();
 
 		TestHelpers.LogTestInfo("Simulating CarromPlayerSetupMenu._ExitTree() path...");
+
 		// This path would call LogoutUserAsync for each slot
 		var logoutResult = await _sessionManager.LogoutUserAsync(secondaryPhone);
 

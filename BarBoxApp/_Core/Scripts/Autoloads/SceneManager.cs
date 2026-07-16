@@ -31,7 +31,9 @@ public partial class SceneManager : AutoloadBase
 	public void ChangeScene(string scenePath)
 	{
 		if (string.IsNullOrEmpty(scenePath) || scenePath == _currentScenePath)
+		{
 			return;
+		}
 
 		CallDeferred(nameof(DeferredChangeScene), scenePath);
 	}

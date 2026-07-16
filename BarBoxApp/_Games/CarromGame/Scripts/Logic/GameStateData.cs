@@ -9,13 +9,21 @@ namespace BarBox.Games.Carrom;
 public class PlayerState
 {
 	public string PlayerId { get; set; }
+
 	public PieceType AssignedPieceType { get; set; }
+
 	public int PiecesPocketed { get; set; }
+
 	public bool HasQueen { get; set; }
+
 	public bool QueenCovered { get; set; }
+
 	public int TotalShots { get; set; }
+
 	public int ValidPockets { get; set; }
+
 	public int Fouls { get; set; }
+
 	public List<PieceType> PocketedPieces { get; set; } = new();
 
 	/// <summary>
@@ -23,7 +31,10 @@ public class PlayerState
 	/// </summary>
 	public static PlayerState FromPlayer(CarromPlayer player)
 	{
-		if (player == null) return null;
+		if (player == null)
+		{
+			return null;
+		}
 
 		return new PlayerState
 		{
@@ -35,7 +46,7 @@ public class PlayerState
 			TotalShots = player.GetTotalShots(),
 			ValidPockets = player.GetValidPockets(),
 			Fouls = player.GetFouls(),
-			PocketedPieces = new List<PieceType>(player.GetPocketedPieces())
+			PocketedPieces = [.. player.GetPocketedPieces()],
 		};
 	}
 
@@ -54,7 +65,7 @@ public class PlayerState
 			TotalShots = TotalShots,
 			ValidPockets = ValidPockets,
 			Fouls = Fouls,
-			PocketedPieces = new List<PieceType>(PocketedPieces)
+			PocketedPieces = [.. PocketedPieces],
 		};
 	}
 }
@@ -65,13 +76,21 @@ public class PlayerState
 public class TurnContext
 {
 	public bool ValidPocketThisStroke { get; set; }
+
 	public bool FoulThisStroke { get; set; }
+
 	public bool IsBreakingTurn { get; set; }
+
 	public int BreakingAttempts { get; set; }
+
 	public bool PiecesDisturbedInBreaking { get; set; }
+
 	public bool PocketedQueenThisTurn { get; set; }
+
 	public bool NeedsQueenCovering { get; set; }
+
 	public bool OpponentPiecePocketedThisTurn { get; set; }
+
 	public List<PieceType> PiecesThisTurn { get; set; } = new();
 
 	public TurnContext Clone()
@@ -86,7 +105,7 @@ public class TurnContext
 			PocketedQueenThisTurn = PocketedQueenThisTurn,
 			NeedsQueenCovering = NeedsQueenCovering,
 			OpponentPiecePocketedThisTurn = OpponentPiecePocketedThisTurn,
-			PiecesThisTurn = new List<PieceType>(PiecesThisTurn)
+			PiecesThisTurn = [.. PiecesThisTurn],
 		};
 	}
 }
@@ -97,11 +116,17 @@ public class TurnContext
 public class PocketEvaluation
 {
 	public bool IsValid { get; set; }
+
 	public bool IsFoul { get; set; }
+
 	public FoulType FoulType { get; set; }
+
 	public bool ShouldReturnPiece { get; set; }
+
 	public bool UpdatesQueenState { get; set; }
+
 	public bool CoversQueen { get; set; }
+
 	public string Reason { get; set; }
 
 	public static PocketEvaluation Valid(string reason = "")
@@ -110,7 +135,7 @@ public class PocketEvaluation
 		{
 			IsValid = true,
 			IsFoul = false,
-			Reason = reason
+			Reason = reason,
 		};
 	}
 
@@ -122,7 +147,7 @@ public class PocketEvaluation
 			IsFoul = true,
 			FoulType = foulType,
 			ShouldReturnPiece = shouldReturnPiece,
-			Reason = reason
+			Reason = reason,
 		};
 	}
 
@@ -134,7 +159,7 @@ public class PocketEvaluation
 			IsFoul = !canPocket,
 			FoulType = canPocket ? FoulType.General : FoulType.ImproperQueenPocketing,
 			UpdatesQueenState = canPocket,
-			Reason = reason
+			Reason = reason,
 		};
 	}
 
@@ -145,7 +170,7 @@ public class PocketEvaluation
 			IsValid = true,
 			IsFoul = false,
 			CoversQueen = true,
-			Reason = reason
+			Reason = reason,
 		};
 	}
 }
@@ -157,7 +182,7 @@ public enum TurnDecision
 {
 	Continue,    // Player gets another turn
 	Pass,        // Turn passes to next player
-	BreakingContinue  // Breaking turn continues (< 3 attempts)
+	BreakingContinue, // Breaking turn continues (< 3 attempts)
 }
 
 /// <summary>
@@ -166,8 +191,11 @@ public enum TurnDecision
 public class BreakingResult
 {
 	public bool BreakingComplete { get; set; }
+
 	public bool IsSuccess { get; set; }
+
 	public TurnDecision TurnDecision { get; set; }
+
 	public string Reason { get; set; }
 
 	public static BreakingResult Success(TurnDecision decision, string reason = "")
@@ -177,7 +205,7 @@ public class BreakingResult
 			BreakingComplete = true,
 			IsSuccess = true,
 			TurnDecision = decision,
-			Reason = reason
+			Reason = reason,
 		};
 	}
 
@@ -188,7 +216,7 @@ public class BreakingResult
 			BreakingComplete = true,
 			IsSuccess = false,
 			TurnDecision = decision,
-			Reason = reason
+			Reason = reason,
 		};
 	}
 
@@ -199,7 +227,7 @@ public class BreakingResult
 			BreakingComplete = false,
 			IsSuccess = false,
 			TurnDecision = TurnDecision.BreakingContinue,
-			Reason = $"{reason} ({attemptsRemaining} attempts remaining)"
+			Reason = $"{reason} ({attemptsRemaining} attempts remaining)",
 		};
 	}
 }
@@ -210,7 +238,9 @@ public class BreakingResult
 public class PenaltyAction
 {
 	public int PiecesToReturn { get; set; }
+
 	public PieceType? PreferredPieceType { get; set; }
+
 	public string Reason { get; set; }
 
 	public static PenaltyAction None()
@@ -218,7 +248,7 @@ public class PenaltyAction
 		return new PenaltyAction
 		{
 			PiecesToReturn = 0,
-			Reason = "No penalty"
+			Reason = "No penalty",
 		};
 	}
 
@@ -228,7 +258,7 @@ public class PenaltyAction
 		{
 			PiecesToReturn = count,
 			PreferredPieceType = preferredType,
-			Reason = reason
+			Reason = reason,
 		};
 	}
 }
@@ -239,6 +269,7 @@ public class PenaltyAction
 public class WinCondition
 {
 	public bool HasWon { get; set; }
+
 	public string Reason { get; set; }
 
 	public static WinCondition Win(string reason = "")
@@ -246,7 +277,7 @@ public class WinCondition
 		return new WinCondition
 		{
 			HasWon = true,
-			Reason = reason
+			Reason = reason,
 		};
 	}
 
@@ -255,7 +286,7 @@ public class WinCondition
 		return new WinCondition
 		{
 			HasWon = false,
-			Reason = reason
+			Reason = reason,
 		};
 	}
 }

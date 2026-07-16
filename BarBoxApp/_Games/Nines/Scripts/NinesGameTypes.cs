@@ -23,7 +23,7 @@ public enum CardRank
 	Jack = 11,
 	Queen = 12,
 	King = 13,
-	Ace = 14  // Ace is high
+	Ace = 14, // Ace is high
 }
 
 public enum CardSuit
@@ -31,7 +31,7 @@ public enum CardSuit
 	Hearts,
 	Diamonds,
 	Clubs,
-	Spades
+	Spades,
 }
 
 /// <summary>
@@ -43,7 +43,7 @@ public enum GamePhase
 	Dealing,    // Dealing initial 9 cards
 	TurnActive, // Player is taking their turn (use TurnSubState for details)
 	Resolving,  // Processing prediction result, animations
-	GameOver    // Win or lose
+	GameOver, // Win or lose
 }
 
 /// <summary>
@@ -53,14 +53,14 @@ public enum TurnSubState
 {
 	SelectingStack,      // Player choosing which stack to predict
 	SelectingPrediction, // Player choosing Higher/Lower/Same
-	SelectingRevive      // Player choosing facedown stack to flip up (after correct Same)
+	SelectingRevive, // Player choosing facedown stack to flip up (after correct Same)
 }
 
 public enum PredictionType
 {
 	Higher,
 	Lower,
-	Same
+	Same,
 }
 
 public enum PredictionResult
@@ -68,14 +68,14 @@ public enum PredictionResult
 	Correct,     // Higher/Lower prediction was correct
 	Wrong,       // Higher/Lower prediction was wrong
 	SameCorrect, // Same prediction was correct - bonus!
-	SameWrong    // Same prediction was wrong
+	SameWrong, // Same prediction was wrong
 }
 
 public enum GameEndReason
 {
 	Win,     // Deck exhausted with stacks remaining
 	Lose,    // All stacks flipped facedown
-	Forfeit  // Player chose to forfeit
+	Forfeit, // Player chose to forfeit
 }
 
 #endregion
@@ -88,15 +88,19 @@ public enum GameEndReason
 public readonly struct PlayingCard
 {
 	public CardRank Rank { get; init; }
+
 	public CardSuit Suit { get; init; }
 
 	public int Value => (int)Rank;
 
 	public bool IsHigherThan(PlayingCard other) => Value > other.Value;
+
 	public bool IsLowerThan(PlayingCard other) => Value < other.Value;
+
 	public bool IsSameAs(PlayingCard other) => Value == other.Value;
 
 	public bool IsRed => Suit is CardSuit.Hearts or CardSuit.Diamonds;
+
 	public bool IsBlack => Suit is CardSuit.Clubs or CardSuit.Spades;
 
 	public string GetRankDisplay() => Rank switch
@@ -105,7 +109,7 @@ public readonly struct PlayingCard
 		CardRank.King => "K",
 		CardRank.Queen => "Q",
 		CardRank.Jack => "J",
-		_ => ((int)Rank).ToString()
+		_ => ((int)Rank).ToString(),
 	};
 
 	public string GetSuitSymbol() => Suit switch
@@ -114,7 +118,7 @@ public readonly struct PlayingCard
 		CardSuit.Diamonds => "\u2666", // ♦
 		CardSuit.Clubs => "\u2663",    // ♣
 		CardSuit.Spades => "\u2660",   // ♠
-		_ => "?"
+		_ => "?",
 	};
 
 	public override string ToString() => $"{GetRankDisplay()}{GetSuitSymbol()}";
@@ -128,11 +132,15 @@ public class CardStack
 	private readonly List<PlayingCard> _cards = new();
 
 	public IReadOnlyList<PlayingCard> Cards => _cards;
+
 	public Vector2I GridPosition { get; init; }
+
 	public bool IsFaceUp { get; private set; } = true;
+
 	public int Count => _cards.Count;
 
 	public PlayingCard? TopCard => _cards.Count > 0 ? _cards[^1] : null;
+
 	public bool IsActive => IsFaceUp && _cards.Count > 0;
 
 	public void AddCard(PlayingCard card) => _cards.Add(card);
@@ -151,7 +159,9 @@ public class NinesPlayer : PlayerRosterEntry
 
 	// Analytics tracking
 	public int CorrectPredictions { get; set; }
+
 	public int WrongPredictions { get; set; }
+
 	public int SameCorrectPredictions { get; set; }
 }
 

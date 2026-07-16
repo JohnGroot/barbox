@@ -1,10 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using BarBox.Core.Autoloads;
 using BarBox.Core.Gameplay;
 using Godot;
 using LightResults;
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 
 [GlobalClass]
 public abstract partial class GameController : Node2D
@@ -102,11 +102,15 @@ public abstract partial class GameController : Node2D
 	protected async Task<Result<Guid>> StartBackendSessionAsync(Guid boxId, Guid playerId, List<string> playerIds = null)
 	{
 		if (Platform.Events == null)
+		{
 			return Result.Failure<Guid>("SessionEventService not available");
+		}
 
 		var result = await Platform.Events.CreateActivitySessionAsync(boxId, playerId, GetGameId(), playerIds);
 		if (result.IsSuccess(out var sessionId))
+		{
 			_activitySessionId = sessionId;
+		}
 
 		return result;
 	}
@@ -137,13 +141,17 @@ public abstract partial class GameController : Node2D
 	/// Override to discover additional game-specific services beyond Platform.
 	/// Platform property is already populated when this is called.
 	/// </summary>
-	protected virtual void OnDiscoverServices() { }
+	protected virtual void OnDiscoverServices()
+	{
+	}
 
 	/// <summary>
 	/// Override to create game components (engine, state, UI).
 	/// Called after service discovery, before UI integration.
 	/// </summary>
-	protected virtual void OnInitializeComponents() { }
+	protected virtual void OnInitializeComponents()
+	{
+	}
 
 	/// <summary>
 	/// Override for async initialization (backend calls, data loading).
@@ -155,28 +163,38 @@ public abstract partial class GameController : Node2D
 	/// Override to start gameplay or show initial state.
 	/// Called after all initialization (including async) is complete.
 	/// </summary>
-	protected virtual void OnActivateGame() { }
+	protected virtual void OnActivateGame()
+	{
+	}
 
 	/// <summary>
 	/// Override to handle user login. Auto-connected to SessionManager.UserLoggedIn signal.
 	/// </summary>
-	protected virtual void OnUserLoggedIn(UserSession session) { }
+	protected virtual void OnUserLoggedIn(UserSession session)
+	{
+	}
 
 	/// <summary>
 	/// Override to handle user logout. Auto-connected to SessionManager.UserLoggedOut signal.
 	/// </summary>
-	protected virtual void OnUserLoggedOut(string phoneNumber) { }
+	protected virtual void OnUserLoggedOut(string phoneNumber)
+	{
+	}
 
 	/// <summary>
 	/// Override for game-specific cleanup on exit.
 	/// Called during _ExitTree after UI cleanup and signal disconnection.
 	/// </summary>
-	protected virtual void OnGameTeardown() { }
+	protected virtual void OnGameTeardown()
+	{
+	}
 
 	/// <summary>
 	/// Override to handle async initialization failure.
 	/// </summary>
-	protected virtual void OnInitializationFailed(Exception ex) { }
+	protected virtual void OnInitializationFailed(Exception ex)
+	{
+	}
 
 	/// <summary>
 	/// Override this method to provide help content for your game.
@@ -204,7 +222,8 @@ public abstract partial class GameController : Node2D
 	public virtual ContextButtonData[] GetContextButtons()
 	{
 		ContextButtonData[] buttons = [
-			GameContextButton.CreateReturnToMenuButton(() => {
+			GameContextButton.CreateReturnToMenuButton(() =>
+			{
 				Platform.Session?.ResetAllIdleTimers();
 				ReturnToMainMenu();
 			})
@@ -224,7 +243,9 @@ public abstract partial class GameController : Node2D
 	public void Pause()
 	{
 		if (IsPaused)
+		{
 			return;
+		}
 
 		IsPaused = true;
 		OnPause();
@@ -237,7 +258,9 @@ public abstract partial class GameController : Node2D
 	public void Resume()
 	{
 		if (!IsPaused)
+		{
 			return;
+		}
 
 		IsPaused = false;
 		OnResume();
@@ -246,12 +269,16 @@ public abstract partial class GameController : Node2D
 	/// <summary>
 	/// Override this method to implement game-specific pause logic.
 	/// </summary>
-	protected virtual void OnPause() { }
+	protected virtual void OnPause()
+	{
+	}
 
 	/// <summary>
 	/// Override this method to implement game-specific resume logic.
 	/// </summary>
-	protected virtual void OnResume() { }
+	protected virtual void OnResume()
+	{
+	}
 
 	// ==========================================================================
 	// UI STATE MANAGEMENT
@@ -273,7 +300,9 @@ public abstract partial class GameController : Node2D
 	protected void RefreshUI()
 	{
 		if (Platform.Host == null)
+		{
 			return;
+		}
 
 		var contextButtons = GetContextButtons();
 		Platform.Host.SetTopMenuContext(GetGameTitle(), contextButtons);
@@ -293,11 +322,12 @@ public abstract partial class GameController : Node2D
 					"Return to Menu",
 					"Are you sure you want to return to the main menu?\n\nAny unsaved progress will be lost.",
 					"Return to Menu",
-					"Cancel"
-				);
+					"Cancel");
 
 				if (!confirmed)
+				{
 					return;
+				}
 			}
 
 			Platform.Host?.ReturnToMainMenu();
@@ -311,7 +341,6 @@ public abstract partial class GameController : Node2D
 	// ==========================================================================
 	// INTERNAL ORCHESTRATION
 	// ==========================================================================
-
 	private async void StartAsyncInitialization()
 	{
 		try

@@ -34,12 +34,12 @@ public static class TestHelpers
 		return playerNumber switch
 		{
 			1 => (TestConstants.TEST_PLAYER_ID_1, TestConstants.TEST_PLAYER_1_PHONE,
-			      TestConstants.TEST_PLAYER_1_PIN, TestConstants.TEST_PLAYER_1_USERNAME),
+				  TestConstants.TEST_PLAYER_1_PIN, TestConstants.TEST_PLAYER_1_USERNAME),
 			2 => (TestConstants.TEST_PLAYER_ID_2, TestConstants.TEST_PLAYER_2_PHONE,
-			      TestConstants.TEST_PLAYER_2_PIN, TestConstants.TEST_PLAYER_2_USERNAME),
+				  TestConstants.TEST_PLAYER_2_PIN, TestConstants.TEST_PLAYER_2_USERNAME),
 			3 => (TestConstants.TEST_PLAYER_ID_3, TestConstants.TEST_PLAYER_3_PHONE,
-			      TestConstants.TEST_PLAYER_3_PIN, TestConstants.TEST_PLAYER_3_USERNAME),
-			_ => throw new ArgumentException($"Player number must be 1-3, got {playerNumber}")
+				  TestConstants.TEST_PLAYER_3_PIN, TestConstants.TEST_PLAYER_3_USERNAME),
+			_ => throw new ArgumentException($"Player number must be 1-3, got {playerNumber}"),
 		};
 	}
 
@@ -104,8 +104,7 @@ public static class TestHelpers
 	{
 		var (success, responseCode, _) = await ExecuteSimpleHttpRequestAsync(
 			Godot.HttpClient.Method.Get,
-			"/alive"
-		);
+			"/alive");
 
 		return success && responseCode == 200;
 	}
@@ -128,6 +127,7 @@ public static class TestHelpers
 	public static string GenerateTestPhoneNumber(int seed)
 	{
 		var random = new Random(seed);
+
 		// Format: +1-XXX-555-01XX (testing/fictional number range)
 		// Area code: Valid US area code (212=NYC, 415=SF, 310=LA, etc.)
 		// Exchange: 555 (reserved for testing/fictional use)
@@ -256,7 +256,11 @@ public static class TestHelpers
 	/// </summary>
 	public static BackendManager GetBackendManager()
 	{
-		if (Engine.GetMainLoop() is not SceneTree tree) return null;
+		if (Engine.GetMainLoop() is not SceneTree tree)
+		{
+			return null;
+		}
+
 		return tree.Root?.GetNode<BackendManager>("/root/BackendManager");
 	}
 
@@ -265,7 +269,11 @@ public static class TestHelpers
 	/// </summary>
 	public static SessionEventService GetEventService()
 	{
-		if (Engine.GetMainLoop() is not SceneTree tree) return null;
+		if (Engine.GetMainLoop() is not SceneTree tree)
+		{
+			return null;
+		}
+
 		return tree.Root?.GetNode<SessionEventService>("/root/SessionEventService");
 	}
 
@@ -274,7 +282,11 @@ public static class TestHelpers
 	/// </summary>
 	public static SessionManager GetSessionManager()
 	{
-		if (Engine.GetMainLoop() is not SceneTree tree) return null;
+		if (Engine.GetMainLoop() is not SceneTree tree)
+		{
+			return null;
+		}
+
 		return tree.Root?.GetNode<SessionManager>("/root/SessionManager");
 	}
 
@@ -283,7 +295,11 @@ public static class TestHelpers
 	/// </summary>
 	public static PaymentService GetPaymentService()
 	{
-		if (Engine.GetMainLoop() is not SceneTree tree) return null;
+		if (Engine.GetMainLoop() is not SceneTree tree)
+		{
+			return null;
+		}
+
 		return tree.Root?.GetNode<PaymentService>("/root/PaymentService");
 	}
 
@@ -292,7 +308,11 @@ public static class TestHelpers
 	/// </summary>
 	public static CreditService GetCreditService()
 	{
-		if (Engine.GetMainLoop() is not SceneTree tree) return null;
+		if (Engine.GetMainLoop() is not SceneTree tree)
+		{
+			return null;
+		}
+
 		return tree.Root?.GetNode<CreditService>("/root/CreditService");
 	}
 
@@ -457,7 +477,7 @@ public static class TestHelpers
 				if (status == HttpClient.Status.Connected)
 				{
 					// Send request
-					headers ??= new string[] { "Accept: application/json" };
+					headers ??= ["Accept: application/json"];
 					var requestError = httpClient.Request(method, endpoint, headers);
 					if (requestError != Error.Ok)
 					{
@@ -479,8 +499,8 @@ public static class TestHelpers
 				}
 
 				if (status == HttpClient.Status.CantConnect ||
-				    status == HttpClient.Status.CantResolve ||
-				    status == HttpClient.Status.ConnectionError)
+					status == HttpClient.Status.CantResolve ||
+					status == HttpClient.Status.ConnectionError)
 				{
 					return (false, 0, $"Connection error: {status}");
 				}

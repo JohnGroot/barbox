@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- Analyzers are restored but not executed by dotnet build / Godot builds.
+         The pre-commit hook exports RunAnalyzersDuringBuild=true to enable them. -->
+    <RunAnalyzersDuringBuild Condition="'$(RunAnalyzersDuringBuild)' == ''">false</RunAnalyzersDuringBuild>
+  </PropertyGroup>
+</Project>

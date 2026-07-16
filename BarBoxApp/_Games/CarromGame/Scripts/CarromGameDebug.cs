@@ -20,9 +20,7 @@ public partial class CarromGame : GameController
 	/// </summary>
 	private List<CarromPiece> GetVisiblePiecesOfType(PieceType type)
 	{
-		return _pieceFactory.GetPiecesOfType(type)
-			.Where(p => GodotObject.IsInstanceValid(p) && p.Visible)
-			.ToList();
+		return [.. _pieceFactory.GetPiecesOfType(type).Where(p => GodotObject.IsInstanceValid(p) && p.Visible)];
 	}
 
 	/// <summary>
@@ -242,10 +240,7 @@ public partial class CarromGame : GameController
 		player.QueenCovered = queenCovered;
 
 		// Update UI
-		if (_scoreDisplay != null)
-		{
-			_scoreDisplay.UpdateAllPlayerScores(players);
-		}
+		_scoreDisplay?.UpdateAllPlayerScores(players);
 
 		GD.Print($"[DEBUG] ✓ Player state updated: {piecesPocketed} pieces, Queen: {hasQueen}/{queenCovered}");
 	}
@@ -281,10 +276,7 @@ public partial class CarromGame : GameController
 		TweenStrikerToBaseline(playerIndex);
 
 		// Update UI
-		if (_scoreDisplay != null)
-		{
-			_scoreDisplay.UpdateAllPlayerScores(players);
-		}
+		_scoreDisplay?.UpdateAllPlayerScores(players);
 	}
 
 	/// <summary>
@@ -400,7 +392,6 @@ public partial class CarromGame : GameController
 		RefreshUI();
 	}
 
-	
 	/// <summary>
 	/// DEBUG: Directly activate competitive mode for testing, bypassing UI menu
 	/// </summary>
@@ -439,9 +430,7 @@ public partial class CarromGame : GameController
 
 		GD.Print($"[DEBUG] Competitive mode activated with {playerCount} players");
 	}
-	
-	
-	
+
 	/// <summary>
 	/// DEBUG METHOD: Force enable input for debugging stuck input states
 	/// Call this method from debugger or add temporary UI button during development
@@ -449,19 +438,19 @@ public partial class CarromGame : GameController
 	public void DEBUG_ForceEnableInput()
 	{
 		// DEBUG: Force enabling input for debugging
-		
+
 		// State machine handles transitions automatically
-		
+
 		// Force input controller to enabled state
 		if (_inputController != null)
 		{
 			// This assumes SetInputState method exists - may need to adjust based on actual InputController API
 			// DEBUG: Attempting to force input controller to enabled state
-			
+
 			// Re-establish all references
 			_inputController.SetGameState(_gameStateManager);
 			UpdateInputControllerStriker();
-			
+
 			// DEBUG: Re-established input controller references
 		}
 	}
@@ -477,11 +466,13 @@ public partial class CarromGame : GameController
 	// ================================================================
 	// DEBUG PERFORMANCE MONITOR
 	// ================================================================
-
 	private void PushDebugMetrics()
 	{
 		var monitor = DebugPerformanceMonitor.Instance;
-		if (monitor == null) return;
+		if (monitor == null)
+		{
+			return;
+		}
 
 		monitor.SetMetric("Pieces", $"{_pieceFactory?.GetAllPieces().Count ?? 0}");
 		monitor.SetMetric("Phase", _gameStateManager?.GetCurrentStateName() ?? "N/A");
@@ -494,5 +485,4 @@ public partial class CarromGame : GameController
 	{
 		DebugPerformanceMonitor.Instance?.ClearGameMetrics();
 	}
-
 }

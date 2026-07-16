@@ -11,15 +11,27 @@ namespace BarBox.Games.Racing;
 public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 {
 	[ExportCategory("Track Setup")]
-	[Export] public Line2D TrackLine { get; set; }
-	[Export] public string TrackName { get; set; } = "Unnamed Track";
-	[Export] public int NumberOfLaps { get; set; } = 3;
+	[Export]
+	public Line2D TrackLine { get; set; }
+
+	[Export]
+	public string TrackName { get; set; } = "Unnamed Track";
+
+	[Export]
+	public int NumberOfLaps { get; set; } = 3;
 
 	[ExportCategory("Scene Node References")]
-	[Export] public NodePath StartLinePath { get; set; }
-	[Export] public NodePath FinishLinePath { get; set; }
-	[Export] public Godot.Collections.Array<NodePath> CheckpointTriggerPaths { get; set; } = new Godot.Collections.Array<NodePath>();
-	[Export] public NodePath TrackDirectionPath { get; set; }
+	[Export]
+	public NodePath StartLinePath { get; set; }
+
+	[Export]
+	public NodePath FinishLinePath { get; set; }
+
+	[Export]
+	public Godot.Collections.Array<NodePath> CheckpointTriggerPaths { get; set; } = new Godot.Collections.Array<NodePath>();
+
+	[Export]
+	public NodePath TrackDirectionPath { get; set; }
 
 	private Curve2D _cachedCurve;
 
@@ -41,7 +53,9 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 
 	// Properties that lazily load and cache the actual node references
 	public RacingLineTrigger StartLine => _startLineCache ??= GetNodeOrNull<RacingLineTrigger>(StartLinePath);
+
 	public RacingLineTrigger FinishLine => _finishLineCache ??= GetNodeOrNull<RacingLineTrigger>(FinishLinePath);
+
 	public RayCast2D TrackDirection => _trackDirectionCache ??= GetNodeOrNull<RayCast2D>(TrackDirectionPath);
 
 	public RacingCheckpointTrigger[] CheckpointTriggers
@@ -56,7 +70,8 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 					_checkpointTriggersCache[i] = GetNodeOrNull<RacingCheckpointTrigger>(CheckpointTriggerPaths[i]);
 				}
 			}
-			return _checkpointTriggersCache ?? new RacingCheckpointTrigger[0];
+
+			return _checkpointTriggersCache ?? [];
 		}
 	}
 
@@ -94,7 +109,10 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		int pointCount = TrackLine.GetPointCount();
 		_cachedPoints = new Vector2[pointCount];
 		for (int i = 0; i < pointCount; i++)
+		{
 			_cachedPoints[i] = TrackLine.GetPointPosition(i);
+		}
+
 		var halfWidth = TrackLine.Width / 2f;
 		_cachedHalfWidthSq = halfWidth * halfWidth;
 		_cachedClosed = TrackLine.Closed;
@@ -121,10 +139,10 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		{
 			var startPoint = GetStartLinePosition();
 			var perpendicular = GetStartLineDirection();
-			
+
 			// Convert perpendicular back to track direction
 			var actualTrackDirection = new Vector2(perpendicular.Y, -perpendicular.X);
-			
+
 			TrackDirection.GlobalPosition = startPoint;
 			TrackDirection.TargetPosition = actualTrackDirection * 100.0f;
 			TrackDirection.Enabled = true;
@@ -141,7 +159,9 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	public bool IsValidTrackPoint(Vector2 point)
 	{
 		if (_cachedPoints == null || TrackLine == null)
+		{
 			return false;
+		}
 
 		// Convert global point directly to TrackLine's local coordinate space
 		var trackLineLocalPoint = TrackLine.ToLocal(point);
@@ -158,7 +178,9 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	public bool IsValidTrackPointFast(Vector2 point)
 	{
 		if (_cachedPoints == null || TrackLine == null || !_spatialIndex.IsBuilt)
+		{
 			return false;
+		}
 
 		var trackLineLocalPoint = TrackLine.ToLocal(point);
 
@@ -173,7 +195,9 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	public Vector2 GetStartLineDirection()
 	{
 		if (StartLine == null)
+		{
 			return Vector2.Right;
+		}
 
 		// Get direction from StartLine's global rotation (accounts for parent transforms)
 		return Vector2.FromAngle(StartLine.GlobalRotation);
@@ -193,9 +217,15 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	public Vector2 GetFinishLineDirection()
 	{
 		if (FinishLine != null)
+		{
 			return Vector2.FromAngle(FinishLine.GlobalRotation);
+		}
+
 		if (StartLine != null)
+		{
 			return Vector2.FromAngle(StartLine.GlobalRotation);
+		}
+
 		return Vector2.Right;
 	}
 
@@ -204,10 +234,7 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		var triggers = CheckpointTriggers; // Get the cached array once
 		for (int i = 0; i < triggers.Length; i++)
 		{
-			if (triggers[i] != null)
-			{
-				triggers[i].ResetCrossed();
-			}
+			triggers[i]?.ResetCrossed();
 		}
 	}
 
@@ -220,7 +247,9 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	public Vector2 GetTrackCentroid()
 	{
 		if (TrackLine == null || TrackLine.GetPointCount() == 0)
+		{
 			return Vector2.Zero;
+		}
 
 		Vector2 centroid = Vector2.Zero;
 		int pointCount = TrackLine.GetPointCount();
@@ -231,7 +260,7 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 		}
 
 		centroid /= pointCount;
-		
+
 		// Convert to global coordinates
 		return ToGlobal(centroid);
 	}
@@ -239,8 +268,10 @@ public partial class RacingTrackDefinition : Node2D, IRacingTrackDefinition
 	public Rect2 GetTrackBounds()
 	{
 		if (TrackLine == null || TrackLine.GetPointCount() == 0)
-			return new Rect2();
-		
+		{
+			return default(Rect2);
+		}
+
 		Vector2 minPoint = TrackLine.GetPointPosition(0);
 		Vector2 maxPoint = TrackLine.GetPointPosition(0);
 

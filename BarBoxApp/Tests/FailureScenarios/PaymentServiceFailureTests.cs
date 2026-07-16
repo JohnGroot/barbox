@@ -1,7 +1,7 @@
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.FailureScenarios;
@@ -18,7 +18,8 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 	private SessionManager _sessionManager;
 	private CreditService _creditService;
 
-	public PaymentServiceFailureTests(Node testScene) : base(testScene)
+	public PaymentServiceFailureTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
@@ -124,7 +125,8 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			var finalCreditsResult = await _creditService.GetBalanceAsync(playerId, forceRefresh: true);
 			finalCreditsResult.IsSuccess(out var finalCredits).ShouldBeTrue("Should get final credits");
 
-			finalCredits.ShouldBe(initialCredits,
+			finalCredits.ShouldBe(
+				initialCredits,
 				$"REGRESSION: Credits should not change when purchase fails (was {initialCredits}, now {finalCredits})");
 			TestHelpers.LogTestInfo($"✓ Credits unchanged: {finalCredits} (correct behavior)");
 
@@ -226,7 +228,7 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			error.Contains("SessionEventService").ShouldBeTrue("Error should mention SessionEventService");
 
 			var hasReadinessMention = error.Contains("ready", System.StringComparison.OrdinalIgnoreCase) ||
-			                         error.Contains("initialized", System.StringComparison.OrdinalIgnoreCase);
+									 error.Contains("initialized", System.StringComparison.OrdinalIgnoreCase);
 			hasReadinessMention.ShouldBeTrue("Error should mention readiness/initialization state");
 			TestHelpers.LogTestInfo("✓ Error has service and readiness info");
 
@@ -300,7 +302,8 @@ public class PaymentServiceFailureTests : FailureScenarioTestBase
 			result2.IsSuccess.ShouldBeTrue("Second purchase should succeed");
 
 			var expectedCredits = initialCredits + creditPack.Credits;
-			afterSuccessCredits.ShouldBe(expectedCredits,
+			afterSuccessCredits.ShouldBe(
+				expectedCredits,
 				$"State inconsistent: expected {expectedCredits}, got {afterSuccessCredits}");
 			TestHelpers.LogTestInfo("✓ State consistent: only successful purchase added credits");
 		}

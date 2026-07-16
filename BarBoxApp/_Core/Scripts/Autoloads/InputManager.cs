@@ -1,15 +1,24 @@
-using Godot;
 using System.Collections.Generic;
+using Godot;
 
 namespace BarBox.Core.Autoloads;
 
 public partial class InputManager : AutoloadBase
 {
-	[Signal] public delegate void TouchStartedEventHandler(Vector2 position, int fingerId);
-	[Signal] public delegate void TouchMovedEventHandler(Vector2 position, int fingerId);
-	[Signal] public delegate void TouchEndedEventHandler(Vector2 position, int fingerId);
-	[Signal] public delegate void ClickStartedEventHandler(Vector2 position);
-	[Signal] public delegate void ClickEndedEventHandler(Vector2 position);
+	[Signal]
+	public delegate void TouchStartedEventHandler(Vector2 position, int fingerId);
+
+	[Signal]
+	public delegate void TouchMovedEventHandler(Vector2 position, int fingerId);
+
+	[Signal]
+	public delegate void TouchEndedEventHandler(Vector2 position, int fingerId);
+
+	[Signal]
+	public delegate void ClickStartedEventHandler(Vector2 position);
+
+	[Signal]
+	public delegate void ClickEndedEventHandler(Vector2 position);
 
 	private Dictionary<int, Vector2> _activeTouches = new();
 	private bool _mousePressed = false;
@@ -42,12 +51,16 @@ public partial class InputManager : AutoloadBase
 			// InputEventScreenTouch AND InputEventMouseButton. We handle the touch
 			// event above; the mouse event is left unconsumed for Control nodes (buttons).
 			if (_activeTouches.Count == 0)
+			{
 				HandleMouseButton(mouseButtonEvent);
+			}
 		}
 		else if (@event is InputEventMouseMotion mouseMotionEvent)
 		{
 			if (_activeTouches.Count == 0)
+			{
 				HandleMouseMotion(mouseMotionEvent);
+			}
 		}
 	}
 
@@ -88,7 +101,7 @@ public partial class InputManager : AutoloadBase
 		if (mouseButtonEvent.ButtonIndex == MouseButton.Left)
 		{
 			_mousePosition = mouseButtonEvent.Position;
-			
+
 			if (mouseButtonEvent.Pressed)
 			{
 				_mousePressed = true;
@@ -105,7 +118,7 @@ public partial class InputManager : AutoloadBase
 	private void HandleMouseMotion(InputEventMouseMotion mouseMotionEvent)
 	{
 		_mousePosition = mouseMotionEvent.Position;
-		
+
 		if (_mousePressed)
 		{
 			// Treat mouse drag as touch move for compatibility
@@ -116,8 +129,10 @@ public partial class InputManager : AutoloadBase
 	public bool IsTouchActive(int fingerId = -1)
 	{
 		if (fingerId == -1)
+		{
 			return _activeTouches.Count > 0 || _mousePressed;
-		
+		}
+
 		return _activeTouches.ContainsKey(fingerId);
 	}
 
@@ -129,7 +144,11 @@ public partial class InputManager : AutoloadBase
 	public int GetActiveTouchCount()
 	{
 		int count = _activeTouches.Count;
-		if (_mousePressed) count++;
+		if (_mousePressed)
+		{
+			count++;
+		}
+
 		return count;
 	}
 }

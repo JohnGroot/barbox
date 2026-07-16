@@ -1,30 +1,33 @@
-using Godot;
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 
-namespace BarBox.Games.Racing
-{
-	/// <summary>
-	/// Handles all racing timing logic, lap management, and race state progression
-	/// Extracted from RacingGame to follow single responsibility principle
-	/// </summary>
-	[GlobalClass]
-	public partial class RacingTimingSystem : Node
+namespace BarBox.Games.Racing;
+
+/// <summary>
+/// Handles all racing timing logic, lap management, and race state progression
+/// Extracted from RacingGame to follow single responsibility principle
+/// </summary>
+[GlobalClass]
+public partial class RacingTimingSystem : Node
 {
 	// ================================================================
 	// SIGNALS
 	// ================================================================
-	
-	[Signal] public delegate void LapCompletedEventHandler(string playerId, int lapNumber, float lapTime);
-	[Signal] public delegate void RaceCompletedEventHandler(string playerId, float totalTime);
-	[Signal] public delegate void CheckpointCrossedEventHandler(string playerId, int checkpointIndex, float gapTime);
+	[Signal]
+	public delegate void LapCompletedEventHandler(string playerId, int lapNumber, float lapTime);
+
+	[Signal]
+	public delegate void RaceCompletedEventHandler(string playerId, float totalTime);
+
+	[Signal]
+	public delegate void CheckpointCrossedEventHandler(string playerId, int checkpointIndex, float gapTime);
 
 	// ================================================================
 	// RACING STATE AND ENUMS
 	// ================================================================
-	
-	public enum RacingState 
-	{ 
+	public enum RacingState
+	{
 		Idle,                    // No active session
 		PracticeMode,           // Free practice, no credits required
 		WaitingForCredits,      // Checking affordability for time trial
@@ -35,13 +38,12 @@ namespace BarBox.Games.Racing
 		GameOverDeciding,      // Showing results, awaiting user choice (input locked)
 		HighScoreDisplay,      // Viewing high scores (input locked)
 		TrackLoading,          // Loading new track (input locked)
-		Finished               // Race completed (legacy state for compatibility)
+		Finished, // Race completed (legacy state for compatibility)
 	}
 
 	// ================================================================
 	// CONSTANTS
 	// ================================================================
-
 	private const int COUNTDOWN_START_NUMBER = 4;
 	private const float COUNTDOWN_INTERVAL_SECONDS = 1.0f;
 
@@ -58,7 +60,7 @@ namespace BarBox.Games.Racing
 	private float _countdownTime = 0.0f;
 	private int _countdownNumber = 0;
 	private int _targetLaps = 3;
-	
+
 	// Lap and timing tracking per player
 	private Dictionary<string, int> _playerCurrentLap = new();
 	private Dictionary<string, List<float>> _playerLapTimes = new();
@@ -74,20 +76,21 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	// PUBLIC PROPERTIES
 	// ================================================================
-
 	public RacingState CurrentRacingState => _racingState;
+
 	public bool IsInCountdown => _inCountdown;
+
 	public int CountdownNumber => _countdownNumber;
-	public int TargetLaps 
-	{ 
-		get => _targetLaps; 
-		set => _targetLaps = value; 
+
+	public int TargetLaps
+	{
+		get => _targetLaps;
+		set => _targetLaps = value;
 	}
 
 	// ================================================================
 	// COUNTDOWN SYSTEM
 	// ================================================================
-
 	public void StartCountdown(float countdownDuration = 4.0f)
 	{
 		_inCountdown = true;
@@ -102,12 +105,15 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public bool UpdateCountdown(float delta, float countdownDuration = 4.0f)
 	{
-		if (!_inCountdown) return false;
+		if (!_inCountdown)
+		{
+			return false;
+		}
 
 		_countdownTime += delta;
 		int newCountdownNumber = COUNTDOWN_START_NUMBER - (int)(_countdownTime / COUNTDOWN_INTERVAL_SECONDS);
 
-		bool numberChanged = (newCountdownNumber != _countdownNumber);
+		bool numberChanged = newCountdownNumber != _countdownNumber;
 		if (numberChanged)
 		{
 			_countdownNumber = newCountdownNumber;
@@ -132,7 +138,6 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	// LAP MANAGEMENT
 	// ================================================================
-
 	public void StartPlayerLap(string playerId)
 	{
 		_playerCurrentLap.TryAdd(playerId, 0);
@@ -146,14 +151,16 @@ namespace BarBox.Games.Racing
 	public void CompletePlayerLap(string playerId, float lapTime)
 	{
 		if (!_playerCurrentLap.TryGetValue(playerId, out int lapNumber))
+		{
 			return;
+		}
 
 		_playerLapTimes.TryAdd(playerId, []);
 		_playerLapTimes[playerId].Add(lapTime);
 
 		// Update best lap time
 		if (!_playerBestLapTime.TryGetValue(playerId, out float value) || lapTime < value)
-		{ 
+		{
 			value = lapTime;
 			_playerBestLapTime[playerId] = value;
 		}
@@ -163,16 +170,20 @@ namespace BarBox.Games.Racing
 
 	public void CompletePlayerRace(string playerId, List<BasePlayer> allPlayers = null)
 	{
-		if (!_playerLapTimes.TryGetValue(playerId, out var time)) 
+		if (!_playerLapTimes.TryGetValue(playerId, out var time))
+		{
 			return;
-		
+		}
+
 		float totalTime = time.Sum();
-		
+
 		EmitSignal(SignalName.RaceCompleted, playerId, totalTime);
-		
+
 		// If all players finished, end the race
 		if (allPlayers == null)
+		{
 			return;
+		}
 
 		bool allPlayersFinished = true;
 		foreach (var player in allPlayers)
@@ -183,7 +194,7 @@ namespace BarBox.Games.Racing
 				break;
 			}
 		}
-			
+
 		if (allPlayersFinished)
 		{
 			_racingState = RacingState.Finished;
@@ -228,7 +239,6 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	// RACE STATE MANAGEMENT
 	// ================================================================
-
 	public void SetGameMode(RacingMode mode)
 	{
 		_currentGameMode = mode;
@@ -293,7 +303,7 @@ namespace BarBox.Games.Racing
 			RacingState.HighScoreDisplay => false,
 			RacingState.RacePaused => false,
 			RacingState.CrossingFinish => false,
-			_ => true
+			_ => true,
 		};
 	}
 
@@ -318,12 +328,16 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	// DATA GETTERS
 	// ================================================================
-
 	public int GetPlayerCurrentLap(string playerId) => string.IsNullOrEmpty(playerId) ? 0 : _playerCurrentLap.GetValueOrDefault(playerId, 0);
+
 	public float GetPlayerCurrentLapTime(string playerId) => string.IsNullOrEmpty(playerId) ? 0.0f : _playerCurrentLapTime.GetValueOrDefault(playerId, 0.0f);
+
 	public float GetPlayerBestLapTime(string playerId) => string.IsNullOrEmpty(playerId) ? float.MaxValue : _playerBestLapTime.GetValueOrDefault(playerId, float.MaxValue);
+
 	public float GetPlayerGapTime(string playerId) => string.IsNullOrEmpty(playerId) ? 0.0f : _playerGapTime.GetValueOrDefault(playerId, 0.0f);
+
 	public List<float> GetPlayerLapTimes(string playerId) => string.IsNullOrEmpty(playerId) ? EMPTY_LAP_TIMES : _playerLapTimes.GetValueOrDefault(playerId, EMPTY_LAP_TIMES);
+
 	public List<CheckpointTime> GetPlayerCheckpointTimes(string playerId) => string.IsNullOrEmpty(playerId) ? EMPTY_CHECKPOINTS : _playerCheckpointTimes.GetValueOrDefault(playerId, EMPTY_CHECKPOINTS);
 
 	/// <summary>
@@ -331,7 +345,10 @@ namespace BarBox.Games.Racing
 	/// </summary>
 	public float GetPlayerTotalTime(string playerId)
 	{
-		if (string.IsNullOrEmpty(playerId)) return 0.0f;
+		if (string.IsNullOrEmpty(playerId))
+		{
+			return 0.0f;
+		}
 
 		var lapTimes = GetPlayerLapTimes(playerId);
 		var currentLapTime = GetPlayerCurrentLapTime(playerId);
@@ -350,5 +367,4 @@ namespace BarBox.Games.Racing
 		var lapTimes = GetPlayerLapTimes(playerId);
 		return lapTimes.Sum();
 	}
-}
 }

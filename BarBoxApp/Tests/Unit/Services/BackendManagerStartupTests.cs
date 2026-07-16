@@ -1,7 +1,7 @@
 using System.Threading.Tasks;
+using BarBox.Tests.Fixtures;
 using Chickensoft.GoDotTest;
 using Godot;
-using BarBox.Tests.Fixtures;
 using Shouldly;
 
 namespace BarBox.Tests.Unit.Services;
@@ -17,14 +17,15 @@ public class BackendManagerStartupTests : BackendTestBase
 {
 	private BackendManager _backendManager;
 
-	public BackendManagerStartupTests(Node testScene) : base(testScene)
+	public BackendManagerStartupTests(Node testScene)
+		: base(testScene)
 	{
 	}
 
 	[Setup]
 	public void SetupStartupTests()
 	{
-		base.SetupTestIdentifiers();
+		SetupTestIdentifiers();
 		_backendManager = GetBackendManager();
 	}
 
@@ -52,7 +53,8 @@ public class BackendManagerStartupTests : BackendTestBase
 		TestHelpers.LogTestInfo($"Backend startup check took {elapsedSeconds:F2} seconds");
 		TestHelpers.LogTestInfo($"Backend running state: {isRunning}");
 
-		elapsedSeconds.ShouldBeLessThan(15.0f,
+		elapsedSeconds.ShouldBeLessThan(
+			15.0f,
 			$"Backend startup check should complete within 15 seconds, took {elapsedSeconds:F2}s - indicates blocking behavior");
 
 		TestHelpers.LogTestInfo("✓ Startup check completed in reasonable time");
@@ -172,7 +174,7 @@ public class BackendManagerStartupTests : BackendTestBase
 		TestHelpers.LogTestInfo("  4. Status.Requesting → HTTP request sent");
 		TestHelpers.LogTestInfo("  5. Status.Body → Response received");
 
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("Current implementation checks:");
 		TestHelpers.LogTestInfo("  ✓ Status.Resolving (line 271)");
 		TestHelpers.LogTestInfo("  ✓ Status.Connecting (line 272)");
@@ -180,11 +182,11 @@ public class BackendManagerStartupTests : BackendTestBase
 		TestHelpers.LogTestInfo("  ✓ Status.Body (line 296)");
 		TestHelpers.LogTestInfo("  ✓ Error states (lines 310-312)");
 
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("⚠️  POTENTIAL BUG: Status.Requesting not explicitly checked");
 		TestHelpers.LogTestInfo("If backend is slow to respond, might timeout during Requesting state");
 
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("Recommended improvement:");
 		TestHelpers.LogTestInfo("Add explicit check for Status.Requesting in response loop");
 		TestHelpers.LogTestInfo("This ensures we continue polling during legitimate slow responses");
@@ -204,19 +206,19 @@ public class BackendManagerStartupTests : BackendTestBase
 		TestHelpers.LogTestInfo("  HEALTH_CHECK_TIMEOUT_SECONDS: 5.0f (line 42)");
 		TestHelpers.LogTestInfo("  STARTUP_TIMEOUT: 10.0f (line 224)");
 
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("Timeout analysis:");
 		TestHelpers.LogTestInfo("  ✓ CONNECTION_TIMEOUT: 5s is reasonable for TCP connection");
 		TestHelpers.LogTestInfo("  ✓ HEALTH_CHECK_TIMEOUT: 5s is reasonable for /alive endpoint");
 		TestHelpers.LogTestInfo("  ❌ STARTUP_TIMEOUT: 10s is TOO SHORT for first run");
 
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("Real-world startup times:");
 		TestHelpers.LogTestInfo("  - Backend already running: <1s (just health check)");
 		TestHelpers.LogTestInfo("  - First run with uv install: 10-15s (downloads dependencies)");
 		TestHelpers.LogTestInfo("  - Subsequent runs: 2-5s (FastAPI initialization)");
 
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("✓ RECOMMENDATION: Increase STARTUP_TIMEOUT to 30.0f");
 		TestHelpers.LogTestInfo("This accommodates first-run dependency installation");
 		TestHelpers.LogTestInfo("while still catching actual failures reasonably quickly");
@@ -230,35 +232,35 @@ public class BackendManagerStartupTests : BackendTestBase
 	public void ProductionFailureScenario_DocumentedBehavior()
 	{
 		TestHelpers.LogTestInfo("Production Failure Scenario (from logs):");
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 
 		TestHelpers.LogTestInfo("1. Backend Manager starts backend:");
 		TestHelpers.LogTestInfo("   [BackendManager] Starting backend via: .../scripts/dev.sh");
 		TestHelpers.LogTestInfo("   [BackendManager] Backend process started with PID: 80985");
 		TestHelpers.LogTestInfo("   [BackendManager] Waiting for backend to start...");
 
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("2. Health check polls for 10 seconds:");
 		TestHelpers.LogTestInfo("   Polls every 0.5s = 20 attempts");
 		TestHelpers.LogTestInfo("   Each poll calls IsBackendHealthyAsync()");
 
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("3. After 10 seconds, timeout occurs:");
 		TestHelpers.LogTestInfo("   [BackendManager] ERROR: Backend failed to become healthy within 10 seconds");
 
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("4. But backend actually started successfully!");
 		TestHelpers.LogTestInfo("   FastAPI logs show server started at http://127.0.0.1:8000");
 		TestHelpers.LogTestInfo("   Backend took ~12-15 seconds to fully initialize");
 
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("Root Cause:");
 		TestHelpers.LogTestInfo("  STARTUP_TIMEOUT of 10 seconds is insufficient for:");
 		TestHelpers.LogTestInfo("  - First-run uv dependency installation");
 		TestHelpers.LogTestInfo("  - FastAPI auto-reload initialization");
 		TestHelpers.LogTestInfo("  - Python module loading");
 
-		TestHelpers.LogTestInfo("");
+		TestHelpers.LogTestInfo(string.Empty);
 		TestHelpers.LogTestInfo("Fix Applied:");
 		TestHelpers.LogTestInfo("  ✓ Increase STARTUP_TIMEOUT from 10.0f to 30.0f");
 		TestHelpers.LogTestInfo("  ✓ Improve state handling in IsBackendHealthyAsync()");

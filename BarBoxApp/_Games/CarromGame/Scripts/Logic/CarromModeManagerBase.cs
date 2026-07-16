@@ -1,6 +1,6 @@
-using Godot;
 using System.Collections.Generic;
 using System.Linq;
+using Godot;
 
 namespace BarBox.Games.Carrom;
 
@@ -14,14 +14,15 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	// ================================================================
 	// SHARED SIGNALS (mode managers can add their own)
 	// ================================================================
-	
-	[Signal] public delegate void ModeSetupCompleteEventHandler();
-	[Signal] public delegate void ModeResetRequestedEventHandler();
+	[Signal]
+	public delegate void ModeSetupCompleteEventHandler();
+
+	[Signal]
+	public delegate void ModeResetRequestedEventHandler();
 
 	// ================================================================
 	// SHARED DEPENDENCIES
 	// ================================================================
-	
 	protected CarromBoard _board;
 	protected CarromInputController _inputController;
 	protected CarromPhysicsConfig _physicsConfig;
@@ -30,72 +31,77 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	// ================================================================
 	// SHARED STATE
 	// ================================================================
-	
 	protected CarromPiece _striker;
 	protected bool _isActive = false;
-	
+
 	// Settlement state management is now handled entirely by GameStateManager
 	// Mode managers no longer control settlement timing or concurrency
-	
+
 	// Memory management tracking
 	private List<Timer> _activeTimers = [];
 	private bool _isDisposed = false;
-	
+
 	// ================================================================
 	// ABSTRACT METHODS (must be implemented by subclasses)
 	// ================================================================
-	
+
 	/// <summary>
 	/// Create and position pieces specific to this mode
 	/// </summary>
 	protected abstract void CreateModeSpecificPieces();
-	
+
 	/// <summary>
 	/// Get all pieces managed by this mode (excluding striker)
 	/// </summary>
 	protected abstract List<CarromPiece> GetManagedPieces();
-	
+
 	/// <summary>
 	/// Clear all mode-specific pieces
 	/// </summary>
 	protected abstract void ClearModeSpecificPieces();
-	
+
 	/// <summary>
 	/// Handle mode-specific settlement behavior
 	/// </summary>
 	protected abstract void ExecuteModeSpecificSettlement();
-	
+
 	/// <summary>
 	/// Check if win condition is met for the given player
 	/// </summary>
 	public abstract bool CheckWinCondition(string playerId);
-	
+
 	/// <summary>
 	/// Determine if current turn should continue
 	/// </summary>
 	public abstract bool ShouldContinueTurn(string playerId);
-	
+
 	// ================================================================
 	// VIRTUAL METHODS (default implementations that can be overridden)
 	// ================================================================
-	
+
 	/// <summary>
 	/// Handle piece being pocketed (default: trigger settlement check)
 	/// </summary>
 	public virtual void OnPiecePocketed(CarromPiece piece)
 	{
-		if (!ValidatePieceAndPhase(piece, "Piece pocketed")) return;
-		
+		if (!ValidatePieceAndPhase(piece, "Piece pocketed"))
+		{
+			return;
+		}
+
 		// Subclasses can override for mode-specific pocketing behavior
 		HandlePiecePocketed(piece);
 	}
-	
+
 	/// <summary>
 	/// Position striker at baseline with collision detection to prevent overlapping with other pieces
 	/// </summary>
 	protected virtual void PositionStrikerAtBaseline()
 	{
-		if (!IsStrikerValid()) return;
+		if (!IsStrikerValid())
+		{
+			return;
+		}
 
 		// Use shared collision detection logic
 		Vector2 validPosition = FindValidStrikerBaselinePosition();
@@ -143,7 +149,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		GD.PrintErr($"[{GetType().Name}] Could not find valid striker position, using baseline center");
 		return baselinePosition;
 	}
-	
+
 	/// <summary>
 	/// Ensure striker is restored from pocketed state with comprehensive validation and retry logic
 	/// Now includes collision detection to prevent overlapping with other pieces
@@ -174,7 +180,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			AttemptFallbackRestoration(targetPosition);
 		}
 	}
-	
+
 	/// <summary>
 	/// Calculate a valid baseline position for striker restoration with collision detection
 	/// Uses shared collision detection logic from FindValidStrikerBaselinePosition()
@@ -184,7 +190,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		// Delegate to shared collision detection logic
 		return FindValidStrikerBaselinePosition();
 	}
-	
+
 	/// <summary>
 	/// Validate that striker restoration was successful
 	/// </summary>
@@ -194,19 +200,19 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		{
 			return false;
 		}
-		
+
 		// Check visibility was restored
 		if (!_striker.Visible)
 		{
 			return false;
 		}
-		
+
 		// Check freeze state was cleared
 		if (_striker.Freeze)
 		{
 			return false;
 		}
-		
+
 		// Check position is reasonable (within tolerance)
 		float positionTolerance = 50.0f; // Allow 50 pixel tolerance
 		float actualDistance = _striker.GlobalPosition.DistanceTo(expectedPosition);
@@ -214,10 +220,10 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		{
 			return false;
 		}
-		
+
 		return true;
 	}
-	
+
 	/// <summary>
 	/// Attempt fallback restoration if initial restoration failed
 	/// </summary>
@@ -225,7 +231,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	{
 		// Attempt 1: Try basic Reset() without position
 		_striker.Reset();
-		
+
 		// Attempt 2: Manually set properties
 		_striker.Visible = true;
 		_striker.Freeze = false;
@@ -233,7 +239,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		_striker.LinearVelocity = Vector2.Zero;
 		_striker.AngularVelocity = 0.0f;
 	}
-	
+
 	/// <summary>
 	/// Validate piece operations (can be overridden for mode-specific validation)
 	/// </summary>
@@ -243,9 +249,8 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		{
 			return false;
 		}
-		
+
 		// Admin operations are always allowed in the new architecture
-		
 		return true;
 	}
 
@@ -260,7 +265,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	// ================================================================
 	// CONCRETE METHODS (shared implementations - ICarromModeManager)
 	// ================================================================
-	
+
 	/// <summary>
 	/// Initialize the mode manager with required dependencies
 	/// </summary>
@@ -270,10 +275,9 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		_inputController = inputController;
 		_physicsConfig = physicsConfig;
 		_isActive = true;
-		
+
 		ConfigurePhysicsScaling();
 	}
-	
 
 	/// <summary>
 	/// Set the piece factory for centralized piece creation
@@ -282,14 +286,17 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	{
 		_pieceFactory = pieceFactory;
 	}
-	
+
 	/// <summary>
 	/// Template method for mode setup
 	/// </summary>
 	public void SetupMode()
 	{
-		if (!ValidateSetupPreconditions()) return;
-		
+		if (!ValidateSetupPreconditions())
+		{
+			return;
+		}
+
 		ClearAllPieces();
 		CreateStriker();
 		CreateModeSpecificPieces();
@@ -309,7 +316,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		// State machine controls all timing and transitions
 		ExecuteModeSpecificSettlement();
 	}
-	
+
 	/// <summary>
 	/// Get the current striker piece
 	/// </summary>
@@ -317,32 +324,36 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	{
 		return _striker;
 	}
-	
+
 	/// <summary>
 	/// Check if all pieces have stopped moving - simplified without settlement context
 	/// </summary>
 	public bool AreAllPiecesStopped()
 	{
 		// Simplified settlement detection without complex context tracking
-		
 		var allPieces = GetManagedPieces();
 		var movingPieces = new List<string>();
 		var ignoredPieces = new List<string>();
 		int totalVisible = 0;
 		int totalStopped = 0;
-		
+
 		// Check managed pieces with detailed tracking
 		foreach (var piece in allPieces)
 		{
-			if (!GodotObject.IsInstanceValid(piece)) continue;
-			
+			if (!GodotObject.IsInstanceValid(piece))
+			{
+				continue;
+			}
+
 			// Skip invisible pieces (pocketed)
-			if (!piece.Visible) continue;
-			
+			if (!piece.Visible)
+			{
+				continue;
+			}
+
 			totalVisible++;
-			
+
 			// Simplified: no complex context checking needed with brute force approach
-			
 			if (!piece.IsStopped())
 			{
 				var velocity = piece.LinearVelocity.Length();
@@ -354,7 +365,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 				totalStopped++;
 			}
 		}
-		
+
 		// Check striker with context awareness
 		bool strikerStopped = IsStrikerStoppedWithContext();
 		if (!strikerStopped && IsStrikerValid())
@@ -363,29 +374,32 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			var angularVel = Mathf.Abs(_striker.AngularVelocity);
 			movingPieces.Add($"Striker[v:{velocity:F2},a:{angularVel:F2}]");
 		}
-		
+
 		bool allStopped = movingPieces.Count == 0 && strikerStopped;
-		
+
 		return allStopped;
 	}
-	
+
 	/// <summary>
 	/// Check if striker has stopped with settlement context awareness
 	/// </summary>
 	private bool IsStrikerStoppedWithContext()
 	{
-		if (!IsStrikerValid()) 
+		if (!IsStrikerValid())
+		{
 			return true;
-		
+		}
+
 		// Pocketed strikers (invisible) are considered stopped
 		if (!_striker.Visible)
+		{
 			return true;
-		
+		}
+
 		// Simplified: no complex context checking needed
-			
 		return _striker.IsStopped();
 	}
-	
+
 	/// <summary>
 	/// Get all active pieces in this mode
 	/// </summary>
@@ -396,9 +410,10 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		{
 			allPieces.Add(_striker);
 		}
+
 		return allPieces;
 	}
-	
+
 	/// <summary>
 	/// Clean up mode resources
 	/// </summary>
@@ -409,12 +424,12 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		ClearModeSpecificState();
 		_isActive = false;
 	}
-	
+
 	/// <summary>
 	/// Check if the mode is currently active/initialized
 	/// </summary>
 	public bool IsActive => _isActive;
-	
+
 	/// <summary>
 	/// Mark a piece as recently restored - no longer needed with brute force settlement
 	/// </summary>
@@ -426,7 +441,6 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	// ================================================================
 	// PRIVATE HELPER METHODS
 	// ================================================================
-	
 	private void ConfigurePhysicsScaling()
 	{
 		if (_board != null && _physicsConfig != null)
@@ -434,33 +448,32 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			_physicsConfig.SetBoardScaling(
 				_board.ScaleFactor,
 				_board.PieceRadius,
-				_board.OfficialStrikerRadius
-			);
+				_board.OfficialStrikerRadius);
 		}
 	}
-	
+
 	private bool ValidateSetupPreconditions()
 	{
 		return _board != null;
 	}
-	
+
 	private void CreateStriker()
 	{
 		if (_pieceFactory == null)
 		{
 			return;
 		}
-		
+
 		_striker = _pieceFactory.CreatePiece(PieceType.Striker, Vector2.Zero);
 		_inputController?.SetStriker(_striker);
 	}
-	
+
 	private void ClearAllPieces()
 	{
 		ClearModeSpecificPieces();
 		ClearStriker();
 	}
-	
+
 	private void ClearStriker()
 	{
 		if (_striker != null && GodotObject.IsInstanceValid(_striker))
@@ -469,24 +482,28 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 			_striker = null;
 		}
 	}
-	
+
 	private bool IsStrikerValid()
 	{
 		return _striker != null && GodotObject.IsInstanceValid(_striker);
 	}
-	
+
 	private bool IsStrikerStopped()
 	{
-		if (!IsStrikerValid()) 
+		if (!IsStrikerValid())
+		{
 			return true;
-		
+		}
+
 		// Pocketed strikers (invisible) are considered stopped
 		if (!_striker.Visible)
+		{
 			return true;
-			
+		}
+
 		return _striker.IsStopped();
 	}
-	
+
 	/// <summary>
 	/// Input state is now automatically managed by GameStateManager
 	/// No manual input control needed - state machine handles input availability
@@ -495,7 +512,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	{
 		// Input is automatically disabled during settlement by state machine
 	}
-	
+
 	/// <summary>
 	/// Input state is now automatically managed by GameStateManager
 	/// No manual input control needed - state machine handles input availability
@@ -504,34 +521,38 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 	{
 		// Input is automatically enabled when ready by state machine
 	}
-	
+
 	private void CancelPendingOperations()
 	{
 		// No longer need timer-based operations
 		CancelModeSpecificOperations();
 	}
-	
+
 	/// <summary>
 	/// Finalize setup after piece creation (can be overridden)
 	/// </summary>
-	protected virtual void FinalizeSetup() { }
-	
+	protected virtual void FinalizeSetup()
+	{
+	}
+
 	/// <summary>
 	/// Clear mode-specific state during cleanup (can be overridden)
 	/// </summary>
-	protected virtual void ClearModeSpecificState() { }
-	
+	protected virtual void ClearModeSpecificState()
+	{
+	}
+
 	/// <summary>
 	/// Cancel mode-specific pending operations (can be overridden)
 	/// </summary>
-	protected virtual void CancelModeSpecificOperations() { }
-	
+	protected virtual void CancelModeSpecificOperations()
+	{
+	}
+
 	// ================================================================
 	// SETTLEMENT VALIDATION AND DEBUGGING
 	// ================================================================
-	
-	
-	
+
 	/// <summary>
 	/// Validate that settlement operations completed successfully - SIMPLIFIED
 	/// CRITICAL FIX: Removed complex validation that was causing race conditions
@@ -543,19 +564,18 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		{
 			return false;
 		}
-		
+
 		// Basic visibility check
 		if (!_striker.Visible)
 		{
 			return false;
 		}
-		
+
 		// REMOVED: Complex piece-by-piece validation that was causing timing issues
 		// The state machine's AreAllPiecesStopped() method handles this more reliably
-		
 		return true;
 	}
-	
+
 	/// <summary>
 	/// Settlement retry removed - was causing race conditions
 	/// </summary>
@@ -564,9 +584,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		// REMOVED: Complex retry logic was causing race conditions and game locks
 		// State machine now handles settlement detection more reliably
 	}
-	
-	
-	
+
 	/// <summary>
 	/// Check if striker restoration caused pieces to start moving again - SIMPLIFIED
 	/// CRITICAL FIX: Removed complex movement detection that was causing race conditions
@@ -577,7 +595,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		// This complex per-piece movement checking was causing race conditions
 		return false; // Always return false to eliminate post-restoration settlement delays
 	}
-	
+
 	/// <summary>
 	/// Post-restoration settlement scheduling removed to eliminate race conditions
 	/// </summary>
@@ -587,50 +605,53 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		// The state machine now handles settlement detection more reliably without timers
 		GD.Print($"[{GetType().Name}] Settlement scheduled - state machine will handle transition");
 	}
-	
+
 	/// <summary>
 	/// Force phase transition to break out of settlement loops
 	/// </summary>
 	private void ForcePhaseTransitionToBreakLoop()
 	{
 		// Clear all settlement state (no longer needed with state machine control)
-		
+
 		// Force striker restoration if needed
 		if (IsStrikerValid() && (!_striker.Visible || _striker.Freeze))
 		{
 			EnsureStrikerRestored();
 		}
-		
+
 		// State machine will handle transition automatically when pieces settle
 	}
-	
-	
+
 	/// <summary>
 	/// Create a timer that automatically cleans itself up after execution
 	/// CRITICAL FIX: Track timers to prevent orphaning
 	/// </summary>
 	private Timer CreateAutoCleanupTimer(float waitTime, System.Action onTimeout)
 	{
-		if (_isDisposed) return null;
-		
+		if (_isDisposed)
+		{
+			return null;
+		}
+
 		var timer = new Timer();
 		timer.WaitTime = waitTime;
 		timer.OneShot = true;
-		timer.Timeout += () => {
+		timer.Timeout += () =>
+		{
 			// Remove from tracking before cleanup
 			_activeTimers.Remove(timer);
-			
+
 			onTimeout?.Invoke();
 			timer.QueueFree(); // Ensure timer is cleaned up
 		};
-		
+
 		// Track timer to prevent orphaning
 		_activeTimers.Add(timer);
 		AddChild(timer);
 		timer.Start();
 		return timer;
 	}
-	
+
 	/// <summary>
 	/// Create a piece using the centralized piece factory
 	/// </summary>
@@ -640,41 +661,45 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 		{
 			return null;
 		}
-		
+
 		// Use centralized piece factory which applies physics parameters
 		return _pieceFactory.CreatePiece(type, position);
 	}
-	
+
 	/// <summary>
 	/// Comprehensive cleanup to prevent memory leaks
 	/// CRITICAL FIX: Clean up all timers and references
 	/// </summary>
 	public override void _ExitTree()
 	{
-		if (_isDisposed) return;
-		
+		if (_isDisposed)
+		{
+			return;
+		}
+
 		// Clean up all active timers
 		CleanupAllTimers();
-		
+
 		// Clear all references to prevent memory leaks
 		_board = null;
 		_inputController = null;
 		_physicsConfig = null;
 		_pieceFactory = null;
 		_striker = null;
-		
+
 		_isDisposed = true;
 		GD.Print($"[{GetType().Name}] Mode manager cleanup completed");
-		
+
 		base._ExitTree();
 	}
-	
+
 	/// <summary>
 	/// Clean up all tracked timers to prevent memory leaks
 	/// </summary>
 	private void CleanupAllTimers()
 	{
-		foreach (var timer in _activeTimers.ToList()) // Use ToList() to avoid modification during iteration
+		// ToList() avoids modification during iteration
+		foreach (var timer in _activeTimers.ToList())
 		{
 			if (GodotObject.IsInstanceValid(timer))
 			{
@@ -682,6 +707,7 @@ public abstract partial class CarromModeManagerBase : Node2D, ICarromModeManager
 				timer.QueueFree();
 			}
 		}
+
 		_activeTimers.Clear();
 		GD.Print($"[{GetType().Name}] Cleaned up {_activeTimers.Count} active timers");
 	}

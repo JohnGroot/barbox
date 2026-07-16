@@ -1,4 +1,3 @@
-using Godot;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,13 +5,18 @@ using System.Threading.Tasks;
 using BarBox.Core.Autoloads;
 using BarBox.Core.Debug;
 using BarBox.Core.Utils;
+using Godot;
 
 namespace BarBox.Games.Racing;
 
 /// <summary>
 /// Racing-specific game modes
 /// </summary>
-public enum RacingMode { Practice, TimeTrial }
+public enum RacingMode
+{
+	Practice,
+	TimeTrial,
+}
 
 /// <summary>
 /// Complete UI state for Racing Game - eliminates need for state caching
@@ -21,22 +25,33 @@ public class RacingUIState
 {
 	// Game status
 	public bool IsGamePaused { get; set; }
+
 	public bool IsInCountdown { get; set; }
+
 	public bool IsTimeTrialInProgress { get; set; } // Tracks formal race vs practice
+
 	public bool CanStartTimeTrial { get; set; }
+
 	public RacingMode GameMode { get; set; }
 
 	// Player data
 	public float CarSpeed { get; set; }
+
 	public int CurrentLap { get; set; }
+
 	public int TargetLaps { get; set; }
+
 	public float TimeDisplay { get; set; }
+
 	public string TimeLabel { get; set; }
 
 	// Arc HUD specific data
 	public float MaxSpeed { get; set; } = 1800.0f;
+
 	public float LapProgress { get; set; } = 0.0f; // 0.0 to 1.0 for current lap completion
+
 	public int CountdownNumber { get; set; } = 0; // 3, 2, 1, or 0 for GO
+
 	public float CountdownProgress { get; set; } = 0.0f; // 0.0 to 1.0 for arc animation
 
 	// Authentication
@@ -44,14 +59,19 @@ public class RacingUIState
 
 	// Game over
 	public bool ShowGameOverOverlay { get; set; }
+
 	public float FinalTime { get; set; }
+
 	public bool CanAffordReplay { get; set; }
 
 	// Tracks & Leaderboard overlay
 	public bool ShowTracksLeaderboardOverlay { get; set; }
+
 	public bool CanShowTracksLeaderboard { get; set; }
+
 	public Dictionary<string, RacingUIManager.TrackMetadata> TrackMetadata { get; set; } = new();
-	public string CurrentTrackId { get; set; } = "";
+
+	public string CurrentTrackId { get; set; } = string.Empty;
 
 	/// <summary>
 	/// Compare this state with another for equality.
@@ -59,7 +79,10 @@ public class RacingUIState
 	/// </summary>
 	public bool StateEquals(RacingUIState other)
 	{
-		if (other == null) return false;
+		if (other == null)
+		{
+			return false;
+		}
 
 		// Compare all fields for complete state equality
 		return IsGamePaused == other.IsGamePaused
@@ -83,7 +106,8 @@ public class RacingUIState
 			&& ShowTracksLeaderboardOverlay == other.ShowTracksLeaderboardOverlay
 			&& CanShowTracksLeaderboard == other.CanShowTracksLeaderboard
 			&& CurrentTrackId == other.CurrentTrackId;
-			// Note: TrackMetadata dictionary is cached separately, no need to compare
+
+		// Note: TrackMetadata dictionary is cached separately, no need to compare
 	}
 }
 
@@ -100,40 +124,60 @@ public partial class RacingGame : GameController
 	// ================================================================
 
 	// Domain-specific lifecycle signals
-	[Signal] public delegate void RaceStartedEventHandler();
-	[Signal] public delegate void RaceEndedEventHandler();
-	[Signal] public delegate void RacePausedEventHandler();
-	[Signal] public delegate void RaceResumedEventHandler();
+	[Signal]
+	public delegate void RaceStartedEventHandler();
+
+	[Signal]
+	public delegate void RaceEndedEventHandler();
+
+	[Signal]
+	public delegate void RacePausedEventHandler();
+
+	[Signal]
+	public delegate void RaceResumedEventHandler();
 
 	// Game event signals
-	[Signal] public delegate void LapCompletedEventHandler(string playerId, int lapNumber, float lapTime);
-	[Signal] public delegate void RaceCompletedEventHandler(string playerId, float totalTime);
-	[Signal] public delegate void CheckpointCrossedEventHandler(string playerId, int checkpointIndex, float gapTime);
+	[Signal]
+	public delegate void LapCompletedEventHandler(string playerId, int lapNumber, float lapTime);
+
+	[Signal]
+	public delegate void RaceCompletedEventHandler(string playerId, float totalTime);
+
+	[Signal]
+	public delegate void CheckpointCrossedEventHandler(string playerId, int checkpointIndex, float gapTime);
 
 	// ================================================================
 	// EXPORT PROPERTIES - RACING SETTINGS
 	// ================================================================
-	 
 	[ExportCategory("Racing Settings")]
-	[Export] public int TargetLaps 
-	{ 
-		get => _targetLaps; 
-		set 
-		{ 
-			_targetLaps = value; 
-			if (_timingSystem != null) 
+	[Export]
+	public int TargetLaps
+	{
+		get => _targetLaps;
+		set
+		{
+			_targetLaps = value;
+			if (_timingSystem != null)
 			{
 				_timingSystem.TargetLaps = value;
 			}
-		} 
+		}
 	}
+
 	private int _targetLaps = 3;
-	[Export] public bool ShowCountdown { get; set; } = true;
-	[Export] public float CountdownDuration { get; set; } = 4.0f; // 3-2-1-GO = 4 seconds
-	[Export] public int TimeTrialCreditCost { get; set; } = 1; // Credit cost for time trial mode
+
+	[Export]
+	public bool ShowCountdown { get; set; } = true;
+
+	[Export]
+	public float CountdownDuration { get; set; } = 4.0f; // 3-2-1-GO = 4 seconds
+
+	[Export]
+	public int TimeTrialCreditCost { get; set; } = 1; // Credit cost for time trial mode
 
 	[ExportCategory("Track Settings")]
-	[Export] public Godot.Collections.Array<PackedScene> TrackScenes { get; set; } = new Godot.Collections.Array<PackedScene>();
+	[Export]
+	public Godot.Collections.Array<PackedScene> TrackScenes { get; set; } = new Godot.Collections.Array<PackedScene>();
 
 	/// <summary>
 	/// Override to only prevent logout during active time trial races, not during practice mode
@@ -144,7 +188,9 @@ public partial class RacingGame : GameController
 		{
 			// Always allow logout in practice mode
 			if (GetRacingMode() == RacingMode.Practice)
+			{
 				return true;
+			}
 
 			// Check if a time trial is actively in progress (not just idle/menu states)
 			var currentRacingState = _timingSystem?.CurrentRacingState ?? RacingTimingSystem.RacingState.Idle;
@@ -161,7 +207,7 @@ public partial class RacingGame : GameController
 	// ================================================================
 	// CONSTANTS
 	// ================================================================
-	
+
 	// Total height reserved for TopMenuBar (100px) + ContextButtonBar (50px)
 	private const float TOP_MENU_HEIGHT = 150.0f;
 
@@ -202,7 +248,7 @@ public partial class RacingGame : GameController
 	// ================================================================
 	// PRIVATE FIELDS - TRACK AND WORLD SYSTEMS
 	// ================================================================
-	
+
 	// Track system
 	private RacingTrackDefinition _trackDefinition;
 	private Curve2D _trackCurve;
@@ -210,7 +256,7 @@ public partial class RacingGame : GameController
 	private bool[] _checkpointsCrossed;
 	private int _nextCheckpointIndex = 0;
 	private int _currentTrackIndex = 0;
-	
+
 	// Track ID management for stable data storage
 	private Dictionary<int, string> _trackIndexToIdMap = new();
 	private string _currentTrackId = "unknown_track";
@@ -239,10 +285,10 @@ public partial class RacingGame : GameController
 	// ================================================================
 	// PRIVATE Fields - UI SYSTEM
 	// ================================================================
-	
+
 	// UI manager for all racing game UI elements
 	private RacingUIManager _uiManager;
-	
+
 	// Cached service references
 	private SessionManager _sessionManager;
 	private CreditService _creditService;
@@ -250,10 +296,10 @@ public partial class RacingGame : GameController
 	// ================================================================
 	// PRIVATE FIELDS - VISUAL FEEDBACK SYSTEM
 	// ================================================================
-	
+
 	// Visual feedback renderer for tire trails, input lines, and mouse indicators
 	private RacingVisualFeedbackRenderer _visualRenderer;
-	
+
 	// Direct input handling (restored for arc positioning fix)
 	private Vector2 _directTargetPosition = Vector2.Zero;
 	private bool _hasDirectInput = false;
@@ -379,7 +425,7 @@ public partial class RacingGame : GameController
 		_timingSystem.LapCompleted += OnTimingSystemLapCompleted;
 		_timingSystem.RaceCompleted += OnTimingSystemRaceCompleted;
 		_timingSystem.CheckpointCrossed += OnTimingSystemCheckpointCrossed;
-		
+
 		// RacingTimingSystem initialized successfully
 	}
 
@@ -421,7 +467,7 @@ public partial class RacingGame : GameController
 		AddChild(_cameraController);
 
 		_cameraController.Initialize();
-	
+
 		// RacingCameraController initialized
 	}
 
@@ -440,7 +486,7 @@ public partial class RacingGame : GameController
 		_racingCar.DecelerationRate = 600.0f;
 		_racingCar.RotationLerpSpeed = 4.0f;
 		_racingCar.CarSize = new Vector2(100, 180);
-		
+
 		AddChild(_racingCar);
 
 		// Initialize with validated dependencies and phone number as player ID
@@ -452,10 +498,10 @@ public partial class RacingGame : GameController
 
 		// Add player to game controller
 		_playerMgmt.AddPlayer(_racingCar);
-		
+
 		// Initialize visual feedback renderer
 		SetupVisualRenderer();
-		
+
 		// RacingCarController initialized successfully
 	}
 
@@ -490,29 +536,29 @@ public partial class RacingGame : GameController
 	// ================================================================
 	// DIRECT INPUT HANDLING (Arc Positioning Fix)
 	// ================================================================
-	
+
 	/// <summary>
 	/// Handle direct input polling for accurate arc positioning
 	/// </summary>
 	private void HandleDirectInput()
 	{
 		// Check if input should be enabled based on racing state
-		if (!IsRaceActive() || IsRacePaused() || !IsInputEnabled()) 
+		if (!IsRaceActive() || IsRacePaused() || !IsInputEnabled())
 		{
 			_hasDirectInput = false;
 			return;
 		}
-		
+
 		var inputManager = Platform.Input;
-		if (inputManager == null) 
+		if (inputManager == null)
 		{
 			_hasDirectInput = false;
 			return;
 		}
-		
+
 		// Get direct input state from InputManager
 		_hasDirectInput = inputManager.IsTouchActive();
-		
+
 		if (_hasDirectInput)
 		{
 			// Get raw screen position from InputManager - direct 1:1 mapping like original
@@ -528,7 +574,6 @@ public partial class RacingGame : GameController
 	// ================================================================
 	// CORE GAME LOOP
 	// ================================================================
-
 	public override void _Process(double delta)
 	{
 		// Drain any lap-boundary saves queued last frame - keeps the async
@@ -574,6 +619,7 @@ public partial class RacingGame : GameController
 				}
 			}
 		}
+
 		_zoneManager.UpdateFrictionlessEffects((float)delta);
 		_visualRenderer.ShouldRender = IsRaceActive() && !IsRacePaused();
 		_visualRenderer.UpdateVisualFeedback((float)delta);
@@ -666,7 +712,8 @@ public partial class RacingGame : GameController
 	protected override HelpContentData GetHelpContent()
 	{
 		return new HelpContentData("RACING HOW-TO")
-			.AddSection("🏁 BUCKLE UP 🚘",
+			.AddSection(
+				"🏁 BUCKLE UP 🚘",
 				"• Touch and drag to steer your car around the track",
 				"• The car will always move towards your finger's position",
 				"• The closer your finger is to the car the slower it will go",
@@ -674,7 +721,8 @@ public partial class RacingGame : GameController
 				"• If you go off the track you'll get Slowed Down",
 				"• Practice mode runs continuously - Time Trial races against the clock!")
 
-			.AddSection("🏎️ GAME MODES 🏎️",
+			.AddSection(
+				"🏎️ GAME MODES 🏎️",
 				"• Practice Mode - FREE continuous racing to learn tracks and improve lap times",
 				"• Time Trial - PREMIUM timed races that cost credits but save your official high scores",
 				"• Switch between tracks to explore different challenges!");
@@ -688,7 +736,9 @@ public partial class RacingGame : GameController
 	private async Task SaveGlobalHighScore(string playerId, float totalTime, float[] lapTimes, CheckpointTime[] checkpoints)
 	{
 		if (string.IsNullOrEmpty(playerId) || totalTime <= 0.0f)
+		{
 			return;
+		}
 
 		// Check RacingEventService availability
 		if (_racingEventService == null)
@@ -704,12 +754,11 @@ public partial class RacingGame : GameController
 			Date: DateTime.UtcNow,
 			TrackId: _currentTrackId,
 			PlayerId: playerId,
-			Username: "", // Backend will populate from player_id
+			Username: string.Empty, // Backend will populate from player_id
 			TotalLaps: _targetLaps,
 			TotalTime: totalTime,
 			LapTimes: lapTimes,
-			Checkpoints: checkpoints
-		);
+			Checkpoints: checkpoints);
 
 		// Retry logic with exponential backoff
 		const int MAX_RETRIES = 3;
@@ -761,7 +810,9 @@ public partial class RacingGame : GameController
 	private async Task SavePartialRaceData(string playerId, string reason)
 	{
 		if (string.IsNullOrEmpty(playerId))
+		{
 			return;
+		}
 
 		// Check RacingEventService availability
 		if (_racingEventService == null)
@@ -776,7 +827,9 @@ public partial class RacingGame : GameController
 
 		// Don't save if no progress made
 		if (lapTimes.Count == 0 && completedLaps == 0)
+		{
 			return;
+		}
 
 		try
 		{
@@ -784,9 +837,8 @@ public partial class RacingGame : GameController
 				_currentTrackId,
 				playerId,
 				completedLaps,
-				lapTimes.ToArray(),
-				reason
-			);
+				[.. lapTimes],
+				reason);
 
 			if (result.IsSuccess(out var _))
 			{
@@ -802,15 +854,18 @@ public partial class RacingGame : GameController
 			GD.PrintErr($"[RacingGame] Exception saving partial race data: {ex.Message}");
 		}
 	}
-	
+
 	// Thread-safe logging methods for CallDeferred usage from async contexts
 	private void LogHighScoreError(string error)
 	{
 		GD.PrintErr($"[RacingGame] Failed to save race data: {error}");
 		Platform.Notifications?.Show("Your race time could not be saved.", NotificationSeverity.Error);
 	}
+
 	private void LogRaceSaved(float totalTime, string trackId) => GD.Print($"[RacingGame] Race completed - Time: {totalTime:F3}s, Track: {trackId}");
+
 	private void LogPotentialBestLap(float lapTime, string trackId) => GD.Print($"[RacingGame] Potential best lap: {lapTime:F3}s, Track: {trackId}");
+
 	private void LogAsyncError(string message) => GD.PrintErr($"[RacingGame] {message}");
 
 	/// <summary>
@@ -822,10 +877,16 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private async Task SaveBestLapTime(string playerId, float lapTime, int currentLap, CheckpointTime[] checkpoints)
 	{
-		if (string.IsNullOrEmpty(playerId) || lapTime <= 0.0f) return;
+		if (string.IsNullOrEmpty(playerId) || lapTime <= 0.0f)
+		{
+			return;
+		}
 
 		// Check RacingEventService availability
-		if (_racingEventService == null) return;
+		if (_racingEventService == null)
+		{
+			return;
+		}
 
 		// Fire-and-forget lap complete event emission
 		try
@@ -946,6 +1007,7 @@ public partial class RacingGame : GameController
 					if (sessionResult.IsFailure(out var error))
 					{
 						GD.PrintErr($"[RacingGame] WARNING: Failed to create backend session: {error.Message}");
+
 						// Continue anyway - game can work without backend session
 					}
 					else if (sessionResult.IsSuccess(out var sessionId))
@@ -1005,7 +1067,6 @@ public partial class RacingGame : GameController
 	// ================================================================
 	// RACING MECHANICS - COUNTDOWN SYSTEM
 	// ================================================================
-
 	protected virtual void StartCountdown()
 	{
 		_timingSystem.StartCountdown(CountdownDuration);
@@ -1076,7 +1137,6 @@ public partial class RacingGame : GameController
 	// ================================================================
 	// RACING MECHANICS - LAP MANAGEMENT
 	// ================================================================
-
 	public virtual void StartPlayerLap(string playerId)
 	{
 		_timingSystem.StartPlayerLap(playerId);
@@ -1151,9 +1211,11 @@ public partial class RacingGame : GameController
 	private void InitializeTrackIdMappings()
 	{
 		_trackIndexToIdMap.Clear();
-		
-		if (TrackScenes == null || TrackScenes.Count == 0) 
+
+		if (TrackScenes == null || TrackScenes.Count == 0)
+		{
 			return;
+		}
 
 		// Generate stable track IDs for all tracks
 		for (int i = 0; i < TrackScenes.Count; i++)
@@ -1176,14 +1238,18 @@ public partial class RacingGame : GameController
 		_cachedTrackMetadata = new Dictionary<string, RacingUIManager.TrackMetadata>();
 
 		if (TrackScenes == null || TrackScenes.Count == 0)
+		{
 			return;
+		}
 
 		// Build metadata cache by instantiating each scene ONCE
 		for (int i = 0; i < TrackScenes.Count; i++)
 		{
 			var trackScene = TrackScenes[i];
 			if (trackScene?.ResourcePath == null)
+			{
 				continue;
+			}
 
 			var trackId = _trackIndexToIdMap.GetValueOrDefault(i, RaceDatabase.GenerateTrackId(trackScene));
 
@@ -1203,11 +1269,13 @@ public partial class RacingGame : GameController
 						? trackDef.NumberOfLaps
 						: 3;
 				}
+
 				tempInstance.QueueFree();
 			}
 			catch (Exception ex)
 			{
 				GD.PrintErr($"[RacingGame] Failed to read track metadata for index {i}: {ex.Message}");
+
 				// Use fallback values
 			}
 
@@ -1218,7 +1286,7 @@ public partial class RacingGame : GameController
 				DefaultLaps = defaultLaps,
 				Scene = trackScene,
 				Index = i,
-				IsCurrentTrack = trackId == _currentTrackId
+				IsCurrentTrack = trackId == _currentTrackId,
 			};
 		}
 
@@ -1232,7 +1300,9 @@ public partial class RacingGame : GameController
 	private void UpdateCachedTrackMetadata()
 	{
 		if (_cachedTrackMetadata == null)
+		{
 			return;
+		}
 
 		// Only update the IsCurrentTrack flag - everything else is immutable
 		foreach (var kvp in _cachedTrackMetadata)
@@ -1264,15 +1334,17 @@ public partial class RacingGame : GameController
 			foreach (Node child in GetChildren())
 			{
 				if (child is not RacingTrackDefinition trackDef)
+				{
 					continue;
+				}
 
 				_trackDefinition = trackDef;
 				_currentTrackIndex = 0;
-				
+
 				// Generate track ID from track name for direct child tracks
 				_currentTrackId = RaceDatabase.GenerateTrackIdFromName(trackDef.TrackName);
 				_trackIndexToIdMap[0] = _currentTrackId;
-				
+
 				SetupLoadedTrack();
 				return;
 			}
@@ -1302,16 +1374,16 @@ public partial class RacingGame : GameController
 		// Load new track
 		var trackScene = TrackScenes[trackIndex];
 		var trackInstance = trackScene.Instantiate();
-		
+
 		if (trackInstance is RacingTrackDefinition trackDef)
 		{
 			_trackDefinition = trackDef;
 			AddChild(_trackDefinition);
-			
+
 			// Update current track ID
 			_currentTrackIndex = trackIndex;
 			_currentTrackId = _trackIndexToIdMap.GetValueOrDefault(trackIndex, "unknown_track");
-			
+
 			// Position track at screen center like original working implementation
 			var viewport = GetViewport();
 			if (viewport != null)
@@ -1319,9 +1391,10 @@ public partial class RacingGame : GameController
 				var screenSize = viewport.GetVisibleRect().Size;
 				Vector2 screenCenter = screenSize / 2;
 				_trackDefinition.GlobalPosition = screenCenter;
+
 				// Track positioned at screen center
 			}
-			
+
 			SetupLoadedTrack();
 		}
 		else
@@ -1337,7 +1410,9 @@ public partial class RacingGame : GameController
 	private void SetupLoadedTrack()
 	{
 		if (_trackDefinition == null)
+		{
 			return;
+		}
 
 		_trackDefinition.SetupTrack();
 		_trackCurve = _trackDefinition.GetTrackCurve();
@@ -1365,7 +1440,9 @@ public partial class RacingGame : GameController
 	private void RegisterTrackZones()
 	{
 		if (_zoneManager == null || _trackDefinition == null)
+		{
 			return;
+		}
 
 		// Clear any previously registered zones
 		_zoneManager.ClearAllZones();
@@ -1410,26 +1487,30 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void PositionCarAtStart()
 	{
-		if (_trackDefinition == null || _racingCar?.IsInitialized != true) 
+		if (_trackDefinition == null || _racingCar?.IsInitialized != true)
+		{
 			return;
+		}
 
 		var startPoint = _trackDefinition.GetStartLinePosition();
 		var startLineDirection = _trackDefinition.GetStartLineDirection();
-		
+
 		if (startPoint == Vector2.Zero)
 		{
 			var viewport = GetViewport();
 			if (viewport == null)
+			{
 				return;
+			}
 
 			var screenSize = viewport.GetVisibleRect().Size;
 			Vector2 screenCenter = screenSize / 2;
 			_racingCar.PositionCar(screenCenter);
 			return; // Early return since we positioned car at center
 		}
-		
-		var carPosition = startPoint - startLineDirection * 50;
-		var carRotation = startLineDirection.Angle() + Mathf.Pi / 2;
+
+		var carPosition = startPoint - (startLineDirection * 50);
+		var carRotation = startLineDirection.Angle() + (Mathf.Pi / 2);
 		_racingCar.PositionCar(carPosition, carRotation);
 	}
 
@@ -1453,10 +1534,16 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void InitializeCheckpointTracking()
 	{
-		if (_trackDefinition == null) return;
+		if (_trackDefinition == null)
+		{
+			return;
+		}
 
 		_checkpointTriggers = _trackDefinition.CheckpointTriggers;
-		if (_checkpointTriggers.Length == 0) return;
+		if (_checkpointTriggers.Length == 0)
+		{
+			return;
+		}
 
 		_checkpointsCrossed = new bool[_checkpointTriggers.Length];
 		_nextCheckpointIndex = 0;
@@ -1468,8 +1555,10 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void ConnectTrackSignals()
 	{
-		if (_trackDefinition == null || !IsInstanceValid(_trackDefinition)) 
+		if (_trackDefinition == null || !IsInstanceValid(_trackDefinition))
+		{
 			return;
+		}
 
 		var startLineTrigger = _trackDefinition.StartLine;
 		if (startLineTrigger != null)
@@ -1499,7 +1588,9 @@ public partial class RacingGame : GameController
 	private void DisconnectTrackSignals()
 	{
 		if (_trackDefinition == null || !IsInstanceValid(_trackDefinition))
+		{
 			return;
+		}
 
 		var startLineTrigger = _trackDefinition.StartLine;
 		if (startLineTrigger != null && IsInstanceValid(startLineTrigger))
@@ -1529,10 +1620,14 @@ public partial class RacingGame : GameController
 	private void OnStartLineTriggered(Node2D body)
 	{
 		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized)
+		{
 			return;
+		}
 
 		if (body != _racingCar.GetCarBody())
+		{
 			return;
+		}
 
 		string playerId = GetCurrentGamePlayerId();
 		if (GetRacingMode() == RacingMode.TimeTrial && GetPlayerCurrentLap(playerId) > 0)
@@ -1548,7 +1643,7 @@ public partial class RacingGame : GameController
 				return;
 			}
 		}
-		
+
 		// Reset gap timer in practice mode
 		if (GetRacingMode() == RacingMode.Practice)
 		{
@@ -1559,10 +1654,14 @@ public partial class RacingGame : GameController
 	private void OnFinishLineTriggered(Node2D body)
 	{
 		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized)
+		{
 			return;
+		}
 
 		if (body != _racingCar.GetCarBody())
+		{
 			return;
+		}
 
 		string playerId = GetCurrentGamePlayerId();
 
@@ -1575,6 +1674,7 @@ public partial class RacingGame : GameController
 			float lapTime = GetPlayerCurrentLapTime(playerId);
 			CompletePlayerLap(playerId, lapTime);
 			ResetCheckpoints();
+
 			// Do NOT duplicate lap checking here - CompletePlayerLap handles it
 		}
 		else
@@ -1582,6 +1682,7 @@ public partial class RacingGame : GameController
 			// Practice mode - always start new lap
 			OnPlayerCheckpointCrossed(playerId, -1);
 			ResetCheckpoints();
+
 			// Restore practice state
 			_timingSystem.StartPracticeMode();
 		}
@@ -1589,40 +1690,44 @@ public partial class RacingGame : GameController
 
 	private void OnCheckpointTriggered(Node2D body, int checkpointIndex)
 	{
-		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized) 
+		if (!IsInstanceValid(_racingCar) || !_racingCar.IsInitialized)
+		{
 			return;
+		}
 
-		if (body != _racingCar.GetCarBody()) 
+		if (body != _racingCar.GetCarBody())
+		{
 			return;
+		}
 
 		string playerId = GetCurrentGamePlayerId();
 		if (GetRacingMode() == RacingMode.TimeTrial && checkpointIndex == _nextCheckpointIndex)
 		{
 			_checkpointsCrossed[checkpointIndex] = true;
 			_nextCheckpointIndex++;
-				
-			if (_checkpointTriggers[checkpointIndex] != null)
-			{
-				_checkpointTriggers[checkpointIndex].MarkAsCrossed();
-			}
-				
+
+			_checkpointTriggers[checkpointIndex]?.MarkAsCrossed();
+
 			UpdateCheckpointVisuals();
 		}
-		
+
 		OnPlayerCheckpointCrossed(playerId, checkpointIndex);
 	}
 
 	private void ResetCheckpoints()
 	{
-		if (_checkpointsCrossed == null) 
+		if (_checkpointsCrossed == null)
+		{
 			return;
-		
+		}
+
 		for (int i = 0; i < _checkpointsCrossed.Length; i++)
 		{
 			_checkpointsCrossed[i] = false;
 		}
+
 		_nextCheckpointIndex = 0;
-		
+
 		_trackDefinition?.ResetAllCheckpoints();
 		_trackDefinition?.ResetStartLineColor();
 		UpdateCheckpointVisuals();
@@ -1630,12 +1735,18 @@ public partial class RacingGame : GameController
 
 	private void UpdateCheckpointVisuals()
 	{
-		if (_checkpointTriggers == null || _checkpointTriggers.Length == 0) return;
+		if (_checkpointTriggers == null || _checkpointTriggers.Length == 0)
+		{
+			return;
+		}
 
 		for (int i = 0; i < _checkpointTriggers.Length; i++)
 		{
 			var checkpoint = _checkpointTriggers[i];
-			if (checkpoint == null) continue;
+			if (checkpoint == null)
+			{
+				continue;
+			}
 
 			if (i < _nextCheckpointIndex)
 			{
@@ -1651,7 +1762,6 @@ public partial class RacingGame : GameController
 			}
 		}
 	}
-
 
 	// ================================================================
 	// UI SYSTEM
@@ -1670,12 +1780,14 @@ public partial class RacingGame : GameController
 
 		// Connect UI manager signals
 		_uiManager.TimeTrialRequested += StartTimeTrial;
-		_uiManager.RestartRequested += () => {
+		_uiManager.RestartRequested += () =>
+		{
 			// Always properly end any active game before restarting
 			if (IsRaceActive())
 			{
 				EndRace();
 			}
+
 			StartPractice();
 		};
 		_uiManager.TrackSwitchRequested += OnTrackSwitchRequested;
@@ -1893,7 +2005,7 @@ public partial class RacingGame : GameController
 				break;
 			}
 		}
-		
+
 		if (trackIndex >= 0)
 		{
 			// Use existing track switching logic
@@ -1906,8 +2018,11 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private void InitializeTracksLeaderboardSystem()
 	{
-		if (_uiManager == null) return;
-		
+		if (_uiManager == null)
+		{
+			return;
+		}
+
 		var trackMetadata = GatherTrackMetadata();
 		_uiManager.InitializeTracksLeaderboard(trackMetadata, _currentTrackId);
 	}
@@ -1981,33 +2096,47 @@ public partial class RacingGame : GameController
 		}
 
 		// Return to previous state after brief delay
-		CreateAutoCleanupTimer(5.0f, () => {
+		CreateAutoCleanupTimer(5.0f, () =>
+		{
 			if (GetRacingMode() == RacingMode.Practice)
+			{
 				_timingSystem?.StartPracticeMode();
+			}
 			else
+			{
 				_timingSystem?.StopRacing();
+			}
 		});
 	}
 
 	private void ShowHighScoresFallback()
 	{
 		GD.Print("🏁 RACING HIGH SCORES 🏁\n\nHigh scores feature not available - DataStore service unavailable.");
-		
+
 		// Return to previous state after brief delay
-		CreateAutoCleanupTimer(2.0f, () => {
+		CreateAutoCleanupTimer(2.0f, () =>
+		{
 			if (GetRacingMode() == RacingMode.Practice)
+			{
 				_timingSystem?.StartPracticeMode();
+			}
 			else
+			{
 				_timingSystem?.StopRacing();
+			}
 		});
 	}
 
 	public void HideHighScores()
 	{
 		if (GetRacingMode() == RacingMode.Practice)
+		{
 			_timingSystem.StartPracticeMode();
+		}
 		else
+		{
 			_timingSystem.StopRacing();
+		}
 	}
 
 	/// <summary>
@@ -2018,7 +2147,8 @@ public partial class RacingGame : GameController
 		var timer = new Timer();
 		timer.WaitTime = waitTime;
 		timer.OneShot = true;
-		timer.Timeout += () => {
+		timer.Timeout += () =>
+		{
 			onTimeout?.Invoke();
 			timer.QueueFree();
 		};
@@ -2036,10 +2166,14 @@ public partial class RacingGame : GameController
 	/// </summary>
 	public bool IsRaceActive()
 	{
-		if (_timingSystem == null) return false;
+		if (_timingSystem == null)
+		{
+			return false;
+		}
+
 		var state = _timingSystem.CurrentRacingState;
 		return state != RacingTimingSystem.RacingState.Idle &&
-		       state != RacingTimingSystem.RacingState.GameOverDeciding;
+			   state != RacingTimingSystem.RacingState.GameOverDeciding;
 	}
 
 	public bool IsRacePaused()
@@ -2050,7 +2184,6 @@ public partial class RacingGame : GameController
 	// ================================================================
 	// DOMAIN-SPECIFIC LIFECYCLE - Race management
 	// ================================================================
-
 	public void StartRace()
 	{
 		// Notify platform that game session started
@@ -2106,7 +2239,9 @@ public partial class RacingGame : GameController
 	private void UpdateUI()
 	{
 		if (!IsInstanceValid(_uiManager))
+		{
 			return;
+		}
 
 		// Double-buffer: populate current buffer, compare against previous
 		var current = _useStateA ? _uiStateA : _uiStateB;
@@ -2115,7 +2250,9 @@ public partial class RacingGame : GameController
 
 		// Skip UI update if state hasn't changed (unless forced by mode transition)
 		if (!_forceNextUIUpdate && current.StateEquals(previous))
+		{
 			return;
+		}
 
 		_forceNextUIUpdate = false;
 		_uiManager.UpdateFromState(current);
@@ -2153,13 +2290,14 @@ public partial class RacingGame : GameController
 				tempInstance.QueueFree();
 				return !string.IsNullOrEmpty(name) ? name : $"Track {index + 1}";
 			}
+
 			tempInstance.QueueFree();
 		}
 		catch (Exception)
 		{
 			// Fallback if instantiation fails
 		}
-		
+
 		return $"Track {index + 1}";
 	}
 
@@ -2177,13 +2315,14 @@ public partial class RacingGame : GameController
 				tempInstance.QueueFree();
 				return laps > 0 ? laps : 3;
 			}
+
 			tempInstance.QueueFree();
 		}
 		catch (Exception)
 		{
 			// Fallback if instantiation fails
 		}
-		
+
 		return 3; // Default laps
 	}
 
@@ -2274,8 +2413,6 @@ public partial class RacingGame : GameController
 			GD.PrintErr($"[RacingGame] Error getting current player phone number: {ex.Message}");
 		}
 
-		
-		
 		// Return null if no user is logged in - no fallbacks
 		return null;
 	}
@@ -2289,12 +2426,16 @@ public partial class RacingGame : GameController
 	{
 		// First try to get from the racing car (already initialized with phone number)
 		if (_racingCar is not null && !string.IsNullOrEmpty(_racingCar.PlayerId) && _racingCar.PlayerId != "player1")
+		{
 			return _racingCar.PlayerId;
+		}
 
 		// Fallback to phone number lookup
 		var phoneNumber = GetCurrentPlayerPhoneNumber();
 		if (!string.IsNullOrEmpty(phoneNumber))
+		{
 			return phoneNumber;
+		}
 
 		// Guest player fallback
 		return "guest_player";
@@ -2303,11 +2444,14 @@ public partial class RacingGame : GameController
 	// ================================================================
 	// RACING DATA GETTERS
 	// ================================================================
-
 	public int GetPlayerCurrentLap(string playerId) => _timingSystem.GetPlayerCurrentLap(playerId);
+
 	public float GetPlayerCurrentLapTime(string playerId) => _timingSystem.GetPlayerCurrentLapTime(playerId);
+
 	public float GetPlayerBestLapTime(string playerId) => _timingSystem.GetPlayerBestLapTime(playerId);
+
 	public float GetPlayerGapTime(string playerId) => _timingSystem.GetPlayerGapTime(playerId);
+
 	public List<float> GetPlayerLapTimes(string playerId) => _timingSystem.GetPlayerLapTimes(playerId);
 
 	/// <summary>
@@ -2315,13 +2459,15 @@ public partial class RacingGame : GameController
 	/// </summary>
 	private CheckpointTime[] GetPlayerCheckpointTimes(string playerId)
 	{
-		return _timingSystem.GetPlayerCheckpointTimes(playerId).ToArray();
+		return [.. _timingSystem.GetPlayerCheckpointTimes(playerId)];
 	}
 
 	public RacingTimingSystem.RacingState GetRacingState() => _timingSystem.CurrentRacingState;
+
 	public bool IsInCountdown() => _timingSystem.IsInCountdown;
+
 	public int GetCountdownNumber() => _timingSystem.CountdownNumber;
-	
+
 	// ================================================================
 	// UI INTEGRATION OVERRIDES
 	// ================================================================
@@ -2334,32 +2480,35 @@ public partial class RacingGame : GameController
 		var buttons = new List<ContextButtonData>();
 
 		// Standard "Return to Menu" button
-		buttons.Add(GameContextButton.CreateReturnToMenuButton(() => {
+		buttons.Add(GameContextButton.CreateReturnToMenuButton(() =>
+		{
 			if (_sessionManager != null && IsInstanceValid(_sessionManager))
 			{
 				_sessionManager.ResetAllIdleTimers();
 			}
+
 			ReturnToMainMenu();
 		}));
 
 		// Racing-specific pause/resume button
 		if (IsRacePaused())
 		{
-			buttons.Add(GameContextButton.CreateResumeButton(() => {
+			buttons.Add(GameContextButton.CreateResumeButton(() =>
+			{
 				Resume();
 				RefreshUI();
 			}));
 		}
 		else if (IsRaceActive())
 		{
-			buttons.Add(GameContextButton.CreatePauseButton(() => {
+			buttons.Add(GameContextButton.CreatePauseButton(() =>
+			{
 				Pause();
 				RefreshUI();
 			}));
 		}
 
-
-		return buttons.ToArray();
+		return [.. buttons];
 	}
 
 	/// <summary>
@@ -2369,12 +2518,13 @@ public partial class RacingGame : GameController
 	{
 		if (GetRacingMode() == RacingMode.Practice)
 		{
-			return "Racing Game - Practice";  
+			return "Racing Game - Practice";
 		}
 		else if (GetRacingMode() == RacingMode.TimeTrial)
 		{
 			return "Racing Game - Time Trial";
 		}
+
 		return "Racing Game";
 	}
 
@@ -2388,10 +2538,7 @@ public partial class RacingGame : GameController
 		if (what == NotificationWMSizeChanged)
 		{
 			// Recalculate camera positioning and zoom when viewport changes
-			if (_cameraController != null)
-			{
-				_cameraController.OnViewportSizeChanged();
-			}
+			_cameraController?.OnViewportSizeChanged();
 		}
 	}
 
@@ -2405,12 +2552,15 @@ public partial class RacingGame : GameController
 	private float CalculateLapProgress(string playerId)
 	{
 		if (!IsInstanceValid(_timingSystem))
+		{
 			return 0.0f;
+		}
 
 		// For practice mode, use gap time as a rough progress indicator
 		if (GetRacingMode() == RacingMode.Practice)
 		{
 			var gapTime = GetPlayerGapTime(playerId);
+
 			// Convert gap time to progress (lower gap = more progress)
 			// This is approximate - ideally we'd track checkpoint progress
 			return gapTime > 0 ? Mathf.Clamp(1.0f - (gapTime / 60.0f), 0.0f, 1.0f) : 0.0f;
@@ -2441,7 +2591,9 @@ public partial class RacingGame : GameController
 	private float CalculateCountdownProgress()
 	{
 		if (!IsInstanceValid(_timingSystem) || !_timingSystem.IsInCountdown)
+		{
 			return 0.0f;
+		}
 
 		// Estimate progress based on countdown number
 		var countdownNumber = _timingSystem.CountdownNumber;

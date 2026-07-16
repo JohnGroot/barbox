@@ -1,6 +1,6 @@
-namespace BarBox.Core.UI;
-
 using Godot;
+
+namespace BarBox.Core.UI;
 
 /// <summary>
 /// Key type classifications for keyboard behavior
@@ -12,7 +12,7 @@ public enum KeyType
 	SpecialShift,   // Shift/caps lock toggle
 	SwitchLayout,   // Switch to another layout
 	HideKeyboard,   // Hide the keyboard
-	Spacer          // Empty non-interactive spacer
+	Spacer, // Empty non-interactive spacer
 }
 
 /// <summary>
@@ -26,7 +26,7 @@ public enum PredefinedIcon
 	Left,
 	Right,
 	Hide,
-	Enter
+	Enter,
 }
 
 /// <summary>
@@ -46,14 +46,17 @@ public struct KeyData
 	public static KeyData Default => new()
 	{
 		Type = KeyType.Char,
-		StretchRatio = 1.0f
+		StretchRatio = 1.0f,
 	};
 
 	public readonly string GetDisplayText(bool uppercase)
 	{
 		if (uppercase && !string.IsNullOrEmpty(DisplayUppercase))
+		{
 			return DisplayUppercase;
-		return Display ?? "";
+		}
+
+		return Display ?? string.Empty;
 	}
 
 	public readonly bool HasIcon => Icon != PredefinedIcon.None || !string.IsNullOrEmpty(CustomIconPath);
@@ -186,19 +189,22 @@ public static class KeyCodeMap
 		["{"] = Key.Braceleft,
 		["|"] = Key.Bar,
 		["}"] = Key.Braceright,
-		["~"] = Key.Asciitilde
+		["~"] = Key.Asciitilde,
 	};
 
 	private static readonly System.Collections.Generic.HashSet<string> _lowercaseKeys = new()
 	{
 		"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
-		"N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"
+		"N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
 	};
 
 	public static Key GetKeyCode(string output)
 	{
 		if (_keyMap.TryGetValue(output, out var key))
+		{
 			return key;
+		}
+
 		return Key.Unknown;
 	}
 
@@ -215,7 +221,10 @@ public static class KeyCodeMap
 	{
 		var key = GetKeyCode(output);
 		if (!uppercase && HasLowercase(output))
+		{
 			return (long)key + 32;
+		}
+
 		return (long)key;
 	}
 }

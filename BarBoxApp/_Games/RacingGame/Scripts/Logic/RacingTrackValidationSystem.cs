@@ -1,69 +1,83 @@
 using Godot;
 
-namespace BarBox.Games.Racing
+namespace BarBox.Games.Racing;
+
+/// <summary>
+/// Handles track validation and off-track penalty calculations for racing games.
+/// Integrates with RacingZoneManager to combine track penalties with zone modifiers.
+/// </summary>
+[GlobalClass]
+public partial class RacingTrackValidationSystem : Node
 {
-	/// <summary>
-	/// Handles track validation and off-track penalty calculations for racing games.
-	/// Integrates with RacingZoneManager to combine track penalties with zone modifiers.
-	/// </summary>
-	[GlobalClass]
-	public partial class RacingTrackValidationSystem : Node
-	{
-		// ================================================================
-		// EXPORT PROPERTIES - TRACK PERFORMANCE
-		// ================================================================
+	// ================================================================
+	// EXPORT PROPERTIES - TRACK PERFORMANCE
+	// ================================================================
+	[ExportCategory("Track Performance")]
+	[Export]
+	public float CenterLineProximityRange { get; set; } = 40.0f;
 
-		[ExportCategory("Track Performance")]
-		[Export] public float CenterLineProximityRange { get; set; } = 40.0f;
-		[Export] public float CenterLineAccelerationBonus { get; set; } = 1.5f;
-		[Export] public float TrackProximityRange { get; set; } = 20.0f;
+	[Export]
+	public float CenterLineAccelerationBonus { get; set; } = 1.5f;
 
-		[ExportCategory("Off-Track Penalties")]
-		[Export] public float OffTrackSpeedPenalty { get; set; } = 0.3f;
-		[Export] public float OffTrackTurnPenalty { get; set; } = 0.3f;
-		[Export] public float OffTrackAccelerationPenalty { get; set; } = 0.3f;
-		[Export] public float OffTrackPenaltyLerpSpeed { get; set; } = 3.0f;
+	[Export]
+	public float TrackProximityRange { get; set; } = 20.0f;
 
-		// ================================================================
-		// PRIVATE FIELDS
-		// ================================================================
+	[ExportCategory("Off-Track Penalties")]
+	[Export]
+	public float OffTrackSpeedPenalty { get; set; } = 0.3f;
 
-		// Track references
-		private IRacingTrackDefinition _trackDefinition;
-		private Curve2D _trackCurve;
+	[Export]
+	public float OffTrackTurnPenalty { get; set; } = 0.3f;
 
-		// Zone manager for combining zone modifiers
-		private RacingZoneManager _zoneManager;
+	[Export]
+	public float OffTrackAccelerationPenalty { get; set; } = 0.3f;
 
-		// Off-track penalty state
-		private bool _isCurrentlyOffTrack = false;
-		private float _currentSpeedPenaltyMultiplier = 1.0f;
-		private float _currentTurnPenaltyMultiplier = 1.0f;
-		private float _currentAccelerationPenaltyMultiplier = 1.0f;
+	[Export]
+	public float OffTrackPenaltyLerpSpeed { get; set; } = 3.0f;
 
-		// Position cache for expensive off-track calculations (performance optimization)
-		private Vector2 _lastCheckedPosition = Vector2.Zero;
-		private float _lastCheckedRotation = 0f;
-		private bool _cachedIsCompletelyOffTrack = false;
-		private const float POSITION_CACHE_THRESHOLD_SQ = 25.0f; // 5 pixels squared
-		private const float ROTATION_CACHE_THRESHOLD = 0.1f; // radians (~5.7 degrees)
+	// ================================================================
+	// PRIVATE FIELDS
+	// ================================================================
 
-		// Static unit offsets for car bounds sampling (GC optimization: avoids per-frame Vector2[8] allocation)
-		private static readonly Vector2[] _sampleUnitOffsets =
-		{
-			new(-1, -1), new(1, -1), new(1, 1), new(-1, 1),  // corners
-			new(0, -1), new(1, 0), new(0, 1), new(-1, 0),    // midpoints
-		};
-		private readonly Vector2[] _scaledSampleBuffer = new Vector2[8];
+	// Track references
+	private IRacingTrackDefinition _trackDefinition;
+	private Curve2D _trackCurve;
 
-		// ================================================================
-		// PUBLIC PROPERTIES
-		// ================================================================
+	// Zone manager for combining zone modifiers
+	private RacingZoneManager _zoneManager;
 
-		public bool IsCurrentlyOffTrack => _isCurrentlyOffTrack;
-		public float CurrentSpeedPenaltyMultiplier => _currentSpeedPenaltyMultiplier;
-		public float CurrentTurnPenaltyMultiplier => _currentTurnPenaltyMultiplier;
-		public float CurrentAccelerationPenaltyMultiplier => _currentAccelerationPenaltyMultiplier;
+	// Off-track penalty state
+	private bool _isCurrentlyOffTrack = false;
+	private float _currentSpeedPenaltyMultiplier = 1.0f;
+	private float _currentTurnPenaltyMultiplier = 1.0f;
+	private float _currentAccelerationPenaltyMultiplier = 1.0f;
+
+	// Position cache for expensive off-track calculations (performance optimization)
+	private Vector2 _lastCheckedPosition = Vector2.Zero;
+	private float _lastCheckedRotation = 0f;
+	private bool _cachedIsCompletelyOffTrack = false;
+	private const float POSITION_CACHE_THRESHOLD_SQ = 25.0f; // 5 pixels squared
+	private const float ROTATION_CACHE_THRESHOLD = 0.1f; // radians (~5.7 degrees)
+
+	// Static unit offsets for car bounds sampling (GC optimization: avoids per-frame Vector2[8] allocation)
+	private static readonly Vector2[] _sampleUnitOffsets =
+	[
+		new(-1, -1), new(1, -1), new(1, 1), new(-1, 1),  // corners
+		new(0, -1), new(1, 0), new(0, 1), new(-1, 0),    // midpoints
+	];
+
+	private readonly Vector2[] _scaledSampleBuffer = new Vector2[8];
+
+	// ================================================================
+	// PUBLIC PROPERTIES
+	// ================================================================
+	public bool IsCurrentlyOffTrack => _isCurrentlyOffTrack;
+
+	public float CurrentSpeedPenaltyMultiplier => _currentSpeedPenaltyMultiplier;
+
+	public float CurrentTurnPenaltyMultiplier => _currentTurnPenaltyMultiplier;
+
+	public float CurrentAccelerationPenaltyMultiplier => _currentAccelerationPenaltyMultiplier;
 
 	// ================================================================
 	// INITIALIZATION
@@ -116,11 +130,15 @@ namespace BarBox.Games.Racing
 	{
 		// First check if on main track surface (spatial-index-accelerated path)
 		if (_trackDefinition?.IsValidTrackPointFast(position) == true)
+		{
 			return true;
+		}
 
 		// Then check if on a kerb zone (counts as on-track)
 		if (_zoneManager?.IsInKerbZone(position) == true)
+		{
 			return true;
+		}
 
 		return false;
 	}
@@ -132,7 +150,11 @@ namespace BarBox.Games.Racing
 	/// <returns>Distance to center line, or float.MaxValue if no track curve</returns>
 	public float GetDistanceToTrackCenterLine(Vector2 position)
 	{
-		if (_trackCurve == null) return float.MaxValue;
+		if (_trackCurve == null)
+		{
+			return float.MaxValue;
+		}
+
 		var closestPoint = _trackCurve.GetClosestPoint(position);
 		return position.DistanceTo(closestPoint);
 	}
@@ -145,7 +167,9 @@ namespace BarBox.Games.Racing
 	{
 		// Fast path: center point check (most frames the car is on track)
 		if (IsOnTrack(carCenter))
+		{
 			return false;
+		}
 
 		// Slow path: check 8 boundary points only when center is off track
 		var halfSize = carSize / 2.0f;
@@ -155,8 +179,7 @@ namespace BarBox.Games.Racing
 		{
 			_scaledSampleBuffer[i] = new Vector2(
 				_sampleUnitOffsets[i].X * halfSize.X,
-				_sampleUnitOffsets[i].Y * halfSize.Y
-			);
+				_sampleUnitOffsets[i].Y * halfSize.Y);
 		}
 
 		// If ANY point is on track, car is not completely off
@@ -166,7 +189,9 @@ namespace BarBox.Games.Racing
 			var worldPoint = carCenter + rotatedOffset;
 
 			if (IsOnTrack(worldPoint))
+			{
 				return false;
+			}
 		}
 
 		return true; // All points off track
@@ -177,15 +202,13 @@ namespace BarBox.Games.Racing
 		float cos = Mathf.Cos(rotation);
 		float sin = Mathf.Sin(rotation);
 		return new Vector2(
-			point.X * cos - point.Y * sin,
-			point.X * sin + point.Y * cos
-		);
+			(point.X * cos) - (point.Y * sin),
+			(point.X * sin) + (point.Y * cos));
 	}
 
 	// ================================================================
 	// PENALTY SYSTEM
 	// ================================================================
-
 	public void UpdateOffTrackPenalties(Vector2 carPosition, float carRotation, Vector2 carSize, float delta)
 	{
 		// Performance optimization: Skip expensive recalculation if car hasn't moved significantly
@@ -291,7 +314,6 @@ namespace BarBox.Games.Racing
 	// ================================================================
 	// UTILITY METHODS
 	// ================================================================
-
 	public void ResetPenalties()
 	{
 		_isCurrentlyOffTrack = false;
@@ -309,5 +331,4 @@ namespace BarBox.Games.Racing
 	{
 		return _trackDefinition != null && _trackCurve != null;
 	}
-}
 }
