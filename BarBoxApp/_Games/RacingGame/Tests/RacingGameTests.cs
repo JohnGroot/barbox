@@ -193,7 +193,7 @@ public class RacingGameTests : GameSessionTestBase
 		// confirm the lap_complete event with lap 1's time actually landed.
 		lap1Succeeded.ShouldBeTrue($"Lap 1 save must persist even though the player quit before lap 2: {lap1Error}");
 
-		var sessionJsonResult = await _eventService.QueryRawAsync($"/box/session/{_testSessionId}");
+		var sessionJsonResult = await _eventService.QueryRawAsync($"/box/session/{_testSessionId}?include_events=true");
 		sessionJsonResult.IsSuccess(out var sessionJson).ShouldBeTrue("Should be able to read the session back to confirm the event landed");
 
 		var sessionDict = Json.ParseString(sessionJson).AsGodotDictionary();

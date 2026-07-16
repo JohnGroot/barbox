@@ -87,7 +87,7 @@ HTTP 200
 jsonpath "$.id" == "{{mining-session-id}}"
 
 # Test 6: Query closed session to verify events were recorded
-GET http://127.0.0.1:8000/box/session/{{mining-session-id}}
+GET http://127.0.0.1:8000/box/session/{{mining-session-id}}?include_events=true
 HTTP 200
 [Asserts]
 jsonpath "$.game_tag" == "mining"

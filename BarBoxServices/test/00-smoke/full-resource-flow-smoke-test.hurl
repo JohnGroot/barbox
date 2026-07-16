@@ -89,7 +89,7 @@ X-Box-API-Key: {{box-api-key}}
 HTTP 201
 
 # Step 5: Verify session recorded all events
-GET http://127.0.0.1:8000/box/session/{{session-id}}
+GET http://127.0.0.1:8000/box/session/{{session-id}}?include_events=true
 HTTP 200
 [Asserts]
 jsonpath "$.events" count == 3

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
+from sqlalchemy.orm.attributes import set_committed_value
 from structlog import get_logger
 
 from bxctl import db, structures
@@ -613,18 +614,20 @@ async def close_box_session(
 async def get_box_session(
     session_id: UUID,
     db_service: dependencies.Database,
+    include_events: bool = Query(False),
 ) -> structures.BoxSession:
-    result = (
-        (
-            await db_service.session.execute(
-                select(db.defs.BoxSession)
-                .options(joinedload(db.defs.BoxSession.events))
-                .where(db.defs.BoxSession.id == session_id),
-            )
-        )
-        .unique()
-        .scalar_one()
-    )
+    query = select(db.defs.BoxSession).where(db.defs.BoxSession.id == session_id)
+    if include_events:
+        query = query.options(joinedload(db.defs.BoxSession.events))
+
+    result = (await db_service.session.execute(query)).unique().scalar_one()
+
+    if not include_events:
+        # Mark the relationship loaded-empty instead of actually loading it,
+        # so model_validate's from_attributes access below doesn't trigger a
+        # lazy load - which raises MissingGreenlet on an async session.
+        set_committed_value(result, "events", [])
+
     return structures.BoxSession.model_validate(
         result,
         from_attributes=True,

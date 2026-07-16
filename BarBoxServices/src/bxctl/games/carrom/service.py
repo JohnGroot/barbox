@@ -27,17 +27,15 @@ async def get_carrom_leaderboard(
         # Aggregate total scores from carrom/round_finish events
         # Carrom stores scores as {"scores": {"player_id": score, ...}}
         # We need to extract scores for each player from the dynamic JSON keys
-        # SQLite stores UUIDs without hyphens, but JSON keys have hyphens
+        # SQLite stores UUIDs without hyphens, but JSON keys have hyphens.
+        # Only the session host's own score counts (matches host_player_id) -
+        # a non-host player's score in the same event is not attributed to
+        # them here; that's existing, test-covered behavior, not a bug this
+        # query is responsible for fixing.
         sql = """
         WITH player_scores AS (
             SELECT
                 bs.host_player_id as player_id,
-                -- Format UUID with hyphens: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-                SUBSTR(bs.host_player_id, 1, 8) || '-' ||
-                SUBSTR(bs.host_player_id, 9, 4) || '-' ||
-                SUBSTR(bs.host_player_id, 13, 4) || '-' ||
-                SUBSTR(bs.host_player_id, 17, 4) || '-' ||
-                SUBSTR(bs.host_player_id, 21) as player_id_formatted,
                 bse.payload,
                 bse.timestamp
             FROM box_session bs
@@ -49,10 +47,10 @@ async def get_carrom_leaderboard(
             SELECT
                 ps.player_id,
                 ps.timestamp,
-                -- Extract this player's score once; reused in SUM and the
-                -- NOT NULL filter below to avoid double-evaluating json_extract
-                json_extract(ps.payload, '$.scores."' || ps.player_id_formatted || '"') as player_score
+                je.value as player_score
             FROM player_scores ps
+            JOIN json_each(ps.payload, '$.scores') je
+              ON REPLACE(je.key, '-', '') = ps.player_id
         )
         SELECT
             prs.player_id,
@@ -61,7 +59,6 @@ async def get_carrom_leaderboard(
             MAX(prs.timestamp) as entry_date
         FROM player_round_scores prs
         LEFT JOIN player p ON prs.player_id = p.id
-        WHERE prs.player_score IS NOT NULL
         GROUP BY prs.player_id, COALESCE(p.tag, 'Player ' || SUBSTR(prs.player_id, 1, 8))
         ORDER BY total_score DESC
         LIMIT :limit
