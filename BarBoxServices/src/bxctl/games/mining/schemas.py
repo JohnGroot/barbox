@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field, field_validator
 
 # ============= CONSTANTS =============
 
-GEM_TYPES = ["ruby", "sapphire", "emerald", "diamond", "amethyst"]
+GemType = Literal["ruby", "sapphire", "emerald", "diamond", "amethyst"]
+GEM_TYPES: list[GemType] = ["ruby", "sapphire", "emerald", "diamond", "amethyst"]
 
 
 # ============= EVENT TYPES =============
@@ -127,7 +128,7 @@ class MiningLocationResponse(BaseModel):
     """Response from location registration/query."""
 
     venue_name: str = Field(description="Venue identifier (e.g., 'best_intentions')")
-    gem_type: Literal["ruby", "sapphire", "emerald", "diamond", "amethyst"]
+    gem_type: GemType
     display_name: str = Field(description="Human-readable location name")
 
     @field_validator("gem_type")

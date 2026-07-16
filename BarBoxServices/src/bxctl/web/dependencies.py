@@ -22,6 +22,11 @@ async def _acquire_crud() -> AsyncIterator[db.service.CRUD]:
 
 
 Database = Annotated[db.service.CRUD, Depends(_acquire_crud)]
+# Dependency params below default to `= None` only so params without a
+# default (e.g. path params) can come first; FastAPI always injects a real
+# CRUD instance before the function body runs. That default is invisible
+# to ty through Annotated[..., Depends(...)], so it infers `@Todo | None`
+# for these params and flags every attribute access / pass-through below.
 
 
 def _current_timestamp() -> datetime:
@@ -156,7 +161,7 @@ async def _get_authenticated_box_by_session(
     # Fetch session and its box in one round trip (outer join: the box side
     # is None either because the session itself doesn't exist, or - a data
     # integrity error - because the session references a box that's gone).
-    result = await db_service.session.execute(
+    result = await db_service.session.execute(  # ty: ignore[possibly-missing-attribute]
         select(BoxSession, db.defs.Box)
         .outerjoin(db.defs.Box, db.defs.Box.id == BoxSession.box_id)
         .where(BoxSession.id == session_id)
@@ -225,7 +230,7 @@ async def _get_authenticated_box(
     # Fetch box from database (to return box details, not for auth)
     box = await _fetch_box_or_404(
         box_id,
-        db_service,
+        db_service,  # ty: ignore[invalid-argument-type]  # see Database note above
         not_found_message=(
             f"Box '{box_id}' does not exist in the database. "
             "Please register the box first using PUT /box/{box_id} "
@@ -280,7 +285,7 @@ async def _get_authenticated_box_from_header(
     # Fetch box from database
     box = await _fetch_box_or_404(
         x_box_id,
-        db_service,
+        db_service,  # ty: ignore[invalid-argument-type]  # see Database note above
         not_found_message=(
             f"Box '{x_box_id}' does not exist in the database. "
             "Please register the box first using PUT /box/{box_id}."

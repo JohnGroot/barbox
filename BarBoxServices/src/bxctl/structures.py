@@ -16,6 +16,18 @@ GAMES = {
 }
 
 
+def game_module(entry: dict[str, Any], key: str) -> Any:  # noqa: ANN401  # see below
+    """Return a game's "schemas" or "router" submodule from a GAMES entry.
+
+    GAMES stores real submodules (each game's own schemas.py/router.py) as
+    plain dict values, so indexing them loses their specific attributes
+    (EventType, payload classes, `.router`, ...) to static analysis.
+    Declared Any because callers already know which submodule and
+    attribute they're asking for.
+    """
+    return entry[key]
+
+
 class Named(BaseModel):
     name: str
 
@@ -116,7 +128,7 @@ def _check_session_event_type_coverage() -> None:
         for literal in get_args(member)
     }
     for game_name, game_data in GAMES.items():
-        game_events = set(get_args(game_data["schemas"].EventType))
+        game_events = set(get_args(game_module(game_data, "schemas").EventType))
         missing = game_events - covered
         if missing:
             msg = (
@@ -170,7 +182,11 @@ class BoxSession(Identifiable):
     end_time: datetime | None = None
     events: Annotated[
         list[SessionEventBase],
-        Field(default_factory=lambda: [BeginPlay()]),
+        Field(
+            default_factory=lambda: [
+                BeginPlay(type="play/begin", timestamp=datetime.now(UTC), payload=None)
+            ]
+        ),
     ]
 
 

@@ -142,9 +142,11 @@ async def issue_credits_for_payment(  # noqa: PLR0913
         )
 
         # Create payment record FIRST (source of truth)
+        # id comes from Base's PkMixin; ty doesn't see mixin fields through
+        # SQLAlchemy's MappedAsDataclass synthesized __init__.
         db_service.session.add(
             defs.StripePaymentIntent(
-                id=internal_payment_id,
+                id=internal_payment_id,  # ty: ignore[unknown-argument]  # PkMixin field
                 created_at=now,
                 stripe_session_id=session_id,
                 stripe_payment_intent_id=payment_intent_id,
@@ -278,10 +280,12 @@ async def get_or_create_credit_session(
         return existing_session_id
 
     # Create ephemeral "payment" session (player logged out or stale session)
+    # id comes from Base's PkMixin; ty doesn't see mixin fields through
+    # SQLAlchemy's MappedAsDataclass synthesized __init__.
     session_id = uuid4()
     db_service.session.add(
         defs.BoxSession(
-            id=session_id,
+            id=session_id,  # ty: ignore[unknown-argument]  # PkMixin field
             box_id=box_id,
             host_player_id=player_id,
             player_ids=[str(player_id)],

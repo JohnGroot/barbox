@@ -365,7 +365,7 @@ async def get_gem_type_distribution(
     result = await db.get_many_raw(sql, {})
 
     # Initialize all gem types to 0
-    distribution = dict.fromkeys(schemas.GEM_TYPES, 0)
+    distribution: dict[str, int] = dict.fromkeys(schemas.GEM_TYPES, 0)
 
     # Update with actual counts
     for row in result.tuples():
@@ -398,9 +398,12 @@ async def register_or_get_location(
     # Check existing first (common case - fast path)
     existing = await get_location_by_venue_name(db, venue_name)
     if existing:
+        # existing.gem_type is a plain DB str; MiningLocationResponse's own
+        # field validator enforces membership in GEM_TYPES at construction.
+        gem_type = existing.gem_type
         return schemas.MiningLocationResponse(
             venue_name=existing.venue_name,
-            gem_type=existing.gem_type,
+            gem_type=gem_type,  # ty: ignore[invalid-argument-type]  # validated str
             display_name=existing.display_name,
         )
 
@@ -436,9 +439,12 @@ async def register_or_get_location(
         await db.session.rollback()
         existing = await get_location_by_venue_name(db, venue_name)
         if existing:
+            # existing.gem_type is a plain DB str; MiningLocationResponse's
+            # own field validator enforces membership in GEM_TYPES.
+            gem_type = existing.gem_type
             return schemas.MiningLocationResponse(
                 venue_name=existing.venue_name,
-                gem_type=existing.gem_type,
+                gem_type=gem_type,  # ty: ignore[invalid-argument-type]  # valid str
                 display_name=existing.display_name,
             )
         # Should not happen, but handle gracefully
@@ -473,7 +479,7 @@ async def get_all_locations(
     ]
 
     # Calculate distribution
-    distribution = dict.fromkeys(schemas.GEM_TYPES, 0)
+    distribution: dict[str, int] = dict.fromkeys(schemas.GEM_TYPES, 0)
     for loc in locations:
         if loc.gem_type in distribution:
             distribution[loc.gem_type] += 1

@@ -2,14 +2,14 @@
 
 from typing import Any, get_args
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
-from bxctl.structures import GAMES, CoreEventType
+from bxctl.structures import GAMES, CoreEventType, game_module
 
 # Build event type registry dynamically from GAMES registry
 # Uses canonical EventType alias from each game's schemas module
 _EVENT_REGISTRY: dict[str, set[str]] = {
-    game_name: set(get_args(game_data["schemas"].EventType))
+    game_name: set(get_args(game_module(game_data, "schemas").EventType))
     for game_name, game_data in GAMES.items()
 }
 
@@ -19,19 +19,33 @@ _CORE_EVENTS = set(get_args(CoreEventType))
 
 # Mapping of event types to their Pydantic payload models
 # Import schemas from GAMES registry for consistency
-EVENT_PAYLOAD_MODELS: dict[str, type] = {
+EVENT_PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     # Carrom events
-    "carrom/round_finish": GAMES["carrom"]["schemas"].CarromRoundFinishPayload,
+    "carrom/round_finish": game_module(
+        GAMES["carrom"], "schemas"
+    ).CarromRoundFinishPayload,
     # Racing events
-    "racing/lap_complete": GAMES["racing"]["schemas"].RacingLapCompletePayload,
-    "racing/race_finish": GAMES["racing"]["schemas"].RacingRaceFinishPayload,
+    "racing/lap_complete": game_module(
+        GAMES["racing"], "schemas"
+    ).RacingLapCompletePayload,
+    "racing/race_finish": game_module(
+        GAMES["racing"], "schemas"
+    ).RacingRaceFinishPayload,
     # Mining events
-    "mining/extract_complete": GAMES["mining"]["schemas"].MiningExtractCompletePayload,
-    "mining/upgrade_purchase": GAMES["mining"]["schemas"].MiningUpgradePurchasePayload,
-    "mining/credit_deposit": GAMES["mining"]["schemas"].MiningCreditDepositPayload,
-    "mining/first_time_bonus": GAMES["mining"]["schemas"].MiningFirstTimeBonusPayload,
+    "mining/extract_complete": game_module(
+        GAMES["mining"], "schemas"
+    ).MiningExtractCompletePayload,
+    "mining/upgrade_purchase": game_module(
+        GAMES["mining"], "schemas"
+    ).MiningUpgradePurchasePayload,
+    "mining/credit_deposit": game_module(
+        GAMES["mining"], "schemas"
+    ).MiningCreditDepositPayload,
+    "mining/first_time_bonus": game_module(
+        GAMES["mining"], "schemas"
+    ).MiningFirstTimeBonusPayload,
     # Nines events
-    "nines/jackpot_won": GAMES["nines"]["schemas"].NinesJackpotWonPayload,
+    "nines/jackpot_won": game_module(GAMES["nines"], "schemas").NinesJackpotWonPayload,
 }
 
 # Events with no client-supplied payload shape to validate against. Listed
