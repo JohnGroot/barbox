@@ -1,0 +1,26 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (fix)
+        language: system
+        entry: uv run --project BarBoxServices ruff check --fix --force-exclude
+        files: ^BarBoxServices/.*\.py$
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: uv run --project BarBoxServices ruff format --force-exclude
+        files: ^BarBoxServices/.*\.py$
+      - id: ty
+        name: ty check
+        language: system
+        entry: uv run --directory BarBoxServices ty check src/
+        files: ^BarBoxServices/.*\.py$
+        pass_filenames: false
+      - id: dotnet-format
+        name: dotnet format
+        language: script
+        entry: scripts/hooks/dotnet-format.sh
+        files: ^BarBoxApp/.*\.cs$
+        exclude: ^BarBoxApp/addons/ShapesRenderer/
+        require_serial: true

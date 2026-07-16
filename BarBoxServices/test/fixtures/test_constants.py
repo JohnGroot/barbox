@@ -49,25 +49,26 @@ TEST_GAME_TAG_RACING = "racing"
 TEST_GAME_TAG_MINING = "mining"
 TEST_GAME_TAG_CARROM = "carrom"
 
+
 # Helper function to get test constants as environment variables
 def get_env_vars() -> dict[str, str]:
-	"""
-	Returns test constants as environment variable dictionary.
-	Useful for setting up test environments.
-	"""
-	return {
-		"TEST_BOX_ID_1": str(TEST_BOX_ID_1),
-		"TEST_BOX_ID_2": str(TEST_BOX_ID_2),
-		"TEST_BOX_ID_3": str(TEST_BOX_ID_3),
-		"TEST_PLAYER_ID_1": str(TEST_PLAYER_ID_1),
-		"TEST_PLAYER_ID_2": str(TEST_PLAYER_ID_2),
-		"TEST_PLAYER_ID_3": str(TEST_PLAYER_ID_3),
-		"TEST_LOCATION_ID_1": TEST_LOCATION_ID_1,
-		"TEST_LOCATION_ID_2": TEST_LOCATION_ID_2,
-		"TEST_PLAYER_1_PHONE": TEST_PLAYER_1_PHONE,
-		"TEST_PLAYER_1_PIN": TEST_PLAYER_1_PIN,
-		"TEST_PLAYER_2_PHONE": TEST_PLAYER_2_PHONE,
-		"TEST_PLAYER_2_PIN": TEST_PLAYER_2_PIN,
-		"TEST_PLAYER_3_PHONE": TEST_PLAYER_3_PHONE,
-		"TEST_PLAYER_3_PIN": TEST_PLAYER_3_PIN,
-	}
+    """
+    Returns test constants as environment variable dictionary.
+    Useful for setting up test environments.
+    """
+    return {
+        "TEST_BOX_ID_1": str(TEST_BOX_ID_1),
+        "TEST_BOX_ID_2": str(TEST_BOX_ID_2),
+        "TEST_BOX_ID_3": str(TEST_BOX_ID_3),
+        "TEST_PLAYER_ID_1": str(TEST_PLAYER_ID_1),
+        "TEST_PLAYER_ID_2": str(TEST_PLAYER_ID_2),
+        "TEST_PLAYER_ID_3": str(TEST_PLAYER_ID_3),
+        "TEST_LOCATION_ID_1": TEST_LOCATION_ID_1,
+        "TEST_LOCATION_ID_2": TEST_LOCATION_ID_2,
+        "TEST_PLAYER_1_PHONE": TEST_PLAYER_1_PHONE,
+        "TEST_PLAYER_1_PIN": TEST_PLAYER_1_PIN,
+        "TEST_PLAYER_2_PHONE": TEST_PLAYER_2_PHONE,
+        "TEST_PLAYER_2_PIN": TEST_PLAYER_2_PIN,
+        "TEST_PLAYER_3_PHONE": TEST_PLAYER_3_PHONE,
+        "TEST_PLAYER_3_PIN": TEST_PLAYER_3_PIN,
+    }

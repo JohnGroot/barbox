@@ -47,6 +47,8 @@ fixable = ["ALL"]
 [tool.ruff.lint.per-file-ignores]
 # Alembic's script directory is not a package by design (no __init__.py)
 "alembic/**" = ["INP001"]
+# Reference constants shared with Hurl/C# tests, not an importable package
+"test/fixtures/**" = ["INP001"]
 
 [tool.ruff.format]
 docstring-code-format = true

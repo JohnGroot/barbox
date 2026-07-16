@@ -76,6 +76,19 @@ sh scripts/run-tests.sh frontend   # Frontend unit tests only
 
 See [Testing Documentation](BarBoxApp/Tests/README.md) for comprehensive testing guide.
 
+### Commit Hooks
+
+One-time setup:
+```bash
+uv tool install pre-commit && pre-commit install
+```
+
+Hooks format/lint both codebases on commit and auto-fix what they can. If a hook
+makes changes, the commit is aborted — review the diff, re-stage, and commit again.
+
+Escape hatches for emergencies: `SKIP=dotnet-format git commit ...` to skip one hook,
+or `git commit --no-verify` to skip them all.
+
 ## Project Structure
 
 ```

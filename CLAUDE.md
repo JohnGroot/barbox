@@ -23,7 +23,13 @@ cd BarBoxServices && sh scripts/test.sh      # Run integration tests
 # Lint / format (style analyzers are skipped in regular builds; see BarBoxApp/CLAUDE.md)
 cd BarBoxApp && RunAnalyzersDuringBuild=true dotnet format BarBox.csproj --severity warn --exclude addons/ShapesRenderer/ --verify-no-changes   # check (drop --verify-no-changes to fix)
 cd BarBoxServices && sh scripts/lint.sh      # ruff + ty
+
+# One-time hook setup (formats/lints both codebases on commit)
+uv tool install pre-commit && pre-commit install
 ```
+
+Hooks auto-fix and abort the first commit attempt — review, re-stage, and commit
+again. Escape hatches: `SKIP=dotnet-format git commit` or `git commit --no-verify`.
 
 ## Response Guidelines
 
