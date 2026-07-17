@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BarBox.Core.Drawing;
 using Godot;
 
 namespace BarBox.Games.Racing;
@@ -42,7 +43,7 @@ public partial class RacingCar : BasePlayer
 	public float HeadlightWidth { get; set; } = 47.0f;
 
 	[Export]
-	public Color HeadlightColor { get; set; } = new Color(1.0f, 1.0f, 0.8f, 0.27f);
+	public Color HeadlightColor { get; set; } = RacingPalette.HeadlightGlow;
 
 	[ExportCategory("Input Settings")]
 	[Export]
@@ -74,6 +75,11 @@ public partial class RacingCar : BasePlayer
 	private const float CAR_BACK_VERTICAL_RATIO = 1.5f;
 	private const float TIRE_OFFSET_RATIO = 0.625f;
 
+	private const float CAR_BODY_CORNER_RADIUS = 8f;
+	private const float WINDSHIELD_VERTICAL_RATIO = 0.22f;
+	private const float WINDSHIELD_WIDTH_RATIO = 0.3f;
+	private const float WINDSHIELD_LINE_WIDTH = 3f;
+
 	#endregion
 
 	#region Fields
@@ -90,8 +96,8 @@ public partial class RacingCar : BasePlayer
 
 	protected CharacterBody2D _carBody;
 	protected CollisionShape2D _carCollision;
-	protected ColorRect _carVisual;
-	protected Polygon2D _headlightCone;
+	protected ShapeCanvas _carVisualCanvas;
+	protected Shape _headlightShape;
 
 	protected Vector2 _targetPosition;
 	protected Vector2 _lastTargetPosition;
@@ -180,11 +186,27 @@ public partial class RacingCar : BasePlayer
 		_carBody = new CharacterBody2D();
 		AddChild(_carBody);
 
-		_carVisual = new ColorRect();
-		_carVisual.Size = CarSize;
-		_carVisual.Color = Colors.Red;
-		_carVisual.Position = new Vector2(-CarSize.X * CAR_VISUAL_OFFSET_RATIO, -CarSize.Y * CAR_VISUAL_OFFSET_RATIO);
-		_carBody.AddChild(_carVisual);
+		_carVisualCanvas = new ShapeCanvas();
+		_carBody.AddChild(_carVisualCanvas);
+
+		var bodyRect = new Rect2(
+			-CarSize.X * CAR_VISUAL_OFFSET_RATIO,
+			-CarSize.Y * CAR_VISUAL_OFFSET_RATIO,
+			CarSize.X,
+			CarSize.Y);
+
+		_carVisualCanvas.Build()
+			.RoundedRect(bodyRect, CAR_BODY_CORNER_RADIUS)
+			.Fill(RacingPalette.PlayerColors[0])
+			.Stroke(VectorStyles.ButtonOutline(Palette.White))
+			.Commit();
+
+		float windshieldY = bodyRect.Position.Y + (CarSize.Y * WINDSHIELD_VERTICAL_RATIO);
+		float windshieldHalfWidth = CarSize.X * WINDSHIELD_WIDTH_RATIO;
+		_carVisualCanvas.Build()
+			.Polyline([new Vector2(-windshieldHalfWidth, windshieldY), new Vector2(windshieldHalfWidth, windshieldY)])
+			.Stroke(new StrokeStyle { Width = WINDSHIELD_LINE_WIDTH, Color = Palette.Ink, Cap = CapMode.Round })
+			.Commit();
 
 		_carCollision = new CollisionShape2D();
 		var carShape = new RectangleShape2D();
@@ -204,29 +226,26 @@ public partial class RacingCar : BasePlayer
 			return;
 		}
 
-		_headlightCone = new Polygon2D();
-		_carBody.AddChild(_headlightCone);
+		Vector2[] vertices = ComputeHeadlightVertices(HeadlightRange, HeadlightWidth);
 
-		// Create triangle cone shape pointing forward using cached car front position
-		var halfWidth = Mathf.DegToRad(HeadlightWidth * HEADLIGHT_CONE_HALF_WIDTH_RATIO);
-		var range = HeadlightRange;
+		_headlightShape = _carVisualCanvas.Build()
+			.Polygon(vertices, closed: true)
+			.Fill(HeadlightColor)
+			.Commit();
+	}
 
-		// Use cached front position offset for consistent positioning with visual feedback
+	/// <summary>Apex at the cached car-front offset, base edges swept by the cone's half-angle.</summary>
+	private Vector2[] ComputeHeadlightVertices(float range, float width)
+	{
+		var halfWidth = Mathf.DegToRad(width * HEADLIGHT_CONE_HALF_WIDTH_RATIO);
 		var carFrontOffset = (CarRight * -CarSize.X * HEADLIGHT_HORIZONTAL_OFFSET_RATIO) + (CarForward * CarSize.Y * HEADLIGHT_VERTICAL_OFFSET_RATIO);
 
-		// Triangle vertices: start at front center of car, cone extends forward
-		var vertices = new Vector2[]
-		{
-			carFrontOffset, // Start at front center of car (using cached calculation)
-			carFrontOffset + new Vector2(-range * Mathf.Sin(halfWidth), -range * Mathf.Cos(halfWidth)), // Left edge
-			carFrontOffset + new Vector2(range * Mathf.Sin(halfWidth), -range * Mathf.Cos(halfWidth)), // Right edge
-		};
-
-		_headlightCone.Polygon = vertices;
-		_headlightCone.Color = HeadlightColor;
-
-		// Position at origin since vertices already include proper offset
-		_headlightCone.Position = Vector2.Zero;
+		return
+		[
+			carFrontOffset,
+			carFrontOffset + new Vector2(-range * Mathf.Sin(halfWidth), -range * Mathf.Cos(halfWidth)),
+			carFrontOffset + new Vector2(range * Mathf.Sin(halfWidth), -range * Mathf.Cos(halfWidth)),
+		];
 	}
 
 	#endregion
@@ -776,23 +795,12 @@ public partial class RacingCar : BasePlayer
 		HeadlightWidth = width;
 		HeadlightColor = color;
 
-		if (_headlightCone != null && GodotObject.IsInstanceValid(_headlightCone))
+		_headlightShape?.SetVisible(enabled);
+
+		if (enabled && _headlightShape != null)
 		{
-			_headlightCone.Visible = enabled;
-			if (enabled)
-			{
-				// Recalculate cone shape with new parameters using cached positions
-				var halfWidth = Mathf.DegToRad(width * HEADLIGHT_CONE_HALF_WIDTH_RATIO);
-				var carFrontOffset = (CarRight * -CarSize.X * HEADLIGHT_HORIZONTAL_OFFSET_RATIO) + (CarForward * CarSize.Y * HEADLIGHT_VERTICAL_OFFSET_RATIO);
-				var vertices = new Vector2[]
-				{
-					carFrontOffset, // Start at front center of car (using cached calculation)
-					carFrontOffset + new Vector2(-range * Mathf.Sin(halfWidth), -range * Mathf.Cos(halfWidth)), // Left edge
-					carFrontOffset + new Vector2(range * Mathf.Sin(halfWidth), -range * Mathf.Cos(halfWidth)), // Right edge
-				};
-				_headlightCone.Polygon = vertices;
-				_headlightCone.Color = color;
-			}
+			_headlightShape.SetPoints(ComputeHeadlightVertices(range, width));
+			_headlightShape.SetFill(color);
 		}
 	}
 

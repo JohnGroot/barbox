@@ -78,7 +78,7 @@ A comment earns its place only by stating what the code *cannot*: a constraint, 
 ## Development Rules
 
 - Make minimal, surgical changes for easy review
-- **Colors**: no hardcoded color *literals* (`new Color(0.2f, 0.4f, ...)`, `new Color("#3b82f6")`) outside `_Core/Scripts/Drawing/Palette.cs` — add a named entry there and reference it. Constructing a `Color` from *computed* values is fine and not a violation (e.g. `OkLab.ToSrgb`, a stroke's alpha fade). Exempt: tests, the parked `addons/ShapesRenderer/`, and `.tscn`-authored colors like `default_color`/`ZoneColor`, which are authoring data
+- **Colors**: no hardcoded color *literals* (`new Color(0.2f, 0.4f, ...)`, `new Color("#3b82f6")`) outside `_Core/Scripts/Drawing/Palette.cs` or a game's own `<Game>Palette.cs` (e.g. `_Games/RacingGame/Scripts/Visual/RacingPalette.cs`) — add a named entry there and reference it. `Palette.cs` holds only the base OP-1 swatches shared across the app; a color meaningful to just one game belongs in that game's palette, built from `Palette`'s base swatches rather than new literals where possible. Constructing a `Color` from *computed* values is fine and not a violation (e.g. `OkLab.ToSrgb`, a stroke's alpha fade). Exempt: tests, the parked `addons/ShapesRenderer/`, and `.tscn`-authored colors like `default_color`/`ZoneColor`, which are authoring data
 - Use `nameof` for method/variable string references
 - Cache strings as consts instead of inline
 - Use `TweenConstants` for animations to reduce GC allocation

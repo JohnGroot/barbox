@@ -1,4 +1,5 @@
 using System;
+using BarBox.Core.Drawing;
 using Godot;
 
 namespace BarBox.Games.Racing;
@@ -8,7 +9,7 @@ namespace BarBox.Games.Racing;
 /// Inspired by teenage.engineering design aesthetic with vibrant colors and smooth animations
 /// </summary>
 [GlobalClass]
-public partial class RacingHUDArcRenderer : Node2D
+public partial class RacingHUDArcRenderer : ShapeCanvas
 {
 	// ================================================================
 	// EXPORT PROPERTIES - HUD STYLING
@@ -20,18 +21,6 @@ public partial class RacingHUDArcRenderer : Node2D
 	[Export]
 	public float SpeedometerThickness { get; set; } = 12.0f;
 
-	[Export]
-	public Color SpeedLowColor { get; set; } = new Color(0.0f, 1.0f, 0.53f); // Bright green #00FF88
-
-	[Export]
-	public Color SpeedMidColor { get; set; } = new Color(1.0f, 0.84f, 0.0f); // Golden #FFD700
-
-	[Export]
-	public Color SpeedHighColor { get; set; } = new Color(1.0f, 0.27f, 0.0f); // Orange-red #FF4500
-
-	[Export]
-	public Color SpeedMaxColor { get; set; } = new Color(1.0f, 0.0f, 0.0f); // Bright red #FF0000
-
 	[ExportCategory("Countdown Arc")]
 	[Export]
 	public float CountdownRadius { get; set; } = 120.0f;
@@ -40,10 +29,10 @@ public partial class RacingHUDArcRenderer : Node2D
 	public float CountdownThickness { get; set; } = 8.0f;
 
 	[Export]
-	public Color CountdownColor { get; set; } = new Color(0.0f, 1.0f, 1.0f); // Cyan #00FFFF
+	public Color CountdownColor { get; set; } = Palette.Cyan;
 
 	[Export]
-	public Color CountdownGlowColor { get; set; } = new Color(0.0f, 0.8f, 1.0f, 0.5f); // Blue glow
+	public Color CountdownGlowColor { get; set; } = RacingPalette.CountdownGlow;
 
 	[ExportCategory("Lap Progress Arc")]
 	[Export]
@@ -53,10 +42,10 @@ public partial class RacingHUDArcRenderer : Node2D
 	public float LapThickness { get; set; } = 10.0f;
 
 	[Export]
-	public Color LapStartColor { get; set; } = new Color(0.61f, 0.35f, 0.71f); // Purple #9B59B6
+	public Color LapStartColor { get; set; } = Palette.Purple;
 
 	[Export]
-	public Color LapEndColor { get; set; } = new Color(0.91f, 0.30f, 0.24f); // Red #E74C3C
+	public Color LapEndColor { get; set; } = Palette.Red;
 
 	[ExportCategory("HUD Layout")]
 	[Export]
@@ -71,6 +60,7 @@ public partial class RacingHUDArcRenderer : Node2D
 	// ================================================================
 	// PRIVATE FIELDS - STATE TRACKING
 	// ================================================================
+	private const int CountdownGlowRingCount = 3;
 
 	// Current values for smooth interpolation
 	private float _currentSpeedPercent = 0.0f;
@@ -96,6 +86,11 @@ public partial class RacingHUDArcRenderer : Node2D
 	private Vector2 _cachedSpeedometerPos;
 	private Vector2 _cachedLapProgressPos;
 	private Vector2 _cachedCountdownPos;
+
+	// Shape.SetTransform has no equality guard — it always dirties its whole bucket — so pushing
+	// it on every HasVisualStateChanged frame would force a full re-concat of all 9 HUD shapes
+	// just to reapply a position that hasn't moved. Only actually true on a screen resize.
+	private bool _transformsDirty = true;
 
 	// Speed text + measured size cache - recomputed only when the displayed integer speed changes
 	private int _cachedSpeedInt = int.MinValue;
@@ -136,8 +131,24 @@ public partial class RacingHUDArcRenderer : Node2D
 	private float _maxSpeed = 100.0f;
 	private int _currentLap = 1;
 	private int _targetLaps = 3;
-	private string _timeText = "0.0s";
 	private bool _isPracticeMode = false;
+
+	// Retained shapes, committed once and mutated per push. All static-bucket (no Dynamic()): the
+	// Lerp-eased speed/lap percentages converge below HasVisualStateChanged's epsilons within a
+	// few frames of steady state, so redraws genuinely stop — Dynamic() would not improve on that,
+	// and there is no unrelated heavy static geometry in this canvas for the bucket split to
+	// protect. Each gauge's shapes are committed at a local Center/points around Vector2.Zero and
+	// positioned on screen via SetTransform, so a screen resize only needs a transform update, not
+	// re-committing geometry.
+	private Shape _speedoBgShape;
+	private Shape _speedoProgressShape;
+	private Shape _needleShadowShape;
+	private Shape _needleShape;
+	private Shape _lapBgShape;
+	private Shape _lapProgressShape;
+	private Shape _countdownBgShape;
+	private Shape[] _countdownGlowShapes;
+	private Shape _countdownProgressShape;
 
 	// ================================================================
 	// PUBLIC PROPERTIES
@@ -147,6 +158,18 @@ public partial class RacingHUDArcRenderer : Node2D
 	// ================================================================
 	// LIFECYCLE
 	// ================================================================
+
+	/// <summary>
+	/// ShapeCanvas._Ready() calls SetProcess(_childFlushPending), which is false until a Dynamic()
+	/// shape is registered — this canvas has none, so without this override _Process would never
+	/// run at all and no animation/HUD state would ever be pushed.
+	/// </summary>
+	public override void _Ready()
+	{
+		base._Ready();
+		SetProcess(true);
+	}
+
 	public override void _Notification(int what)
 	{
 		base._Notification(what);
@@ -174,6 +197,80 @@ public partial class RacingHUDArcRenderer : Node2D
 		_cachedLapProgressPos = new Vector2(_cachedScreenSize.X + LapProgressPosition.X, _cachedScreenSize.Y + LapProgressPosition.Y);
 		_cachedCountdownPos = (_cachedScreenSize * 0.5f) + CountdownPosition;
 		_screenSizeDirty = false;
+		_transformsDirty = true;
+	}
+
+	// ================================================================
+	// SHAPE SETUP
+	// ================================================================
+
+	/// <summary>
+	/// Simplifications from the original per-gauge pulsing glow halos: every ring background here
+	/// shares one HudTrack-derived backdrop color (the originals used two close-but-distinct
+	/// literals), and only the countdown ring keeps decorative glow shapes (its three outer
+	/// pulsing rings) — the speedo/lap/countdown progress arcs no longer have a separate glow pass
+	/// behind them.
+	/// </summary>
+	private void EnsureShapesCommitted()
+	{
+		if (_speedoBgShape != null)
+		{
+			return;
+		}
+
+		_speedoBgShape = Build().Arc(Vector2.Zero, SpeedometerRadius, Mathf.Pi, Mathf.Tau)
+			.Stroke(HudRingStyle(SpeedometerThickness))
+			.Commit();
+
+		_speedoProgressShape = Build().Arc(Vector2.Zero, SpeedometerRadius, Mathf.Pi, Mathf.Pi).Hidden()
+			.Stroke(VectorStyles.GaugeArc with { Width = SpeedometerThickness, ColorStops = RacingPalette.SpeedGradient, Cap = CapMode.Butt })
+			.Commit();
+
+		// Unlike the progress arcs/rings, the needle has no visibility condition — it renders
+		// unconditionally whenever the speedometer does, so it must not be committed Hidden().
+		_needleShadowShape = Build().Polyline([Vector2.Zero, Vector2.Zero])
+			.Stroke(new StrokeStyle { Width = 5f, Color = Palette.Ink })
+			.Commit();
+
+		_needleShape = Build().Polyline([Vector2.Zero, Vector2.Zero])
+			.Stroke(new StrokeStyle { Width = 3f, Color = Palette.White })
+			.Commit();
+
+		_lapBgShape = Build().Arc(Vector2.Zero, LapRadius, 0f, Mathf.Tau)
+			.Stroke(HudRingStyle(LapThickness))
+			.Commit();
+
+		_lapProgressShape = Build().Arc(Vector2.Zero, LapRadius, 0f, 0f).Hidden()
+			.Stroke(new StrokeStyle { Width = LapThickness, Color = LapStartColor, Cap = CapMode.Butt })
+			.Commit();
+
+		_countdownBgShape = Build().Circle(Vector2.Zero, CountdownRadius).Hidden()
+			.Fill(RacingPalette.HudTrack * new Color(1, 1, 1, 0.8f))
+			.Commit();
+
+		_countdownGlowShapes = new Shape[CountdownGlowRingCount];
+		for (int i = 1; i <= CountdownGlowRingCount; i++)
+		{
+			var ringRadius = CountdownRadius + 12f + (i * 8f);
+			_countdownGlowShapes[i - 1] = Build().Circle(Vector2.Zero, ringRadius).Hidden()
+				.Fill(CountdownGlowColor)
+				.Commit();
+		}
+
+		_countdownProgressShape = Build().Arc(Vector2.Zero, CountdownRadius, -Mathf.Pi * 0.5f, -Mathf.Pi * 0.5f).Hidden()
+			.Stroke(new StrokeStyle { Width = CountdownThickness, Color = CountdownColor, Cap = CapMode.Butt })
+			.Commit();
+	}
+
+	/// <summary>Dark HUD gauge background ring stroke; width varies per gauge (speedo/lap).</summary>
+	private static StrokeStyle HudRingStyle(float width)
+	{
+		return new StrokeStyle
+		{
+			Width = width,
+			Color = RacingPalette.HudTrack * new Color(1, 1, 1, 0.6f),
+			Cap = CapMode.Butt,
+		};
 	}
 
 	// ================================================================
@@ -189,7 +286,6 @@ public partial class RacingHUDArcRenderer : Node2D
 		_maxSpeed = maxSpeed;
 		_currentLap = currentLap;
 		_targetLaps = targetLaps;
-		_timeText = timeText;
 		_isPracticeMode = isPracticeMode;
 
 		// Update target values for smooth interpolation
@@ -264,10 +360,16 @@ public partial class RacingHUDArcRenderer : Node2D
 		// Global glow pulse for visual interest
 		_glowIntensity = 0.8f + (0.2f * Mathf.Sin(_pulseTime * 3.0f));
 
-		// Queue redraw only when something visible actually changed
+		// Push shape state, and with it a QueueRedraw for the text pass, only when something
+		// visible actually changed.
 		if (ShouldRender && HasVisualStateChanged())
 		{
-			QueueRedraw();
+			UpdateCachedScreenData();
+			if (_cachedScreenSize != Vector2.Zero)
+			{
+				EnsureShapesCommitted();
+				PushShapeState();
+			}
 		}
 	}
 
@@ -285,7 +387,12 @@ public partial class RacingHUDArcRenderer : Node2D
 		return Math.Abs(_currentSpeed - _lastDrawnSpeed) > 0.01f
 			|| Math.Abs(_currentSpeedPercent - _lastDrawnSpeedPercent) > 0.0005f
 			|| Math.Abs(_currentLapProgress - _lastDrawnLapProgress) > 0.0005f
-			|| Math.Abs(_glowIntensity - _lastDrawnGlowIntensity) > 0.001f
+
+			// _glowIntensity only feeds the countdown ring's glow rings (PushCountdownShapes) — gating
+			// it here, like the _countdownAnimTime check below, is what lets redraws actually stop
+			// once the Lerp-eased values settle outside a countdown; ungated, its continuous sine wave
+			// would keep this predicate true almost every frame regardless of anything else changing.
+			|| (_isCountdownVisible && Math.Abs(_glowIntensity - _lastDrawnGlowIntensity) > 0.001f)
 			|| _currentLap != _lastDrawnCurrentLap
 			|| _targetLaps != _lastDrawnTargetLaps
 			|| _isPracticeMode != _lastDrawnIsPracticeMode
@@ -317,20 +424,145 @@ public partial class RacingHUDArcRenderer : Node2D
 	}
 
 	// ================================================================
-	// RENDERING METHODS
+	// SHAPE PUSHES
+	// ================================================================
+	private void PushShapeState()
+	{
+		if (_transformsDirty)
+		{
+			var speedoTransform = new Transform2D(0f, _cachedSpeedometerPos);
+			_speedoBgShape.SetTransform(speedoTransform);
+			_speedoProgressShape.SetTransform(speedoTransform);
+			_needleShadowShape.SetTransform(speedoTransform);
+			_needleShape.SetTransform(speedoTransform);
+
+			var lapTransform = new Transform2D(0f, _cachedLapProgressPos);
+			_lapBgShape.SetTransform(lapTransform);
+			_lapProgressShape.SetTransform(lapTransform);
+
+			var countdownTransform = new Transform2D(0f, _cachedCountdownPos);
+			_countdownBgShape.SetTransform(countdownTransform);
+			foreach (Shape glow in _countdownGlowShapes)
+			{
+				glow.SetTransform(countdownTransform);
+			}
+
+			_countdownProgressShape.SetTransform(countdownTransform);
+
+			_transformsDirty = false;
+		}
+
+		PushSpeedometerShapes();
+
+		// Don't show lap counts if we're in practice mode or counting down.
+		bool lapVisible = !_isPracticeMode && !_isCountdownVisible;
+		_lapBgShape.SetVisible(lapVisible);
+		if (lapVisible)
+		{
+			PushLapShapes();
+		}
+		else
+		{
+			_lapProgressShape.SetVisible(false);
+		}
+
+		_countdownBgShape.SetVisible(_isCountdownVisible);
+		foreach (Shape glow in _countdownGlowShapes)
+		{
+			glow.SetVisible(_isCountdownVisible);
+		}
+
+		if (_isCountdownVisible)
+		{
+			PushCountdownShapes();
+		}
+		else
+		{
+			_countdownProgressShape.SetVisible(false);
+		}
+	}
+
+	private void PushSpeedometerShapes()
+	{
+		// Follow the same path as the background: from 180deg to 360deg.
+		var arcStart = Mathf.Pi;
+		var arcEnd = Mathf.Tau;
+		var totalRange = arcEnd - arcStart;
+		var endAngle = arcStart + (totalRange * _currentSpeedPercent);
+
+		bool progressVisible = _currentSpeedPercent > 0.01f;
+		_speedoProgressShape.SetVisible(progressVisible);
+		if (progressVisible)
+		{
+			_speedoProgressShape.SetArc(arcStart, endAngle);
+		}
+
+		// Needle points to the end of the progress arc.
+		var needleAngle = endAngle;
+		var needleInnerRadius = SpeedometerRadius - (SpeedometerThickness * 1.5f);
+		var needleOuterRadius = SpeedometerRadius + (SpeedometerThickness * 1.5f);
+		var needleDirection = Vector2.FromAngle(needleAngle);
+		var needleStart = needleDirection * needleInnerRadius;
+		var needleEnd = needleDirection * needleOuterRadius;
+
+		_needleShadowShape.SetPoints([needleStart, needleEnd]);
+		_needleShape.SetPoints([needleStart, needleEnd]);
+	}
+
+	private void PushLapShapes()
+	{
+		bool progressVisible = _currentLapProgress > 0.01f;
+		_lapProgressShape.SetVisible(progressVisible);
+		if (progressVisible)
+		{
+			// Progress ring starts from bottom (-90deg) and fills clockwise.
+			var startAngle = -Mathf.Pi * 0.5f;
+			var sweepAngle = Mathf.Tau * _currentLapProgress;
+			var endAngle = startAngle + sweepAngle;
+			var lapColor = LapStartColor.Lerp(LapEndColor, _currentLapProgress);
+
+			_lapProgressShape.SetArc(startAngle, endAngle);
+			_lapProgressShape.SetStrokeColor(lapColor);
+		}
+	}
+
+	private void PushCountdownShapes()
+	{
+		for (int i = 1; i <= CountdownGlowRingCount; i++)
+		{
+			var ringAlpha = _glowIntensity * (0.15f / i);
+			var ringPulse = 1.0f + (0.2f * Mathf.Sin((_countdownAnimTime + (i * 0.5f)) * 4.0f));
+			_countdownGlowShapes[i - 1].SetFill(CountdownGlowColor * new Color(1, 1, 1, ringAlpha * ringPulse));
+		}
+
+		// Progress arc decreases as the countdown progresses.
+		var progressAngle = Mathf.Tau * (1.0f - _countdownProgress);
+		bool progressVisible = progressAngle > 0.01f;
+		_countdownProgressShape.SetVisible(progressVisible);
+		if (progressVisible)
+		{
+			_countdownProgressShape.SetArc(-Mathf.Pi * 0.5f, (-Mathf.Pi * 0.5f) + progressAngle);
+		}
+	}
+
+	// ================================================================
+	// TEXT RENDERING
 	// ================================================================
 
 	/// <summary>
-	/// Main drawing method
+	/// Draws HUD text. ShapeCanvas has no text primitive, so this is the one place immediate-mode
+	/// drawing and retained shapes coexist on this node — base._Draw() must run first to rebuild
+	/// and upload the static shape bucket the rest of this override draws text on top of.
 	/// </summary>
 	public override void _Draw()
 	{
+		base._Draw();
+
 		if (!ShouldRender)
 		{
 			return;
 		}
 
-		// Update cached screen data only when viewport changes
 		UpdateCachedScreenData();
 
 		if (_cachedScreenSize == Vector2.Zero)
@@ -338,71 +570,33 @@ public partial class RacingHUDArcRenderer : Node2D
 			return;
 		}
 
-		// Cache font reference once
-		_cachedFont ??= ThemeDB.FallbackFont;
+		_cachedFont ??= LoadInterFont();
 
-		// Draw speedometer arc
-		DrawSpeedometer(_cachedSpeedometerPos);
+		DrawSpeedText(_cachedSpeedometerPos);
 
-		// Draw lap progress arc (only in time trial mode)
-		if (!_isPracticeMode)
+		if (!_isPracticeMode && !_isCountdownVisible)
 		{
-			DrawLapProgress(_cachedLapProgressPos);
+			DrawLapText(_cachedLapProgressPos);
 		}
 
-		// Draw countdown arc if visible
 		if (_isCountdownVisible)
 		{
-			DrawCountdown(_cachedCountdownPos);
+			DrawCountdownText(_cachedCountdownPos);
 		}
 
 		RecordDrawnState();
 	}
 
-	/// <summary>
-	/// Draw the speedometer arc with gradient colors
-	/// </summary>
-	private void DrawSpeedometer(Vector2 position)
+	private static Font LoadInterFont()
 	{
-		// Background arc (dark) - reduced from 64 to 32 segments for performance
-		var bgColor = new Color(0.2f, 0.2f, 0.3f, 0.6f);
-		var bgStartAngle = Mathf.Pi; // 180° (left)
-		var bgEndAngle = Mathf.Tau; // 360° (right, equivalent to 0°)
-		DrawArc(position, SpeedometerRadius, bgStartAngle, bgEndAngle, 32, bgColor, SpeedometerThickness);
+		var fontFile = GD.Load<FontFile>("res://_Core/Fonts/Inter/InterDisplay-SemiBold.ttf");
+		var fontVariation = new FontVariation();
+		fontVariation.SetBaseFont(fontFile);
+		return fontVariation;
+	}
 
-		// Calculate arc angle based on speed (180 degrees total)
-		// Follow the same path as background: from 180° to 360°
-		var arcStart = Mathf.Pi; // 180° (left)
-		var arcEnd = Mathf.Tau; // 360° (right)
-		var totalRange = arcEnd - arcStart; // Total 180° range
-		var endAngle = arcStart + (totalRange * _currentSpeedPercent);
-
-		if (_currentSpeedPercent > 0.01f)
-		{
-			// Get color based on speed percentage
-			var startAngle = arcStart;
-			var speedColor = GetSpeedColor(_currentSpeedPercent);
-
-			// Add glow effect - reduced from 64 to 32 segments
-			var glowColor = speedColor * new Color(1, 1, 1, _glowIntensity * 0.3f);
-			DrawArc(position, SpeedometerRadius + 3, startAngle, endAngle, 32, glowColor, SpeedometerThickness + 4);
-
-			// Main arc - reduced from 64 to 32 segments
-			DrawArc(position, SpeedometerRadius, startAngle, endAngle, 32, speedColor, SpeedometerThickness);
-		}
-
-		// Speed needle (visual indicator pointing to current speed)
-		var needleAngle = endAngle; // Needle points to the end of the progress arc
-		var needleInnerRadius = SpeedometerRadius - (SpeedometerThickness * 1.5f);
-		var needleOuterRadius = SpeedometerRadius + (SpeedometerThickness * 1.5f);
-		var needleStart = position + (Vector2.FromAngle(needleAngle) * needleInnerRadius);
-		var needleEnd = position + (Vector2.FromAngle(needleAngle) * needleOuterRadius);
-
-		// Draw needle with glow for better visibility
-		DrawLine(needleStart, needleEnd, Colors.Black, 5.0f); // Shadow/outline
-		DrawLine(needleStart, needleEnd, Colors.White, 3.0f); // Main needle
-
-		// Speed text in center - use cached font, string, and measured size
+	private void DrawSpeedText(Vector2 position)
+	{
 		var speedInt = (int)(_currentSpeed * 0.1f);
 		var fontSize = 24;
 		if (speedInt != _cachedSpeedInt)
@@ -416,43 +610,11 @@ public partial class RacingHUDArcRenderer : Node2D
 		var textSize = _cachedSpeedTextSize;
 		var textPos = position + (Vector2.Left * textSize * 0.5f);
 
-		// Main text
-		DrawString(_cachedFont, textPos, speedText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
+		DrawString(_cachedFont, textPos, speedText, HorizontalAlignment.Center, -1, fontSize, Palette.White);
 	}
 
-	/// <summary>
-	/// Draw lap progress arc
-	/// </summary>
-	private void DrawLapProgress(Vector2 position)
+	private void DrawLapText(Vector2 position)
 	{
-		// Don't show lap counts if we're counting down
-		if (_isCountdownVisible)
-		{
-			return;
-		}
-
-		// Background arc - reduced from 64 to 32 segments
-		var bgColor = new Color(0.2f, 0.2f, 0.3f, 0.6f);
-		DrawArc(position, LapRadius, 0, Mathf.Tau, 32, bgColor, LapThickness); // Full circle background
-
-		if (_currentLapProgress > 0.01f)
-		{
-			// Progress arc with gradient
-			// Progress ring starts from bottom (-90°) and fills clockwise
-			var startAngle = -Mathf.Pi * 0.5f; // Start from bottom
-			var sweepAngle = Mathf.Tau * _currentLapProgress; // Full circle sweep
-			var endAngle = startAngle + sweepAngle;
-			var lapColor = LapStartColor.Lerp(LapEndColor, _currentLapProgress);
-
-			// Glow effect - reduced from 64 to 32 segments
-			var glowColor = lapColor * new Color(1, 1, 1, _glowIntensity * 0.4f);
-			DrawArc(position, LapRadius + 2, startAngle, endAngle, 32, glowColor, LapThickness + 3);
-
-			// Main arc - reduced from 64 to 32 segments
-			DrawArc(position, LapRadius, startAngle, endAngle, 32, lapColor, LapThickness);
-		}
-
-		// Lap text - use cached font, string, and measured size
 		var fontSize = 18;
 		var lapLabel = "LAP";
 
@@ -478,46 +640,12 @@ public partial class RacingHUDArcRenderer : Node2D
 		var lapLabelPos = new Vector2(position.X - (lapLabelSize.X * 0.5f), startY);
 		var lapValuePos = new Vector2(position.X - (lapValueSize.X * 0.5f), startY + lineHeight);
 
-		// Draw both lines
-		DrawString(_cachedFont, lapLabelPos, lapLabel, HorizontalAlignment.Left, -1, fontSize, Colors.White);
-		DrawString(_cachedFont, lapValuePos, lapValue, HorizontalAlignment.Left, -1, fontSize, Colors.White);
+		DrawString(_cachedFont, lapLabelPos, lapLabel, HorizontalAlignment.Left, -1, fontSize, Palette.White);
+		DrawString(_cachedFont, lapValuePos, lapValue, HorizontalAlignment.Left, -1, fontSize, Palette.White);
 	}
 
-	/// <summary>
-	/// Draw countdown arc and number
-	/// </summary>
-	private void DrawCountdown(Vector2 position)
+	private void DrawCountdownText(Vector2 position)
 	{
-		// Multiple outer decorative rings
-		for (int i = 1; i <= 3; i++)
-		{
-			var ringRadius = CountdownRadius + 12 + (i * 8);
-			var ringAlpha = _glowIntensity * (0.15f / i);
-			var ringPulse = 1.0f + (0.2f * Mathf.Sin((_countdownAnimTime + (i * 0.5f)) * 4.0f));
-			var ringColor = CountdownGlowColor * new Color(1, 1, 1, ringAlpha * ringPulse);
-			DrawCircle(position, ringRadius, ringColor);
-		}
-
-		// Background circle
-		var bgColor = new Color(0.1f, 0.1f, 0.2f, 0.8f);
-		DrawCircle(position, CountdownRadius, bgColor);
-
-		// Progress arc (decreases as countdown progresses)
-		var progressAngle = Mathf.Tau * (1.0f - _countdownProgress);
-
-		// Show arc even when very small
-		if (progressAngle > 0.01f)
-		{
-			// Animated glow - reduced from 64 to 32 segments
-			var glowPulse = 1.0f + (0.3f * Mathf.Sin(_countdownAnimTime * 8.0f));
-			var glowColor = CountdownColor * new Color(1, 1, 1, glowPulse * 0.5f);
-			DrawArc(position, CountdownRadius + 4, -Mathf.Pi * 0.5f, (-Mathf.Pi * 0.5f) + progressAngle, 32, glowColor, CountdownThickness + 6);
-
-			// Main countdown arc - reduced from 64 to 32 segments
-			DrawArc(position, CountdownRadius, -Mathf.Pi * 0.5f, (-Mathf.Pi * 0.5f) + progressAngle, 32, CountdownColor, CountdownThickness);
-		}
-
-		// Countdown number with pulse scale - use cached font, string, and measured size
 		if (_countdownNumber > 0)
 		{
 			var fontSize = (int)(72 * _countdownPulseScale);
@@ -543,7 +671,7 @@ public partial class RacingHUDArcRenderer : Node2D
 			}
 
 			// Main text
-			DrawString(_cachedFont, textPos, numberText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
+			DrawString(_cachedFont, textPos, numberText, HorizontalAlignment.Center, -1, fontSize, Palette.White);
 		}
 		else
 		{
@@ -574,47 +702,13 @@ public partial class RacingHUDArcRenderer : Node2D
 			}
 
 			// Main text
-			DrawString(_cachedFont, textPos, goText, HorizontalAlignment.Center, -1, fontSize, Colors.White);
-		}
-	}
-
-	/// <summary>
-	/// Get gradient color based on speed percentage
-	/// </summary>
-	private Color GetSpeedColor(float speedPercent)
-	{
-		if (speedPercent <= 0.3f)
-		{
-			// Green to yellow (0-30%)
-			var t = speedPercent / 0.3f;
-			return SpeedLowColor.Lerp(SpeedMidColor, t);
-		}
-		else if (speedPercent <= 0.7f)
-		{
-			// Yellow to orange (30-70%)
-			var t = (speedPercent - 0.3f) / 0.4f;
-			return SpeedMidColor.Lerp(SpeedHighColor, t);
-		}
-		else
-		{
-			// Orange to red (70-100%)
-			var t = (speedPercent - 0.7f) / 0.3f;
-			return SpeedHighColor.Lerp(SpeedMaxColor, t);
+			DrawString(_cachedFont, textPos, goText, HorizontalAlignment.Center, -1, fontSize, Palette.White);
 		}
 	}
 
 	// ================================================================
 	// UTILITY METHODS
 	// ================================================================
-
-	/// <summary>
-	/// Check if the renderer should be visible based on viewport
-	/// </summary>
-	public new bool IsVisible()
-	{
-		var viewport = GetViewport();
-		return viewport != null && ShouldRender;
-	}
 
 	/// <summary>
 	/// Reset all animation states

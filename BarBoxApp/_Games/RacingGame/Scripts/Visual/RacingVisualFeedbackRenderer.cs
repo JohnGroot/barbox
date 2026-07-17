@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BarBox.Core.Drawing;
 using Godot;
 
 namespace BarBox.Games.Racing;
@@ -9,26 +10,26 @@ namespace BarBox.Games.Racing;
 /// Extracted from RacingGame to follow single responsibility principle
 /// </summary>
 [GlobalClass]
-public partial class RacingVisualFeedbackRenderer : Node2D
+public partial class RacingVisualFeedbackRenderer : ShapeCanvas
 {
 	// ================================================================
 	// EXPORT PROPERTIES - VISUAL SETTINGS
 	// ================================================================
 	[ExportCategory("Visual Feedback")]
 	[Export]
-	public Color InputLineActiveColor { get; set; } = Colors.White;
+	public Color InputLineActiveColor { get; set; } = Palette.White;
 
 	[Export]
-	public Color InputLineInactiveColor { get; set; } = Colors.Gray;
+	public Color InputLineInactiveColor { get; set; } = Palette.EdgeGray;
 
 	[Export]
-	public Color MouseMovingColor { get; set; } = Colors.Cyan;
+	public Color MouseMovingColor { get; set; } = Palette.Cyan;
 
 	[Export]
-	public Color MouseStationaryColor { get; set; } = Colors.LimeGreen;
+	public Color MouseStationaryColor { get; set; } = Palette.Green;
 
 	[Export]
-	public Color TireTrailColor { get; set; } = Colors.DarkGray;
+	public Color TireTrailColor { get; set; } = Palette.EdgeGray;
 
 	[Export]
 	public float InputLineWidth { get; set; } = 10.0f;
@@ -51,6 +52,9 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 	// ================================================================
 	// PRIVATE FIELDS
 	// ================================================================
+	private const int TrailStopCount = 8;
+
+	private static readonly float[] InputLineDashPattern = [10f, 5f];
 
 	// Visual feedback tracking
 	private List<(Vector2 position, ulong timestamp, Color zoneColor)> _leftTireTrail = [];
@@ -68,9 +72,28 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 	private float _cachedCurrentSpeed = 0.0f;
 	private bool _cachedValuesValid = false;
 
-	// Pre-allocated buffers for trail rendering (eliminates per-frame GC allocations)
+	// True when this frame's state warrants pushing geometry to the retained shapes below —
+	// computed once in UpdateVisualFeedback and read by UpdateTireTrails, so the two externally
+	// invoked methods (RacingGame calls them in sequence) share one gating decision instead of
+	// each rolling its own.
+	private bool _needsRedraw;
+
+	// Retained shapes, committed once and mutated per push. All Dynamic(): every element here
+	// tracks a moving car/finger position and changes on essentially every active-play frame, so
+	// there is no unrelated static geometry in this canvas for the bucket split to protect.
+	private Shape _leftTrailShape;
+	private Shape _rightTrailShape;
+	private Shape _inputLineShape;
+	private Shape _touchStationaryShape;
+	private Shape _touchArcShape;
+
+	// Pooled per-trail color-stop scratch, reused every frame — Shape.SetStroke's CopyStops only
+	// reallocates when the array length changes, and it never does here.
+	private readonly ColorStop[] _leftTrailStops = new ColorStop[TrailStopCount];
+	private readonly ColorStop[] _rightTrailStops = new ColorStop[TrailStopCount];
+
+	// Pre-allocated buffer for trail rendering (eliminates per-frame GC allocations)
 	private Vector2[] _trailPointsBuffer;
-	private Color[] _trailColorsBuffer;
 	private int _trailBufferCapacity = 0;
 
 	// Zone color caching (reduces zone iteration overhead)
@@ -82,13 +105,14 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 	// Dependencies
 	private RacingCar _carController;
 
-	// Direct target position override (for arc positioning fix)
-	private Vector2 _directTargetOverride = Vector2.Zero;
-
 	// ================================================================
 	// PUBLIC PROPERTIES
 	// ================================================================
-	public bool ShouldRender { get; set; } = true;
+	public bool ShouldRender
+	{
+		get => Visible;
+		set => Visible = value;
+	}
 
 	// ================================================================
 	// INITIALIZATION
@@ -149,6 +173,37 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 	}
 
 	// ================================================================
+	// SHAPE SETUP
+	// ================================================================
+	private void EnsureShapesCommitted()
+	{
+		if (_inputLineShape != null)
+		{
+			return;
+		}
+
+		_leftTrailShape = Build().Polyline([Vector2.Zero, Vector2.Zero]).Dynamic().Hidden()
+			.Stroke(new StrokeStyle { Width = TireTrailWidth, Color = TireTrailColor, Cap = CapMode.Round })
+			.Commit();
+
+		_rightTrailShape = Build().Polyline([Vector2.Zero, Vector2.Zero]).Dynamic().Hidden()
+			.Stroke(new StrokeStyle { Width = TireTrailWidth, Color = TireTrailColor, Cap = CapMode.Round })
+			.Commit();
+
+		_inputLineShape = Build().Polyline([Vector2.Zero, Vector2.Zero]).Dynamic().Hidden()
+			.Stroke(new StrokeStyle { Width = InputLineWidth, Color = InputLineActiveColor, DashPattern = InputLineDashPattern, Cap = CapMode.Butt })
+			.Commit();
+
+		_touchStationaryShape = Build().Circle(Vector2.Zero, MouseIndicatorRadius * 0.4f).Dynamic().Hidden()
+			.Fill(MouseStationaryColor)
+			.Commit();
+
+		_touchArcShape = Build().Arc(Vector2.Zero, MouseIndicatorRadius, 0f, 0.01f).Dynamic().Hidden()
+			.Stroke(new StrokeStyle { Width = 3f, Color = MouseMovingColor })
+			.Commit();
+	}
+
+	// ================================================================
 	// UPDATE METHODS
 	// ================================================================
 	public void UpdateVisualFeedback(float delta)
@@ -157,6 +212,8 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 		{
 			return;
 		}
+
+		EnsureShapesCommitted();
 
 		var targetPosition = _carController.GetTargetPosition();
 		var hasInput = _carController.HasInput();
@@ -191,16 +248,17 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 			_wasInputActive = hasInput;
 		}
 
-		// Queue redraw only once per frame when visual state needs updating
-		// Consolidates multiple QueueRedraw calls into single conditional check
-		bool needsRedraw = inputStateChanged
+		// Gates this frame's shape pushes (here and in UpdateTireTrails, called right after this by
+		// RacingGame) — one gate shared across both externally invoked methods, not two.
+		_needsRedraw = inputStateChanged
 			|| hasInput
 			|| _mouseStationaryTime < 2.0f
 			|| carSpeed > 1.0f;
 
-		if (needsRedraw)
+		if (_needsRedraw)
 		{
-			QueueRedraw();
+			PushInputLine();
+			PushMouseIndicators();
 		}
 	}
 
@@ -221,44 +279,44 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 		CleanupExpiredTrailPoints(_rightTireTrail, currentTime);
 
 		// Only create new trail points when moving at decent speed
-		if (_carController.GetCarSpeed() < 5.0f)
+		if (_carController.GetCarSpeed() >= 5.0f)
 		{
-			return;
+			var carBody = _carController.GetCarBody();
+			if (carBody != null)
+			{
+				var carPosition = carBody.GlobalPosition;
+
+				// Check if car has moved enough to add new trail points
+				if (_lastTrailPosition.DistanceTo(carPosition) >= TrailUpdateDistance)
+				{
+					_cachedValuesValid = false;
+
+					// Use cached tire positions from car controller for performance
+					var leftTirePosition = _carController.LeftTirePosition;
+					var rightTirePosition = _carController.RightTirePosition;
+
+					// Update zone colors only when car moves significantly (reduces zone iteration overhead)
+					if (carPosition.DistanceSquaredTo(_lastZoneCheckPosition) >= ZONE_CHECK_DISTANCE_SQ)
+					{
+						_cachedLeftTireZoneColor = GetBlendedZoneColor(leftTirePosition);
+						_cachedRightTireZoneColor = GetBlendedZoneColor(rightTirePosition);
+						_lastZoneCheckPosition = carPosition;
+					}
+
+					// Add trail points for both tires with cached zone colors
+					AddTrailPoint(_leftTireTrail, leftTirePosition, currentTime, _cachedLeftTireZoneColor);
+					AddTrailPoint(_rightTireTrail, rightTirePosition, currentTime, _cachedRightTireZoneColor);
+
+					_lastTrailPosition = carPosition;
+				}
+			}
 		}
 
-		var carBody = _carController.GetCarBody();
-		if (carBody == null)
+		if (_needsRedraw)
 		{
-			return;
+			PushTrailLine(_leftTireTrail, _leftTrailShape, _leftTrailStops);
+			PushTrailLine(_rightTireTrail, _rightTrailShape, _rightTrailStops);
 		}
-
-		var carPosition = carBody.GlobalPosition;
-
-		// Check if car has moved enough to add new trail points
-		if (_lastTrailPosition.DistanceTo(carPosition) < TrailUpdateDistance)
-		{
-			return;
-		}
-
-		_cachedValuesValid = false;
-
-		// Use cached tire positions from car controller for performance
-		var leftTirePosition = _carController.LeftTirePosition;
-		var rightTirePosition = _carController.RightTirePosition;
-
-		// Update zone colors only when car moves significantly (reduces zone iteration overhead)
-		if (carPosition.DistanceSquaredTo(_lastZoneCheckPosition) >= ZONE_CHECK_DISTANCE_SQ)
-		{
-			_cachedLeftTireZoneColor = GetBlendedZoneColor(leftTirePosition);
-			_cachedRightTireZoneColor = GetBlendedZoneColor(rightTirePosition);
-			_lastZoneCheckPosition = carPosition;
-		}
-
-		// Add trail points for both tires with cached zone colors
-		AddTrailPoint(_leftTireTrail, leftTirePosition, currentTime, _cachedLeftTireZoneColor);
-		AddTrailPoint(_rightTireTrail, rightTirePosition, currentTime, _cachedRightTireZoneColor);
-
-		_lastTrailPosition = carPosition;
 	}
 
 	// ================================================================
@@ -304,40 +362,21 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 	}
 
 	// ================================================================
-	// RENDERING
+	// SHAPE PUSHES
 	// ================================================================
 
 	/// <summary>
-	/// Main drawing method - renders all visual feedback elements
+	/// Push the input line from car to target position to its retained shape
 	/// </summary>
-	public override void _Draw()
+	private void PushInputLine()
 	{
-		if (!ShouldRender || _carController?.IsInitialized != true)
-		{
-			return;
-		}
-
-		DrawInputLine();
-		DrawMouseIndicators();
-		DrawTireTrails();
-	}
-
-	/// <summary>
-	/// Draw the input line from car to target position
-	/// </summary>
-	private void DrawInputLine()
-	{
-		if (_carController?.IsInitialized != true)
-		{
-			return;
-		}
-
 		var targetPosition = _carController.GetTargetPosition();
 		var hasInput = _carController.HasInput();
 		var carBody = _carController.GetCarBody();
 
 		if (carBody == null || targetPosition == Vector2.Zero)
 		{
+			_inputLineShape.SetVisible(false);
 			return;
 		}
 
@@ -348,34 +387,37 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 		var inputLineColor = hasInput ? InputLineActiveColor :
 			(_carController.GetCarSpeed() > 1.0f ? InputLineInactiveColor : InputLineInactiveColor * new Color(1, 1, 1, 0.3f));
 
-		DrawDashedLine(carFrontPosition, clampedTarget, inputLineColor, InputLineWidth, 10.0f, 5.0f);
+		_inputLineShape.SetPoints([carFrontPosition, clampedTarget]);
+		_inputLineShape.SetStrokeColor(inputLineColor);
+		_inputLineShape.SetVisible(true);
 	}
 
 	/// <summary>
-	/// Draw mouse/touch position indicators
+	/// Push mouse/touch position indicators to their retained shapes
 	/// </summary>
-	private void DrawMouseIndicators()
+	private void PushMouseIndicators()
 	{
-		if (_carController?.IsInitialized != true)
-		{
-			return;
-		}
-
 		var targetPosition = _carController.GetTargetPosition();
 		var hasInput = _carController.HasInput();
 
 		if (targetPosition == Vector2.Zero || (!hasInput && _carController.GetCarSpeed() < 1.0f))
 		{
+			_touchStationaryShape.SetVisible(false);
+			_touchArcShape.SetVisible(false);
 			return;
 		}
 
 		// Use cached clamped target position from car controller for performance
 		var clampedTarget = _carController.ClampedTargetPosition;
 
-		// Draw circle at clamped target position
 		if (clampedTarget != Vector2.Zero)
 		{
-			DrawCircle(clampedTarget, MouseIndicatorRadius * 0.4f, MouseStationaryColor);
+			_touchStationaryShape.SetTransform(new Transform2D(0f, clampedTarget));
+			_touchStationaryShape.SetVisible(true);
+		}
+		else
+		{
+			_touchStationaryShape.SetVisible(false);
 		}
 
 		// Draw arc under finger/mouse position only if there's active input
@@ -386,8 +428,6 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 			{
 				UpdateCachedValues();
 			}
-
-			var arcColor = MouseMovingColor;
 
 			// Speed-based arc width (thickness) - restored missing feature
 			var baseWidth = 3.0f;
@@ -404,29 +444,31 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 				startAngle += _arcRotation * 0.1f; // Reduced influence for subtlety
 				endAngle += _arcRotation * 0.1f;
 
-				DrawArc(targetPosition, MouseIndicatorRadius, startAngle, endAngle, 32, arcColor, arcWidth, true);
+				_touchArcShape.SetTransform(new Transform2D(0f, targetPosition));
+				_touchArcShape.SetArc(startAngle, endAngle);
+				_touchArcShape.SetStrokeWidth(arcWidth);
+				_touchArcShape.SetVisible(true);
 			}
+			else
+			{
+				_touchArcShape.SetVisible(false);
+			}
+		}
+		else
+		{
+			_touchArcShape.SetVisible(false);
 		}
 	}
 
 	/// <summary>
-	/// Draw tire trails for both left and right tires
-	/// </summary>
-	private void DrawTireTrails()
-	{
-		DrawTrailLine(_leftTireTrail);
-		DrawTrailLine(_rightTireTrail);
-	}
-
-	/// <summary>
-	/// Draw a single trail line with fading effect.
-	/// Optimized to use DrawPolylineColors for batched rendering instead of individual DrawLine calls.
+	/// Push a single trail's positions and age/zone-faded color stops to its retained shape.
 	/// Uses pre-allocated buffers to eliminate per-frame GC allocations.
 	/// </summary>
-	private void DrawTrailLine(List<(Vector2 position, ulong timestamp, Color zoneColor)> trail)
+	private void PushTrailLine(List<(Vector2 position, ulong timestamp, Color zoneColor)> trail, Shape trailShape, ColorStop[] stops)
 	{
 		if (trail.Count < 2)
 		{
+			trailShape.SetVisible(false);
 			return;
 		}
 
@@ -436,22 +478,39 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 		// Ensure buffer is large enough (rarely allocates after warmup)
 		EnsureTrailBufferCapacity(trailCount);
 
-		// Reuse pre-allocated arrays instead of allocating new ones every frame
 		for (int i = 0; i < trailCount; i++)
 		{
 			_trailPointsBuffer[i] = trail[i].position;
-			var age = currentTime - trail[i].timestamp;
-			var normalizedAge = Mathf.Clamp(age / TrailLifetime, 0.0f, 1.0f);
-			var alpha = 1.0f - normalizedAge;
-			_trailColorsBuffer[i] = trail[i].zoneColor * new Color(1, 1, 1, alpha * 0.8f);
 		}
 
-		// Use array slice to pass only the populated portion
-		DrawPolylineColors(_trailPointsBuffer[..trailCount], _trailColorsBuffer[..trailCount], TireTrailWidth);
+		// Sample a small, fixed number of stops along the trail rather than one color per point —
+		// StrokeStyle only supports ColorStops, not an arbitrary per-vertex Color array. Index 0
+		// samples the oldest (most faded) point and matches T=0 (the first point in the polyline);
+		// the last stop samples the newest point and matches T=1.
+		for (int i = 0; i < TrailStopCount; i++)
+		{
+			float t = i / (float)(TrailStopCount - 1);
+			int sampleIndex = (int)(t * (trailCount - 1));
+			var (_, timestamp, zoneColor) = trail[sampleIndex];
+			var age = currentTime - timestamp;
+			var normalizedAge = Mathf.Clamp(age / TrailLifetime, 0.0f, 1.0f);
+			var alpha = (1.0f - normalizedAge) * 0.8f;
+			stops[i] = new ColorStop(t, zoneColor * new Color(1, 1, 1, alpha));
+		}
+
+		trailShape.SetPoints(_trailPointsBuffer.AsSpan(0, trailCount));
+		trailShape.SetStroke(new StrokeStyle
+		{
+			Width = TireTrailWidth,
+			Color = TireTrailColor,
+			ColorStops = stops,
+			Cap = CapMode.Round,
+		});
+		trailShape.SetVisible(true);
 	}
 
 	/// <summary>
-	/// Ensure trail rendering buffers have sufficient capacity.
+	/// Ensure trail rendering buffer has sufficient capacity.
 	/// Allocates with headroom to avoid frequent resizing.
 	/// </summary>
 	private void EnsureTrailBufferCapacity(int requiredCapacity)
@@ -464,39 +523,6 @@ public partial class RacingVisualFeedbackRenderer : Node2D
 		// Allocate with headroom to avoid frequent resizing
 		_trailBufferCapacity = Math.Max(requiredCapacity, MaxTrailPoints);
 		_trailPointsBuffer = new Vector2[_trailBufferCapacity];
-		_trailColorsBuffer = new Color[_trailBufferCapacity];
-	}
-
-	/// <summary>
-	/// Draw a dashed line between two points
-	/// </summary>
-	/// <param name="from">Start position</param>
-	/// <param name="to">End position</param>
-	/// <param name="color">Line color</param>
-	/// <param name="width">Line width</param>
-	/// <param name="dashLength">Length of each dash</param>
-	/// <param name="gapLength">Length of gaps between dashes</param>
-	private void DrawDashedLine(Vector2 from, Vector2 to, Color color, float width, float dashLength, float gapLength)
-	{
-		var direction = (to - from).Normalized();
-		var totalDistance = from.DistanceTo(to);
-		var segmentLength = dashLength + gapLength;
-
-		var currentPos = from;
-		var distanceTraveled = 0.0f;
-
-		while (distanceTraveled < totalDistance)
-		{
-			var remainingDistance = totalDistance - distanceTraveled;
-			var actualSegmentLength = Mathf.Min(segmentLength, remainingDistance);
-			var actualDashLength = Mathf.Min(dashLength, actualSegmentLength);
-
-			var dashEnd = currentPos + (direction * actualDashLength);
-			DrawLine(currentPos, dashEnd, color, width);
-
-			distanceTraveled += segmentLength;
-			currentPos += direction * segmentLength;
-		}
 	}
 
 	// ================================================================

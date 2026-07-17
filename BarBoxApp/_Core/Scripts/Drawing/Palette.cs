@@ -3,12 +3,13 @@ using Godot;
 namespace BarBox.Core.Drawing;
 
 /// <summary>
-/// The single source of color truth for the OP-1 visual language. No new `new Color(...)`
-/// literals belong outside this file.
+/// The base OP-1 swatches shared across the whole app — example colors every game or UI surface
+/// draws from.
 ///
-/// The arrays below are static readonly *references* — the contents are still writable.
-/// Treat them as immutable: styles hold the same array instance, so mutating one bypasses
-/// every consumer's dirty tracking.
+/// A color meaningful to only one game (a HUD tint, a track surface, a gradient) does not belong
+/// here — it belongs in that game's own `<Game>Palette.cs` (e.g. `RacingPalette` in
+/// `_Games/RacingGame/Scripts/Visual/`), built from these base swatches where possible rather than
+/// new literals. See BarBoxApp/CLAUDE.md's Colors rule for the full boundary.
 /// </summary>
 public static class Palette
 {
@@ -28,24 +29,9 @@ public static class Palette
 	public static readonly Color Cyan = new("#06b6d4");
 	public static readonly Color Purple = new("#a855f7");
 
-	/// <summary>The drivable track surface — rendered as a fat stroke, not a fill.</summary>
-	public static readonly Color Asphalt = new("#17171b");
-
-	public static readonly Color TrackEdge = Blue;
 	public static readonly Color Danger = Red;
 	public static readonly Color Success = Green;
 	public static readonly Color HudNeedle = Orange;
 	public static readonly Color Info = White;
 	public static readonly Color Warning = Yellow;
-
-	public static readonly Color[] PlayerColors = [Blue, Orange, Green, Purple];
-
-	/// <summary>Speedometer arc ramp, interpolated in OKLab so the midrange stays saturated.</summary>
-	public static readonly ColorStop[] SpeedGradient =
-	[
-		new(0f, Cyan),
-		new(0.5f, Green),
-		new(0.8f, Yellow),
-		new(1f, Red),
-	];
 }

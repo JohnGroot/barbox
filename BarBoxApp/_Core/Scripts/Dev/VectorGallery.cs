@@ -39,6 +39,15 @@ public partial class VectorGallery : Node2D
 		new Vector2(-80f, 50f),
 	];
 
+	/// <summary>Demo-only gradient — proves OKLab interpolation avoids muddy grays, independent of any game's own palette.</summary>
+	private static readonly ColorStop[] DemoGradient =
+	[
+		new(0f, Palette.Cyan),
+		new(0.5f, Palette.Green),
+		new(0.8f, Palette.Yellow),
+		new(1f, Palette.Red),
+	];
+
 	private readonly Contour3Set _boxEdges = new();
 	private readonly Contour3Set _gridLines = new();
 
@@ -174,10 +183,10 @@ public partial class VectorGallery : Node2D
 
 	private void BuildGradient()
 	{
-		ShapeCanvas canvas = Cell("OKLab gradient (SpeedGradient)");
+		ShapeCanvas canvas = Cell("OKLab gradient");
 		canvas.Build()
 			.Arc(new Vector2(0f, 40f), 90f, Mathf.Pi, Mathf.Tau)
-			.Stroke(VectorStyles.GaugeArc with { ColorStops = Palette.SpeedGradient })
+			.Stroke(VectorStyles.GaugeArc with { ColorStops = DemoGradient })
 			.Commit();
 
 		// Blue to yellow through OKLab must not pass through gray; that is the whole reason the

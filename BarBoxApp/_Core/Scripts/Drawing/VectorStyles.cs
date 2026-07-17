@@ -6,10 +6,10 @@ namespace BarBox.Core.Drawing;
 /// Stroke presets. Start from one of these rather than `default(StrokeStyle)`, which has Width 0
 /// and is rejected by the tessellator.
 ///
-/// Presets deliberately hand out shared array references (GuidePattern, Palette.SpeedGradient)
-/// rather than copying per read: Shape.SetStroke copies at Commit, so no retained Shape can ever
-/// hold one. The rule that makes this safe is the one StrokeStyle already states — a style array
-/// is immutable once authored. Mutating GuidePattern in place would bypass every dirty flag.
+/// Presets deliberately hand out shared array references (GuidePattern) rather than copying per
+/// read: Shape.SetStroke copies at Commit, so no retained Shape can ever hold one. The rule that
+/// makes this safe is the one StrokeStyle already states — a style array is immutable once
+/// authored. Mutating GuidePattern in place would bypass every dirty flag.
 ///
 /// Join and Cap are omitted where Round is wanted, since Round is the zero value.
 /// </summary>
@@ -29,7 +29,7 @@ public static class VectorStyles
 	public static readonly StrokeStyle EdgeLine = new()
 	{
 		Width = 2.5f,
-		Color = Palette.TrackEdge,
+		Color = Palette.Blue,
 	};
 
 	/// <summary>Fat round-capped arc for HUD gauges. Pair with `with { ColorStops = ... }`.</summary>

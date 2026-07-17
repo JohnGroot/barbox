@@ -52,7 +52,7 @@ public sealed partial class RacingTrackRenderer : ShapeCanvas
 
 		Build()
 			.Polygon(points, closed)
-			.Stroke(new StrokeStyle { Width = width, Color = Palette.Asphalt })
+			.Stroke(new StrokeStyle { Width = width, Color = RacingPalette.Asphalt })
 			.Commit();
 
 		float halfWidth = width * 0.5f;

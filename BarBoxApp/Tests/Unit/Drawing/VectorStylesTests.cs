@@ -12,6 +12,7 @@ namespace BarBox.Tests.Unit.Drawing;
 public class VectorStylesTests : TestClass
 {
 	private static readonly Vector2[] Line = [new Vector2(0f, 0f), new Vector2(40f, 0f)];
+	private static readonly ColorStop[] TestGradient = [new(0f, Palette.Blue), new(1f, Palette.Red)];
 
 	public VectorStylesTests(Node testScene)
 		: base(testScene)
@@ -70,7 +71,7 @@ public class VectorStylesTests : TestClass
 	public void GaugeArc_AcceptsGradientStopsViaWith()
 	{
 		// Arrange
-		StrokeStyle style = VectorStyles.GaugeArc with { ColorStops = Palette.SpeedGradient };
+		StrokeStyle style = VectorStyles.GaugeArc with { ColorStops = TestGradient };
 		var buffer = new VertexBuffer();
 
 		// Act
