@@ -78,6 +78,7 @@ A comment earns its place only by stating what the code *cannot*: a constraint, 
 ## Development Rules
 
 - Make minimal, surgical changes for easy review
+- **Colors**: no hardcoded color *literals* (`new Color(0.2f, 0.4f, ...)`, `new Color("#3b82f6")`) outside `_Core/Scripts/Drawing/Palette.cs` — add a named entry there and reference it. Constructing a `Color` from *computed* values is fine and not a violation (e.g. `OkLab.ToSrgb`, a stroke's alpha fade). Exempt: tests, the parked `addons/ShapesRenderer/`, and `.tscn`-authored colors like `default_color`/`ZoneColor`, which are authoring data
 - Use `nameof` for method/variable string references
 - Cache strings as consts instead of inline
 - Use `TweenConstants` for animations to reduce GC allocation

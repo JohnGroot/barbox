@@ -37,6 +37,12 @@ public partial class MainController : Control
 			return;
 		}
 
+		if (System.Array.IndexOf(args, "--vector-gallery") >= 0)
+		{
+			GetTree().CallDeferred(SceneTree.MethodName.ChangeSceneToFile, "res://_Core/Scenes/Dev/VectorGallery.tscn");
+			return;
+		}
+
 		_appBootstrap = ApplicationBootstrap.GetAutoload();
 		if (_appBootstrap == null)
 		{
