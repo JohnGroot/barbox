@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using BarBox.Core.Drawing;
 using Godot;
 
 [GlobalClass]
@@ -181,6 +182,8 @@ public partial class MainController : Control
 		var creditPlural = gameData.CreditCost != 1 ? "s" : string.Empty;
 		button.Text = string.Format(GAME_BUTTON_TEXT_FORMAT, gameData.DisplayName, gameData.CreditCost, creditPlural);
 		button.CustomMinimumSize = new Vector2(250, 100);
+		button.AddThemeFontSizeOverride("font_size", UiTheme.FontSmall);
+		UiTheme.ApplyOutlineButton(button, Palette.Blue);
 
 		button.Pressed += () => OnGameSelected(gameData.GameId);
 

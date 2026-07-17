@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using BarBox.Core.Drawing;
 using Godot;
 
 namespace BarBox.Core.Autoloads;
@@ -62,7 +63,7 @@ public partial class NotificationService : AutoloadBase
 			styleBox.BgColor = PANEL_BACKGROUND_COLOR;
 			styleBox.BorderWidthTop = 1;
 			styleBox.BorderWidthBottom = 1;
-			styleBox.BorderColor = new Color(0.3f, 0.3f, 0.4f, 1.0f);
+			styleBox.BorderColor = Palette.EdgeGray;
 			styleBox.CornerRadiusTopLeft = 6;
 			styleBox.CornerRadiusTopRight = 6;
 			styleBox.CornerRadiusBottomLeft = 6;
@@ -75,7 +76,7 @@ public partial class NotificationService : AutoloadBase
 			_label.HorizontalAlignment = HorizontalAlignment.Center;
 			_label.VerticalAlignment = VerticalAlignment.Center;
 			_label.AddThemeStyleboxOverride("normal", new StyleBoxEmpty());
-			_label.AddThemeFontSizeOverride("font_size", 14);
+			_label.AddThemeFontSizeOverride("font_size", UiTheme.FontSmall);
 
 			_label.AnchorLeft = 0.0f;
 			_label.AnchorRight = 1.0f;
@@ -216,11 +217,7 @@ public partial class NotificationService : AutoloadBase
 	// under the menu bar; above default game content (layer 0).
 	private const int LAYER = 90;
 
-	private static readonly Color COLOR_INFO = new Color(0.7f, 0.7f, 0.7f, 1.0f);
-	private static readonly Color COLOR_SUCCESS = new Color(0.2f, 0.9f, 0.3f, 1.0f);
-	private static readonly Color COLOR_WARNING = new Color(1.0f, 0.7f, 0.2f, 1.0f);
-	private static readonly Color COLOR_ERROR = new Color(0.9f, 0.3f, 0.2f, 1.0f);
-	private static readonly Color PANEL_BACKGROUND_COLOR = new Color(0.05f, 0.05f, 0.1f, 0.9f);
+	private static readonly Color PANEL_BACKGROUND_COLOR = new(Palette.Ink, 0.9f);
 
 	private CanvasLayer _layer;
 	private VBoxContainer _notificationContainer;
@@ -258,10 +255,10 @@ public partial class NotificationService : AutoloadBase
 	{
 		var (defaultColor, defaultSticky, defaultDuration) = severity switch
 		{
-			NotificationSeverity.Success => (COLOR_SUCCESS, false, 2.0f),
-			NotificationSeverity.Warning => (COLOR_WARNING, false, 3.0f),
-			NotificationSeverity.Error => (COLOR_ERROR, true, 3.0f),
-			_ => (COLOR_INFO, false, 2.0f),
+			NotificationSeverity.Success => (Palette.Success, false, 2.0f),
+			NotificationSeverity.Warning => (Palette.Warning, false, 3.0f),
+			NotificationSeverity.Error => (Palette.Danger, true, 3.0f),
+			_ => (Palette.Info, false, 2.0f),
 		};
 
 		if (_activeEntries.Count >= MAX_VISIBLE_ENTRIES)

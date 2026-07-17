@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using BarBox.Core.Drawing;
 using Godot;
 
 namespace BarBox.Core.Autoloads;
@@ -475,17 +476,17 @@ public partial class UIManager : AutoloadBase
 
 		_helpToggleButton.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopRight);
 		_helpToggleButton.Position = new Vector2(-60, 20);
-		_helpToggleButton.AddThemeFontSizeOverride("font_size", 24);
+		_helpToggleButton.AddThemeFontSizeOverride("font_size", UiTheme.FontTitle);
 
 		_helpToggleButton.AddThemeStyleboxOverride(
 			"normal",
-			CreateCircularButtonStyle(new Color(0.2f, 0.4f, 0.8f, 0.6f), new Color(0.6f, 0.8f, 1.0f, 1.0f), 30));
+			CreateCircularButtonStyle(new Color(Palette.Blue, 0.6f), Palette.Blue.Lightened(0.5f), 30));
 		_helpToggleButton.AddThemeStyleboxOverride(
 			"hover",
-			CreateCircularButtonStyle(new Color(0.3f, 0.5f, 0.9f, 0.95f), new Color(0.8f, 0.9f, 1.0f, 1.0f), 30));
+			CreateCircularButtonStyle(new Color(Palette.Blue.Lightened(0.15f), 0.95f), Palette.Blue.Lightened(0.7f), 30));
 		_helpToggleButton.AddThemeStyleboxOverride(
 			"pressed",
-			CreateCircularButtonStyle(new Color(0.1f, 0.3f, 0.7f, 1.0f), new Color(0.4f, 0.6f, 0.8f, 1.0f), 30));
+			CreateCircularButtonStyle(Palette.Blue.Darkened(0.3f), Palette.Blue.Lightened(0.2f), 30));
 
 		_helpToggleButton.Pressed += ToggleHelpMenu;
 		_helpToggleButton.Visible = false;
@@ -518,7 +519,7 @@ public partial class UIManager : AutoloadBase
 
 		// Clicking background closes help menu
 		var background = new ColorRect();
-		background.Color = new Color(0, 0, 0, 0.7f);
+		background.Color = new Color(Palette.Ink, 0.7f);
 		background.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 		background.GuiInput += (InputEvent @event) =>
 		{
@@ -536,17 +537,9 @@ public partial class UIManager : AutoloadBase
 		contentPanel.OffsetTop = 80;
 		contentPanel.OffsetBottom = -80;
 
-		var panelStyle = new StyleBoxFlat();
-		panelStyle.BgColor = new Color(0.1f, 0.1f, 0.15f, 0.95f);
-		panelStyle.CornerRadiusTopLeft = 10;
-		panelStyle.CornerRadiusTopRight = 10;
-		panelStyle.CornerRadiusBottomLeft = 10;
-		panelStyle.CornerRadiusBottomRight = 10;
-		panelStyle.BorderWidthTop = 2;
-		panelStyle.BorderWidthBottom = 2;
-		panelStyle.BorderWidthLeft = 2;
-		panelStyle.BorderWidthRight = 2;
-		panelStyle.BorderColor = new Color(0.4f, 0.2f, 0.8f);
+		var panelStyle = UiTheme.ModalBox();
+		panelStyle.BgColor = new Color(Palette.PanelRaised, 0.95f);
+		panelStyle.BorderColor = Palette.Purple;
 		contentPanel.AddThemeStyleboxOverride("panel", panelStyle);
 
 		_helpOverlay.AddChild(contentPanel);
@@ -557,8 +550,8 @@ public partial class UIManager : AutoloadBase
 
 		_helpTitleLabel = new Label();
 		_helpTitleLabel.Text = "Game Help";
-		_helpTitleLabel.AddThemeFontSizeOverride("font_size", 24);
-		_helpTitleLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.95f, 0.8f));
+		_helpTitleLabel.AddThemeFontSizeOverride("font_size", UiTheme.FontTitle);
+		_helpTitleLabel.AddThemeColorOverride("font_color", Palette.White);
 		_helpTitleLabel.HorizontalAlignment = HorizontalAlignment.Center; // Center align the title text
 		_helpTitleLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		headerContainer.AddChild(_helpTitleLabel);
@@ -566,7 +559,8 @@ public partial class UIManager : AutoloadBase
 		var closeButton = new Button();
 		closeButton.Text = "✕";
 		closeButton.AddThemeFontSizeOverride("font_size", 20);
-		closeButton.Size = new Vector2(40, 40);
+		closeButton.CustomMinimumSize = new Vector2(40, 40);
+		UiTheme.ApplyOutlineButton(closeButton, Palette.EdgeGray);
 		closeButton.Pressed += () => SetHelpMenuVisible(false);
 		headerContainer.AddChild(closeButton);
 
@@ -661,7 +655,7 @@ public partial class UIManager : AutoloadBase
 		var headerLabel = new Label();
 		headerLabel.Text = section.Header;
 		headerLabel.AddThemeFontSizeOverride("font_size", 18);
-		headerLabel.AddThemeColorOverride("font_color", new Color(0.4f, 0.8f, 1.0f));
+		headerLabel.AddThemeColorOverride("font_color", Palette.Cyan);
 		headerLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		headerLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		headerLabel.CustomMinimumSize = new Vector2(400, 0); // Ensure minimum width
@@ -672,8 +666,8 @@ public partial class UIManager : AutoloadBase
 		{
 			var contentLabel = new Label();
 			contentLabel.Text = section.IsList ? $"• {content}" : content;
-			contentLabel.AddThemeFontSizeOverride("font_size", 14);
-			contentLabel.AddThemeColorOverride("font_color", new Color(0.9f, 0.9f, 0.9f));
+			contentLabel.AddThemeFontSizeOverride("font_size", UiTheme.FontSmall);
+			contentLabel.AddThemeColorOverride("font_color", Palette.White);
 			contentLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 			contentLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			contentLabel.CustomMinimumSize = new Vector2(400, 0); // Ensure minimum width

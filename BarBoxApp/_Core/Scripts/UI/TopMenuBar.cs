@@ -1,4 +1,5 @@
 using System;
+using BarBox.Core.Drawing;
 using Godot;
 
 /// <summary>
@@ -28,6 +29,8 @@ public partial class TopMenuBar : Control
 	private const string BUY_CREDITS_TEXT = "Buy Credits";
 	private const string LOGOUT_TEXT = "Logout";
 	private const string LOGOUT_DISABLED_TOOLTIP = "Cannot logout during active game. Exit to main menu first.";
+
+	private static readonly Vector2 STANDARD_BUTTON_SIZE = new(120, 45);
 
 	private Panel _backgroundPanel;
 	private VBoxContainer _mainContainer;
@@ -61,10 +64,10 @@ public partial class TopMenuBar : Control
 		_backgroundPanel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 
 		var styleBox = new StyleBoxFlat();
-		styleBox.BgColor = new Color(0.1f, 0.1f, 0.1f, 0.9f);
+		styleBox.BgColor = new Color(Palette.Panel, 0.9f);
 		styleBox.BorderWidthTop = 2;
 		styleBox.BorderWidthBottom = 2;
-		styleBox.BorderColor = new Color(0.3f, 0.3f, 0.3f, 1.0f);
+		styleBox.BorderColor = Palette.EdgeGray;
 		_backgroundPanel.AddThemeStyleboxOverride("panel", styleBox);
 
 		AddChild(_backgroundPanel);
@@ -93,8 +96,8 @@ public partial class TopMenuBar : Control
 		_gameTitleLabel = new Label();
 		_gameTitleLabel.Text = BARBOX_TITLE;
 		_gameTitleLabel.VerticalAlignment = VerticalAlignment.Center;
-		_gameTitleLabel.AddThemeColorOverride("font_color", Colors.White);
-		_gameTitleLabel.AddThemeFontSizeOverride("font_size", 24);
+		_gameTitleLabel.AddThemeColorOverride("font_color", Palette.White);
+		_gameTitleLabel.AddThemeFontSizeOverride("font_size", UiTheme.FontTitle);
 		_gameTitleLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		_gameTitleLabel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 
@@ -105,8 +108,8 @@ public partial class TopMenuBar : Control
 		_gameStatusLabel.VerticalAlignment = VerticalAlignment.Center;
 		_gameStatusLabel.HorizontalAlignment = HorizontalAlignment.Center;
 		_gameStatusLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		_gameStatusLabel.AddThemeColorOverride("font_color", Colors.White);
-		_gameStatusLabel.AddThemeFontSizeOverride("font_size", 16);
+		_gameStatusLabel.AddThemeColorOverride("font_color", Palette.White);
+		_gameStatusLabel.AddThemeFontSizeOverride("font_size", UiTheme.FontBody);
 		_gameStatusLabel.Text = string.Empty;
 		_topSection.AddChild(_gameStatusLabel);
 
@@ -117,25 +120,31 @@ public partial class TopMenuBar : Control
 
 		_userInfoLabel = new Label();
 		_userInfoLabel.VerticalAlignment = VerticalAlignment.Center;
-		_userInfoLabel.AddThemeColorOverride("font_color", Colors.White);
-		_userInfoLabel.AddThemeFontSizeOverride("font_size", 16);
+		_userInfoLabel.AddThemeColorOverride("font_color", Palette.White);
+		_userInfoLabel.AddThemeFontSizeOverride("font_size", UiTheme.FontBody);
 		_userInfoContainer.AddChild(_userInfoLabel);
 
 		_loginButton = new Button();
 		_loginButton.Text = LOGIN_TEXT;
-		ApplyStandardButtonStyle(_loginButton);
+		_loginButton.CustomMinimumSize = STANDARD_BUTTON_SIZE;
+		_loginButton.AddThemeFontSizeOverride("font_size", UiTheme.FontSmall);
+		UiTheme.ApplyOutlineButton(_loginButton, Palette.Blue);
 		_loginButton.Pressed += OnLoginPressed;
 		_userInfoContainer.AddChild(_loginButton);
 
 		_buyCreditsButton = new Button();
 		_buyCreditsButton.Text = BUY_CREDITS_TEXT;
-		ApplyStandardButtonStyle(_buyCreditsButton);
+		_buyCreditsButton.CustomMinimumSize = STANDARD_BUTTON_SIZE;
+		_buyCreditsButton.AddThemeFontSizeOverride("font_size", UiTheme.FontSmall);
+		UiTheme.ApplyOutlineButton(_buyCreditsButton, Palette.Blue);
 		_buyCreditsButton.Pressed += OnBuyCreditsPressed;
 		_userInfoContainer.AddChild(_buyCreditsButton);
 
 		_logoutButton = new Button();
 		_logoutButton.Text = LOGOUT_TEXT;
-		ApplyStandardButtonStyle(_logoutButton);
+		_logoutButton.CustomMinimumSize = STANDARD_BUTTON_SIZE;
+		_logoutButton.AddThemeFontSizeOverride("font_size", UiTheme.FontSmall);
+		UiTheme.ApplyOutlineButton(_logoutButton, Palette.EdgeGray);
 		_logoutButton.Pressed += OnLogoutPressed;
 		_userInfoContainer.AddChild(_logoutButton);
 
@@ -223,7 +232,9 @@ public partial class TopMenuBar : Control
 			button.TooltipText = data.Tooltip;
 		}
 
-		ApplyStandardButtonStyle(button);
+		button.CustomMinimumSize = STANDARD_BUTTON_SIZE;
+		button.AddThemeFontSizeOverride("font_size", UiTheme.FontSmall);
+		UiTheme.ApplyOutlineButton(button, Palette.Blue);
 
 		if (data.OnPressed != null)
 		{
@@ -289,9 +300,13 @@ public partial class TopMenuBar : Control
 		}
 	}
 
+	/// <summary>
+	/// External contract for BuyCreditsModal and CarromPlayerSetupMenu — do not remove
+	/// or rename even though nothing in this file calls it.
+	/// </summary>
 	internal static void ApplyStandardButtonStyle(Button button)
 	{
-		button.CustomMinimumSize = new Vector2(120, 45);
+		button.CustomMinimumSize = STANDARD_BUTTON_SIZE;
 
 		var normalStyleBox = new StyleBoxFlat();
 		normalStyleBox.BgColor = new Color(0.3f, 0.3f, 0.3f, 1.0f);

@@ -35,6 +35,8 @@ public static class Palette
 	public static readonly Color Danger = Red;
 	public static readonly Color Success = Green;
 	public static readonly Color HudNeedle = Orange;
+	public static readonly Color Info = White;
+	public static readonly Color Warning = Yellow;
 
 	public static readonly Color[] PlayerColors = [Blue, Orange, Green, Purple];
 
