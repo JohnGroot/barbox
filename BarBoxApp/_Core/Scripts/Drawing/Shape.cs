@@ -13,6 +13,13 @@ internal enum ShapeKind
 	CubicBezier,
 	QuadBezier,
 	Path3,
+
+	/// <summary>
+	/// Pre-tessellated triangle soup supplied directly via SetMesh, bypassing Flatten/Tess
+	/// entirely. Used for content — like a checkerboard fill — whose per-vertex color can't be
+	/// expressed by a single FillStyle.
+	/// </summary>
+	Mesh,
 }
 
 /// <summary>
@@ -245,6 +252,24 @@ public sealed class Shape
 	}
 
 	/// <summary>
+	/// Replaces Buffer's contents wholesale with pre-tessellated triangles — the source IS the
+	/// final content, so this marks only Concat, never Flatten/Tess (there is nothing to
+	/// re-derive them from).
+	/// </summary>
+	public void SetMesh(VertexBuffer source)
+	{
+		if (Kind != ShapeKind.Mesh)
+		{
+			PushWarning($"Shape.SetMesh on a {Kind} shape has no effect.");
+			return;
+		}
+
+		Buffer.Clear();
+		Buffer.Append(source);
+		MarkDirty(DirtyLevel.Concat);
+	}
+
+	/// <summary>
 	/// Rigid transforms only. The transform is baked at concat time, after tessellation, so any
 	/// scale in it scales the stroke width and the pixel-accurate feather with it. Content that
 	/// moves continuously should move its Node2D instead; this is for occasional layout shifts.
@@ -303,6 +328,16 @@ public sealed class Shape
 	/// </summary>
 	internal void Rebuild(float pixelScale, DashResult dashScratch)
 	{
+		// A Mesh shape's Buffer IS its content — SetMesh already populated it eagerly, and there
+		// is no source primitive to re-flatten or re-tessellate from. This makes it immune to a
+		// bucket-wide MarkAll(Flatten) (e.g. a PixelScale change): correctly so, since the mesh
+		// carries no feather and no pixel-scale-dependent tolerance to regenerate. RebuildCount
+		// stays untouched too — it counts full tessellations, and none ever happens here.
+		if (Kind == ShapeKind.Mesh)
+		{
+			return;
+		}
+
 		if (Dirty >= DirtyLevel.Flatten)
 		{
 			Flatten(pixelScale);

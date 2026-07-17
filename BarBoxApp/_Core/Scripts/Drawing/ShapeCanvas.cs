@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 
@@ -98,6 +99,39 @@ public partial class ShapeCanvas : Node2D
 		_builder ??= new ShapeBuilder(this);
 		_builder.Begin();
 		return _builder;
+	}
+
+	/// <summary>
+	/// Commits pre-tessellated triangles directly, bypassing the fluent builder — for content
+	/// whose per-vertex color a single StrokeStyle/FillStyle can't express (see CheckerFill).
+	/// The source buffer is copied, not referenced, so the caller's scratch buffer is free to
+	/// reuse immediately.
+	/// </summary>
+	public Shape CommitMesh(VertexBuffer source, int sortKey = 0)
+	{
+		var shape = new Shape
+		{
+			Kind = ShapeKind.Mesh,
+			SortKey = sortKey,
+		};
+
+		Register(shape);
+		shape.SetMesh(source);
+		return shape;
+	}
+
+	/// <summary>Checkerboard fill clipped to subject — the checkered start line. See PatternFill.</summary>
+	public Shape CheckerFill(
+		ReadOnlySpan<Vector2> subject,
+		Vector2 origin,
+		float cellSize,
+		Color colorA,
+		Color colorB,
+		int sortKey = 0)
+	{
+		var scratch = new VertexBuffer();
+		PatternFill.Checker(subject, origin, cellSize, colorA, colorB, scratch);
+		return CommitMesh(scratch, sortKey);
 	}
 
 	public void Remove(Shape shape)

@@ -1,3 +1,4 @@
+using System;
 using Godot;
 
 namespace BarBox.Games.Racing;
@@ -60,6 +61,13 @@ public partial class RacingLineTrigger : Area2D
 			return rectShape.Size.X;
 		}
 
+		// Every real trigger (StartTrigger/CheckpointTrigger prefabs) uses a SegmentShape2D, not
+		// a RectangleShape2D, so this is the branch that actually matches in practice.
+		if (CollisionShape?.Shape is SegmentShape2D segmentShape)
+		{
+			return segmentShape.A.DistanceTo(segmentShape.B);
+		}
+
 		// Fallback to visual line points
 		if (VisualLine != null && VisualLine.GetPointCount() >= 2)
 		{
@@ -82,12 +90,21 @@ public partial class RacingLineTrigger : Area2D
 		Rotation = direction.Angle();
 	}
 
+	/// <summary>
+	/// Direct callback rather than a signal — internal-only integration point.
+	/// RacingTrackRenderer subscribes to reroute checkpoint color feedback onto its own stroke
+	/// once VisualLine is hidden.
+	/// </summary>
+	public Action<Color> VisualColorChanged;
+
 	public void SetLineColor(Color color)
 	{
 		if (VisualLine != null)
 		{
 			VisualLine.DefaultColor = color;
 		}
+
+		VisualColorChanged?.Invoke(color);
 	}
 
 	protected virtual void OnBodyEntered(Node2D body)

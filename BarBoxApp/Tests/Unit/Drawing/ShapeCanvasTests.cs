@@ -369,6 +369,28 @@ public class ShapeCanvasTests : TestClass
 			"A finer pixel scale must re-flatten the curve, not just re-tessellate it");
 	}
 
+	[Test]
+	public void CommitMesh_RegistersIntoTheStaticBucketAndFollowsSortKeyOrder()
+	{
+		// Arrange
+		Shape polygonShape = Commit(Palette.Blue);
+		var source = new VertexBuffer();
+		source.AddVertex(new Vector2(0f, 0f), Palette.Red);
+		source.AddVertex(new Vector2(10f, 0f), Palette.White);
+		source.AddVertex(new Vector2(0f, 10f), Palette.Red);
+		source.AddTriangle(0, 1, 2);
+
+		// Act
+		Shape meshShape = _canvas.CommitMesh(source, sortKey: -1);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		_canvas.StaticBucket.Shapes.ShouldContain(meshShape);
+		_canvas.ShapeCount.ShouldBe(2);
+		_canvas.StaticBucket.Shapes[0].ShouldBeSameAs(meshShape, "A lower sort key draws first, same as any other shape");
+		_canvas.StaticBucket.Shapes[1].ShouldBeSameAs(polygonShape);
+	}
+
 	private Shape Commit(Color color)
 	{
 		return _canvas.Build()

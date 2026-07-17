@@ -13,7 +13,7 @@ namespace BarBox.Core.Dev;
 public partial class VectorGallery : Node2D
 {
 	private const int Columns = 3;
-	private const int Rows = 5;
+	private const int Rows = 6;
 	private const float CellWidth = 460f;
 	private const float CellHeight = 300f;
 	private const float MarginX = 30f;
@@ -61,6 +61,7 @@ public partial class VectorGallery : Node2D
 		BuildWidthProfile();
 		BuildDashes();
 		BuildStripes();
+		BuildCheckerFill();
 		BuildFills();
 		BuildPrimitives();
 		BuildWireframeBox();
@@ -233,6 +234,20 @@ public partial class VectorGallery : Node2D
 			.Polyline([new Vector2(-90f, 20f), new Vector2(-20f, -30f), new Vector2(60f, -20f), new Vector2(90f, 30f)])
 			.StripedStroke(22f, 16f, Palette.Red, Palette.White)
 			.Commit();
+	}
+
+	private void BuildCheckerFill()
+	{
+		ShapeCanvas canvas = Cell("checker fill (start line)");
+		var subject = new[]
+		{
+			new Vector2(-100f, -40f),
+			new Vector2(100f, -40f),
+			new Vector2(100f, 40f),
+			new Vector2(-100f, 40f),
+		};
+
+		canvas.CheckerFill(subject, new Vector2(-100f, -40f), 25f, Palette.White, Palette.Ink);
 	}
 
 	private void BuildFills()

@@ -1257,6 +1257,11 @@ public partial class RacingGame : GameController
 		}
 
 		_trackDefinition.SetupTrack();
+
+		var trackRenderer = new RacingTrackRenderer { ZIndex = -5 };
+		_trackDefinition.AddChild(trackRenderer);
+		trackRenderer.Setup(_trackDefinition);
+
 		_trackCurve = _trackDefinition.GetTrackCurve();
 
 		_trackValidationSystem.Initialize(_trackDefinition, _trackCurve);

@@ -35,6 +35,36 @@ public static class DrawingTestHelpers
 		return CountCovering(buffer, point) > 0;
 	}
 
+	/// <summary>Barycentric-interpolated color at a point, or null if no triangle covers it.</summary>
+	public static Color? ColorAt(VertexBuffer buffer, Vector2 point)
+	{
+		for (int i = 0; i < buffer.IndexCount; i += 3)
+		{
+			int ia = buffer.Indices[i];
+			int ib = buffer.Indices[i + 1];
+			int ic = buffer.Indices[i + 2];
+			var a = buffer.Points[ia];
+			var b = buffer.Points[ib];
+			var c = buffer.Points[ic];
+
+			if (!TryBarycentric(point, a, b, c, out float u, out float v, out float w))
+			{
+				continue;
+			}
+
+			Color ca = buffer.Colors[ia];
+			Color cb = buffer.Colors[ib];
+			Color cc = buffer.Colors[ic];
+			return new Color(
+				(u * ca.R) + (v * cb.R) + (w * cc.R),
+				(u * ca.G) + (v * cb.G) + (w * cc.G),
+				(u * ca.B) + (v * cb.B) + (w * cc.B),
+				(u * ca.A) + (v * cb.A) + (w * cc.A));
+		}
+
+		return null;
+	}
+
 	/// <summary>Summed unsigned triangle area. Overlapping triangles are counted twice by design.</summary>
 	public static float TotalArea(VertexBuffer buffer)
 	{
@@ -147,5 +177,32 @@ public static class DrawingTestHelpers
 	private static float Sign(Vector2 p, Vector2 a, Vector2 b)
 	{
 		return ((p.X - b.X) * (a.Y - b.Y)) - ((a.X - b.X) * (p.Y - b.Y));
+	}
+
+	private static bool TryBarycentric(Vector2 p, Vector2 a, Vector2 b, Vector2 c, out float u, out float v, out float w)
+	{
+		Vector2 v0 = b - a;
+		Vector2 v1 = c - a;
+		Vector2 v2 = p - a;
+
+		float d00 = v0.Dot(v0);
+		float d01 = v0.Dot(v1);
+		float d11 = v1.Dot(v1);
+		float d20 = v2.Dot(v0);
+		float d21 = v2.Dot(v1);
+
+		float denom = (d00 * d11) - (d01 * d01);
+		if (Mathf.Abs(denom) < 1e-9f)
+		{
+			u = v = w = 0f;
+			return false;
+		}
+
+		v = ((d11 * d20) - (d01 * d21)) / denom;
+		w = ((d00 * d21) - (d01 * d20)) / denom;
+		u = 1f - v - w;
+
+		const float Epsilon = -1e-4f;
+		return u >= Epsilon && v >= Epsilon && w >= Epsilon;
 	}
 }

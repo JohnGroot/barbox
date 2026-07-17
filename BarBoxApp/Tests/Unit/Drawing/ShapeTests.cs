@@ -307,6 +307,71 @@ public class ShapeTests : TestClass
 	}
 
 	[Test]
+	public void CommitMesh_PopulatesBufferFromTheSourceVerbatim()
+	{
+		// Arrange
+		VertexBuffer source = MeshSource();
+
+		// Act
+		Shape shape = _canvas.CommitMesh(source);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		shape.Buffer.VertexCount.ShouldBe(3);
+		shape.Buffer.IndexCount.ShouldBe(3);
+		shape.Buffer.Colors[0].ShouldBe(Palette.Red);
+		shape.Buffer.Colors[1].ShouldBe(Palette.White);
+		DrawingTestHelpers.AssertWellFormed(shape.Buffer);
+	}
+
+	[Test]
+	public void CommitMesh_IsImmuneToABucketWideFlattenInvalidation()
+	{
+		// Arrange - a PixelScale change marks every shape Flatten; a Mesh shape has no source
+		// primitive to re-derive from, so its RebuildCount must never move and its content must
+		// survive untouched.
+		Shape shape = _canvas.CommitMesh(MeshSource());
+		_canvas.RebuildBuckets();
+		int rebuildsBefore = shape.RebuildCount;
+		Vector2 pointBefore = shape.Buffer.Points[0];
+
+		// Act
+		_canvas.PixelScale = 2f;
+		_canvas.RebuildBuckets();
+
+		// Assert
+		shape.RebuildCount.ShouldBe(rebuildsBefore, "A Mesh shape has no tessellation to redo");
+		shape.Buffer.Points[0].ShouldBe(pointBefore, "A PixelScale change must not touch mesh content");
+	}
+
+	[Test]
+	public void CommitMesh_SetTransformBakesIntoTheConcatLikeAnyOtherShape()
+	{
+		// Arrange
+		Shape shape = _canvas.CommitMesh(MeshSource());
+		_canvas.RebuildBuckets();
+		Vector2 ownBefore = shape.Buffer.Points[0];
+
+		// Act
+		shape.SetTransform(new Transform2D(0f, new Vector2(100f, 0f)));
+		_canvas.RebuildBuckets();
+
+		// Assert
+		shape.Buffer.Points[0].ShouldBe(ownBefore, "The shape's own buffer stays in local space");
+		_canvas.StaticBucket.Concat.Points[0].ShouldBe(ownBefore + new Vector2(100f, 0f));
+	}
+
+	private static VertexBuffer MeshSource()
+	{
+		var source = new VertexBuffer();
+		source.AddVertex(new Vector2(0f, 0f), Palette.Red);
+		source.AddVertex(new Vector2(10f, 0f), Palette.White);
+		source.AddVertex(new Vector2(0f, 10f), Palette.Red);
+		source.AddTriangle(0, 1, 2);
+		return source;
+	}
+
+	[Test]
 	public void Rebuild_IsIdempotentWhenNothingIsDirty()
 	{
 		// Arrange

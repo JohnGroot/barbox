@@ -146,6 +146,22 @@ public partial class RacingZone : Area2D, IRacingZone
 		}
 	}
 
+	/// <summary>Hides the legacy Polygon2D visual once RacingTrackRenderer supplies its own.</summary>
+	public void HideVisual()
+	{
+		if (VisualPolygon != null)
+		{
+			VisualPolygon.Visible = false;
+		}
+	}
+
+	/// <summary>The zone's collision polygon in this node's own local space.</summary>
+	public Vector2[] GetLocalPolygon()
+	{
+		var collisionPolygon = GetNodeOrNull<CollisionPolygon2D>("CollisionPolygon2D");
+		return collisionPolygon?.Polygon ?? [];
+	}
+
 	// ================================================================
 	// HELPER METHODS
 	// ================================================================
