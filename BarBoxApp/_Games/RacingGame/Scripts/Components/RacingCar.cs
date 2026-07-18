@@ -800,7 +800,7 @@ public partial class RacingCar : BasePlayer
 		if (enabled && _headlightShape != null)
 		{
 			_headlightShape.SetPoints(ComputeHeadlightVertices(range, width));
-			_headlightShape.SetFill(color);
+			_headlightShape.SetFillColor(color);
 		}
 	}
 

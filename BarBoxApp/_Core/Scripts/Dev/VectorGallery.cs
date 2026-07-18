@@ -54,6 +54,9 @@ public partial class VectorGallery : Node2D
 	private Label _stats;
 	private Shape _dashRunner;
 	private Shape _rotator;
+	private Shape _trimSweep;
+	private Shape _recolorPulse;
+	private Shape _retessPulse;
 	private int _cell;
 	private float _time;
 
@@ -76,6 +79,8 @@ public partial class VectorGallery : Node2D
 		BuildWireframeBox();
 		BuildPerspectiveGrid();
 		BuildRotator();
+		BuildTrimReveal();
+		BuildRecolorPulse();
 		BuildPalette();
 	}
 
@@ -88,6 +93,18 @@ public partial class VectorGallery : Node2D
 		// flat for both — if it tracks the static shape count, the bucket split is broken.
 		_dashRunner?.SetDashOffset(-_time * 40f);
 		_rotator?.SetTransform(new Transform2D(_time, Vector2.Zero));
+
+		// Draw-on trim sweep: ping-pongs 0..1, epsilon end so a fully-collapsed range never
+		// reads as "SetTrim broke" instead of "the sweep is momentarily at its start."
+		float sweep = (Mathf.Sin(_time * 0.6f) * 0.5f) + 0.5f;
+		_trimSweep?.SetTrim(0f, Mathf.Max(sweep, 0.001f));
+
+		// Same color/alpha math on both circles, driven through the two different setters, so any
+		// perceptible difference between them is purely internal rebuild cost, not appearance.
+		float pulse = (Mathf.Sin(_time * 3f) * 0.4f) + 0.6f;
+		var pulsedColor = Palette.Orange * new Color(1f, 1f, 1f, pulse);
+		_recolorPulse?.SetFillColor(pulsedColor);
+		_retessPulse?.SetFill(pulsedColor);
 
 		if (_stats != null && Engine.GetProcessFrames() % 30 == 0)
 		{
@@ -328,6 +345,40 @@ public partial class VectorGallery : Node2D
 			.Commit();
 	}
 
+	private void BuildTrimReveal()
+	{
+		ShapeCanvas canvas = Cell("SetTrim: draw-on reveal (gauge sweep)");
+
+		// Dim full-circle reference so the sweep's progress reads clearly against it.
+		canvas.Build()
+			.Circle(Vector2.Zero, 90f)
+			.Stroke(VectorStyles.GaugeArc with { Color = Palette.Grid })
+			.Commit();
+
+		_trimSweep = canvas.Build()
+			.Circle(Vector2.Zero, 90f)
+			.Stroke(VectorStyles.GaugeArc with { Color = Palette.Cyan })
+			.Dynamic()
+			.Commit();
+	}
+
+	private void BuildRecolorPulse()
+	{
+		ShapeCanvas canvas = Cell("SetFillColor recolor (left) vs SetFill re-tess (right)");
+
+		_recolorPulse = canvas.Build()
+			.Circle(new Vector2(-60f, 0f), 50f)
+			.Fill(Palette.Orange)
+			.Dynamic()
+			.Commit();
+
+		_retessPulse = canvas.Build()
+			.Circle(new Vector2(60f, 0f), 50f)
+			.Fill(Palette.Orange)
+			.Dynamic()
+			.Commit();
+	}
+
 	private void BuildPalette()
 	{
 		ShapeCanvas canvas = Cell("palette");
@@ -415,6 +466,7 @@ public partial class VectorGallery : Node2D
 
 		return $"shapes {shapes}   triangles {triangles}   canvas items {items}   " +
 			$"pixel scale {pixelScale:0.###}   rotator rebuilds {_rotator?.RebuildCount ?? 0}   " +
+			$"recolor rebuilds {_recolorPulse?.RebuildCount ?? 0}   re-tess rebuilds {_retessPulse?.RebuildCount ?? 0}   " +
 			$"fps {Engine.GetFramesPerSecond():0}";
 	}
 

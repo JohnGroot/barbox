@@ -64,6 +64,26 @@ public class ShapeCanvasTests : TestClass
 	}
 
 	[Test]
+	public void RebuildBuckets_ARecolorDirtyShapeAmongTessDirtyOnes_OnlyTheTessDirtyOneReTessellates()
+	{
+		// Arrange
+		Shape recolored = Commit(Palette.Blue);
+		Shape reflattened = Commit(Palette.Red);
+		_canvas.RebuildBuckets();
+		int recoloredRebuilds = recolored.RebuildCount;
+		int reflattenedRebuilds = reflattened.RebuildCount;
+
+		// Act
+		recolored.SetStrokeColor(Palette.Green);
+		reflattened.SetPoints(Square);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		recolored.RebuildCount.ShouldBe(recoloredRebuilds, "A solid recolor must skip full tessellation");
+		reflattened.RebuildCount.ShouldBe(reflattenedRebuilds + 1, "A geometry change must re-tessellate");
+	}
+
+	[Test]
 	public void ConcatOrder_FollowsCommitOrderByDefault()
 	{
 		// Arrange

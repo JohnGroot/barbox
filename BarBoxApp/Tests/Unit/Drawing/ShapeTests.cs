@@ -45,10 +45,266 @@ public class ShapeTests : TestClass
 		_canvas.RebuildBuckets();
 
 		// Act
-		shape.SetStrokeColor(Palette.Orange);
+		shape.SetStroke(VectorStyles.EdgeLine with { Color = Palette.Orange });
 
 		// Assert
 		shape.Dirty.ShouldBe(DirtyLevel.Tess, "Restyling must not invalidate the flattened contours");
+	}
+
+	[Test]
+	public void SetStrokeColor_RaisesRecolorNotTess()
+	{
+		// Arrange
+		Shape shape = Stroked();
+		_canvas.RebuildBuckets();
+
+		// Act
+		shape.SetStrokeColor(Palette.Orange);
+
+		// Assert
+		shape.Dirty.ShouldBe(DirtyLevel.Recolor, "A solid color-only change must not force a full re-tessellation");
+	}
+
+	[Test]
+	public void SetTrim_WithZeroEnd_ResolvesToTheFullStroke()
+	{
+		// Arrange - the struct's zero default for TrimEnd must not be read as "draw nothing";
+		// every stroke authored before M8 sits at this default and must keep rendering.
+		Shape shape = Stroked();
+
+		// Act
+		shape.SetTrim(0f, 0f);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		DrawingTestHelpers.IsCovered(shape.Buffer, new Vector2(20f, 0f)).ShouldBeTrue("TrimEnd == 0 must not empty the stroke");
+		DrawingTestHelpers.IsCovered(shape.Buffer, new Vector2(40f, 20f)).ShouldBeTrue();
+	}
+
+	[Test]
+	public void SetTrim_DefaultRange_MatchesUntrimmedStroke()
+	{
+		// Arrange
+		Shape untrimmed = Stroked();
+		Shape trimmed = Stroked();
+
+		// Act
+		trimmed.SetTrim(0f, 1f);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		DrawingTestHelpers.TotalArea(trimmed.Buffer).ShouldBe(
+			DrawingTestHelpers.TotalArea(untrimmed.Buffer),
+			0.01f,
+			"An explicit full-range trim must tessellate identically to no trim at all");
+	}
+
+	[Test]
+	public void SetTrim_RaisesOnlyTessNotFlatten()
+	{
+		// Arrange
+		Shape shape = Stroked();
+		_canvas.RebuildBuckets();
+
+		// Act
+		shape.SetTrim(0.25f, 0.75f);
+
+		// Assert
+		shape.Dirty.ShouldBe(DirtyLevel.Tess, "Trim reuses the cached flattened contour; it must not re-flatten");
+	}
+
+	[Test]
+	public void SetTrim_OnAClosedContour_UncoversTheTrimmedWedge()
+	{
+		// Arrange - closed square perimeter (160 units); corners land at T = 0, 0.25, 0.5, 0.75
+		Shape shape = Stroked();
+		_canvas.RebuildBuckets();
+
+		// Act
+		shape.SetTrim(0.1f, 0.4f);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		DrawingTestHelpers.IsCovered(shape.Buffer, new Vector2(30f, 0f)).ShouldBeTrue("Inside the trim window");
+		DrawingTestHelpers.IsCovered(shape.Buffer, new Vector2(5f, 0f)).ShouldBeFalse("Before the trim window");
+		DrawingTestHelpers.IsCovered(shape.Buffer, new Vector2(20f, 40f)).ShouldBeFalse("Well outside the trim window");
+	}
+
+	[Test]
+	public void SetTrim_StartNotLessThanEnd_LeavesTheStrokeEmptyButKeepsTheFill()
+	{
+		// Arrange
+		Shape shape = _canvas.Build()
+			.Polygon(Square)
+			.Fill(Palette.Blue)
+			.Stroke(VectorStyles.EdgeLine)
+			.Commit();
+		_canvas.RebuildBuckets();
+
+		// Act
+		shape.SetTrim(0.6f, 0.4f);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		DrawingTestHelpers.IsCovered(shape.Buffer, new Vector2(20f, 20f)).ShouldBeTrue("The fill interior must survive an invalid trim range");
+		DrawingTestHelpers.IsCovered(shape.Buffer, new Vector2(20f, -1f)).ShouldBeFalse("The stroke must be empty when the trim range collapses");
+	}
+
+	[Test]
+	public void SetFillColor_MatchesTheCurrentColor_IsANoOp()
+	{
+		// Arrange
+		Shape shape = _canvas.Build().Polygon(Square).Fill(Palette.Blue).Commit();
+		_canvas.RebuildBuckets();
+
+		// Act
+		shape.SetFillColor(Palette.Blue);
+
+		// Assert
+		shape.Dirty.ShouldBe(DirtyLevel.None, "Setting the same color must not dirty the shape");
+	}
+
+	[Test]
+	public void SetStrokeColor_MatchesTheCurrentColor_IsANoOp()
+	{
+		// Arrange - EdgeLine's own color is Palette.Blue
+		Shape shape = Stroked();
+		_canvas.RebuildBuckets();
+
+		// Act
+		shape.SetStrokeColor(Palette.Blue);
+
+		// Assert
+		shape.Dirty.ShouldBe(DirtyLevel.None);
+	}
+
+	[Test]
+	public void Recolor_RewritesVertexColorsWithoutRetessellating()
+	{
+		// Arrange
+		Shape shape = Stroked();
+		_canvas.RebuildBuckets();
+		int rebuildsBefore = shape.RebuildCount;
+		int verticesBefore = shape.Buffer.VertexCount;
+		int indicesBefore = shape.Buffer.IndexCount;
+
+		// Act
+		shape.SetStrokeColor(Palette.Orange);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		shape.RebuildCount.ShouldBe(rebuildsBefore, "A solid recolor must not re-tessellate");
+		shape.Buffer.VertexCount.ShouldBe(verticesBefore);
+		shape.Buffer.IndexCount.ShouldBe(indicesBefore);
+
+		Color? core = DrawingTestHelpers.ColorAt(shape.Buffer, new Vector2(20f, 0f));
+		core.ShouldNotBeNull();
+		core.Value.R.ShouldBe(Palette.Orange.R, 0.001f);
+		core.Value.G.ShouldBe(Palette.Orange.G, 0.001f);
+		core.Value.B.ShouldBe(Palette.Orange.B, 0.001f);
+	}
+
+	[Test]
+	public void Recolor_OnAGradientStroke_FallsBackToFullTess()
+	{
+		// Arrange - a gradient stroke isn't "one color" to begin with
+		Shape shape = _canvas.Build()
+			.Polygon(Square)
+			.Stroke(VectorStyles.EdgeLine with { ColorStops = [new ColorStop(0f, Palette.Blue), new ColorStop(1f, Palette.Red)] })
+			.Commit();
+		_canvas.RebuildBuckets();
+		int rebuildsBefore = shape.RebuildCount;
+
+		// Act
+		shape.SetStrokeColor(Palette.Orange);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		shape.RebuildCount.ShouldBe(rebuildsBefore + 1, "A gradient stroke must fall back to a full rebuild");
+	}
+
+	[Test]
+	public void Recolor_OnAStripedStroke_FallsBackToFullTess()
+	{
+		// Arrange - striped segments resolve color from a per-span override, not Style.Color
+		Shape shape = _canvas.Build()
+			.Polyline([new Vector2(0f, 0f), new Vector2(100f, 0f)])
+			.StripedStroke(20f, 10f, Palette.Red, Palette.White)
+			.Commit();
+		_canvas.RebuildBuckets();
+		int rebuildsBefore = shape.RebuildCount;
+
+		// Act
+		shape.SetStrokeColor(Palette.Orange);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		shape.RebuildCount.ShouldBe(rebuildsBefore + 1, "A striped stroke must fall back to a full rebuild");
+	}
+
+	[Test]
+	public void Recolor_WhenBakedAlphaWasZero_FallsBackToFullTess()
+	{
+		// Arrange
+		Shape shape = _canvas.Build()
+			.Polygon(Square)
+			.Stroke(VectorStyles.EdgeLine with { Color = new Color(Palette.Blue, 0f) })
+			.Commit();
+		_canvas.RebuildBuckets();
+		int rebuildsBefore = shape.RebuildCount;
+
+		// Act
+		shape.SetStrokeColor(Palette.Orange);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		shape.RebuildCount.ShouldBe(rebuildsBefore + 1, "A zero baked alpha makes the ratio denominator undefined");
+		Color? core = DrawingTestHelpers.ColorAt(shape.Buffer, new Vector2(20f, 0f));
+		core.ShouldNotBeNull();
+		core.Value.A.ShouldBeGreaterThan(0f, "The shape must not be stuck at zero opacity after falling back");
+	}
+
+	[Test]
+	public void SetFillColor_OnABareFill_AlsoRecolorsTheSynthesizedHairline()
+	{
+		// Arrange
+		Shape shape = _canvas.Build().Polygon(Square).Fill(Palette.Blue).Commit();
+		_canvas.RebuildBuckets();
+
+		// Act
+		shape.SetFillColor(Palette.Orange);
+		_canvas.RebuildBuckets();
+
+		// Assert - the same edge point BareFill_SynthesizesAHairlineAtTheBoundary proves is
+		// covered by the synthesized hairline, not the fill interior
+		Color? edge = DrawingTestHelpers.ColorAt(shape.Buffer, new Vector2(20f, -0.4f));
+		edge.ShouldNotBeNull();
+		edge.Value.R.ShouldBe(Palette.Orange.R, 0.01f, "The synthesized hairline must recolor along with the fill");
+		edge.Value.G.ShouldBe(Palette.Orange.G, 0.01f);
+		edge.Value.B.ShouldBe(Palette.Orange.B, 0.01f);
+	}
+
+	[Test]
+	public void SetFillColor_WithAnExplicitStroke_LeavesTheStrokeVerticesUntouched()
+	{
+		// Arrange
+		Shape shape = _canvas.Build()
+			.Polygon(Square)
+			.Fill(Palette.Blue)
+			.Stroke(VectorStyles.EdgeLine with { Color = Palette.Red })
+			.Commit();
+		_canvas.RebuildBuckets();
+
+		// Act
+		shape.SetFillColor(Palette.Orange);
+		_canvas.RebuildBuckets();
+
+		// Assert - outside the fill polygon but inside the stroke band, so only stroke triangles cover it
+		Color? strokePoint = DrawingTestHelpers.ColorAt(shape.Buffer, new Vector2(20f, -1f));
+		strokePoint.ShouldNotBeNull();
+		strokePoint.Value.R.ShouldBe(Palette.Red.R, 0.01f, "SetFillColor must not touch stroke vertices");
+		strokePoint.Value.G.ShouldBe(Palette.Red.G, 0.01f);
+		strokePoint.Value.B.ShouldBe(Palette.Red.B, 0.01f);
 	}
 
 	[Test]
@@ -100,6 +356,22 @@ public class ShapeTests : TestClass
 		shape.RebuildCount.ShouldBe(rebuildsBefore, "Rigid motion must not re-tessellate");
 		shape.Buffer.Points[0].ShouldBe(ownBefore, "The shape's own buffer stays in local space");
 		_canvas.StaticBucket.Concat.Points[0].ShouldBe(offset * ownBefore, "The concat carries the baked transform");
+	}
+
+	[Test]
+	public void SetTransform_WithTheCurrentValue_IsANoOp()
+	{
+		// Arrange
+		Shape shape = Stroked();
+		var offset = new Transform2D(0f, new Vector2(100f, 0f));
+		shape.SetTransform(offset);
+		_canvas.RebuildBuckets();
+
+		// Act
+		shape.SetTransform(offset);
+
+		// Assert
+		shape.Dirty.ShouldBe(DirtyLevel.None, "Reapplying the same transform must not dirty the shape");
 	}
 
 	[Test]

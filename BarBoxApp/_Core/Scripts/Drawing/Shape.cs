@@ -33,11 +33,18 @@ internal enum DirtyLevel
 	/// <summary>Triangles are still valid; the bucket just has to re-concatenate them.</summary>
 	Concat = 1,
 
+	/// <summary>
+	/// Geometry and triangle counts are still valid; only the baked vertex colors must be
+	/// rewritten in place. Cheaper than Tess: it skips the tessellator's join/cap/triangulation
+	/// work, though the bucket's re-concat walk still runs regardless of level (see ShapeBucket).
+	/// </summary>
+	Recolor = 2,
+
 	/// <summary>Flattened contours are still valid; only the triangles must be rebuilt.</summary>
-	Tess = 2,
+	Tess = 3,
 
 	/// <summary>The source geometry changed; contours must be re-flattened first.</summary>
-	Flatten = 3,
+	Flatten = 4,
 }
 
 /// <summary>
@@ -111,6 +118,19 @@ public sealed class Shape
 	private ColorStop[] _ownedStops;
 	private float[] _ownedWidths;
 	private float[] _ownedDashes;
+	private FlatPath[] _trimScratch;
+
+	/// <summary>Alpha baked into the fill/hairline range at the last full Tess. Recolor's ratio denominator.</summary>
+	private float _bakedFillAlpha;
+
+	/// <summary>Alpha baked into the stroke range at the last full Tess. Recolor's ratio denominator.</summary>
+	private float _bakedStrokeAlpha;
+
+	/// <summary>
+	/// Vertex index boundary between the fill pass's output and everything after it (the bare-fill
+	/// hairline or the real stroke) within Buffer. Correct whether or not HasFill is true.
+	/// </summary>
+	private int _fillVertexEnd;
 
 	internal Shape()
 	{
@@ -159,10 +179,33 @@ public sealed class Shape
 		MarkDirty(DirtyLevel.Tess);
 	}
 
+	/// <summary>
+	/// Rewrites the stroke color without re-tessellating (Recolor tier): the per-vertex alpha
+	/// ratio baked at the last full Tess is preserved, so feather/skirt vertices stay
+	/// transparent. Falls back to a full Tess rebuild for gradients, striped dashes, or a
+	/// previously-zero baked alpha — see Shape.Recolor.
+	/// </summary>
 	public void SetStrokeColor(Color color)
 	{
+		if (Stroke.Color == color)
+		{
+			return;
+		}
+
 		Stroke.Color = color;
-		MarkDirty(DirtyLevel.Tess);
+		MarkDirty(DirtyLevel.Recolor);
+	}
+
+	/// <summary>Fill counterpart to SetStrokeColor — same Recolor fast path and fallback rules.</summary>
+	public void SetFillColor(Color color)
+	{
+		if (Fill.Color == color)
+		{
+			return;
+		}
+
+		Fill.Color = color;
+		MarkDirty(DirtyLevel.Recolor);
 	}
 
 	public void SetStrokeWidth(float width)
@@ -174,6 +217,22 @@ public sealed class Shape
 	public void SetDashOffset(float offset)
 	{
 		Stroke.DashOffset = offset;
+		MarkDirty(DirtyLevel.Tess);
+	}
+
+	/// <summary>
+	/// Fractional arc-length window of the flattened contour that gets stroked — the draw-on
+	/// animation primitive (gauge sweeps, lap-ring reveals). Operates on the already-flattened
+	/// contour, so this raises only Tess, never Flatten. TrimEnd == 0 resolves to 1 (see
+	/// StrokeStyle.ResolveTrimEnd); represent "nothing drawn yet" with SetVisible(false) or a
+	/// tiny epsilon end, not a literal 0. A range that collapses (TrimStart >= TrimEnd, after
+	/// resolving) skips this shape's stroke for that pass and rate-limits a warning — it never
+	/// throws, per the module's validation convention.
+	/// </summary>
+	public void SetTrim(float start, float end)
+	{
+		Stroke.TrimStart = start;
+		Stroke.TrimEnd = end;
 		MarkDirty(DirtyLevel.Tess);
 	}
 
@@ -276,6 +335,11 @@ public sealed class Shape
 	/// </summary>
 	public void SetTransform(Transform2D transform)
 	{
+		if (Transform == transform)
+		{
+			return;
+		}
+
 		Transform = transform;
 		HasTransform = transform != Transform2D.Identity;
 
@@ -357,6 +421,8 @@ public sealed class Shape
 			}
 		}
 
+		_fillVertexEnd = Buffer.VertexCount;
+
 		// A bare fill has no feather of its own, so it gets a hairline stroke of the fill color.
 		// At Width == the feather width the tessellator's hairline clamp collapses the core to the
 		// band centre with the skirt at +/-f, which is exactly the symmetric alpha ramp the fill
@@ -379,29 +445,127 @@ public sealed class Shape
 		{
 			for (int i = 0; i < ContourCount; i++)
 			{
-				StrokeContour(Contours[i], pixelScale, dashScratch);
+				StrokeContour(Contours[i], i, pixelScale, dashScratch);
 			}
 		}
 
+		_bakedFillAlpha = Fill.Color.A;
+		_bakedStrokeAlpha = Stroke.Color.A;
 		RebuildCount++;
 	}
 
-	private void StrokeContour(FlatPath contour, float pixelScale, DashResult dashScratch)
+	/// <summary>
+	/// Rewrites already-baked vertex colors in place instead of re-tessellating — the fast path
+	/// for SetFillColor/SetStrokeColor. Falls back to a full Rebuild whenever the ratio math
+	/// below can't apply (a gradient, a per-span color override, or an unrecoverable zero-alpha
+	/// baseline). Skipped entirely for a Mesh shape's Buffer (no fill/stroke ranges to speak of),
+	/// same as Rebuild.
+	/// </summary>
+	internal void Recolor(float pixelScale, DashResult dashScratch)
 	{
+		if (Kind == ShapeKind.Mesh || NeedsFullRebuildForRecolor())
+		{
+			Rebuild(pixelScale, dashScratch);
+			return;
+		}
+
+		if (HasFill)
+		{
+			RecolorRange(0, _fillVertexEnd, ref _bakedFillAlpha, Fill.Color);
+		}
+
+		if (HasStroke)
+		{
+			RecolorRange(_fillVertexEnd, Buffer.VertexCount, ref _bakedStrokeAlpha, Stroke.Color);
+		}
+		else if (HasFill)
+		{
+			// Bare-fill hairline: synthesized in Rebuild with Style.Color = Fill.Color, so it
+			// recolors off the same baseline as the fill interior, not the (unused) Stroke field.
+			RecolorRange(_fillVertexEnd, Buffer.VertexCount, ref _bakedFillAlpha, Fill.Color);
+		}
+	}
+
+	private bool NeedsFullRebuildForRecolor()
+	{
+		if (HasStroke && Stroke.ColorStops != null && Stroke.ColorStops.Length >= 2)
+		{
+			// A gradient stroke isn't "one color" to begin with.
+			return true;
+		}
+
+		if (HasStroke && Stroke.DashMode == DashMode.Striped)
+		{
+			// Striped segments resolve color from a per-span override, not Style.Color.
+			return true;
+		}
+
+		if (HasFill && _bakedFillAlpha <= 0f)
+		{
+			// The ratio denominator would be 0/0.
+			return true;
+		}
+
+		if (HasStroke && _bakedStrokeAlpha <= 0f)
+		{
+			return true;
+		}
+
+		return false;
+	}
+
+	/// <summary>
+	/// A core vertex's baked alpha is Style.Color.A * alphaScale (alphaScale usually 1, reduced
+	/// only by the hairline clamp on a sub-feather-width stroke); a skirt vertex's is always
+	/// exactly 0. Dividing by the alpha baked at the last full Tess recovers that per-vertex
+	/// factor exactly, so multiplying the new color's alpha by it reproduces the same feather
+	/// ramp under the new color with no re-tessellation.
+	/// </summary>
+	private void RecolorRange(int startVertex, int endVertex, ref float bakedAlpha, Color newColor)
+	{
+		float oldAlpha = bakedAlpha;
+		for (int i = startVertex; i < endVertex; i++)
+		{
+			float ratio = Buffer.Colors[i].A / oldAlpha;
+			Buffer.Colors[i] = new Color(newColor.R, newColor.G, newColor.B, ratio * newColor.A);
+		}
+
+		bakedAlpha = newColor.A;
+	}
+
+	private void StrokeContour(FlatPath contour, int contourIndex, float pixelScale, DashResult dashScratch)
+	{
+		float trimStart = Stroke.TrimStart;
+		float trimEnd = Stroke.ResolveTrimEnd();
+		FlatPath source = contour;
+
+		if (trimStart > 0f || trimEnd < 1f)
+		{
+			FlatPath scratch = GetTrimScratch(contourIndex);
+			if (!PathTrimmer.Trim(contour, trimStart, trimEnd, scratch))
+			{
+				// No stroke geometry for this contour this pass; any fill is unaffected.
+				return;
+			}
+
+			source = scratch;
+		}
+
 		if (Stroke.DashPattern == null || Stroke.DashPattern.Length == 0 || dashScratch == null)
 		{
-			StrokeTessellator.Tessellate(contour.PointSpan, contour.TSpan, contour.Closed, Stroke, pixelScale, Buffer);
+			StrokeTessellator.Tessellate(source.PointSpan, source.TSpan, source.Closed, Stroke, pixelScale, Buffer);
 			return;
 		}
 
 		// Striped strokes must tile a closed path without a stub at the seam; on/off dashes are
-		// left alone so an authored pattern keeps its exact lengths.
-		bool fitToLength = contour.Closed && Stroke.DashMode == DashMode.Striped;
+		// left alone so an authored pattern keeps its exact lengths. A trimmed contour is always
+		// open (see PathTrimmer), so this correctly degrades to false without extra branching.
+		bool fitToLength = source.Closed && Stroke.DashMode == DashMode.Striped;
 
 		int segments = DashSplitter.Split(
-			contour.PointSpan,
-			contour.TSpan,
-			contour.Closed,
+			source.PointSpan,
+			source.TSpan,
+			source.Closed,
 			Stroke.DashPattern,
 			Stroke.DashOffset,
 			Stroke.DashMode,
@@ -508,6 +672,26 @@ public sealed class Shape
 		{
 			Contours[i] ??= new FlatPath();
 		}
+	}
+
+	/// <summary>
+	/// Per-contour scratch for PathTrimmer's windowed output. Lazily allocated and grown in
+	/// lockstep with Contours, so a shape that never calls SetTrim never pays for this.
+	/// </summary>
+	private FlatPath GetTrimScratch(int index)
+	{
+		if (_trimScratch == null || _trimScratch.Length <= index)
+		{
+			int size = Mathf.Max(_trimScratch?.Length ?? 1, 1);
+			while (size <= index)
+			{
+				size *= 2;
+			}
+
+			Array.Resize(ref _trimScratch, size);
+		}
+
+		return _trimScratch[index] ??= new FlatPath();
 	}
 
 	private void MarkDirty(DirtyLevel level)

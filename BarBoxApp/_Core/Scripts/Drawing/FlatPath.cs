@@ -61,6 +61,20 @@ public sealed class FlatPath
 	}
 
 	/// <summary>
+	/// Adds a point with an explicit T instead of deriving one via FinalizeT — used when a
+	/// contour is windowed out of another, already-parameterized contour (PathTrimmer), so the
+	/// copy inherits the source's arc-length parameterization instead of restarting it at 0. Do
+	/// not call FinalizeT() afterward; it would overwrite these values.
+	/// </summary>
+	public void Add(Vector2 point, float t)
+	{
+		EnsureCapacity(Count + 1);
+		Points[Count] = point;
+		T[Count] = t;
+		Count++;
+	}
+
+	/// <summary>
 	/// Set Closed before calling. A closed path's total length includes the implied closing
 	/// segment, so its last T lands short of 1 — the remainder up to 1 is that segment, which
 	/// is what makes a gradient wrap the loop continuously instead of jumping at the seam.

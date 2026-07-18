@@ -49,10 +49,18 @@ public struct StrokeStyle
 
 	public StrokeAlign Align;
 
-	/// <summary>Reserved for draw-on animation; v1 requires 0.</summary>
+	/// <summary>
+	/// Start of the fractional arc-length window [TrimStart, ResolveTrimEnd()] of the flattened
+	/// contour that gets stroked, applied before dashing. Zero (the default) is already the
+	/// correct "start of path" value and needs no resolver.
+	/// </summary>
 	public float TrimStart;
 
-	/// <summary>Reserved for draw-on animation; v1 requires 1.</summary>
+	/// <summary>
+	/// End of the trim window. TrimEnd &lt;= 0 resolves to 1 (see ResolveTrimEnd), the same
+	/// zero-is-default convention as FeatherPx/MiterLimit — a literal TrimEnd == 0 does NOT mean
+	/// "draw nothing"; represent that with Shape.SetVisible(false) or a tiny epsilon end instead.
+	/// </summary>
 	public float TrimEnd;
 
 	/// <summary>Screen pixels. 0 = DefaultFeatherPx; negative = no feather. See ResolveFeatherPx.</summary>
@@ -74,5 +82,10 @@ public struct StrokeStyle
 	public readonly float ResolveMiterLimit()
 	{
 		return MiterLimit <= 0f ? DefaultMiterLimit : MiterLimit;
+	}
+
+	public readonly float ResolveTrimEnd()
+	{
+		return TrimEnd <= 0f ? 1f : TrimEnd;
 	}
 }

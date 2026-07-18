@@ -87,11 +87,6 @@ public partial class RacingHUDArcRenderer : ShapeCanvas
 	private Vector2 _cachedLapProgressPos;
 	private Vector2 _cachedCountdownPos;
 
-	// Shape.SetTransform has no equality guard — it always dirties its whole bucket — so pushing
-	// it on every HasVisualStateChanged frame would force a full re-concat of all 9 HUD shapes
-	// just to reapply a position that hasn't moved. Only actually true on a screen resize.
-	private bool _transformsDirty = true;
-
 	// Speed text + measured size cache - recomputed only when the displayed integer speed changes
 	private int _cachedSpeedInt = int.MinValue;
 	private string _cachedSpeedText;
@@ -197,7 +192,6 @@ public partial class RacingHUDArcRenderer : ShapeCanvas
 		_cachedLapProgressPos = new Vector2(_cachedScreenSize.X + LapProgressPosition.X, _cachedScreenSize.Y + LapProgressPosition.Y);
 		_cachedCountdownPos = (_cachedScreenSize * 0.5f) + CountdownPosition;
 		_screenSizeDirty = false;
-		_transformsDirty = true;
 	}
 
 	// ================================================================
@@ -428,29 +422,26 @@ public partial class RacingHUDArcRenderer : ShapeCanvas
 	// ================================================================
 	private void PushShapeState()
 	{
-		if (_transformsDirty)
+		// Shape.SetTransform has its own equality guard, so this only actually dirties anything
+		// on a screen resize (when the cached positions change).
+		var speedoTransform = new Transform2D(0f, _cachedSpeedometerPos);
+		_speedoBgShape.SetTransform(speedoTransform);
+		_speedoProgressShape.SetTransform(speedoTransform);
+		_needleShadowShape.SetTransform(speedoTransform);
+		_needleShape.SetTransform(speedoTransform);
+
+		var lapTransform = new Transform2D(0f, _cachedLapProgressPos);
+		_lapBgShape.SetTransform(lapTransform);
+		_lapProgressShape.SetTransform(lapTransform);
+
+		var countdownTransform = new Transform2D(0f, _cachedCountdownPos);
+		_countdownBgShape.SetTransform(countdownTransform);
+		foreach (Shape glow in _countdownGlowShapes)
 		{
-			var speedoTransform = new Transform2D(0f, _cachedSpeedometerPos);
-			_speedoBgShape.SetTransform(speedoTransform);
-			_speedoProgressShape.SetTransform(speedoTransform);
-			_needleShadowShape.SetTransform(speedoTransform);
-			_needleShape.SetTransform(speedoTransform);
-
-			var lapTransform = new Transform2D(0f, _cachedLapProgressPos);
-			_lapBgShape.SetTransform(lapTransform);
-			_lapProgressShape.SetTransform(lapTransform);
-
-			var countdownTransform = new Transform2D(0f, _cachedCountdownPos);
-			_countdownBgShape.SetTransform(countdownTransform);
-			foreach (Shape glow in _countdownGlowShapes)
-			{
-				glow.SetTransform(countdownTransform);
-			}
-
-			_countdownProgressShape.SetTransform(countdownTransform);
-
-			_transformsDirty = false;
+			glow.SetTransform(countdownTransform);
 		}
+
+		_countdownProgressShape.SetTransform(countdownTransform);
 
 		PushSpeedometerShapes();
 
@@ -532,7 +523,7 @@ public partial class RacingHUDArcRenderer : ShapeCanvas
 		{
 			var ringAlpha = _glowIntensity * (0.15f / i);
 			var ringPulse = 1.0f + (0.2f * Mathf.Sin((_countdownAnimTime + (i * 0.5f)) * 4.0f));
-			_countdownGlowShapes[i - 1].SetFill(CountdownGlowColor * new Color(1, 1, 1, ringAlpha * ringPulse));
+			_countdownGlowShapes[i - 1].SetFillColor(CountdownGlowColor * new Color(1, 1, 1, ringAlpha * ringPulse));
 		}
 
 		// Progress arc decreases as the countdown progresses.

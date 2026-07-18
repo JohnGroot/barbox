@@ -73,6 +73,10 @@ internal sealed class ShapeBucket
 			{
 				shape.Rebuild(pixelScale, dashScratch);
 			}
+			else if (shape.Dirty == DirtyLevel.Recolor)
+			{
+				shape.Recolor(pixelScale, dashScratch);
+			}
 
 			shape.Dirty = DirtyLevel.None;
 		}

@@ -111,6 +111,38 @@ public class AllocationTests : TestClass
 	}
 
 	[Test]
+	public void RecoloringAFill_AllocatesNothingInSteadyState()
+	{
+		// Arrange - the countdown-glow pulse path
+		Shape shape = _canvas.Build().Polygon(Square).Fill(Palette.Blue).Commit();
+		Action<int> mutate = i => shape.SetFillColor(i % 2 == 0 ? Palette.Blue : Palette.Red);
+		Cycle(mutate, WarmupIterations);
+
+		// Act
+		long allocated = Measure(mutate, MeasuredIterations);
+
+		// Assert
+		allocated.ShouldBe(0L, $"Recoloring a fill must not allocate; {MeasuredIterations} rebuilds cost {allocated} bytes");
+	}
+
+	[Test]
+	public void TrimmingAStroke_AllocatesNothingInSteadyState()
+	{
+		// Arrange - the draw-on animation path. Both warmup and measurement cycle the same i % 32
+		// fraction set, so the widest trim range (and the per-contour scratch capacity it needs)
+		// is already reached during warmup and never grows again during measurement.
+		Shape shape = _canvas.Build().Polygon(Square).Stroke(VectorStyles.EdgeLine).Commit();
+		Action<int> mutate = i => shape.SetTrim(0f, Mathf.Clamp((i % 32) / 32f, 0.02f, 1f));
+		Cycle(mutate, WarmupIterations);
+
+		// Act
+		long allocated = Measure(mutate, MeasuredIterations);
+
+		// Assert
+		allocated.ShouldBe(0L, $"Animating a trim range must not allocate; {MeasuredIterations} rebuilds cost {allocated} bytes");
+	}
+
+	[Test]
 	public void MovingAShapeRigidly_AllocatesNothingInSteadyState()
 	{
 		// Arrange
