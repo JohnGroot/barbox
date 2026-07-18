@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using BarBox.Core.Drawing;
 using BarBox.Core.UI;
 using Godot;
 
@@ -48,8 +49,10 @@ public class RacingRaceCompleteUI
 		background.AnchorTop = 0;
 		background.AnchorRight = 1;
 		background.AnchorBottom = 1;
-		background.Color = new Color(0, 0, 0, 0.8f);
+		background.Color = RacingPalette.ScrimHeavy;
 		OverlayRoot.AddChild(background);
+
+		CreateFlourish();
 
 		var mainPanel = new Panel();
 		mainPanel.AnchorLeft = 0.5f;
@@ -60,9 +63,36 @@ public class RacingRaceCompleteUI
 		mainPanel.OffsetTop = -250;
 		mainPanel.OffsetRight = 300;
 		mainPanel.OffsetBottom = 250;
+		mainPanel.AddThemeStyleboxOverride("panel", UiTheme.ModalBox());
 		OverlayRoot.AddChild(mainPanel);
 
 		CreateOverlayContent(mainPanel);
+	}
+
+	/// <summary>
+	/// Decorative isometric wireframe box, low-opacity in the scrim behind mainPanel — the plan's
+	/// M6 faux-3D garnish, exercising Path3 in production. Parented to a zero-size Control anchored
+	/// at screen center (0.5, 0.5) rather than computed from GetViewport(), so it centers the same
+	/// way mainPanel does without needing the node to already be in the tree.
+	/// </summary>
+	private void CreateFlourish()
+	{
+		var flourishAnchor = new Control();
+		flourishAnchor.AnchorLeft = 0.5f;
+		flourishAnchor.AnchorTop = 0.5f;
+		flourishAnchor.AnchorRight = 0.5f;
+		flourishAnchor.AnchorBottom = 0.5f;
+		OverlayRoot.AddChild(flourishAnchor);
+
+		var flourishCanvas = new ShapeCanvas();
+		flourishAnchor.AddChild(flourishCanvas);
+
+		var boxEdges = new Contour3Set();
+		Wireframes.Box(new Vector3(2.4f, 2.4f, 2.4f), boxEdges);
+		flourishCanvas.Build()
+			.Path3(boxEdges, Projector.Isometric(140f))
+			.Stroke(VectorStyles.Wireframe(RacingPalette.FlourishAccent))
+			.Commit();
 	}
 
 	private void CreateOverlayContent(Control parent)
@@ -120,19 +150,22 @@ public class RacingRaceCompleteUI
 
 		HighScoresTable.AlternatingRowColors = true;
 		HighScoresTable.ShowHeaders = true;
-		HighScoresTable.HeaderBackgroundColor = new Color(0.2f, 0.2f, 0.3f, 1.0f);
+		HighScoresTable.HeaderBackgroundColor = RacingPalette.TableHeaderBg;
 		HighScoresTable.HeaderTextColor = Colors.White;
-		HighScoresTable.RowBackgroundColor1 = new Color(0.1f, 0.1f, 0.15f, 0.8f);
-		HighScoresTable.RowBackgroundColor2 = new Color(0.15f, 0.15f, 0.2f, 0.8f);
+		HighScoresTable.RowBackgroundColor1 = RacingPalette.TableRowBg1;
+		HighScoresTable.RowBackgroundColor2 = RacingPalette.TableRowBg2;
 		HighScoresTable.RowTextColor = Colors.White;
-		HighScoresTable.HighlightRowColor = new Color(0.9f, 0.7f, 0.0f, 0.6f);
+		HighScoresTable.HighlightRowColor = RacingPalette.TableHighlight;
 
 		HighScoresTable.AddColumn("Rank", (obj) =>
 		{
 			var entry = (RacingUIManager.LeaderboardEntry)obj;
 			return entry.DisplayRank;
 		}, 60, HorizontalAlignment.Center)
-		.AddColumn("Player", (obj) => ((RacingUIManager.LeaderboardEntry)obj).Username, 200, HorizontalAlignment.Left)
+		.AddColumn(new TableColumnDefinition("Player", (obj) => ((RacingUIManager.LeaderboardEntry)obj).Username, 200, HorizontalAlignment.Left)
+		{
+			CellStyler = (label, obj) => label.AddThemeColorOverride("font_color", RacingPalette.ColorForUsername(((RacingUIManager.LeaderboardEntry)obj).Username)),
+		})
 		.AddColumn("Time", (obj) => ((RacingUIManager.LeaderboardEntry)obj).FormattedTime, 120, HorizontalAlignment.Right, true);
 
 		ContentContainer.AddChild(HighScoresTable);
@@ -148,16 +181,19 @@ public class RacingRaceCompleteUI
 		TryAgainButton = new Button();
 		TryAgainButton.Text = "Try Again - 1 Credit";
 		TryAgainButton.CustomMinimumSize = new Vector2(150, 40);
+		UiTheme.ApplyOutlineButton(TryAgainButton, Palette.Blue);
 		buttonContainer.AddChild(TryAgainButton);
 
 		AddCreditsButton = new Button();
 		AddCreditsButton.Text = "Add Credits";
 		AddCreditsButton.CustomMinimumSize = new Vector2(120, 40);
+		UiTheme.ApplyOutlineButton(AddCreditsButton, Palette.Orange);
 		buttonContainer.AddChild(AddCreditsButton);
 
 		ReturnToPracticeButton = new Button();
 		ReturnToPracticeButton.Text = "Return to Practice";
 		ReturnToPracticeButton.CustomMinimumSize = new Vector2(150, 40);
+		UiTheme.ApplyOutlineButton(ReturnToPracticeButton, Palette.Green);
 		buttonContainer.AddChild(ReturnToPracticeButton);
 	}
 

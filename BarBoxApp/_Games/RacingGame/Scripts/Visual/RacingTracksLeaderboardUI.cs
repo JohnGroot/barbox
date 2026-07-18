@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using BarBox.Core.Drawing;
 using BarBox.Core.UI;
 using Godot;
 
@@ -56,7 +57,7 @@ public class RacingTracksLeaderboardUI
 		background.AnchorTop = 0;
 		background.AnchorRight = 1;
 		background.AnchorBottom = 1;
-		background.Color = new Color(0, 0, 0, 0.7f);
+		background.Color = RacingPalette.ScrimLight;
 		OverlayRoot.AddChild(background);
 
 		// Main content panel (80% of screen)
@@ -65,6 +66,7 @@ public class RacingTracksLeaderboardUI
 		mainPanel.AnchorTop = 0.3f;
 		mainPanel.AnchorRight = 0.9f;
 		mainPanel.AnchorBottom = 0.7f;
+		mainPanel.AddThemeStyleboxOverride("panel", UiTheme.ModalBox());
 		OverlayRoot.AddChild(mainPanel);
 
 		CreateOverlayContent(mainPanel);
@@ -98,6 +100,7 @@ public class RacingTracksLeaderboardUI
 		CloseButton = new Button();
 		CloseButton.Text = "✕";
 		CloseButton.AddThemeFontSizeOverride("font_size", 20);
+		UiTheme.ApplyOutlineButton(CloseButton, Palette.EdgeGray);
 		header.AddChild(CloseButton);
 	}
 
@@ -176,6 +179,7 @@ public class RacingTracksLeaderboardUI
 		LoadTrackButton = new Button();
 		LoadTrackButton.Text = "Load Track";
 		LoadTrackButton.Disabled = true;
+		UiTheme.ApplyOutlineButton(LoadTrackButton, Palette.EdgeGray);
 		header.AddChild(LoadTrackButton);
 	}
 
@@ -206,12 +210,12 @@ public class RacingTracksLeaderboardUI
 
 		if (isCurrent)
 		{
-			trackButton.AddThemeColorOverride("font_color", Colors.Yellow);
+			trackButton.AddThemeColorOverride("font_color", RacingPalette.CurrentTrackAccent);
 			trackButton.Text += " (Current)";
 		}
 		else if (hasScores)
 		{
-			trackButton.AddThemeColorOverride("font_color", Colors.LightBlue);
+			trackButton.AddThemeColorOverride("font_color", RacingPalette.HasScoresAccent);
 		}
 
 		_trackButtons.Add(trackButton);
@@ -278,19 +282,22 @@ public class RacingTracksLeaderboardUI
 
 		tableView.AlternatingRowColors = true;
 		tableView.ShowHeaders = true;
-		tableView.HeaderBackgroundColor = new Color(0.2f, 0.2f, 0.3f, 1.0f);
+		tableView.HeaderBackgroundColor = RacingPalette.TableHeaderBg;
 		tableView.HeaderTextColor = Colors.White;
-		tableView.RowBackgroundColor1 = new Color(0.1f, 0.1f, 0.15f, 0.8f);
-		tableView.RowBackgroundColor2 = new Color(0.15f, 0.15f, 0.2f, 0.8f);
+		tableView.RowBackgroundColor1 = RacingPalette.TableRowBg1;
+		tableView.RowBackgroundColor2 = RacingPalette.TableRowBg2;
 		tableView.RowTextColor = Colors.White;
-		tableView.HighlightRowColor = new Color(0.9f, 0.7f, 0.0f, 0.5f);
+		tableView.HighlightRowColor = RacingPalette.TableHighlight;
 
 		tableView.AddColumn("Rank", (obj) =>
 			{
 				var entry = (RacingUIManager.LeaderboardEntry)obj;
 				return (entries.IndexOf(entry) + 1).ToString();
 			}, 60, HorizontalAlignment.Center)
-			.AddColumn("Player", (obj) => ((RacingUIManager.LeaderboardEntry)obj).Username, 150, HorizontalAlignment.Left)
+			.AddColumn(new TableColumnDefinition("Player", (obj) => ((RacingUIManager.LeaderboardEntry)obj).Username, 150, HorizontalAlignment.Left)
+			{
+				CellStyler = (label, obj) => label.AddThemeColorOverride("font_color", RacingPalette.ColorForUsername(((RacingUIManager.LeaderboardEntry)obj).Username)),
+			})
 			.AddColumn("Time", (obj) => ((RacingUIManager.LeaderboardEntry)obj).FormattedTime, 100, HorizontalAlignment.Right, true);
 
 		bool hasCurrentPlayerEntries = entries.Any(entry => entry.IsCurrentPlayer);

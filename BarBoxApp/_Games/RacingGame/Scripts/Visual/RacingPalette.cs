@@ -1,3 +1,4 @@
+using System;
 using BarBox.Core.Drawing;
 using Godot;
 
@@ -35,4 +36,49 @@ public static class RacingPalette
 
 	/// <summary>Headlight cone fill. Alpha is pre-baked since the cone always reads as a translucent glow, never opaque.</summary>
 	public static readonly Color HeadlightGlow = new(1f, 1f, 0.8f, 0.27f);
+
+	/// <summary>Countdown overlay scrim — the lightest of the three, since the countdown is brief and non-blocking.</summary>
+	public static readonly Color ScrimSubtle = new(0f, 0f, 0f, 0.5f);
+
+	/// <summary>Pause and tracks/leaderboard overlay scrim.</summary>
+	public static readonly Color ScrimLight = new(0f, 0f, 0f, 0.7f);
+
+	/// <summary>Race-complete overlay scrim — the heaviest, since it's a full-attention modal.</summary>
+	public static readonly Color ScrimHeavy = new(0f, 0f, 0f, 0.8f);
+
+	/// <summary>Digital timer label's outline, for contrast against the track behind it.</summary>
+	public static readonly Color TextOutline = new(0f, 0f, 0f, 0.8f);
+
+	/// <summary>Shared DataTableView styling for the race-complete and tracks/leaderboard tables.</summary>
+	public static readonly Color TableHeaderBg = new(0.2f, 0.2f, 0.3f, 1.0f);
+
+	public static readonly Color TableRowBg1 = new(0.1f, 0.1f, 0.15f, 0.8f);
+
+	public static readonly Color TableRowBg2 = new(0.15f, 0.15f, 0.2f, 0.8f);
+
+	public static readonly Color TableHighlight = new(0.9f, 0.7f, 0f, 0.6f);
+
+	/// <summary>Track-list button accents: the currently loaded track vs. one with recorded scores.</summary>
+	public static readonly Color CurrentTrackAccent = Palette.Yellow;
+
+	public static readonly Color HasScoresAccent = Palette.Cyan;
+
+	/// <summary>Race-complete overlay's decorative isometric wireframe, low-opacity behind the panel.</summary>
+	public static readonly Color FlourishAccent = new(Palette.Purple, 0.35f);
+
+	/// <summary>
+	/// A stable per-player color for leaderboard rows — usernames aren't tied to a car-color slot
+	/// (unlike the 1-4 concurrent players PlayerColors otherwise indexes), so the same username
+	/// always lands on the same color rather than drifting with rank position.
+	/// </summary>
+	public static Color ColorForUsername(string username)
+	{
+		if (string.IsNullOrEmpty(username))
+		{
+			return PlayerColors[0];
+		}
+
+		int index = Math.Abs(username.GetHashCode()) % PlayerColors.Length;
+		return PlayerColors[index];
+	}
 }

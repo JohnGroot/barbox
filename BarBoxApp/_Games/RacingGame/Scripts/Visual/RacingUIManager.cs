@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using BarBox.Core.Drawing;
 using BarBox.Core.UI;
 using Godot;
 using LightResults;
@@ -229,17 +230,8 @@ public partial class RacingUIManager : Node
 		_timerBackground.AnchorRight = 1;
 		_timerBackground.AnchorBottom = 1;
 
-		var styleBox = new StyleBoxFlat();
-		styleBox.BgColor = new Color(0.1f, 0.1f, 0.15f, 0.85f); // Dark semi-transparent
-		styleBox.CornerRadiusTopLeft = 8;
-		styleBox.CornerRadiusTopRight = 8;
-		styleBox.CornerRadiusBottomLeft = 8;
-		styleBox.CornerRadiusBottomRight = 8;
-		styleBox.BorderWidthTop = 2;
-		styleBox.BorderWidthBottom = 2;
-		styleBox.BorderWidthLeft = 2;
-		styleBox.BorderWidthRight = 2;
-		styleBox.BorderColor = new Color(0.3f, 0.6f, 0.9f, 0.6f); // Subtle blue border
+		var styleBox = UiTheme.PanelBox();
+		styleBox.BorderColor = Palette.Blue;
 		_timerBackground.AddThemeStyleboxOverride("panel", styleBox);
 		_timerDisplayContainer.AddChild(_timerBackground);
 
@@ -274,7 +266,7 @@ public partial class RacingUIManager : Node
 		labelSettings.FontSize = 52;
 		labelSettings.FontColor = Colors.White;
 		labelSettings.OutlineSize = 4; // Add outline for better contrast
-		labelSettings.OutlineColor = new Color(0, 0, 0, 0.8f);
+		labelSettings.OutlineColor = RacingPalette.TextOutline;
 		_timerLabel.LabelSettings = labelSettings;
 
 		_timerDisplayContainer.AddChild(_timerLabel);
@@ -312,6 +304,7 @@ public partial class RacingUIManager : Node
 		}
 
 		_timeTrialButton = new Button() { Text = timeTrialText };
+		UiTheme.ApplyOutlineButton(_timeTrialButton, Palette.Orange);
 		_timeTrialButton.Pressed += () => EmitSignal(SignalName.TimeTrialRequested);
 		parent.AddChild(_timeTrialButton);
 	}
@@ -319,6 +312,7 @@ public partial class RacingUIManager : Node
 	private void SetupRestartButton(Container parent)
 	{
 		_restartButton = new Button() { Text = "Restart Practice" };
+		UiTheme.ApplyOutlineButton(_restartButton, Palette.Blue);
 		_restartButton.Pressed += () =>
 		{
 			ResetUserIdleTimer();
@@ -330,6 +324,7 @@ public partial class RacingUIManager : Node
 	private void SetupTracksLeaderboardButton(Container parent)
 	{
 		_tracksLeaderboardButton = new Button() { Text = "Tracks & Leaderboard" };
+		UiTheme.ApplyOutlineButton(_tracksLeaderboardButton, Palette.Green);
 		_tracksLeaderboardButton.Pressed += () =>
 		{
 			ResetUserIdleTimer();
@@ -364,7 +359,7 @@ public partial class RacingUIManager : Node
 		background.AnchorTop = 0;
 		background.AnchorRight = 1;
 		background.AnchorBottom = 1;
-		background.Color = new Color(0, 0, 0, 0.5f);
+		background.Color = RacingPalette.ScrimSubtle;
 		_countdownOverlay.AddChild(background);
 
 		_countdownLabel = new Label();
@@ -403,7 +398,7 @@ public partial class RacingUIManager : Node
 		background.AnchorTop = 0;
 		background.AnchorRight = 1;
 		background.AnchorBottom = 1;
-		background.Color = new Color(0, 0, 0, 0.7f);
+		background.Color = RacingPalette.ScrimLight;
 		_pauseOverlay.AddChild(background);
 
 		var vbox = new VBoxContainer();
@@ -422,10 +417,12 @@ public partial class RacingUIManager : Node
 		vbox.AddChild(pauseLabel);
 
 		var resumeButton = new Button() { Text = "Resume" };
+		UiTheme.ApplyOutlineButton(resumeButton, Palette.EdgeGray);
 		resumeButton.Pressed += () => EmitSignal(SignalName.ResumeRequested);
 		vbox.AddChild(resumeButton);
 
 		var restartButton = new Button() { Text = "Restart" };
+		UiTheme.ApplyOutlineButton(restartButton, Palette.Blue);
 		restartButton.Pressed += () =>
 		{
 			ResetUserIdleTimer();
@@ -434,6 +431,7 @@ public partial class RacingUIManager : Node
 		vbox.AddChild(restartButton);
 
 		var mainMenuButton = new Button() { Text = "Main Menu" };
+		UiTheme.ApplyOutlineButton(mainMenuButton, Palette.EdgeGray);
 		mainMenuButton.Pressed += () =>
 		{
 			ResetUserIdleTimer();
