@@ -15,7 +15,7 @@ public partial class CarromBoard : Node2D
 	public float BoardSize { get; set; } = 700;
 
 	[Export]
-	public Color BoardColor { get; set; } = new Color(0.8f, 0.6f, 0.4f); // Wood color
+	public Color BoardColor { get; set; } = CarromPalette.BoardWood;
 
 	[Export]
 	public Color EdgeColor { get; set; } = Colors.RosyBrown;
@@ -37,7 +37,7 @@ public partial class CarromBoard : Node2D
 	public bool ShowCollisionDebug { get; set; } = false;
 
 	[Export]
-	public Color CollisionDebugColor { get; set; } = new Color(1.0f, 0.0f, 0.0f, 0.5f);
+	public Color CollisionDebugColor { get; set; } = CarromPalette.CollisionDebug;
 
 	[ExportCategory("Physics Configuration")]
 	[Export]

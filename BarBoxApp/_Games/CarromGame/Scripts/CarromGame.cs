@@ -1086,7 +1086,7 @@ public partial class CarromGame : GameController
 
 			// Restore visual properties (pocket may have made it invisible/scaled to zero)
 			striker.Scale = Vector2.One;
-			striker.Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f); // Fully opaque
+			striker.Modulate = CarromPalette.ModulateOpaque;
 
 			MarkRecentRestoration(striker);
 
@@ -1299,7 +1299,7 @@ public partial class CarromGame : GameController
 		// Restore piece visibility and visual properties from pocket state
 		piece.Visible = true;
 		piece.Scale = Vector2.One;
-		piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f);
+		piece.Modulate = CarromPalette.ModulateOpaque;
 	}
 
 	/// <summary>

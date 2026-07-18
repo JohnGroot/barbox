@@ -11,11 +11,11 @@ public static class GemTheme
 {
 	public static Color GetGemColor(GemType gemType) => gemType switch
 	{
-		GemType.Ruby => new Color(0.8f, 0.1f, 0.2f),
-		GemType.Sapphire => new Color(0.1f, 0.3f, 0.8f),
-		GemType.Emerald => new Color(0.1f, 0.7f, 0.2f),
-		GemType.Diamond => new Color(0.9f, 0.9f, 0.95f),
-		GemType.Amethyst => new Color(0.6f, 0.2f, 0.8f),
+		GemType.Ruby => MiningPalette.GemRuby,
+		GemType.Sapphire => MiningPalette.GemSapphire,
+		GemType.Emerald => MiningPalette.GemEmerald,
+		GemType.Diamond => MiningPalette.GemDiamond,
+		GemType.Amethyst => MiningPalette.GemAmethyst,
 		_ => Colors.Gray,
 	};
 
@@ -36,10 +36,10 @@ public static class GemTheme
 	{
 		var baseColor = GetGemColor(gemType);
 		return new Color(
-			baseColor.R * 0.15f,
-			baseColor.G * 0.15f,
-			baseColor.B * 0.15f,
-			0.95f);
+			baseColor.R * MiningPalette.GemBackgroundDimFactor,
+			baseColor.G * MiningPalette.GemBackgroundDimFactor,
+			baseColor.B * MiningPalette.GemBackgroundDimFactor,
+			MiningPalette.GemBackgroundAlpha);
 	}
 
 	public static Color GetPrimaryAccent(GemType gemType) =>

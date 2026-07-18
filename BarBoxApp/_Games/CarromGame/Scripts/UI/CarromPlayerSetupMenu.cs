@@ -97,8 +97,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			BackgroundPanel = new Panel();
 			BackgroundPanel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 			var bgStyle = new StyleBoxFlat();
-			bgStyle.BgColor = new Color(0.15f, 0.15f, 0.15f, 0.9f);
-			bgStyle.BorderColor = new Color(0.3f, 0.3f, 0.3f, 1.0f);
+			bgStyle.BgColor = CarromPalette.SlotBgEmpty;
+			bgStyle.BorderColor = CarromPalette.SlotBorderEmpty;
 			bgStyle.BorderWidthTop = 2;
 			bgStyle.BorderWidthBottom = 2;
 			bgStyle.BorderWidthLeft = 2;
@@ -187,8 +187,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			// Update background to show occupied state
 			if (BackgroundPanel.GetThemeStylebox("panel") is StyleBoxFlat bgStyle)
 			{
-				bgStyle.BgColor = new Color(0.2f, 0.3f, 0.25f, 0.9f); // Slight green tint
-				bgStyle.BorderColor = new Color(0.4f, 0.6f, 0.4f, 1.0f);
+				bgStyle.BgColor = CarromPalette.SlotBgOccupied;
+				bgStyle.BorderColor = CarromPalette.SlotBorderOccupied;
 			}
 
 			UpdateSlotDisplay();
@@ -205,8 +205,8 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			// Reset background to empty state
 			if (BackgroundPanel.GetThemeStylebox("panel") is StyleBoxFlat bgStyle)
 			{
-				bgStyle.BgColor = new Color(0.15f, 0.15f, 0.15f, 0.9f);
-				bgStyle.BorderColor = new Color(0.3f, 0.3f, 0.3f, 1.0f);
+				bgStyle.BgColor = CarromPalette.SlotBgEmpty;
+				bgStyle.BorderColor = CarromPalette.SlotBorderEmpty;
 			}
 
 			UpdateSlotDisplay();
@@ -276,7 +276,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_backgroundPanel = new Panel();
 			_backgroundPanel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 			var backgroundStyle = new StyleBoxFlat();
-			backgroundStyle.BgColor = new Color(0.0f, 0.0f, 0.0f, 0.7f);
+			backgroundStyle.BgColor = CarromPalette.ModalScrim;
 			_backgroundPanel.AddThemeStyleboxOverride("panel", backgroundStyle);
 			AddChild(_backgroundPanel);
 
@@ -300,12 +300,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			_modalPanel.SetSize(ModalSize);
 
 			var modalStyle = new StyleBoxFlat();
-			modalStyle.BgColor = new Color(0.1f, 0.1f, 0.12f, 1.0f);
+			modalStyle.BgColor = CarromPalette.ModalPanelBg;
 			modalStyle.BorderWidthTop = 3;
 			modalStyle.BorderWidthBottom = 3;
 			modalStyle.BorderWidthLeft = 3;
 			modalStyle.BorderWidthRight = 3;
-			modalStyle.BorderColor = new Color(0.4f, 0.4f, 0.5f, 1.0f);
+			modalStyle.BorderColor = CarromPalette.ModalBorder;
 			modalStyle.CornerRadiusTopLeft = 10;
 			modalStyle.CornerRadiusTopRight = 10;
 			modalStyle.CornerRadiusBottomLeft = 10;
@@ -414,12 +414,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		private void ApplyPrimaryButtonStyle(Button button)
 		{
 			var normalStyle = new StyleBoxFlat();
-			normalStyle.BgColor = new Color(0.4f, 0.6f, 0.4f, 1.0f);
+			normalStyle.BgColor = CarromPalette.PrimaryButtonBgNormal;
 			normalStyle.BorderWidthTop = 1;
 			normalStyle.BorderWidthBottom = 1;
 			normalStyle.BorderWidthLeft = 1;
 			normalStyle.BorderWidthRight = 1;
-			normalStyle.BorderColor = new Color(0.6f, 0.8f, 0.6f, 1.0f);
+			normalStyle.BorderColor = CarromPalette.PrimaryButtonBorderNormal;
 			normalStyle.CornerRadiusTopLeft = 4;
 			normalStyle.CornerRadiusTopRight = 4;
 			normalStyle.CornerRadiusBottomLeft = 4;
@@ -427,12 +427,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 			button.AddThemeStyleboxOverride("normal", normalStyle);
 
 			var hoverStyle = new StyleBoxFlat();
-			hoverStyle.BgColor = new Color(0.5f, 0.7f, 0.5f, 1.0f);
+			hoverStyle.BgColor = CarromPalette.PrimaryButtonBgHover;
 			hoverStyle.BorderWidthTop = 1;
 			hoverStyle.BorderWidthBottom = 1;
 			hoverStyle.BorderWidthLeft = 1;
 			hoverStyle.BorderWidthRight = 1;
-			hoverStyle.BorderColor = new Color(0.7f, 0.9f, 0.7f, 1.0f);
+			hoverStyle.BorderColor = CarromPalette.PrimaryButtonBorderHover;
 			hoverStyle.CornerRadiusTopLeft = 4;
 			hoverStyle.CornerRadiusTopRight = 4;
 			hoverStyle.CornerRadiusBottomLeft = 4;
@@ -630,7 +630,7 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		_modalBackground.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 
 		var backgroundStyle = new StyleBoxFlat();
-		backgroundStyle.BgColor = new Color(0.0f, 0.0f, 0.0f, 0.7f);
+		backgroundStyle.BgColor = CarromPalette.ModalScrim;
 		_modalBackground.AddThemeStyleboxOverride("panel", backgroundStyle);
 
 		// Click background to cancel (optional - can be removed if you want to force player interaction)
@@ -647,12 +647,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		_modalPanel.CustomMinimumSize = new Vector2(600, 500);
 
 		var modalStyle = new StyleBoxFlat();
-		modalStyle.BgColor = new Color(0.1f, 0.1f, 0.12f, 1.0f);
+		modalStyle.BgColor = CarromPalette.ModalPanelBg;
 		modalStyle.BorderWidthTop = 3;
 		modalStyle.BorderWidthBottom = 3;
 		modalStyle.BorderWidthLeft = 3;
 		modalStyle.BorderWidthRight = 3;
-		modalStyle.BorderColor = new Color(0.4f, 0.4f, 0.5f, 1.0f);
+		modalStyle.BorderColor = CarromPalette.ModalBorder;
 		modalStyle.CornerRadiusTopLeft = 10;
 		modalStyle.CornerRadiusTopRight = 10;
 		modalStyle.CornerRadiusBottomLeft = 10;
@@ -761,12 +761,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 	{
 		// Similar to ConfirmationDialog's primary button
 		var normalStyle = new StyleBoxFlat();
-		normalStyle.BgColor = new Color(0.4f, 0.6f, 0.4f, 1.0f);
+		normalStyle.BgColor = CarromPalette.PrimaryButtonBgNormal;
 		normalStyle.BorderWidthTop = 1;
 		normalStyle.BorderWidthBottom = 1;
 		normalStyle.BorderWidthLeft = 1;
 		normalStyle.BorderWidthRight = 1;
-		normalStyle.BorderColor = new Color(0.6f, 0.8f, 0.6f, 1.0f);
+		normalStyle.BorderColor = CarromPalette.PrimaryButtonBorderNormal;
 		normalStyle.CornerRadiusTopLeft = 4;
 		normalStyle.CornerRadiusTopRight = 4;
 		normalStyle.CornerRadiusBottomLeft = 4;
@@ -774,12 +774,12 @@ public partial class CarromPlayerSetupMenu : CanvasLayer
 		button.AddThemeStyleboxOverride("normal", normalStyle);
 
 		var hoverStyle = new StyleBoxFlat();
-		hoverStyle.BgColor = new Color(0.5f, 0.7f, 0.5f, 1.0f);
+		hoverStyle.BgColor = CarromPalette.PrimaryButtonBgHover;
 		hoverStyle.BorderWidthTop = 1;
 		hoverStyle.BorderWidthBottom = 1;
 		hoverStyle.BorderWidthLeft = 1;
 		hoverStyle.BorderWidthRight = 1;
-		hoverStyle.BorderColor = new Color(0.7f, 0.9f, 0.7f, 1.0f);
+		hoverStyle.BorderColor = CarromPalette.PrimaryButtonBorderHover;
 		hoverStyle.CornerRadiusTopLeft = 4;
 		hoverStyle.CornerRadiusTopRight = 4;
 		hoverStyle.CornerRadiusBottomLeft = 4;

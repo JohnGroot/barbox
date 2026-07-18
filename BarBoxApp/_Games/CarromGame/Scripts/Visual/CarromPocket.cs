@@ -277,7 +277,7 @@ public partial class CarromPocket : Area2D
 
 			// Apply simple visual effect
 			piece.Scale = Vector2.Zero;
-			piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+			piece.Modulate = CarromPalette.ModulateHidden;
 			piece.GlobalPosition = GlobalPosition;
 
 			// DEBUG: Log piece pocketing in pocket

@@ -309,12 +309,12 @@ public partial class TopMenuBar : Control
 		button.CustomMinimumSize = STANDARD_BUTTON_SIZE;
 
 		var normalStyleBox = new StyleBoxFlat();
-		normalStyleBox.BgColor = new Color(0.3f, 0.3f, 0.3f, 1.0f);
+		normalStyleBox.BgColor = Palette.ButtonBgNormal;
 		normalStyleBox.BorderWidthTop = 1;
 		normalStyleBox.BorderWidthBottom = 1;
 		normalStyleBox.BorderWidthLeft = 1;
 		normalStyleBox.BorderWidthRight = 1;
-		normalStyleBox.BorderColor = new Color(0.6f, 0.6f, 0.6f, 1.0f);
+		normalStyleBox.BorderColor = Palette.ButtonBorderNormal;
 		normalStyleBox.CornerRadiusTopLeft = 4;
 		normalStyleBox.CornerRadiusTopRight = 4;
 		normalStyleBox.CornerRadiusBottomLeft = 4;
@@ -322,12 +322,12 @@ public partial class TopMenuBar : Control
 		button.AddThemeStyleboxOverride("normal", normalStyleBox);
 
 		var hoverStyleBox = new StyleBoxFlat();
-		hoverStyleBox.BgColor = new Color(0.4f, 0.4f, 0.4f, 1.0f);
+		hoverStyleBox.BgColor = Palette.ButtonBgHover;
 		hoverStyleBox.BorderWidthTop = 1;
 		hoverStyleBox.BorderWidthBottom = 1;
 		hoverStyleBox.BorderWidthLeft = 1;
 		hoverStyleBox.BorderWidthRight = 1;
-		hoverStyleBox.BorderColor = new Color(0.8f, 0.8f, 0.8f, 1.0f);
+		hoverStyleBox.BorderColor = Palette.ButtonBorderHover;
 		hoverStyleBox.CornerRadiusTopLeft = 4;
 		hoverStyleBox.CornerRadiusTopRight = 4;
 		hoverStyleBox.CornerRadiusBottomLeft = 4;
@@ -335,12 +335,12 @@ public partial class TopMenuBar : Control
 		button.AddThemeStyleboxOverride("hover", hoverStyleBox);
 
 		var pressedStyleBox = new StyleBoxFlat();
-		pressedStyleBox.BgColor = new Color(0.2f, 0.2f, 0.2f, 1.0f);
+		pressedStyleBox.BgColor = Palette.ButtonBgPressed;
 		pressedStyleBox.BorderWidthTop = 1;
 		pressedStyleBox.BorderWidthBottom = 1;
 		pressedStyleBox.BorderWidthLeft = 1;
 		pressedStyleBox.BorderWidthRight = 1;
-		pressedStyleBox.BorderColor = new Color(0.8f, 0.8f, 0.8f, 1.0f);
+		pressedStyleBox.BorderColor = Palette.ButtonBorderPressed;
 		pressedStyleBox.CornerRadiusTopLeft = 4;
 		pressedStyleBox.CornerRadiusTopRight = 4;
 		pressedStyleBox.CornerRadiusBottomLeft = 4;

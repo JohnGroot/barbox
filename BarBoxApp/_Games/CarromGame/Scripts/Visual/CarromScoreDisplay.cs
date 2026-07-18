@@ -58,12 +58,12 @@ public partial class CarromScoreDisplay : CanvasLayer
 	// Styling constants
 	private const float PANEL_HEIGHT = 120.0f;
 	private const float PANEL_MARGIN = 10.0f;
-	private readonly Color _cURRENT_PLAYER_COLOR = new Color(0.2f, 0.9f, 0.3f, 0.95f); // Bright green
-	private readonly Color _iNACTIVE_PLAYER_COLOR = new Color(0.15f, 0.15f, 0.15f, 0.8f); // Dark gray
-	private readonly Color _pANEL_BACKGROUND_COLOR = new Color(0.05f, 0.05f, 0.1f, 0.95f); // Dark blue-black
-	private readonly Color _tRANSITION_COLOR = new Color(1.0f, 0.8f, 0.2f, 0.95f); // Amber/yellow
-	private readonly Color _iNPUT_BLOCKED_COLOR = new Color(0.9f, 0.3f, 0.2f, 0.9f); // Red
-	private readonly Color _iNPUT_READY_COLOR = new Color(0.2f, 0.9f, 0.3f, 0.9f); // Green
+	private readonly Color _cURRENT_PLAYER_COLOR = CarromPalette.CurrentPlayerColor;
+	private readonly Color _iNACTIVE_PLAYER_COLOR = CarromPalette.InactivePlayerColor;
+	private readonly Color _pANEL_BACKGROUND_COLOR = CarromPalette.ScorePanelBackground;
+	private readonly Color _tRANSITION_COLOR = CarromPalette.TransitionAmber;
+	private readonly Color _iNPUT_BLOCKED_COLOR = CarromPalette.InputBlockedColor;
+	private readonly Color _iNPUT_READY_COLOR = CarromPalette.InputReadyColor;
 
 	/// <summary>
 	/// Individual player score entry UI - now horizontal layout
@@ -158,7 +158,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 					PlayerNameLabel.Text = "▶ " + PlayerNameLabel.Text;
 				}
 
-				BackgroundPanel.Modulate = new Color(0.2f, 0.9f, 0.3f, 0.4f); // Bright green
+				BackgroundPanel.Modulate = CarromPalette.CurrentPlayerHighlightModulate;
 
 				// Add pulsing animation effect - validate panel before creating tween
 				if (GodotObject.IsInstanceValid(BackgroundPanel))
@@ -188,7 +188,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 			{
 				// Remove arrow and set dark background
 				PlayerNameLabel.Text = PlayerNameLabel.Text.Replace("▶ ", string.Empty);
-				BackgroundPanel.Modulate = new Color(0.15f, 0.15f, 0.15f, 0.3f); // Dark
+				BackgroundPanel.Modulate = CarromPalette.CurrentPlayerDimModulate;
 			}
 		}
 
@@ -259,7 +259,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 		styleBox.BorderWidthBottom = 0;
 		styleBox.BorderWidthLeft = 0;
 		styleBox.BorderWidthRight = 0;
-		styleBox.BorderColor = new Color(0.3f, 0.3f, 0.4f, 1.0f);
+		styleBox.BorderColor = CarromPalette.ScorePanelBorder;
 		styleBox.CornerRadiusTopLeft = 12;
 		styleBox.CornerRadiusTopRight = 12;
 		styleBox.CornerRadiusBottomLeft = 0;
@@ -426,7 +426,7 @@ public partial class CarromScoreDisplay : CanvasLayer
 
 		// Show the Pass Turn button with fade-in animation
 		_passTurnButton.Visible = true;
-		_passTurnButton.Modulate = new Color(1, 1, 1, 0);
+		_passTurnButton.Modulate = CarromPalette.ModulateHidden;
 
 		// Validate button before creating tween
 		if (GodotObject.IsInstanceValid(_passTurnButton))

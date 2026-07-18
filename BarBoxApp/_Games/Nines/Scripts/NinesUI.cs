@@ -216,7 +216,7 @@ public partial class NinesUI : CanvasLayer
 				HorizontalAlignment = HorizontalAlignment.Center,
 			};
 			_entryCostLabel.AddThemeFontSizeOverride("font_size", config.GetScaledFontSize(18, _scale));
-			_entryCostLabel.AddThemeColorOverride("font_color", new Color(0.8f, 0.8f, 0.8f));
+			_entryCostLabel.AddThemeColorOverride("font_color", NinesPalette.EntryCostText);
 			container.AddChild(_entryCostLabel);
 
 			// Spacer
@@ -359,22 +359,22 @@ public partial class NinesUI : CanvasLayer
 			panel.AddChild(container);
 
 			// Higher button
-			_higherButton = CreatePredictionButton("HIGHER", new Color(0.2f, 0.6f, 0.2f), btnRadius);
+			_higherButton = CreatePredictionButton("HIGHER", NinesPalette.PredictionHigher, btnRadius);
 			_higherButton.Pressed += () => OnPrediction(PredictionType.Higher);
 			container.AddChild(_higherButton);
 
 			// Lower button
-			_lowerButton = CreatePredictionButton("LOWER", new Color(0.6f, 0.2f, 0.2f), btnRadius);
+			_lowerButton = CreatePredictionButton("LOWER", NinesPalette.PredictionLower, btnRadius);
 			_lowerButton.Pressed += () => OnPrediction(PredictionType.Lower);
 			container.AddChild(_lowerButton);
 
 			// Same button
-			_sameButton = CreatePredictionButton("SAME", new Color(0.5f, 0.4f, 0.1f), btnRadius);
+			_sameButton = CreatePredictionButton("SAME", NinesPalette.PredictionSame, btnRadius);
 			_sameButton.Pressed += () => OnPrediction(PredictionType.Same);
 			container.AddChild(_sameButton);
 
 			// Cancel button
-			_cancelButton = CreatePredictionButton("X", new Color(0.4f, 0.4f, 0.4f), btnRadius);
+			_cancelButton = CreatePredictionButton("X", NinesPalette.PredictionCancel, btnRadius);
 			_cancelButton.CustomMinimumSize = new Vector2(40, 30) * _scale;
 			_cancelButton.Pressed += OnCancel;
 			container.AddChild(_cancelButton);
@@ -465,7 +465,7 @@ public partial class NinesUI : CanvasLayer
 			// Semi-transparent overlay
 			var overlay = new ColorRect
 			{
-				Color = new Color(0, 0, 0, 0.7f),
+				Color = NinesPalette.Scrim,
 				MouseFilter = MouseFilterEnum.Stop,
 			};
 			overlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -865,7 +865,7 @@ public partial class NinesUI : CanvasLayer
 				{
 					Text = "No players joined",
 					HorizontalAlignment = HorizontalAlignment.Center,
-					Modulate = new Color(1, 1, 1, 0.5f),
+					Modulate = NinesPalette.NoPlayersModulate,
 				};
 				noPlayersLabel.AddThemeFontSizeOverride("font_size", _ui._config.GetScaledFontSize(14, _scale));
 				_playerContainer.AddChild(noPlayersLabel);
@@ -963,7 +963,7 @@ public partial class NinesUI : CanvasLayer
 			// Semi-transparent overlay
 			var overlay = new ColorRect
 			{
-				Color = new Color(0, 0, 0, 0.7f),
+				Color = NinesPalette.Scrim,
 				MouseFilter = MouseFilterEnum.Stop,
 			};
 			overlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);

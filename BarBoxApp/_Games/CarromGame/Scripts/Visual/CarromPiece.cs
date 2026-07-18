@@ -25,7 +25,7 @@ public partial class CarromPiece : RigidBody2D
 
 	[ExportCategory("Highlight Settings")]
 	[Export]
-	public Color HighlightColor { get; set; } = new Color(1.0f, 1.0f, 0.4f, 0.4f);
+	public Color HighlightColor { get; set; } = CarromPalette.PieceHighlight;
 
 	[Export]
 	public float HighlightFadeInSpeed { get; set; } = 2.0f;
@@ -249,10 +249,10 @@ public partial class CarromPiece : RigidBody2D
 	{
 		return Type switch
 		{
-			PieceType.White => new Color(0.4f, 0.8f, 1.0f), // Light blue
-			PieceType.Black => new Color(0.8f, 0.4f, 1.0f), // Purple
-			PieceType.Red => new Color(1.0f, 0.8f, 0.2f),   // Gold
-			PieceType.Striker => new Color(0.2f, 1.0f, 0.2f), // Bright green
+			PieceType.White => CarromPalette.TrailWhite,
+			PieceType.Black => CarromPalette.TrailBlack,
+			PieceType.Red => CarromPalette.TrailRed,
+			PieceType.Striker => CarromPalette.TrailStriker,
 			_ => Colors.Gray,
 		};
 	}
@@ -703,7 +703,7 @@ public partial class CarromPiece : RigidBody2D
 		if (restoreVisualProperties)
 		{
 			Scale = Vector2.One;
-			Modulate = new Color(1.0f, 1.0f, 1.0f, 1.0f);
+			Modulate = CarromPalette.ModulateOpaque;
 		}
 	}
 

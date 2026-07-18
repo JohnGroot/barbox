@@ -113,8 +113,8 @@ public partial class CarromDebugOverlay : CanvasLayer
 
 		// Add background styling
 		var styleBox = new StyleBoxFlat();
-		styleBox.BgColor = new Color(0.1f, 0.1f, 0.15f, 0.95f);
-		styleBox.BorderColor = new Color(0.3f, 0.5f, 0.7f);
+		styleBox.BgColor = CarromPalette.DebugPanelBackground;
+		styleBox.BorderColor = CarromPalette.DebugPanelBorder;
 		styleBox.SetBorderWidthAll(2);
 		styleBox.SetCornerRadiusAll(8);
 		styleBox.SetContentMarginAll(10);
@@ -129,7 +129,7 @@ public partial class CarromDebugOverlay : CanvasLayer
 		title.AddThemeFontSizeOverride("font_size", 18);
 		title.HorizontalAlignment = HorizontalAlignment.Center;
 		var titleBg = new StyleBoxFlat();
-		titleBg.BgColor = new Color(0.2f, 0.3f, 0.5f);
+		titleBg.BgColor = CarromPalette.DebugTitleBackground;
 		titleBg.SetContentMarginAll(8);
 		titleBg.SetCornerRadiusAll(4);
 		title.AddThemeStyleboxOverride("normal", titleBg);
@@ -143,7 +143,7 @@ public partial class CarromDebugOverlay : CanvasLayer
 		hint.Text = "Press F12 to toggle";
 		hint.AddThemeFontSizeOverride("font_size", 10);
 		hint.HorizontalAlignment = HorizontalAlignment.Center;
-		hint.Modulate = new Color(0.7f, 0.7f, 0.7f);
+		hint.Modulate = CarromPalette.DebugHintText;
 		vbox.AddChild(hint);
 		vbox.AddChild(CreateSpacer(5));
 
@@ -234,8 +234,8 @@ public partial class CarromDebugOverlay : CanvasLayer
 		label.Text = "Game state will appear here...";
 
 		var stylebox = new StyleBoxFlat();
-		stylebox.BgColor = new Color(0.05f, 0.05f, 0.05f);
-		stylebox.BorderColor = new Color(0.3f, 0.3f, 0.3f);
+		stylebox.BgColor = CarromPalette.DebugStateBackground;
+		stylebox.BorderColor = CarromPalette.BorderGray;
 		stylebox.SetBorderWidthAll(1);
 		stylebox.SetContentMarginAll(8);
 		stylebox.SetCornerRadiusAll(4);

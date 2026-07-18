@@ -34,4 +34,12 @@ public static class Palette
 	public static readonly Color HudNeedle = Orange;
 	public static readonly Color Info = White;
 	public static readonly Color Warning = Yellow;
+
+	/// <summary>TopMenuBar.ApplyStandardButtonStyle's grays — the legacy StyleBoxFlat button look kept alive for BuyCreditsModal/CarromPlayerSetupMenu until M12 retires the helper.</summary>
+	public static readonly Color ButtonBgNormal = new(0.3f, 0.3f, 0.3f, 1f);
+	public static readonly Color ButtonBorderNormal = new(0.6f, 0.6f, 0.6f, 1f);
+	public static readonly Color ButtonBgHover = new(0.4f, 0.4f, 0.4f, 1f);
+	public static readonly Color ButtonBorderHover = new(0.8f, 0.8f, 0.8f, 1f);
+	public static readonly Color ButtonBgPressed = new(0.2f, 0.2f, 0.2f, 1f);
+	public static readonly Color ButtonBorderPressed = ButtonBorderHover;
 }

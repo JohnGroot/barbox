@@ -246,7 +246,7 @@ public partial class MiningGameUI : Control
 		_miningProgressBar.AddThemeStyleboxOverride("fill", progressStyle);
 
 		var bgStyle = new StyleBoxFlat();
-		bgStyle.BgColor = new Color(0.2f, 0.2f, 0.25f);
+		bgStyle.BgColor = MiningPalette.ProgressTrackBg;
 		bgStyle.SetCornerRadiusAll(4);
 		_miningProgressBar.AddThemeStyleboxOverride("background", bgStyle);
 
@@ -354,7 +354,7 @@ public partial class MiningGameUI : Control
 		_isEnabled = enabled;
 
 		// Apply visual state - greyed out when disabled, normal when enabled
-		Modulate = enabled ? Colors.White : new Color(0.6f, 0.6f, 0.6f, 0.8f);
+		Modulate = enabled ? Colors.White : MiningPalette.DisabledUiTint;
 
 		// Disable/enable all interactive elements
 		SetInteractiveElementsEnabled(enabled);
@@ -806,7 +806,7 @@ public partial class MiningGameUI : Control
 			}
 			else
 			{
-				button.Modulate = new Color(0.7f, 0.7f, 0.7f);
+				button.Modulate = MiningPalette.DisabledButtonModulate;
 			}
 		}
 	}

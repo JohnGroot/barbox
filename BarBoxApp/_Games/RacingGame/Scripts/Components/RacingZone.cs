@@ -44,7 +44,7 @@ public partial class RacingZone : Area2D, IRacingZone
 	// ================================================================
 	[ExportCategory("Visual")]
 	[Export]
-	public Color ZoneColor { get; set; } = new Color(1.0f, 1.0f, 0.0f, 0.3f);
+	public Color ZoneColor { get; set; } = RacingPalette.ZoneDefault;
 
 	[Export]
 	public Polygon2D VisualPolygon { get; set; }
@@ -224,7 +224,7 @@ public partial class RacingZone : Area2D, IRacingZone
 			AccelerationModifier = 0.7f,
 			TurnModifier = 1.0f,
 			BlocksInput = false,
-			ZoneColor = new Color(1.0f, 0.2f, 0.2f, 0.3f), // Red tint
+			ZoneColor = RacingPalette.ZoneSlowdown,
 		};
 		return zone;
 	}
@@ -238,7 +238,7 @@ public partial class RacingZone : Area2D, IRacingZone
 			AccelerationModifier = 1.5f,
 			TurnModifier = 1.0f,
 			BlocksInput = false,
-			ZoneColor = new Color(0.2f, 0.4f, 1.0f, 0.3f), // Blue tint
+			ZoneColor = RacingPalette.ZoneBoost,
 		};
 		return zone;
 	}
@@ -253,7 +253,7 @@ public partial class RacingZone : Area2D, IRacingZone
 			TurnModifier = 1.0f,
 			BlocksInput = true,
 			Duration = duration,
-			ZoneColor = new Color(0.2f, 1.0f, 1.0f, 0.3f), // Cyan tint
+			ZoneColor = RacingPalette.ZoneFrictionless,
 		};
 		return zone;
 	}
@@ -267,7 +267,7 @@ public partial class RacingZone : Area2D, IRacingZone
 			AccelerationModifier = 1.0f,
 			TurnModifier = 1.0f,
 			BlocksInput = false,
-			ZoneColor = new Color(1.0f, 0.3f, 0.3f, 0.5f), // Red/white kerb color
+			ZoneColor = RacingPalette.ZoneKerb,
 		};
 		return zone;
 	}

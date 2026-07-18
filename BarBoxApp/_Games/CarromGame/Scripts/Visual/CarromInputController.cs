@@ -109,13 +109,13 @@ public partial class CarromInputController : Node2D
 	public Color LateralAngleLineColor { get; set; } = Colors.White;
 
 	[Export]
-	public Color LateralAngleArcColor { get; set; } = new Color(1.0f, 1.0f, 1.0f, 0.3f);
+	public Color LateralAngleArcColor { get; set; } = CarromPalette.AngleArcOverlay;
 
 	[Export]
-	public Color PowerAimingZoneColor { get; set; } = new Color(0.2f, 0.8f, 0.2f, 0.3f);
+	public Color PowerAimingZoneColor { get; set; } = CarromPalette.PowerAimingZone;
 
 	[Export]
-	public Color LateralMovementZoneColor { get; set; } = new Color(0.8f, 0.2f, 0.2f, 0.3f);
+	public Color LateralMovementZoneColor { get; set; } = CarromPalette.LateralMovementZone;
 
 	[Export]
 	public float DeadzoneRingWidth { get; set; } = 2.0f;
@@ -203,8 +203,8 @@ public partial class CarromInputController : Node2D
 
 	private bool _isInputBlocked = false;
 	private float _inputBlockedAlpha = 0.5f;
-	private readonly Color _iNPUT_BLOCKED_COLOR = new Color(0.9f, 0.2f, 0.1f, 0.6f);
-	private readonly Color _iNPUT_READY_COLOR = new Color(0.2f, 0.9f, 0.3f, 0.3f);
+	private readonly Color _iNPUT_BLOCKED_COLOR = CarromPalette.InputBlockedGlow;
+	private readonly Color _iNPUT_READY_COLOR = CarromPalette.InputReadyGlow;
 
 	private bool _isDisposed = false;
 
@@ -1125,7 +1125,7 @@ public partial class CarromInputController : Node2D
 		float strikerRadius = _striker.PhysicsConfig?.GetRadiusForPieceType(_striker.Type) ?? 15.0f;
 
 		Color indicatorColor = _lastPositionWasValid ? Colors.Green : Colors.Red;
-		Color ringColor = _lastPositionWasValid ? new Color(0.0f, 1.0f, 0.0f, 0.3f) : new Color(1.0f, 0.0f, 0.0f, 0.3f);
+		Color ringColor = _lastPositionWasValid ? CarromPalette.ValidPositionRing : CarromPalette.InvalidPositionRing;
 
 		DrawCircle(_lastTargetPosition, strikerRadius, ringColor);
 

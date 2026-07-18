@@ -1149,7 +1149,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		// Keep piece hidden in pocket until tween animation begins
 		piece.Visible = false;
 		piece.Scale = Vector2.Zero;
-		piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+		piece.Modulate = CarromPalette.ModulateHidden;
 
 		// Store both the start and target positions as metadata
 		piece.SetMeta("tween_start_position", pocketPosition);
@@ -1190,7 +1190,7 @@ public partial class CarromCompetitiveModeManager : CarromModeManagerBase
 		piece.Visible = false;
 		piece.Freeze = false;
 		piece.Scale = Vector2.Zero;
-		piece.Modulate = new Color(1.0f, 1.0f, 1.0f, 0.0f);
+		piece.Modulate = CarromPalette.ModulateHidden;
 
 		// Store both the start and target positions as metadata
 		piece.SetMeta("tween_start_position", pocketPosition);

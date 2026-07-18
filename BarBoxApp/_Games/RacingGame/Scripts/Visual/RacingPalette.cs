@@ -66,6 +66,18 @@ public static class RacingPalette
 	/// <summary>Race-complete overlay's decorative isometric wireframe, low-opacity behind the panel.</summary>
 	public static readonly Color FlourishAccent = new(Palette.Purple, 0.35f);
 
+	/// <summary>RacingZone's fallback tint before a factory method assigns a type-specific one.</summary>
+	public static readonly Color ZoneDefault = new(1f, 1f, 0f, 0.3f);
+
+	public static readonly Color ZoneSlowdown = new(1f, 0.2f, 0.2f, 0.3f);
+
+	public static readonly Color ZoneBoost = new(0.2f, 0.4f, 1f, 0.3f);
+
+	public static readonly Color ZoneFrictionless = new(0.2f, 1f, 1f, 0.3f);
+
+	/// <summary>Unused today — RacingZone.CreateKerbZone() has no callers (kerbs render via StripedStroke instead), kept for parity with the other zone factories.</summary>
+	public static readonly Color ZoneKerb = new(1f, 0.3f, 0.3f, 0.5f);
+
 	/// <summary>
 	/// A stable per-player color for leaderboard rows — usernames aren't tied to a car-color slot
 	/// (unlike the 1-4 concurrent players PlayerColors otherwise indexes), so the same username
