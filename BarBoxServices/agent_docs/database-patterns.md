@@ -26,7 +26,7 @@ class Player(Base):
 
 ```python
 # Create and read back
-box = await db_service.create(target=db.defs.Box, data=new_box, read_as=structures.BoxDetail)
+box = await db_service.create(target=db.defs.Player, data=new_player, read_as=schemas.PlayerDetail)
 
 # Get with eager loading
 result = await db_service.session.execute(

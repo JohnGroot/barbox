@@ -114,7 +114,9 @@ BarBoxServices/
 ```
 
 Feature packages mirror the games-module shape (`router.py` thin endpoints,
-`service.py` business logic, `schemas.py` API models). Import rules: features
+`service.py` business logic, `schemas.py` API models; deliberate exceptions:
+payments' checkout/webhook endpoints keep Stripe-SDK glue inline, and
+testing/ is router + seeding only). Import rules: features
 never import other features (`testing -> payments.service` is the sole
 sanctioned exception); `app/dependencies.py` never imports `registry` or
 feature packages (this keeps the import graph acyclic).

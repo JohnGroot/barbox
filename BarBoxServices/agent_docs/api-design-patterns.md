@@ -22,10 +22,10 @@
 ```python
 @router.post("/", status_code=201)
 async def create_box(
-    new_box: structures.BoxCreate,
+    new_box: schemas.BoxCreate,  # from the feature's schemas.py
     db_service: dependencies.Database,
-) -> structures.BoxDetail:
-    return await db_service.create(target=db.defs.Box, data=new_box, read_as=structures.BoxDetail)
+) -> schemas.BoxDetailWithAPIKey:
+    return await service.create_box(new_box, db_service)  # router delegates to service
 ```
 
 ### Create with Client ID (PUT)
@@ -37,9 +37,9 @@ async def create_session(
     player_id: Annotated[UUID, Header()],
     db_service: dependencies.Database,
     now: dependencies.Now,
-) -> structures.Identifiable:
+) -> Identifiable:  # from bxctl.schemas
     await db_service.create(target=db.defs.BoxSession, data={...})
-    return structures.Identifiable(id=session_id)
+    return Identifiable(id=session_id)
 ```
 
 ### Retrieve (GET)

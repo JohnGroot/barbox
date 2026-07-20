@@ -1,7 +1,9 @@
 """Deterministic test data seeding, shared by /test endpoints and dev boot.
 
-These IDs/credentials are mirrored by test/fixtures/test_constants.py and
-scripts/seed-test-data.sh for the Hurl suite - keep them in sync.
+TEST_BOX_ID must match test/fixtures/test_constants.py TEST_BOX_ID_1 - the
+Hurl suite authenticates against this auto-seeded box. The fixture file's
+players are separate entities (different IDs/phones) seeded on top by
+scripts/seed-test-data.sh.
 """
 
 from datetime import datetime

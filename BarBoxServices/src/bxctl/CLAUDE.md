@@ -20,11 +20,17 @@ bxctl/
 
 ## Feature Package Shape
 
-Every feature (and every game module) follows the same layout:
+Features (and every game module) follow the same layout:
 
 - **router.py**: thin FastAPI endpoints - DI/auth params + docstrings, delegate to service
 - **service.py**: business logic and database queries; signatures take `db.service.CRUD` (never the DI aliases)
 - **schemas.py**: that feature's pydantic request/response models
+
+Deliberate exceptions: `payments/router.py` keeps checkout-creation and
+webhook dispatch as endpoint-level Stripe-SDK glue (error-type -> HTTP
+mapping isn't a reusable business rule; webhook steps live in
+`payments/webhook.py`), and `testing/` is just `router.py` + `seeding.py` -
+its endpoints are thin wrappers with no domain layer.
 
 ## Import Rules (keeps the graph acyclic)
 

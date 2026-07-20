@@ -345,7 +345,7 @@ Audited 2026-07-14 and found well optimized — do not re-audit without a new sy
 
 ## Part B — Backend Latency
 
-Context: the deployment is one Fly `shared-cpu-1x`/512MB machine, SQLite on a volume, **single uvicorn worker** (`Dockerfile:32`, no `--workers`), NullPool (connection per session), and in-process locks (`web/machine_credits.py:27`) that assume a single process. That stack is a known horizontal-scaling ceiling — recorded here as context, **not** a work item; don't attack it piecemeal.
+Context: the deployment is one Fly `shared-cpu-1x`/512MB machine, SQLite on a volume, **single uvicorn worker** (`Dockerfile:32`, no `--workers`), NullPool (connection per session), and in-process locks (`credits/service.py:22`) that assume a single process. That stack is a known horizontal-scaling ceiling — recorded here as context, **not** a work item; don't attack it piecemeal.
 
 All paths below are under `BarBoxServices/src/bxctl/`.
 
@@ -359,13 +359,13 @@ Add the C4 timing middleware: per-route p50/p95, `X-Process-Time` header, slow-q
 
 **DONE (2026-07-15)** — see Progress Log.
 
-`web/main.py:217` — `add_request_id_middleware` calls `logger.bind(request_id=...)` and discards the result, so per-request log correlation is never actually attached. Fix (use `structlog.contextvars` or pass the bound logger). Kept separate from B0 so the "baselines exist" gate stays unambiguous. Effort: trivial. Risk: none.
+`app/main.py (add_request_id_middleware)` — `add_request_id_middleware` calls `logger.bind(request_id=...)` and discards the result, so per-request log correlation is never actually attached. Fix (use `structlog.contextvars` or pass the bound logger). Kept separate from B0 so the "baselines exist" gate stays unambiguous. Effort: trivial. Risk: none.
 
 ### B1 (HIGH) — Index `box_session_event`
 
 **DONE (2026-07-15)** — see Progress Log.
 
-The baseline migration (`alembic/versions/abececed02c7_baseline_schema.py:142-154`) creates `box_session_event` with **only a PK on `id`** — no index on `session_id`, `type`, or `timestamp`. The table holds every score/credit/machine event ever and every hot query filters on `bse.type` and joins `session_id`, so leaderboards, credit balances, and machine-credit pots all full-scan it with per-row `json_extract`. Affected queries: `games/common.py:217-233`, `games/carrom/service.py:31-111`, `web/player.py:487-498`, `web/machine_credits.py:51-77`.
+The baseline migration (`alembic/versions/abececed02c7_baseline_schema.py:142-154`) creates `box_session_event` with **only a PK on `id`** — no index on `session_id`, `type`, or `timestamp`. The table holds every score/credit/machine event ever and every hot query filters on `bse.type` and joins `session_id`, so leaderboards, credit balances, and machine-credit pots all full-scan it with per-row `json_extract`. Affected queries: `games/common.py:217-233`, `games/carrom/service.py:31-111`, `players/service.py (get_player_credits)`, `credits/service.py (get_balance)`.
 
 Fix: alembic migration adding indexes on `(type)` and `(session_id)` (or composite `(type, session_id)`); optionally SQLite generated columns + indexes for `payload.$.box_id` / `$.game_tag` / `$.track_id` if the type-index alone doesn't get leaderboards where they need to be.
 Measurement: B0 p95 per route + `EXPLAIN QUERY PLAN` before/after. Effort: small (plain indexes) to medium (generated columns). Risk: low (additive migration; verify write-path cost is acceptable — this table is also the hot write path).
@@ -383,13 +383,13 @@ Measurement: B0 p95 on `GET /game/carrom/leaderboard` + `EXPLAIN QUERY PLAN`. Ef
 
 **DONE (2026-07-15)** — see Progress Log.
 
-`web/machine_credits.py:191-272` — `consume_machine_credits` calls `get_machine_credits` twice (balance pre-check, then return value), and each call runs two full-scan aggregates (`:30-100`) → 4 scans per consume, serialized under the per-pot `asyncio.Lock`. Fix: compute once, reuse; ideally a single query for balance+contributions. Measurement: B0 p95 on the consume route. Effort: small. Risk: low.
+`credits/service.py (consume)` — `consume` calls `get_balance` twice (balance pre-check, then return value), and each call runs two full-scan aggregates (`:30-100`) → 4 scans per consume, serialized under the per-pot `asyncio.Lock`. Fix: compute once, reuse; ideally a single query for balance+contributions. Measurement: B0 p95 on the consume route. Effort: small. Risk: low.
 
 ### B4 (MED) — Session GET loads all events
 
 **DONE (2026-07-15)** — see Progress Log.
 
-`web/box.py:598-617` — `GET /box/session/{id}` uses `joinedload(BoxSession.events)` + `.unique()`, returning one row per event and serializing the entire event history on every poll of a long session. Fix: don't eager-load events for the state poll (separate endpoint/param for history, or cap/paginate). Requires checking what the client actually consumes (`BarBoxApp` ApiPaths callers) — cross-repo path-sync rule applies. Effort: small-medium. Risk: medium (client contract).
+`boxes/service.py (get_session)` — `GET /box/session/{id}` uses `joinedload(BoxSession.events)` + `.unique()`, returning one row per event and serializing the entire event history on every poll of a long session. Fix: don't eager-load events for the state poll (separate endpoint/param for history, or cap/paginate). Requires checking what the client actually consumes (`BarBoxApp` ApiPaths callers) — cross-repo path-sync rule applies. Effort: small-medium. Risk: medium (client contract).
 
 ### B5 (MED) — Shared leaderboard builder hygiene
 
@@ -405,7 +405,7 @@ Effort: small. Risk: low (Racing leaderboard Hurl tests as the gate).
 
 **DONE (2026-07-15)** — see Progress Log.
 
-`web/dependencies.py:93-157` — `_get_authenticated_box_by_session` issues a session lookup then a box lookup on every event-ingest call, on top of the insert itself. Fix: single joined query. Also consider demoting the per-request `logger.info("box_authenticated...")` (`:154,197,250`) to debug — it fires on every request. Effort: small. Risk: low.
+`app/dependencies.py (_get_authenticated_box_by_session)` — `_get_authenticated_box_by_session` issues a session lookup then a box lookup on every event-ingest call, on top of the insert itself. Fix: single joined query. Also consider demoting the per-request `logger.info("box_authenticated...")` (`:154,197,250`) to debug — it fires on every request. Effort: small. Risk: low.
 
 ### B7 (LOW, deferred) — Caching + log volume
 

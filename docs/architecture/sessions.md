@@ -380,7 +380,7 @@ public partial class MyGame : GameController
 ## References
 
 - Backend Session Schema: `BarBoxServices/src/bxctl/db/defs.py`
-- Session API Endpoints: `BarBoxServices/src/bxctl/web/box.py`
+- Session API Endpoints: `BarBoxServices/src/bxctl/boxes/router.py` (logic in `boxes/service.py`)
 - SessionManager: `BarBoxApp/_Core/Scripts/Autoloads/SessionManager.cs`
 - CreditService: `BarBoxApp/_Core/Scripts/Autoloads/CreditService.cs`
 - SessionEventService: `BarBoxApp/_Core/Scripts/Autoloads/SessionEventService.cs`
