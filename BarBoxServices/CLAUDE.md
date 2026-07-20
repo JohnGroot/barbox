@@ -98,15 +98,26 @@ A comment earns its place only by stating what the code *cannot*: a constraint, 
 BarBoxServices/
 +-- src/bxctl/
 |   +-- registry.py      # GAMES registry + SessionEventType composition
-|   +-- errors.py        # ErrorCode + structured error envelope
-|   +-- structures.py    # Pydantic models for CORE API
+|   +-- errors.py        # ErrorCode + error envelope + creation_error_boundary
+|   +-- schemas.py       # Shared pydantic mixins (Named, Tagged, Identifiable)
 |   +-- env.py           # Environment configuration
-|   +-- db/              # Database layer
+|   +-- app/             # App assembly (main.py, dependencies.py, auth.py)
+|   +-- boxes/           # Boxes & sessions feature (router/service/schemas)
+|   +-- players/         # Players feature (router/service/schemas)
+|   +-- credits/         # Machine-credit pots feature (router/service/schemas)
+|   +-- payments/        # Stripe feature (router/service/schemas/packs/webhook)
+|   +-- testing/         # Dev/test-only endpoints + deterministic seeding
 |   +-- games/           # Game modules (carrom, racing, mining, nines)
-|   +-- web/             # API layer (main.py, dependencies.py, routers)
+|   +-- db/              # Database layer
 +-- test/                # Hurl integration tests
 +-- scripts/             # Dev scripts
 ```
+
+Feature packages mirror the games-module shape (`router.py` thin endpoints,
+`service.py` business logic, `schemas.py` API models). Import rules: features
+never import other features (`testing -> payments.service` is the sole
+sanctioned exception); `app/dependencies.py` never imports `registry` or
+feature packages (this keeps the import graph acyclic).
 
 ## Testing Philosophy
 

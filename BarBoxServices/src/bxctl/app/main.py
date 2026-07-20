@@ -26,8 +26,8 @@ from bxctl.db.defs import Base
 from bxctl.payments import router as payments_router
 from bxctl.players import router as players_router
 from bxctl.registry import GAMES, game_module
-from bxctl.web import test
-from bxctl.web.test import _seed_test_box_and_players
+from bxctl.testing import router as testing_router
+from bxctl.testing.seeding import seed_test_box_and_players
 
 logger = get_logger()
 
@@ -100,7 +100,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             now = datetime.now(tz=UTC)
 
             try:
-                result = await _seed_test_box_and_players(db_service, now)
+                result = await seed_test_box_and_players(db_service, now)
                 logger.info(
                     "dev_mode_auto_seed_completed",
                     status=result["status"],
@@ -333,7 +333,7 @@ routers = (
     credits_router.router,  # Machine credit pot management
     payments_router.router,  # Stripe checkout sessions for credit purchases
     payments_router.admin_router,  # Payment reconciliation (localhost only)
-    test.router,  # Test endpoints (only available in dev/test modes)
+    testing_router.router,  # Test endpoints (only available in dev/test modes)
 )
 for router in routers:
     app.include_router(router)

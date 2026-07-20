@@ -1,7 +1,7 @@
 """Pydantic models for Mining game events and API responses."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Final, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -19,6 +19,15 @@ MiningEventType = Literal[
 
 # Canonical event type name for generic access
 EventType = MiningEventType
+
+# Named event-type values for raw-SQL binds (validation stays Literal-based)
+EXTRACT_COMPLETE: Final[MiningEventType] = "mining/extract_complete"
+UPGRADE_PURCHASE: Final[MiningEventType] = "mining/upgrade_purchase"
+CREDIT_DEPOSIT: Final[MiningEventType] = "mining/credit_deposit"
+FIRST_TIME_BONUS: Final[MiningEventType] = "mining/first_time_bonus"
+
+# SQL LIKE pattern matching every mining event type
+MINING_EVENT_LIKE_PATTERN: Final = "mining/%"
 
 
 class MiningExtractCompletePayload(BaseModel):

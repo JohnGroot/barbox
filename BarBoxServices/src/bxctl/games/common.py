@@ -11,6 +11,13 @@ logger = get_logger(__name__)
 # Sentinel for unparseable/missing UUIDs from raw SQL results
 ZERO_UUID: Final = UUID(int=0)
 
+# Log-field truncation lengths for raw SQL values/rows (keep log lines bounded)
+LOG_VALUE_PREVIEW_CHARS: Final = 100
+LOG_ROW_PREVIEW_CHARS: Final = 200
+
+# Default number of entries returned by game leaderboard endpoints
+DEFAULT_LEADERBOARD_LIMIT: Final = 10
+
 
 def parse_json_field(value: Any) -> list | dict | None:  # noqa: ANN401  # raw SQL value
     """
@@ -51,14 +58,18 @@ def parse_json_field(value: Any) -> list | dict | None:  # noqa: ANN401  # raw S
         try:
             return json.loads(value)
         except (json.JSONDecodeError, ValueError, TypeError) as e:
-            logger.exception("json_parse_failed", value=str(value)[:100], error=str(e))
+            logger.exception(
+                "json_parse_failed",
+                value=str(value)[:LOG_VALUE_PREVIEW_CHARS],
+                error=str(e),
+            )
             return None
 
     # Unexpected type - log warning
     logger.warning(
         "unexpected_json_type",
         value_type=type(value).__name__,
-        value_sample=str(value)[:100],
+        value_sample=str(value)[:LOG_VALUE_PREVIEW_CHARS],
     )
     return None
 
@@ -91,7 +102,7 @@ def parse_float_list(value: Any) -> list[float] | None:  # noqa: ANN401  # raw S
         logger.warning(
             "expected_list_got_other",
             value_type=type(parsed).__name__,
-            value_sample=str(parsed)[:100],
+            value_sample=str(parsed)[:LOG_VALUE_PREVIEW_CHARS],
         )
         return None
 
@@ -99,7 +110,9 @@ def parse_float_list(value: Any) -> list[float] | None:  # noqa: ANN401  # raw S
         return [float(x) for x in parsed]
     except (ValueError, TypeError) as e:
         logger.exception(
-            "float_conversion_failed", value=str(parsed)[:100], error=str(e)
+            "float_conversion_failed",
+            value=str(parsed)[:LOG_VALUE_PREVIEW_CHARS],
+            error=str(e),
         )
         return None
 
@@ -128,7 +141,11 @@ def parse_uuid_safe(value: Any) -> UUID:  # noqa: ANN401  # raw SQL value
     try:
         return UUID(str(value))
     except (ValueError, TypeError) as e:
-        logger.warning("invalid_uuid_using_zero", value=str(value)[:100], error=str(e))
+        logger.warning(
+            "invalid_uuid_using_zero",
+            value=str(value)[:LOG_VALUE_PREVIEW_CHARS],
+            error=str(e),
+        )
         return ZERO_UUID
 
 
@@ -291,7 +308,9 @@ def safe_parse_leaderboard[T](
             entries.append(entry)
         except Exception as e:
             logger.exception(
-                "leaderboard_entry_parse_failed", row=str(row)[:200], error=str(e)
+                "leaderboard_entry_parse_failed",
+                row=str(row)[:LOG_ROW_PREVIEW_CHARS],
+                error=str(e),
             )
             # Continue processing remaining rows instead of crashing
             continue

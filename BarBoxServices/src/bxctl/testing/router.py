@@ -3,7 +3,6 @@
 These endpoints are ONLY available in dev/test modes and will return 404 in production.
 """
 
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
@@ -12,8 +11,9 @@ from sqlalchemy import select
 from structlog import get_logger
 
 from bxctl import db, env
-from bxctl.app import auth, dependencies
+from bxctl.app import dependencies
 from bxctl.payments import service as payments_service
+from bxctl.testing.seeding import seed_test_box_and_players
 
 router = APIRouter(prefix="/test", tags=["Testing"])
 logger = get_logger()
@@ -39,103 +39,6 @@ class MockWebhookRequest(BaseModel):
     )
     amount_cents: int = Field(gt=0, description="Payment amount in cents")
     pack_id: str = Field(description="Credit pack identifier (pack_5, pack_10, etc.)")
-
-
-async def _seed_test_box_and_players(
-    db_service: db.service.CRUD,
-    now: datetime,
-) -> dict:
-    """Shared function to seed test box and players.
-
-    Idempotent: Skips creation if test box already exists.
-    Used by both /test/seed endpoint and auto-seeding in main.py.
-
-    Returns:
-        dict with seeding results
-    """
-    # Deterministic UUIDs for testing
-    test_box_id = UUID("00000000-0000-0000-0000-000000000001")
-    test_player1_id = UUID("11111111-1111-1111-1111-111111111111")
-    test_player2_id = UUID("22222222-2222-2222-2222-222222222222")
-
-    # API key is now derived deterministically from box_id
-    derived_api_key = auth.derive_box_api_key(test_box_id)
-
-    # Check if test box already exists (idempotent)
-    result = await db_service.session.execute(
-        select(db.defs.Box).where(db.defs.Box.id == test_box_id)
-    )
-    existing_box = result.scalar_one_or_none()
-
-    if existing_box:
-        logger.info(
-            "test_box_already_exists",
-            box_id=str(test_box_id),
-            message="Skipping test data seeding - already exists",
-        )
-        return {
-            "status": "skipped",
-            "message": "Test data already exists",
-            "data": {
-                "box_id": str(test_box_id),
-                "box_api_key": derived_api_key,
-                "player_ids": [str(test_player1_id), str(test_player2_id)],
-            },
-        }
-
-    # Create test box (no API key hash storage - key is derived on demand)
-    test_box_data = {
-        "id": test_box_id,
-        "name": "Test Box",
-        "tag": "testbox",
-        "created_at": now,
-        "last_seen": None,
-    }
-    await db_service.create(target=db.defs.Box, data=test_box_data)
-    logger.info("test_box_created", box_id=str(test_box_id))
-
-    # Create test players with hashed PINs and normalized phones
-    test_player1_phone = "+12125551111"
-    test_player1_pin_hash = auth.hash_player_pin("1111")
-    normalized_phone1 = auth.validate_and_normalize_phone(test_player1_phone)
-
-    await db_service.create(
-        target=db.defs.Player,
-        data={
-            "id": test_player1_id,
-            "tag": "testuser1",
-            "phone_number": normalized_phone1,
-            "pin_hash": test_player1_pin_hash,
-            "origin_id": test_box_id,
-        },
-    )
-    logger.info("test_player_created", player_id=str(test_player1_id))
-
-    test_player2_phone = "+12125552222"
-    test_player2_pin_hash = auth.hash_player_pin("2222")
-    normalized_phone2 = auth.validate_and_normalize_phone(test_player2_phone)
-
-    await db_service.create(
-        target=db.defs.Player,
-        data={
-            "id": test_player2_id,
-            "tag": "testuser2",
-            "phone_number": normalized_phone2,
-            "pin_hash": test_player2_pin_hash,
-            "origin_id": test_box_id,
-        },
-    )
-    logger.info("test_player_created", player_id=str(test_player2_id))
-
-    return {
-        "status": "success",
-        "message": "Test data seeded successfully",
-        "data": {
-            "box_id": str(test_box_id),
-            "box_api_key": derived_api_key,
-            "player_ids": [str(test_player1_id), str(test_player2_id)],
-        },
-    }
 
 
 @router.post("/reset", status_code=200)
@@ -175,7 +78,7 @@ async def reset_database(
         seed_result = None
         if settings.is_dev_mode():
             try:
-                seed_result = await _seed_test_box_and_players(db_service, now)
+                seed_result = await seed_test_box_and_players(db_service, now)
                 logger.info(
                     "auto_seed_after_reset_completed", result=seed_result["status"]
                 )
@@ -227,7 +130,7 @@ async def seed_test_data(
         )
 
     try:
-        return await _seed_test_box_and_players(db_service, now)
+        return await seed_test_box_and_players(db_service, now)
 
     except Exception as e:
         logger.exception("test_seed_failed", error=str(e))

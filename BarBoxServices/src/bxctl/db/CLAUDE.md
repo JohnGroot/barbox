@@ -5,9 +5,15 @@
 ```
 db/
 +-- defs.py         # SQLAlchemy ORM models (Base, Box, Player, BoxSession, BoxSessionEvent)
+|                   # + persisted-value StrEnums (SessionType, PaymentStatus)
 +-- service.py      # CRUD operations (create, get, get_many_raw)
 +-- connectivity.py # Engine configuration, session factory
 ```
+
+Persisted-value enums: columns stay `Mapped[str]` - `SessionType` and
+`PaymentStatus` are producer-side StrEnums whose values match what's stored,
+so no migration is implied by the enum types. In raw SQL, bind enum values as
+parameters (`.value`) rather than interpolating literals.
 
 ## Stack
 
@@ -36,6 +42,6 @@ FastAPI injects `CRUD(session)` via dependency. Auto-commits on success, auto-ro
 
 ## Schema Management
 
-Development: Created on startup, dropped on shutdown (lifespan in `main.py`).
+Development: Created on startup, dropped on shutdown (lifespan in `app/main.py`).
 
 See `../../agent_docs/database-patterns.md` for full patterns and examples.

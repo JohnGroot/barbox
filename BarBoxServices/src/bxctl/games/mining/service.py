@@ -33,7 +33,7 @@ async def _get_player_mining_inventory(
         FROM box_session_event bse
         JOIN box_session bs ON bse.session_id = bs.id
         WHERE bs.host_player_id = :player_id
-        AND bse.type = 'mining/extract_complete'
+        AND bse.type = :extract_type
         GROUP BY gem_type
     ),
     gem_spending_credits AS (
@@ -45,7 +45,7 @@ async def _get_player_mining_inventory(
         FROM box_session_event bse
         JOIN box_session bs ON bse.session_id = bs.id
         WHERE bs.host_player_id = :player_id
-        AND bse.type = 'mining/credit_deposit'
+        AND bse.type = :credit_deposit_type
         GROUP BY gem_type
     ),
     gem_spending_upgrades AS (
@@ -57,7 +57,7 @@ async def _get_player_mining_inventory(
         JOIN box_session bs ON bse.session_id = bs.id,
         json_each(bse.payload, '$.cost')
         WHERE bs.host_player_id = :player_id
-        AND bse.type = 'mining/upgrade_purchase'
+        AND bse.type = :upgrade_type
         GROUP BY gem_type
     )
     SELECT
@@ -73,7 +73,15 @@ async def _get_player_mining_inventory(
     GROUP BY e.gem_type
     """
 
-    result = await db.get_many_raw(sql, {"player_id": player_id.hex})
+    result = await db.get_many_raw(
+        sql,
+        {
+            "player_id": player_id.hex,
+            "extract_type": schemas.EXTRACT_COMPLETE,
+            "credit_deposit_type": schemas.CREDIT_DEPOSIT,
+            "upgrade_type": schemas.UPGRADE_PURCHASE,
+        },
+    )
 
     gems = {}
     last_updated = datetime.now(UTC)
@@ -118,13 +126,18 @@ async def _get_player_mining_upgrades(
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
     WHERE bs.host_player_id = :player_id
-    AND bse.type = 'mining/upgrade_purchase'
+    AND bse.type = :upgrade_type
     AND json_extract(bse.payload, '$.location_id') = :location_id
     GROUP BY upgrade_type
     """
 
     result = await db.get_many_raw(
-        sql, {"player_id": player_id.hex, "location_id": location_id}
+        sql,
+        {
+            "player_id": player_id.hex,
+            "location_id": location_id,
+            "upgrade_type": schemas.UPGRADE_PURCHASE,
+        },
     )
 
     upgrades = {}
@@ -175,13 +188,18 @@ async def _get_player_mining_timestamp(
     JOIN box_session bs ON bse.session_id = bs.id
     WHERE bs.host_player_id = :player_id
     AND json_extract(bse.payload, '$.location_id') = :location_id
-    AND bse.type = 'mining/extract_complete'
+    AND bse.type = :extract_type
     ORDER BY bse.timestamp DESC
     LIMIT 1
     """
 
     result = await db.get_many_raw(
-        sql, {"player_id": player_id.hex, "location_id": location_id}
+        sql,
+        {
+            "player_id": player_id.hex,
+            "location_id": location_id,
+            "extract_type": schemas.EXTRACT_COMPLETE,
+        },
     )
     row = result.first()
 
@@ -212,17 +230,23 @@ async def _get_player_mining_metadata(
         COUNT(*) as total_events,
         MIN(bse.timestamp) as first_event_time,
         MAX(bse.timestamp) as last_event_time,
-        SUM(CASE WHEN bse.type = 'mining/first_time_bonus' THEN 1 ELSE 0 END)
+        SUM(CASE WHEN bse.type = :bonus_type THEN 1 ELSE 0 END)
             as bonus_count
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
     WHERE bs.host_player_id = :player_id
-    AND bse.type LIKE 'mining/%'
+    AND bse.type LIKE :mining_pattern
     AND json_extract(bse.payload, '$.location_id') = :location_id
     """
 
     result = await db.get_many_raw(
-        sql, {"player_id": player_id.hex, "location_id": location_id}
+        sql,
+        {
+            "player_id": player_id.hex,
+            "location_id": location_id,
+            "bonus_type": schemas.FIRST_TIME_BONUS,
+            "mining_pattern": schemas.MINING_EVENT_LIKE_PATTERN,
+        },
     )
     row = result.first()
 

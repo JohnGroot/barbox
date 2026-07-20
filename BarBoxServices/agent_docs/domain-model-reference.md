@@ -17,7 +17,7 @@ Game (game type definition)
 
 ### Box - Physical Terminal
 ```python
-# API (structures.py)
+# API (feature schemas.py)
 class BoxCreate(Identifiable, Named, Tagged):
     id: UUID        # Client-generated
     name: str       # Human-readable ("Best Intentions")
@@ -76,7 +76,7 @@ class BoxSessionEvent(Base):
 ## Data Flow
 
 ```
-Request:  HTTP JSON -> Pydantic (structures.py) -> CRUD (db/service.py) -> SQLAlchemy (db/defs.py) -> DB
+Request:  HTTP JSON -> Pydantic (feature schemas.py) -> CRUD (db/service.py) -> SQLAlchemy (db/defs.py) -> DB
 Response: DB -> SQLAlchemy -> model_validate(from_attributes=True) -> Pydantic -> JSON
 ```
 

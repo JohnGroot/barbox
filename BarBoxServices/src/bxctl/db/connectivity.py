@@ -5,13 +5,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from bxctl import env
 
-# SQLite connection timeout: 15 seconds to handle concurrent writes
-# Without this, multiple simultaneous webhook deliveries could cause SQLITE_BUSY errors
+# SQLite connection timeout to handle concurrent writes - without it,
+# multiple simultaneous webhook deliveries could cause SQLITE_BUSY errors
+SQLITE_CONNECT_TIMEOUT_SECONDS = 15
+
 engine = create_async_engine(
     env.acquire().db_url,
     echo=False,
     paramstyle="named",
-    connect_args={"timeout": 15},
+    connect_args={"timeout": SQLITE_CONNECT_TIMEOUT_SECONDS},
 )
 
 Session = async_sessionmaker(engine)

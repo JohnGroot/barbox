@@ -22,7 +22,7 @@ async def get_racing_leaderboard(
     track_id: str,
     metric: str = "best_race",
     laps: int | None = None,
-    limit: int = 10,
+    limit: int = common.DEFAULT_LEADERBOARD_LIMIT,
 ) -> schemas.RacingLeaderboardResponse:
     """
     Get racing leaderboard aggregated from racing/race_finish events.

@@ -42,7 +42,7 @@ This directory contains comprehensive architecture documentation for BarBoxServi
 - **Main Documentation:** [/CLAUDE.md](../../CLAUDE.md) - Root project documentation
 - **Game Development Guide:** [/src/bxctl/games/CLAUDE.md](../../src/bxctl/games/CLAUDE.md) - Step-by-step guide for adding new games
 - **Package Structure:** [/src/bxctl/CLAUDE.md](../../src/bxctl/CLAUDE.md) - Core package organization
-- **API Layer:** [/src/bxctl/web/CLAUDE.md](../../src/bxctl/web/CLAUDE.md) - FastAPI patterns and endpoints
+- **API Layer:** [/src/bxctl/app/CLAUDE.md](../../src/bxctl/app/CLAUDE.md) - FastAPI patterns and endpoints
 
 ## Architecture Overview
 

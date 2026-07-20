@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from bxctl.app import dependencies
+from bxctl.games import common
 
 from . import schemas, service
 
@@ -15,7 +16,7 @@ async def get_racing_leaderboard(
     db_service: dependencies.Database,
     metric: str = "best_race",
     laps: int | None = None,
-    limit: int = 10,
+    limit: int = common.DEFAULT_LEADERBOARD_LIMIT,
 ) -> schemas.RacingLeaderboardResponse:
     """
     Get racing leaderboard aggregated from racing/race_finish events.

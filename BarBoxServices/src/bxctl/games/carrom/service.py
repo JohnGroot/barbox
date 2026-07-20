@@ -11,7 +11,7 @@ from . import schemas
 async def get_carrom_leaderboard(
     db: db_service.CRUD,
     metric: str = "total_score",
-    limit: int = 10,
+    limit: int = common.DEFAULT_LEADERBOARD_LIMIT,
 ) -> schemas.CarromLeaderboardResponse:
     """
     Get carrom leaderboard aggregated from carrom/round_finish events.
