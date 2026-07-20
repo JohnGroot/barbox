@@ -29,15 +29,13 @@ async def authenticate_player(
             requested_box_id=str(credentials.box_id),
             authenticated_box_id=str(authenticated_box_id),
         )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": bxctl_errors.ErrorCode.VALIDATION_ERROR,
-                "message": "Box ID in credentials does not match authenticated box.",
-                "details": {
-                    "requested_box_id": str(credentials.box_id),
-                    "authenticated_box_id": str(authenticated_box_id),
-                },
+        raise bxctl_errors.http_error(
+            status.HTTP_403_FORBIDDEN,
+            bxctl_errors.ErrorCode.VALIDATION_ERROR,
+            "Box ID in credentials does not match authenticated box.",
+            details={
+                "requested_box_id": str(credentials.box_id),
+                "authenticated_box_id": str(authenticated_box_id),
             },
         )
 
@@ -138,15 +136,13 @@ async def register_player(
             requested_origin=str(new_player.origin_id),
             authenticated_box=str(authenticated_box_id),
         )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": bxctl_errors.ErrorCode.VALIDATION_ERROR,
-                "message": "Origin box ID does not match authenticated box.",
-                "details": {
-                    "requested_origin": str(new_player.origin_id),
-                    "authenticated_box": str(authenticated_box_id),
-                },
+        raise bxctl_errors.http_error(
+            status.HTTP_403_FORBIDDEN,
+            bxctl_errors.ErrorCode.VALIDATION_ERROR,
+            "Origin box ID does not match authenticated box.",
+            details={
+                "requested_origin": str(new_player.origin_id),
+                "authenticated_box": str(authenticated_box_id),
             },
         )
 

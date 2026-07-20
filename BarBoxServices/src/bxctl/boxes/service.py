@@ -207,12 +207,10 @@ async def create_lobby_session(
     now: datetime,
 ) -> schemas.BoxSessionDetail:
     if box_id != authenticated_box_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": errors.ErrorCode.VALIDATION_ERROR,
-                "message": "Box ID in path does not match authenticated box.",
-            },
+        raise errors.http_error(
+            status.HTTP_403_FORBIDDEN,
+            errors.ErrorCode.VALIDATION_ERROR,
+            "Box ID in path does not match authenticated box.",
         )
 
     session_id = uuid4()
@@ -251,12 +249,10 @@ async def create_game_session(  # noqa: PLR0913  # mirrors the endpoint's parame
     player_ids: str | None,
 ) -> schemas.BoxSessionDetail:
     if box_id != authenticated_box_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": errors.ErrorCode.VALIDATION_ERROR,
-                "message": "Box ID in path does not match authenticated box.",
-            },
+        raise errors.http_error(
+            status.HTTP_403_FORBIDDEN,
+            errors.ErrorCode.VALIDATION_ERROR,
+            "Box ID in path does not match authenticated box.",
         )
     # Determine session type and player list
     if player_id is None and (player_ids is None or player_ids == ""):

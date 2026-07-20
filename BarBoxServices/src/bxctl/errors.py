@@ -43,13 +43,39 @@ class ErrorCode(StrEnum):
 
 
 class ErrorDetail(BaseModel):
-    """Structured error response model"""
+    """Structured error response model - the shape http_error() produces.
+
+    request_id is attached by the global exception handler, not by
+    endpoints.
+    """
 
     code: str  # ErrorCode value
     message: str  # Human-readable error message
     details: dict[str, Any] | None = None  # Additional context
     request_id: str | None = None  # Request tracking ID
     retryable: bool = False  # Whether the client should retry the request
+
+
+def http_error(
+    status_code: int,
+    code: ErrorCode,
+    message: str,
+    *,
+    details: dict[str, Any] | None = None,
+    retryable: bool | None = None,
+) -> HTTPException:
+    """Build an HTTPException carrying the ErrorDetail-shaped envelope.
+
+    Only explicitly provided optional fields are included, so responses stay
+    byte-identical to the historical hand-built dicts (no implicit
+    "retryable": false key on endpoints that never sent one).
+    """
+    detail: dict[str, Any] = {"code": code, "message": message}
+    if details is not None:
+        detail["details"] = details
+    if retryable is not None:
+        detail["retryable"] = retryable
+    return HTTPException(status_code=status_code, detail=detail)
 
 
 @asynccontextmanager
@@ -76,13 +102,11 @@ async def creation_error_boundary(
             error=str(e),
             **log_fields,
         )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": ErrorCode.UNIQUE_CONSTRAINT,
-                "message": conflict_message,
-                "details": {"error": str(e.orig) if hasattr(e, "orig") else str(e)},
-            },
+        raise http_error(
+            status.HTTP_409_CONFLICT,
+            ErrorCode.UNIQUE_CONSTRAINT,
+            conflict_message,
+            details={"error": str(e.orig) if hasattr(e, "orig") else str(e)},
         ) from e
     except HTTPException:
         raise
@@ -93,11 +117,9 @@ async def creation_error_boundary(
             error_type=type(e).__name__,
             **log_fields,
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "code": ErrorCode.INTERNAL_ERROR,
-                "message": failure_message,
-                "details": {"error_type": type(e).__name__},
-            },
+        raise http_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            ErrorCode.INTERNAL_ERROR,
+            failure_message,
+            details={"error_type": type(e).__name__},
         ) from e

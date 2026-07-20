@@ -99,22 +99,18 @@ async def deposit(
 ) -> schemas.MachineCreditsResponse:
     # Verify box_id matches authenticated box
     if request.box_id != authenticated_box_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": errors.ErrorCode.VALIDATION_ERROR,
-                "message": "Box ID in request does not match authenticated box.",
-            },
+        raise errors.http_error(
+            status.HTTP_403_FORBIDDEN,
+            errors.ErrorCode.VALIDATION_ERROR,
+            "Box ID in request does not match authenticated box.",
         )
 
     # Verify player_id matches authenticated player
     if request.player_id != authenticated_player_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": errors.ErrorCode.VALIDATION_ERROR,
-                "message": "Player ID in request does not match authenticated player.",
-            },
+        raise errors.http_error(
+            status.HTTP_403_FORBIDDEN,
+            errors.ErrorCode.VALIDATION_ERROR,
+            "Player ID in request does not match authenticated player.",
         )
 
     # Create machine_credit/deposit event
@@ -158,12 +154,10 @@ async def consume(
 ) -> schemas.MachineCreditsResponse:
     # Verify box_id matches authenticated box
     if request.box_id != authenticated_box_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": errors.ErrorCode.VALIDATION_ERROR,
-                "message": "Box ID in request does not match authenticated box.",
-            },
+        raise errors.http_error(
+            status.HTTP_403_FORBIDDEN,
+            errors.ErrorCode.VALIDATION_ERROR,
+            "Box ID in request does not match authenticated box.",
         )
 
     # Serialize check-then-insert per box+game pot to prevent concurrent
