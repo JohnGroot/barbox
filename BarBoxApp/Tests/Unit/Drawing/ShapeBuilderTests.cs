@@ -129,6 +129,39 @@ public class ShapeBuilderTests : TestClass
 	}
 
 	[Test]
+	public void Commit_PathBuilderPopulatedAfterPathCall_StillCommits()
+	{
+		// Arrange - .Path() is called before the builder is finished being populated; _hasGeometry
+		// must not be frozen false/partial at that earlier moment (a mutable-reference footgun the
+		// other geometry methods don't have, since they take their geometry by value)
+		var pathBuilder = new PathBuilder();
+		ShapeBuilder builder = _canvas.Build().Path(pathBuilder);
+		pathBuilder.MoveTo(new Vector2(0f, 0f)).LineTo(new Vector2(10f, 0f));
+
+		// Act
+		Shape shape = builder.Stroke(VectorStyles.EdgeLine).Commit();
+		_canvas.RebuildBuckets();
+
+		// Assert
+		shape.ShouldNotBeNull();
+		shape.ContourCount.ShouldBe(1);
+	}
+
+	[Test]
+	public void Commit_PathBuilderNeverPopulated_ReturnsNullAndRegistersNothing()
+	{
+		// Arrange
+		var pathBuilder = new PathBuilder();
+
+		// Act
+		Shape shape = _canvas.Build().Path(pathBuilder).Stroke(VectorStyles.EdgeLine).Commit();
+
+		// Assert
+		shape.ShouldBeNull();
+		_canvas.ShapeCount.ShouldBe(0);
+	}
+
+	[Test]
 	public void Build_DoesNotInheritThePreviousChainsStyle()
 	{
 		// Arrange

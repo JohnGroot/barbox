@@ -103,11 +103,23 @@ internal sealed class ShapeBucket
 		ConcatDirty = false;
 	}
 
-	/// <summary>Raises every shape to at least the given level, e.g. after PixelScale changed.</summary>
+	/// <summary>
+	/// Raises every shape to at least the given level, e.g. after PixelScale changed. Skips
+	/// Path-kind shapes for a Flatten-level raise: their curve resolution is fixed at authoring
+	/// time (no PixelScale to derive tolerance from — see ShapeKind.Path), so a resize buys them
+	/// nothing, and forcing the re-copy would needlessly re-read their source PathBuilder, which
+	/// a caller may have reused for a different shape since (SetPath is Path's own, deliberate
+	/// dirty-raiser for that).
+	/// </summary>
 	public void MarkAll(DirtyLevel level)
 	{
 		foreach (Shape shape in Shapes)
 		{
+			if (level >= DirtyLevel.Flatten && shape.Kind == ShapeKind.Path)
+			{
+				continue;
+			}
+
 			if (shape.Dirty < level)
 			{
 				shape.Dirty = level;

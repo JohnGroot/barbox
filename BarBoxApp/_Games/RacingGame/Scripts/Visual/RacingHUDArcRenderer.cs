@@ -352,7 +352,7 @@ public partial class RacingHUDArcRenderer : ShapeCanvas
 		}
 
 		// Global glow pulse for visual interest
-		_glowIntensity = 0.8f + (0.2f * Mathf.Sin(_pulseTime * 3.0f));
+		_glowIntensity = Oscillator.Pulse(_pulseTime, 3.0f, 0.8f, 0.2f);
 
 		// Push shape state, and with it a QueueRedraw for the text pass, only when something
 		// visible actually changed.
@@ -522,7 +522,7 @@ public partial class RacingHUDArcRenderer : ShapeCanvas
 		for (int i = 1; i <= CountdownGlowRingCount; i++)
 		{
 			var ringAlpha = _glowIntensity * (0.15f / i);
-			var ringPulse = 1.0f + (0.2f * Mathf.Sin((_countdownAnimTime + (i * 0.5f)) * 4.0f));
+			var ringPulse = Oscillator.Pulse(_countdownAnimTime, 4.0f, 1.0f, 0.2f, i * 2.0f);
 			_countdownGlowShapes[i - 1].SetFillColor(CountdownGlowColor * new Color(1, 1, 1, ringAlpha * ringPulse));
 		}
 
@@ -681,9 +681,9 @@ public partial class RacingHUDArcRenderer : ShapeCanvas
 
 			// Rainbow effect for GO!
 			var rainbowColor = new Color(
-				0.5f + (0.5f * Mathf.Sin(_countdownAnimTime * 6.0f)),
-				0.5f + (0.5f * Mathf.Sin((_countdownAnimTime * 6.0f) + 2.0f)),
-				0.5f + (0.5f * Mathf.Sin((_countdownAnimTime * 6.0f) + 4.0f)));
+				Oscillator.Pulse(_countdownAnimTime, 6.0f, 0.5f, 0.5f),
+				Oscillator.Pulse(_countdownAnimTime, 6.0f, 0.5f, 0.5f, 2.0f),
+				Oscillator.Pulse(_countdownAnimTime, 6.0f, 0.5f, 0.5f, 4.0f));
 
 			// Glow effect
 			for (int i = 1; i <= 4; i++)

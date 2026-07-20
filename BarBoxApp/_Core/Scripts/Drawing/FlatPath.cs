@@ -39,19 +39,21 @@ public sealed class FlatPath
 
 	public void EnsureCapacity(int total)
 	{
-		if (total <= Points.Length)
-		{
-			return;
-		}
+		PooledArray.EnsureCapacity(ref Points, total);
+		PooledArray.EnsureCapacity(ref T, total);
+	}
 
-		int size = Points.Length;
-		while (size < total)
-		{
-			size *= 2;
-		}
-
-		Array.Resize(ref Points, size);
-		Array.Resize(ref T, size);
+	/// <summary>
+	/// Copies another FlatPath's points, T, and Closed flag. Used when a Shape must own its
+	/// contour data rather than alias someone else's pooled buffer (see Shape.FlattenPath).
+	/// </summary>
+	public void CopyFrom(FlatPath source)
+	{
+		EnsureCapacity(source.Count);
+		Array.Copy(source.Points, Points, source.Count);
+		Array.Copy(source.T, T, source.Count);
+		Count = source.Count;
+		Closed = source.Closed;
 	}
 
 	public void Add(Vector2 point)

@@ -209,8 +209,12 @@ public class PatternFillTests : TestClass
 		PatternFill.Stripes(valid, 0f, 0f, Colors.Red, Colors.White, buffer);
 		int afterZeroBandWidth = buffer.VertexCount;
 
+		PatternFill.Stripes(valid, float.NaN, 5f, Colors.Red, Colors.White, buffer);
+		int afterNaNAngle = buffer.VertexCount;
+
 		// Assert
 		afterBadSubject.ShouldBe(0);
 		afterZeroBandWidth.ShouldBe(0);
+		afterNaNAngle.ShouldBe(0, "A non-finite angle must not propagate NaN vertices into the output");
 	}
 }

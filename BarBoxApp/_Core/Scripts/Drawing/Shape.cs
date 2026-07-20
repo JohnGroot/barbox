@@ -15,6 +15,13 @@ internal enum ShapeKind
 	Path3,
 
 	/// <summary>
+	/// Pre-flattened via PathBuilder. Flatten() copies the builder's contours rather than
+	/// dispatching through PathFlattener — there is no analytic source to re-derive them from,
+	/// so unlike every other kind this one does not get finer on a canvas resize.
+	/// </summary>
+	Path,
+
+	/// <summary>
 	/// Pre-tessellated triangle soup supplied directly via SetMesh, bypassing Flatten/Tess
 	/// entirely. Used for content — like a checkerboard fill — whose per-vertex color can't be
 	/// expressed by a single FillStyle.
@@ -90,6 +97,9 @@ public sealed class Shape
 	internal Contour3Set Source3;
 	internal Projector Projector;
 
+	/// <summary>Referenced, not copied — see SetPath.</summary>
+	internal PathBuilder SourcePath;
+
 	/// <summary>Max chord deviation in screen pixels; divided by PixelScale to reach canvas units.</summary>
 	internal float TolerancePx = PathFlattener.DefaultTolerance;
 
@@ -118,7 +128,7 @@ public sealed class Shape
 	private ColorStop[] _ownedStops;
 	private float[] _ownedWidths;
 	private float[] _ownedDashes;
-	private FlatPath[] _trimScratch;
+	private FlatPath[] _trimScratch = [];
 
 	/// <summary>Alpha baked into the fill/hairline range at the last full Tess. Recolor's ratio denominator.</summary>
 	private float _bakedFillAlpha;
@@ -295,6 +305,24 @@ public sealed class Shape
 		}
 
 		Source3 = contours;
+		MarkDirty(DirtyLevel.Flatten);
+	}
+
+	/// <summary>
+	/// The builder reference is kept only to know what to copy from on the next Flatten() pass —
+	/// its contours are copied into this Shape's own buffers, not aliased (see FlattenPath).
+	/// Mutating the builder afterward has no effect until SetPath (or another dirty-raiser) is
+	/// called again.
+	/// </summary>
+	public void SetPath(PathBuilder path)
+	{
+		if (Kind != ShapeKind.Path)
+		{
+			PushWarning($"Shape.SetPath on a {Kind} shape has no effect.");
+			return;
+		}
+
+		SourcePath = path;
 		MarkDirty(DirtyLevel.Flatten);
 	}
 
@@ -605,6 +633,12 @@ public sealed class Shape
 			return;
 		}
 
+		if (Kind == ShapeKind.Path)
+		{
+			FlattenPath(SourcePath);
+			return;
+		}
+
 		EnsureContours(1);
 		ContourCount = 1;
 		FlatPath path = Contours[0];
@@ -652,21 +686,38 @@ public sealed class Shape
 		}
 	}
 
+	/// <summary>
+	/// Copies the builder's contours into this Shape's own pooled buffers. Not zero-copy —
+	/// unlike FlattenPath3's aliasing-free projection, aliasing PathBuilder's contours directly
+	/// would let a later reuse of the same builder (Clear() + MoveTo() on its pooled FlatPath
+	/// instances) silently corrupt this Shape's geometry with no dirty-mark. The copy only runs
+	/// on DirtyLevel.Flatten (rare, not per-frame), so the O(n) cost is acceptable.
+	/// </summary>
+	private void FlattenPath(PathBuilder source)
+	{
+		int count = source?.ContourCount ?? 0;
+		if (count == 0)
+		{
+			ContourCount = 0;
+			return;
+		}
+
+		EnsureContours(count);
+		ContourCount = count;
+
+		FlatPath[] sourceContours = source.Contours;
+		for (int i = 0; i < count; i++)
+		{
+			Contours[i].CopyFrom(sourceContours[i]);
+		}
+	}
+
 	private ReadOnlySpan<Vector2> SourceSpan =>
 		SourcePoints == null ? default : SourcePoints.AsSpan(0, SourcePointCount);
 
 	private void EnsureContours(int count)
 	{
-		if (Contours.Length < count)
-		{
-			int size = Mathf.Max(Contours.Length, 1);
-			while (size < count)
-			{
-				size *= 2;
-			}
-
-			Array.Resize(ref Contours, size);
-		}
+		PooledArray.EnsureCapacity(ref Contours, count);
 
 		for (int i = 0; i < count; i++)
 		{
@@ -680,17 +731,7 @@ public sealed class Shape
 	/// </summary>
 	private FlatPath GetTrimScratch(int index)
 	{
-		if (_trimScratch == null || _trimScratch.Length <= index)
-		{
-			int size = Mathf.Max(_trimScratch?.Length ?? 1, 1);
-			while (size <= index)
-			{
-				size *= 2;
-			}
-
-			Array.Resize(ref _trimScratch, size);
-		}
-
+		PooledArray.EnsureCapacity(ref _trimScratch, index + 1);
 		return _trimScratch[index] ??= new FlatPath();
 	}
 

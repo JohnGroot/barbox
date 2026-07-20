@@ -134,6 +134,20 @@ public partial class ShapeCanvas : Node2D
 		return CommitMesh(scratch, sortKey);
 	}
 
+	/// <summary>Angled two-color band fill clipped to subject — kerb-style striping. See PatternFill.</summary>
+	public Shape StripesFill(
+		ReadOnlySpan<Vector2> subject,
+		float angleRad,
+		float bandWidth,
+		Color colorA,
+		Color colorB,
+		int sortKey = 0)
+	{
+		var scratch = new VertexBuffer();
+		PatternFill.Stripes(subject, angleRad, bandWidth, colorA, colorB, scratch);
+		return CommitMesh(scratch, sortKey);
+	}
+
 	public void Remove(Shape shape)
 	{
 		if (shape == null || shape.Canvas != this)

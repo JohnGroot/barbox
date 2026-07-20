@@ -80,7 +80,7 @@ public static class PatternFill
 
 		output.Clear();
 
-		if (subject.Length < 3 || !(bandWidth > 0f) || !float.IsFinite(bandWidth))
+		if (subject.Length < 3 || !(bandWidth > 0f) || !float.IsFinite(bandWidth) || !float.IsFinite(angleRad))
 		{
 			return;
 		}

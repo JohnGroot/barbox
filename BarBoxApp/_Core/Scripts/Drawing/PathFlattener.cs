@@ -29,10 +29,9 @@ public static class PathFlattener
 
 		// Closed is a flag here, so an author-supplied closing duplicate would otherwise
 		// survive as a zero-length segment across the seam.
-		if (closed && output.Count >= 2 &&
-			output.Points[output.Count - 1].DistanceSquaredTo(output.Points[0]) <= PolylineMath.Epsilon * PolylineMath.Epsilon)
+		if (closed)
 		{
-			output.Count--;
+			DropCoincidentClosingPoint(output);
 		}
 
 		output.Closed = closed;
@@ -105,8 +104,7 @@ public static class PathFlattener
 	{
 		output.Clear();
 		output.Add(p0);
-		SubdivideCubic(p0, c0, c1, p1, tolerance, 0, output);
-		output.Add(p1);
+		AppendCubic(p0, c0, c1, p1, tolerance, output);
 		output.Closed = false;
 		output.FinalizeT();
 	}
@@ -150,17 +148,28 @@ public static class PathFlattener
 		AppendArc(new Vector2(right - r, bottom - r), r, 0f, Mathf.Pi * 0.5f, tolerance, output);
 		AppendArc(new Vector2(left + r, bottom - r), r, Mathf.Pi * 0.5f, Mathf.Pi, tolerance, output);
 
-		if (output.Count >= 2 &&
-			output.Points[output.Count - 1].DistanceSquaredTo(output.Points[0]) <= PolylineMath.Epsilon * PolylineMath.Epsilon)
-		{
-			output.Count--;
-		}
+		DropCoincidentClosingPoint(output);
 
 		output.Closed = true;
 		output.FinalizeT();
 	}
 
-	private static void AppendArc(
+	/// <summary>
+	/// Drops a trailing point that duplicates the first — Closed is a flag, never a repeated
+	/// vertex (see FlatPath's own doc comment). Shared by Polyline, RoundedRect, and
+	/// PathBuilder.Close.
+	/// </summary>
+	internal static void DropCoincidentClosingPoint(FlatPath output)
+	{
+		if (output.Count >= 2 &&
+			output.Points[output.Count - 1].DistanceSquaredTo(output.Points[0]) <= PolylineMath.Epsilon * PolylineMath.Epsilon)
+		{
+			output.Count--;
+		}
+	}
+
+	/// <summary>Internal: reused by PathBuilder's ArcTo to append a segment mid-contour.</summary>
+	internal static void AppendArc(
 		Vector2 center,
 		float radius,
 		float startRad,
@@ -187,6 +196,19 @@ public static class PathFlattener
 
 			output.Add(point);
 		}
+	}
+
+	/// <summary>
+	/// Appends a cubic Bézier's subdivided points to output, including the final endpoint.
+	/// Self-contained: the caller's contour must already end with p0 (the curve's start), and
+	/// this adds everything after it — the interior subdivision plus `end` — so a caller (e.g.
+	/// PathBuilder.CubicTo) doesn't need to know the interior/endpoint split SubdivideCubic itself
+	/// uses, or seed its recursion depth.
+	/// </summary>
+	internal static void AppendCubic(Vector2 p0, Vector2 c0, Vector2 c1, Vector2 end, float tolerance, FlatPath output)
+	{
+		SubdivideCubic(p0, c0, c1, end, tolerance, 0, output);
+		output.Add(end);
 	}
 
 	private static void SubdivideCubic(

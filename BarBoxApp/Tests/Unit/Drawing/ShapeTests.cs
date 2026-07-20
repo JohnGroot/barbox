@@ -478,6 +478,70 @@ public class ShapeTests : TestClass
 	}
 
 	[Test]
+	public void Path_BuiltFromPathBuilder_TessellatesMultipleContoursIntoOneShape()
+	{
+		// Arrange
+		var builder = new PathBuilder();
+		builder.MoveTo(new Vector2(0f, 0f)).LineTo(new Vector2(10f, 0f));
+		builder.MoveTo(new Vector2(0f, 20f)).LineTo(new Vector2(10f, 20f));
+
+		Shape shape = _canvas.Build()
+			.Path(builder)
+			.Stroke(VectorStyles.Wireframe(Palette.Grid))
+			.Commit();
+
+		// Act
+		_canvas.RebuildBuckets();
+
+		// Assert
+		shape.ContourCount.ShouldBe(2, "Two MoveTo calls are two disjoint contours, tessellated into one shape");
+		DrawingTestHelpers.AssertWellFormed(shape.Buffer);
+		_canvas.ShapeCount.ShouldBe(1);
+	}
+
+	[Test]
+	public void Path_ReusingTheSameBuilderForASecondShape_DoesNotCorruptTheFirst()
+	{
+		// Arrange - Shape must copy the builder's contours rather than alias its pooled FlatPath
+		// instances, or reusing the builder (a documented, intended reuse pattern) would silently
+		// rewrite the first shape's geometry out from under it
+		var builder = new PathBuilder();
+		builder.MoveTo(new Vector2(0f, 0f)).LineTo(new Vector2(10f, 0f));
+
+		Shape shapeA = _canvas.Build()
+			.Path(builder)
+			.Stroke(VectorStyles.Wireframe(Palette.Grid))
+			.Commit();
+
+		// shapeA is flattened now, while the builder still holds its original data, before the
+		// builder gets reused for shapeB below.
+		_canvas.RebuildBuckets();
+
+		builder.Clear();
+		builder.MoveTo(new Vector2(500f, 500f)).LineTo(new Vector2(600f, 600f)).LineTo(new Vector2(700f, 500f));
+
+		Shape shapeB = _canvas.Build()
+			.Path(builder)
+			.Stroke(VectorStyles.Wireframe(Palette.Grid))
+			.Commit();
+		_canvas.RebuildBuckets();
+
+		// Act - force every shape through Flatten() again, the way a canvas resize would
+		// (ShapeCanvas.ApplyPixelScale calls MarkAll(DirtyLevel.Flatten) on the whole bucket)
+		_canvas.StaticBucket.MarkAll(DirtyLevel.Flatten);
+		_canvas.RebuildBuckets();
+
+		// Assert
+		shapeA.ContourCount.ShouldBe(1);
+		shapeA.Contours[0].Count.ShouldBe(2, "shapeA must still hold its own original 2-point contour");
+		shapeA.Contours[0].Points[0].ShouldBe(new Vector2(0f, 0f));
+		shapeA.Contours[0].Points[1].ShouldBe(new Vector2(10f, 0f));
+
+		shapeB.ContourCount.ShouldBe(1);
+		shapeB.Contours[0].Count.ShouldBe(3, "shapeB must hold the builder's post-Clear() contour");
+	}
+
+	[Test]
 	public void DashedStroke_LeavesGapsBetweenDashes()
 	{
 		// Arrange - a triangle count cannot tell dashes apart from N overlapping full-length

@@ -33,6 +33,7 @@ public sealed class ShapeBuilder
 	private bool _closed;
 	private Contour3Set _contours3;
 	private Projector _projector;
+	private PathBuilder _path;
 
 	private StrokeStyle _stroke;
 	private bool _hasStroke;
@@ -156,6 +157,19 @@ public sealed class ShapeBuilder
 		return this;
 	}
 
+	/// <summary>
+	/// Pre-flattened 2D path from PathBuilder; copied into the Shape at commit — see
+	/// Shape.SetPath. Unlike every other geometry method here, the builder is mutable, so
+	/// whether it actually holds contours is re-checked at Commit() rather than snapshotted now.
+	/// </summary>
+	public ShapeBuilder Path(PathBuilder path)
+	{
+		_kind = ShapeKind.Path;
+		_path = path;
+		_hasGeometry = path != null;
+		return this;
+	}
+
 	public ShapeBuilder Stroke(StrokeStyle style)
 	{
 		_stroke = style;
@@ -240,6 +254,13 @@ public sealed class ShapeBuilder
 			return null;
 		}
 
+		if (_kind == ShapeKind.Path && _path.ContourCount == 0)
+		{
+			GD.PushWarning("ShapeBuilder.Commit: PathBuilder has no contours; nothing committed.");
+			Reset();
+			return null;
+		}
+
 		if (!_hasStroke && !_hasFill)
 		{
 			GD.PushWarning("ShapeBuilder.Commit: shape has neither a stroke nor a fill; nothing committed.");
@@ -263,6 +284,7 @@ public sealed class ShapeBuilder
 			SourceClosed = _closed,
 			Source3 = _contours3,
 			Projector = _projector,
+			SourcePath = _path,
 			TolerancePx = _tolerancePx,
 			IsDynamic = _dynamic,
 			SortKey = _sortKey,
@@ -323,6 +345,7 @@ public sealed class ShapeBuilder
 		_closed = false;
 		_contours3 = null;
 		_projector = default;
+		_path = null;
 		_stroke = default;
 		_hasStroke = false;
 		_fill = default;

@@ -255,11 +255,21 @@ public partial class VectorGallery : Node2D
 
 	private void BuildStripes()
 	{
-		ShapeCanvas canvas = Cell("striped stroke (kerb)");
+		ShapeCanvas canvas = Cell("striped stroke (kerb) / stripes fill (zone tint)");
 		canvas.Build()
-			.Polyline([new Vector2(-90f, 20f), new Vector2(-20f, -30f), new Vector2(60f, -20f), new Vector2(90f, 30f)])
-			.StripedStroke(22f, 16f, Palette.Red, Palette.White)
+			.Polyline([new Vector2(-90f, -48f), new Vector2(-20f, -98f), new Vector2(60f, -88f), new Vector2(90f, -38f)])
+			.StripedStroke(18f, 14f, Palette.Red, Palette.White)
 			.Commit();
+
+		var subject = new[]
+		{
+			new Vector2(-100f, 0f),
+			new Vector2(100f, 0f),
+			new Vector2(100f, 100f),
+			new Vector2(-100f, 100f),
+		};
+
+		canvas.StripesFill(subject, Mathf.DegToRad(30f), 16f, Palette.Blue, Palette.Panel);
 	}
 
 	private void BuildCheckerFill()
