@@ -7,12 +7,10 @@ reconciliation) - this module is the thin FastAPI/Stripe-SDK glue layer.
 
 import asyncio
 from time import perf_counter
-from uuid import UUID, uuid4
+from uuid import UUID
 
-import stripe
 from fastapi import APIRouter, HTTPException, Request, status
-from sqlalchemy import select, update
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy import select
 from stripe import (
     APIConnectionError as StripeAPIConnectionError,
 )
@@ -35,13 +33,7 @@ from bxctl.app import dependencies
 from bxctl.db import defs
 from bxctl.db.defs import PaymentStatus
 
-from . import packs, schemas, service
-
-# Timeout for Stripe API calls to prevent indefinite hangs during outages
-STRIPE_API_TIMEOUT_SECONDS = 30
-
-# Reject Stripe webhook events signed longer ago than this (replay protection)
-STRIPE_WEBHOOK_TOLERANCE_SECONDS = 300
+from . import packs, schemas, service, webhook
 
 # Retry-After header value returned on Stripe rate-limit errors
 RATE_LIMIT_RETRY_AFTER_SECONDS = "60"
@@ -145,7 +137,7 @@ async def create_checkout_session(
                     "cancel_url": settings.stripe_cancel_url,
                 },
             ),
-            timeout=STRIPE_API_TIMEOUT_SECONDS,
+            timeout=service.STRIPE_API_TIMEOUT_SECONDS,
         )
     except TimeoutError as e:
         logger.exception("stripe_api_timeout", operation="checkout_session_create")
@@ -265,255 +257,33 @@ async def get_checkout_status(
 
 
 @router.post("/webhook")
-# decomposition tracked in docs/architecture-roadmap.md
-async def stripe_webhook(  # noqa: C901, PLR0911, PLR0912, PLR0915
+async def stripe_webhook(
     request: Request,
     db_service: dependencies.Database,
     now: dependencies.Now,
 ) -> dict:
     """Handle Stripe webhooks for Checkout Session completions.
 
-    Stripe API References:
-    - Webhook Events: https://docs.stripe.com/api/events
-    - Signature Verification: https://docs.stripe.com/webhooks/signatures
-    - checkout.session.completed: https://docs.stripe.com/api/events/types#event_types-checkout.session.completed
-
-    CRITICAL SAFETY PATTERNS:
-    1. Signature verification (with explicit 5-minute tolerance)
-    2. Atomic idempotency (INSERT ON CONFLICT - prevents race conditions)
-    3. Transaction wrapping (all-or-nothing - prevents partial failures)
-    4. Payment-first architecture (StripePaymentIntent is source of truth)
-    5. Global credits with venue tracking (box_id for revenue attribution)
+    Signature verification, idempotency claiming, and per-event-type
+    processing live in webhook.py; this endpoint verifies the request and
+    dispatches to the handler registered for the event type.
     """
     start_time = perf_counter()
     payload = await request.body()
     signature = request.headers.get("Stripe-Signature")
+    client_host = request.client.host if request.client else "unknown"
 
-    if not signature:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Missing Stripe-Signature header",
-        )
+    event = webhook.construct_verified_event(payload, signature, client_host)
 
-    settings = env.acquire()
-
-    # 1. Verify signature (OUTSIDE transaction - no DB locks)
-    # Explicit 300s tolerance for replay protection
-    try:
-        event = stripe.Webhook.construct_event(
-            payload=payload,
-            sig_header=signature,
-            secret=settings.stripe_webhook_secret,
-            tolerance=STRIPE_WEBHOOK_TOLERANCE_SECONDS,
-        )
-    except stripe.error.SignatureVerificationError as e:
-        logger.exception(
-            "webhook_signature_invalid",
-            error=str(e),
-            client_ip=request.client.host if request.client else "unknown",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid signature",
-        ) from e
-    except ValueError as e:
-        logger.exception("webhook_payload_invalid", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid payload",
-        ) from e
-
-    # Only handle checkout.session.completed
-    if event.type != "checkout.session.completed":
+    handler = webhook.EVENT_HANDLERS.get(event.type)
+    if handler is None:
         return {"status": "ignored", "event_type": event.type}
 
-    session_data = event.data.object
+    result = await handler(event, db_service, now)
 
-    # 2. Claim idempotency EARLY (before Stripe API call)
-    # This prevents retry storms: if we timeout later, we return 200
-    # because we've already claimed this event. The event stays
-    # marked as processed=False and can be retried via admin endpoint.
-    webhook_event_id = uuid4()
-    stmt = (
-        sqlite_insert(defs.StripeWebhookEvent)
-        .values(
-            id=webhook_event_id,
-            created_at=now,
-            stripe_event_id=event.id,
-            stripe_event_type=event.type,
-            processed=False,
-            event_data=event.to_dict(),
-        )
-        .on_conflict_do_nothing(index_elements=["stripe_event_id"])
-    )
-
-    result = await db_service.session.execute(stmt)
-    await db_service.session.commit()  # Commit idempotency claim immediately
-
-    if result.rowcount == 0:
-        logger.info("webhook_already_processed", event_id=event.id)
-        return {"status": "already_processed"}
-
-    logger.info("webhook_claimed", event_id=event.id, webhook_id=str(webhook_event_id))
-
-    # 3. Retrieve line items (network I/O - can timeout)
-    # Stripe API: https://docs.stripe.com/api/checkout/sessions/retrieve
-    # NOTE: line_items are NOT included in webhook payload - explicit retrieval required
-    # See: https://docs.stripe.com/api/checkout/sessions/line_items
-    # Use asyncio.to_thread to avoid blocking the async event loop
-    # Wrapped with timeout to prevent indefinite hangs during Stripe outages
-    try:
-        stripe_client = service.get_stripe_client()
-        checkout_session = await asyncio.wait_for(
-            asyncio.to_thread(
-                stripe_client.checkout.sessions.retrieve,
-                session_data.id,
-                params={"expand": ["line_items.data.price"]},
-            ),
-            timeout=STRIPE_API_TIMEOUT_SECONDS,
-        )
-        logger.info("webhook_session_retrieved", session_id=session_data.id)
-    except TimeoutError:
-        # We've already claimed idempotency, so return 200 to prevent Stripe retries.
-        # Event stays as processed=False and can be investigated/retried via admin.
-        logger.exception(
-            "stripe_api_timeout",
-            operation="webhook_session_retrieve",
-            session_id=session_data.id,
-            webhook_id=str(webhook_event_id),
-        )
-        await db_service.session.execute(
-            update(defs.StripeWebhookEvent)
-            .where(defs.StripeWebhookEvent.id == webhook_event_id)
-            .values(processing_error="Stripe API timeout during session retrieval")
-        )
-        await db_service.session.commit()
-        return {
-            "status": "timeout_claimed",
-            "event_id": event.id,
-            "webhook_id": str(webhook_event_id),
-        }
-    except StripeAPIConnectionError as e:
-        # Same pattern: claimed idempotency, return 200, mark error for investigation
-        logger.exception(
-            "webhook_session_retrieval_connection_failed",
-            session_id=session_data.id,
-            error=str(e),
-        )
-        await db_service.session.execute(
-            update(defs.StripeWebhookEvent)
-            .where(defs.StripeWebhookEvent.id == webhook_event_id)
-            .values(processing_error=f"Stripe connection error: {e}")
-        )
-        await db_service.session.commit()
-        return {
-            "status": "connection_error_claimed",
-            "event_id": event.id,
-            "webhook_id": str(webhook_event_id),
-        }
-    except StripeError as e:
-        logger.exception(
-            "webhook_session_retrieval_failed", session_id=session_data.id, error=str(e)
-        )
-        await db_service.session.execute(
-            update(defs.StripeWebhookEvent)
-            .where(defs.StripeWebhookEvent.id == webhook_event_id)
-            .values(processing_error=f"Stripe error: {e}")
-        )
-        await db_service.session.commit()
-        return {
-            "status": "stripe_error_claimed",
-            "event_id": event.id,
-            "webhook_id": str(webhook_event_id),
-        }
-
-    # Validate line items exist
-    if not checkout_session.line_items or not checkout_session.line_items.data:
-        logger.error("webhook_no_line_items", session_id=session_data.id)
-        await db_service.session.execute(
-            update(defs.StripeWebhookEvent)
-            .where(defs.StripeWebhookEvent.id == webhook_event_id)
-            .values(processing_error="No line items in session")
-        )
-        await db_service.session.commit()
-        return {"status": "no_line_items", "event_id": event.id}
-
-    # Extract metadata
-    try:
-        player_id = UUID(session_data.metadata["player_id"])
-        box_id = UUID(session_data.metadata["box_id"])
-        pack_id = session_data.metadata.get("pack_id")
-    except (KeyError, ValueError) as e:
-        logger.exception(
-            "webhook_invalid_metadata", session_id=session_data.id, error=str(e)
-        )
-        await db_service.session.execute(
-            update(defs.StripeWebhookEvent)
-            .where(defs.StripeWebhookEvent.id == webhook_event_id)
-            .values(processing_error=f"Invalid metadata: {e}")
-        )
-        await db_service.session.commit()
-        return {"status": "invalid_metadata", "event_id": event.id}
-
-    # Get credits from Price metadata (type-safe validation)
-    line_item = checkout_session.line_items.data[0]
-    price = line_item.price
-
-    try:
-        price_metadata = schemas.StripePriceMetadata.from_stripe_metadata(
-            price.metadata
-        )
-    except (ValueError, TypeError) as e:
-        logger.exception(
-            "webhook_price_invalid_metadata", price_id=price.id, error=str(e)
-        )
-        await db_service.session.execute(
-            update(defs.StripeWebhookEvent)
-            .where(defs.StripeWebhookEvent.id == webhook_event_id)
-            .values(processing_error=f"Price metadata error: {e}")
-        )
-        await db_service.session.commit()
-        return {"status": "invalid_price_metadata", "event_id": event.id}
-
-    credit_amount = price_metadata.credits
-    bonus = price_metadata.bonus_credits
-    logger.info("webhook_credits_extracted", credits=credit_amount, bonus=bonus)
-
-    # 4. Process payment and create credit event using extracted pure function
-    try:
-        result = await service.issue_credits_for_payment(
-            event_id=event.id,
-            session_id=session_data.id,
-            payment_intent_id=session_data.payment_intent or "",
-            player_id=player_id,
-            box_id=box_id,
-            credits=credit_amount,
-            bonus_credits=bonus,
-            amount_cents=session_data.amount_total,
-            pack_id=pack_id or "",
-            price_id=price.id,
-            payment_method_type=session_data.payment_method_types[0]
-            if session_data.payment_method_types
-            else None,
-            db_service=db_service,
-            now=now,
-            webhook_event_id=webhook_event_id,
-        )
-    except Exception as e:
-        logger.exception(
-            "webhook_processing_failed",
-            event_id=event.id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Processing failed",
-        ) from e
-    else:
-        elapsed_ms = (perf_counter() - start_time) * 1000
-        logger.info("webhook_completed", elapsed_ms=round(elapsed_ms, 2))
-        return result
+    elapsed_ms = (perf_counter() - start_time) * 1000
+    logger.info("webhook_completed", elapsed_ms=round(elapsed_ms, 2))
+    return result
 
 
 # Admin endpoints (localhost only)

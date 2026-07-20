@@ -203,8 +203,7 @@ def uuid_join_leaderboard_sql(
     strategy (raw UUID join, `bs.host_player_id = p.id`). This is Racing's
     shape specifically - Carrom/Nines/Mining use different join-key
     strategies (de-hyphenated UUID, phone_number, no player join at all) and
-    aren't forced into this shape; see games/CLAUDE.md and
-    docs/architecture-roadmap.md WS4 item 1 for why.
+    aren't forced into this shape; see games/CLAUDE.md for why.
 
     `event_type` (box_session_event.type to filter on) and `value_json_path`
     (JSON path for the metric value, e.g. "$.lap_time") are both genuine

@@ -46,6 +46,9 @@ PAYMENT_METHOD_CHECKOUT_SESSION: Final = "checkout_session"
 # Cap on rows returned per reconciliation query
 RECONCILIATION_QUERY_LIMIT: Final = 100
 
+# Timeout for Stripe API calls to prevent indefinite hangs during outages
+STRIPE_API_TIMEOUT_SECONDS: Final = 30
+
 # Thread-local storage for StripeClient instances
 # Each thread gets its own client to avoid race conditions with requests.Session
 _stripe_client_local = threading.local()
