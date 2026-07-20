@@ -27,7 +27,7 @@ from bxctl import env
 from bxctl.db import defs
 from bxctl.db.defs import PaymentStatus, SessionType
 from bxctl.db.service import CRUD
-from bxctl.payments import packs, schemas
+from bxctl.payments import schemas
 from bxctl.registry import CoreEvent
 
 logger = get_logger()
@@ -314,8 +314,8 @@ async def build_reconciliation_report(
     # Find payments without credit events
     missing_credits_sql = """
 	SELECT
-		id, stripe_session_id, player_id, box_id,
-		amount_cents, credits_purchased, status, credit_event_id, created_at
+		id, stripe_session_id, player_id, box_id, amount_cents,
+		credits_purchased, status, credit_event_id, created_at, bonus_credits
 	FROM stripe_payment_intent
 	WHERE status = :succeeded
 	AND credit_event_id IS NULL
@@ -329,31 +329,25 @@ async def build_reconciliation_report(
             "limit": RECONCILIATION_QUERY_LIMIT,
         },
     )
-    payments_without_credits = [
-        schemas.PaymentMismatch(
-            payment_id=UUID(str(row[0])),
-            stripe_session_id=str(row[1]),
-            player_id=UUID(str(row[2])),
-            box_id=UUID(str(row[3])),
-            amount_cents=int(row[4]),
-            credits_purchased=int(row[5]),
-            status=str(row[6]),
-            credit_event_id=UUID(str(row[7])) if row[7] else None,
-            created_at=row[8],
+    payments_without_credits = []
+    total_missing = 0
+    for row in result.tuples():
+        payments_without_credits.append(
+            schemas.PaymentMismatch(
+                payment_id=UUID(str(row[0])),
+                stripe_session_id=str(row[1]),
+                player_id=UUID(str(row[2])),
+                box_id=UUID(str(row[3])),
+                amount_cents=int(row[4]),
+                credits_purchased=int(row[5]),
+                status=str(row[6]),
+                credit_event_id=UUID(str(row[7])) if row[7] else None,
+                created_at=row[8],
+            )
         )
-        for row in result.tuples()
-    ]
-
-    # Calculate total missing credits
-    total_missing = sum(
-        p.credits_purchased
-        + (
-            pack.bonus
-            if (pack := packs.CREDIT_PACKS.get(f"pack_{p.amount_cents // 100}"))
-            else 0
-        )
-        for p in payments_without_credits
-    )
+        # bonus_credits comes off the payment row itself - deriving the pack
+        # from amount_cents would miscount whenever pack pricing changes
+        total_missing += int(row[5]) + int(row[9] or 0)
 
     # Find orphan credit events (credit/earn from stripe with no payment record)
     orphan_sql = """
