@@ -39,7 +39,6 @@ async def seed_test_box_and_players(
     Returns:
         dict with seeding results
     """
-    # API key is now derived deterministically from box_id
     derived_api_key = auth.derive_box_api_key(TEST_BOX_ID)
 
     # Check if test box already exists (idempotent)

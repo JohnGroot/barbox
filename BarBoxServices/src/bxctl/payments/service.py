@@ -43,6 +43,11 @@ class CreditSource(StrEnum):
 # StripePaymentIntent.payment_method value for Checkout Session purchases
 PAYMENT_METHOD_CHECKOUT_SESSION: Final = "checkout_session"
 
+# game_tag sentinel for ephemeral payment sessions. game_tag normally holds a
+# GAMES key; this is its own vocabulary, deliberately not tied to SessionType
+# so the two persisted columns can evolve independently.
+PAYMENT_GAME_TAG: Final = "payment"
+
 # Cap on rows returned per reconciliation query
 RECONCILIATION_QUERY_LIMIT: Final = 100
 
@@ -285,7 +290,7 @@ async def get_or_create_credit_session(
             box_id=box_id,
             host_player_id=player_id,
             player_ids=[str(player_id)],
-            game_tag=SessionType.PAYMENT,
+            game_tag=PAYMENT_GAME_TAG,
             session_type=SessionType.PAYMENT,  # Ephemeral, just for credit event
             start_time=now,
             end_time=now,  # Immediately closed

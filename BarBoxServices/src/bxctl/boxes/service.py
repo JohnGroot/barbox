@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from typing import Final
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
@@ -18,6 +19,11 @@ from bxctl.registry import CoreEvent
 from bxctl.schemas import Identifiable
 
 logger = get_logger()
+
+# game_tag sentinel for lobby sessions. game_tag normally holds a GAMES key;
+# this is its own vocabulary, deliberately not tied to SessionType so the two
+# persisted columns can evolve independently.
+LOBBY_GAME_TAG: Final = "lobby"
 
 
 async def create_box(
@@ -225,13 +231,13 @@ async def create_lobby_session(
             "box_id": box_id,
             "host_player_id": player_id,
             "player_ids": [str(player_id)],
-            "game_tag": SessionType.LOBBY,
+            "game_tag": LOBBY_GAME_TAG,
             "session_type": SessionType.LOBBY,
             "start_time": now,
         },
     )
 
-    return schemas.BoxSessionDetail(id=session_id, game_tag=SessionType.LOBBY)
+    return schemas.BoxSessionDetail(id=session_id, game_tag=LOBBY_GAME_TAG)
 
 
 async def create_game_session(  # noqa: PLR0913  # mirrors the endpoint's parameter surface

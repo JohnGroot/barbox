@@ -14,10 +14,6 @@ from bxctl.registry import CoreEvent
 
 logger = get_logger()
 
-# Pre-computed dummy PIN hash for timing attack mitigation
-# Computed once at module load to avoid expensive hashing on every failed login
-_DUMMY_PIN_HASH = auth.hash_player_pin("0000")
-
 # Number of leading phone digits kept visible when masking numbers in logs
 PHONE_LOG_PREFIX_LENGTH = 4
 
@@ -350,9 +346,7 @@ async def get_player_credits(
     location_id: str,
     db_service: CRUD,
 ) -> schemas.PlayerCreditsResponse:
-    signed_sum = common.signed_sum_sql(
-        "bse.payload, '$.amount'", CoreEvent.CREDIT_EARN, CoreEvent.CREDIT_SPEND
-    )
+    signed_sum = common.signed_sum_sql("bse.payload, '$.amount'")
     sql = f"""
     SELECT
         {signed_sum} as credits

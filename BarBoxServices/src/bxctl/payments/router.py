@@ -69,7 +69,6 @@ async def create_checkout_session(
     """
     start_time = perf_counter()
 
-    # Validate pack_id
     if request.pack_id not in packs.CREDIT_PACKS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -281,8 +280,11 @@ async def stripe_webhook(
 
     result = await handler(event, db_service, now)
 
-    elapsed_ms = (perf_counter() - start_time) * 1000
-    logger.info("webhook_completed", elapsed_ms=round(elapsed_ms, 2))
+    # Completion is logged only when credits were actually issued -
+    # already-processed and post-claim abort outcomes return here too.
+    if result.get("status") == "success":
+        elapsed_ms = (perf_counter() - start_time) * 1000
+        logger.info("webhook_completed", elapsed_ms=round(elapsed_ms, 2))
     return result
 
 

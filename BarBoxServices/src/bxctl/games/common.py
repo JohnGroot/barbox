@@ -172,32 +172,31 @@ def parse_username_safe(value: Any) -> str:  # noqa: ANN401  # raw SQL value
     return str(value)
 
 
-def signed_sum_sql(column: str, earn_type: str, spend_type: str) -> str:
+def signed_sum_sql(column: str) -> str:
     """
     Build the `SUM(CASE WHEN earn THEN + ... WHEN spend THEN - ... END)` SQL
     fragment shared by every credit-balance query (player credits, machine
     credit pots): balance is derived by summing signed amounts from an event
     log rather than stored directly.
 
+    The fragment references `:earn_type` (adds to the balance) and
+    `:spend_type` (subtracts) as bind params - the caller supplies both in
+    the params dict passed to db.get_many_raw, same as the other bind-param
+    SQL builders here.
+
     Args:
         column: JSON path to the amount field, e.g. "bse.payload, '$.amount'"
-        earn_type: event `type` value that adds to the balance
-        spend_type: event `type` value that subtracts from the balance
 
     Returns:
         A `COALESCE(SUM(CASE ...), 0)` SQL expression - embed it directly in
         a SELECT; the caller still owns the FROM/JOIN/WHERE clause, which
         differs per balance kind (player-scoped vs box+game-scoped).
-
-    Example:
-        >>> signed_sum_sql("bse.payload, '$.amount'", "credit/earn", "credit/spend")
-        "COALESCE(SUM(CASE WHEN bse.type = 'credit/earn' THEN ... END), 0)"
     """
     return f"""COALESCE(
         SUM(CASE
-            WHEN bse.type = '{earn_type}' THEN
+            WHEN bse.type = :earn_type THEN
                 CAST(json_extract({column}) AS INTEGER)
-            WHEN bse.type = '{spend_type}' THEN
+            WHEN bse.type = :spend_type THEN
                 -CAST(json_extract({column}) AS INTEGER)
             ELSE 0
         END),

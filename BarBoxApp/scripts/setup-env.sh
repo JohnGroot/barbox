@@ -88,7 +88,7 @@ start_backend_for_seed() {
     local backend_dir="$PROJECT_ROOT/../BarBoxServices"
 
     # Start backend in background using subshell
-    (cd "$backend_dir" && source .venv/bin/activate && uv run fastapi dev src/bxctl/web/main.py &>/dev/null) &
+    (cd "$backend_dir" && source .venv/bin/activate && uv run fastapi dev src/bxctl/app/main.py &>/dev/null) &
     local backend_pid=$!
 
     # Wait for backend to be ready (max 30 seconds)

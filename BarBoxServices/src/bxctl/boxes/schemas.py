@@ -12,10 +12,6 @@ class BoxCreate(Identifiable, Named, Tagged):
     pass
 
 
-class BoxDetail(Identifiable):
-    pass
-
-
 class BoxDetailWithAPIKey(Identifiable, Named, Tagged):
     """Box details with API key - only returned on box creation."""
 
@@ -35,14 +31,6 @@ class SessionEventBase(BaseModel):
 
 class BeginPlay(SessionEventBase):
     type: Literal["play/begin"]
-
-
-class EndPlay(SessionEventBase):
-    type: Literal["play/finish"]
-
-
-class Score(SessionEventBase):
-    type: Literal["play/score"]
 
 
 class BoxSessionDetail(Identifiable):
