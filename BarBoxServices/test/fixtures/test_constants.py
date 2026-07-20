@@ -11,8 +11,9 @@ Run `scripts/seed-test-data.sh` to populate the database with these test entitie
 
 from uuid import UUID
 
+from bxctl.testing.seeding import TEST_BOX_ID as TEST_BOX_ID_1
+
 # Test Box IDs (pre-registered physical terminals)
-TEST_BOX_ID_1 = UUID("00000000-0000-0000-0000-000000000001")
 TEST_BOX_ID_2 = UUID("00000000-0000-0000-0000-000000000002")
 TEST_BOX_ID_3 = UUID("00000000-0000-0000-0000-000000000003")
 
