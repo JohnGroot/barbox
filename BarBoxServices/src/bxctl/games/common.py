@@ -1,12 +1,15 @@
 """Common utilities and patterns shared across game modules."""
 
 import json
-from typing import Any
+from typing import Any, Final
 from uuid import UUID
 
 from structlog import get_logger
 
 logger = get_logger(__name__)
+
+# Sentinel for unparseable/missing UUIDs from raw SQL results
+ZERO_UUID: Final = UUID(int=0)
 
 
 def parse_json_field(value: Any) -> list | dict | None:  # noqa: ANN401  # raw SQL value
@@ -120,13 +123,13 @@ def parse_uuid_safe(value: Any) -> UUID:  # noqa: ANN401  # raw SQL value
         UUID('00000000-0000-0000-0000-000000000000')
     """
     if value is None:
-        return UUID("00000000-0000-0000-0000-000000000000")
+        return ZERO_UUID
 
     try:
         return UUID(str(value))
     except (ValueError, TypeError) as e:
         logger.warning("invalid_uuid_using_zero", value=str(value)[:100], error=str(e))
-        return UUID("00000000-0000-0000-0000-000000000000")
+        return ZERO_UUID
 
 
 def parse_username_safe(value: Any) -> str:  # noqa: ANN401  # raw SQL value
