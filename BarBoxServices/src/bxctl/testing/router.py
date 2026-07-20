@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from structlog import get_logger
 
-from bxctl import db, env
+from bxctl import db, env, errors
 from bxctl.app import dependencies
 from bxctl.payments import service as payments_service
 from bxctl.testing.seeding import seed_test_box_and_players
@@ -102,9 +102,10 @@ async def reset_database(
 
     except Exception as e:
         logger.exception("database_reset_failed", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "OPERATION_FAILED", "message": str(e)},
+        raise errors.http_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            errors.ErrorCode.OPERATION_FAILED,
+            str(e),
         ) from e
 
 
@@ -134,9 +135,10 @@ async def seed_test_data(
 
     except Exception as e:
         logger.exception("test_seed_failed", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "OPERATION_FAILED", "message": str(e)},
+        raise errors.http_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            errors.ErrorCode.OPERATION_FAILED,
+            str(e),
         ) from e
 
 
@@ -246,10 +248,8 @@ async def mock_webhook(
             error=str(e),
             error_type=type(e).__name__,
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "code": "PROCESSING_FAILED",
-                "message": str(e),
-            },
+        raise errors.http_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            errors.ErrorCode.PROCESSING_FAILED,
+            str(e),
         ) from e

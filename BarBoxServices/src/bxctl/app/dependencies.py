@@ -55,22 +55,18 @@ async def _verify_box_api_key_header(box_id: UUID, x_box_api_key: str | None) ->
     validity via deterministic derivation (HMAC(server_secret, box_id))."""
     if not x_box_api_key:
         logger.warning("box_auth_missing_api_key", box_id=str(box_id))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "code": errors.ErrorCode.UNAUTHORIZED,
-                "message": "Missing X-Box-API-Key header",
-            },
+        raise errors.http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            errors.ErrorCode.UNAUTHORIZED,
+            "Missing X-Box-API-Key header",
         )
 
     if not auth.verify_box_api_key(x_box_api_key, box_id):
         logger.warning("box_auth_invalid_key", box_id=str(box_id))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "code": errors.ErrorCode.UNAUTHORIZED,
-                "message": "Invalid API key",
-            },
+        raise errors.http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            errors.ErrorCode.UNAUTHORIZED,
+            "Invalid API key",
         )
 
 
@@ -80,22 +76,18 @@ async def verify_registration_secret_header(x_registration_secret: str | None) -
     idempotent "box already exists, return its key" recovery path."""
     if not x_registration_secret:
         logger.warning("box_registration_missing_secret")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "code": errors.ErrorCode.UNAUTHORIZED,
-                "message": "Missing X-Registration-Secret header",
-            },
+        raise errors.http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            errors.ErrorCode.UNAUTHORIZED,
+            "Missing X-Registration-Secret header",
         )
 
     if not auth.verify_registration_secret(x_registration_secret):
         logger.warning("box_registration_invalid_secret")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "code": errors.ErrorCode.UNAUTHORIZED,
-                "message": "Invalid registration secret",
-            },
+        raise errors.http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            errors.ErrorCode.UNAUTHORIZED,
+            "Invalid registration secret",
         )
 
 
@@ -126,13 +118,11 @@ async def _fetch_box_or_404(
 
     if not box:
         logger.warning("box_auth_box_not_found", box_id=str(box_id))
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "BOX_NOT_FOUND",
-                "message": not_found_message,
-                "details": {"box_id": str(box_id)},
-            },
+        raise errors.http_error(
+            status.HTTP_404_NOT_FOUND,
+            errors.ErrorCode.BOX_NOT_FOUND,
+            not_found_message,
+            details={"box_id": str(box_id)},
         )
 
     return box
@@ -173,13 +163,11 @@ async def _get_authenticated_box_by_session(
 
     if row is None:
         logger.warning("box_auth_session_not_found", session_id=str(session_id))
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "SESSION_NOT_FOUND",
-                "message": f"Session '{session_id}' does not exist.",
-                "details": {"session_id": str(session_id)},
-            },
+        raise errors.http_error(
+            status.HTTP_404_NOT_FOUND,
+            errors.ErrorCode.SESSION_NOT_FOUND,
+            f"Session '{session_id}' does not exist.",
+            details={"session_id": str(session_id)},
         )
 
     session, box = row
@@ -275,12 +263,10 @@ async def _get_authenticated_box_from_header(
     """
     if not x_box_id:
         logger.warning("box_auth_missing_box_id_header")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "code": errors.ErrorCode.UNAUTHORIZED,
-                "message": "Missing X-Box-ID header",
-            },
+        raise errors.http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            errors.ErrorCode.UNAUTHORIZED,
+            "Missing X-Box-ID header",
         )
 
     await _verify_box_api_key_header(x_box_id, x_box_api_key)

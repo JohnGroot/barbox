@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import select
 from structlog import get_logger
 
@@ -62,12 +62,10 @@ async def authenticate_player(
                 else "****"
             ),
         )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "code": bxctl_errors.ErrorCode.VALIDATION_ERROR,
-                "message": "Account not registered - please create one",
-            },
+        raise bxctl_errors.http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            bxctl_errors.ErrorCode.VALIDATION_ERROR,
+            "Account not registered - please create one",
         )
 
     is_valid_pin = auth.verify_player_pin(credentials.pin, player.pin_hash)
@@ -80,12 +78,10 @@ async def authenticate_player(
                 else "****"
             ),
         )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "code": bxctl_errors.ErrorCode.VALIDATION_ERROR,
-                "message": "Incorrect PIN - please try again",
-            },
+        raise bxctl_errors.http_error(
+            status.HTTP_401_UNAUTHORIZED,
+            bxctl_errors.ErrorCode.VALIDATION_ERROR,
+            "Incorrect PIN - please try again",
         )
 
     # Use actual player.id (random UUID assigned at registration)
@@ -116,17 +112,13 @@ async def register_player(
             "player_registration_empty_guid",
             player_id=str(new_player.id),
         )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": bxctl_errors.ErrorCode.VALIDATION_ERROR,
-                "message": (
-                    "Player ID cannot be all zeros. Please generate a valid UUID."
-                ),
-                "details": {
-                    "field": "id",
-                    "value": str(new_player.id),
-                },
+        raise bxctl_errors.http_error(
+            status.HTTP_400_BAD_REQUEST,
+            bxctl_errors.ErrorCode.VALIDATION_ERROR,
+            "Player ID cannot be all zeros. Please generate a valid UUID.",
+            details={
+                "field": "id",
+                "value": str(new_player.id),
             },
         )
 
@@ -158,18 +150,16 @@ async def register_player(
             origin_id=str(new_player.origin_id),
             username=new_player.tag,
         )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": bxctl_errors.ErrorCode.FK_VIOLATION,
-                "message": (
-                    f"Origin box '{new_player.origin_id}' does not exist. "
-                    "Please ensure the box is registered first."
-                ),
-                "details": {
-                    "field": "origin_id",
-                    "value": str(new_player.origin_id),
-                },
+        raise bxctl_errors.http_error(
+            status.HTTP_400_BAD_REQUEST,
+            bxctl_errors.ErrorCode.FK_VIOLATION,
+            (
+                f"Origin box '{new_player.origin_id}' does not exist. "
+                "Please ensure the box is registered first."
+            ),
+            details={
+                "field": "origin_id",
+                "value": str(new_player.origin_id),
             },
         )
 
@@ -181,15 +171,13 @@ async def register_player(
             phone=new_player.phone_number,
             error=str(e),
         )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": bxctl_errors.ErrorCode.VALIDATION_ERROR,
-                "message": str(e),
-                "details": {
-                    "field": "phone_number",
-                    "value": new_player.phone_number,
-                },
+        raise bxctl_errors.http_error(
+            status.HTTP_400_BAD_REQUEST,
+            bxctl_errors.ErrorCode.VALIDATION_ERROR,
+            str(e),
+            details={
+                "field": "phone_number",
+                "value": new_player.phone_number,
             },
         ) from e
 
@@ -221,17 +209,13 @@ async def register_player(
             existing_username=existing_player.tag,
             conflict_field=conflict_field,
         )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": bxctl_errors.ErrorCode.DUPLICATE_RESOURCE,
-                "message": (
-                    f"Player already exists with {conflict_field} '{conflict_value}'."
-                ),
-                "details": {
-                    "conflict_field": conflict_field,
-                    "conflict_value": conflict_value,
-                },
+        raise bxctl_errors.http_error(
+            status.HTTP_409_CONFLICT,
+            bxctl_errors.ErrorCode.DUPLICATE_RESOURCE,
+            f"Player already exists with {conflict_field} '{conflict_value}'.",
+            details={
+                "conflict_field": conflict_field,
+                "conflict_value": conflict_value,
             },
         )
 

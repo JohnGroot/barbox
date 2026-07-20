@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Final
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.attributes import set_committed_value
@@ -46,21 +46,19 @@ async def create_box(
             tag=new_box.tag,
             existing_tag=existing_box.tag,
         )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": errors.ErrorCode.DUPLICATE_RESOURCE,
-                "message": (
-                    "Box already exists with "
-                    f"{'ID' if existing_box.id == new_box.id else 'tag'} "
-                    f"'{new_box.id if existing_box.id == new_box.id else new_box.tag}'."
-                ),
-                "details": {
-                    "conflict_field": "id" if existing_box.id == new_box.id else "tag",
-                    "conflict_value": str(new_box.id)
-                    if existing_box.id == new_box.id
-                    else new_box.tag,
-                },
+        raise errors.http_error(
+            status.HTTP_409_CONFLICT,
+            errors.ErrorCode.DUPLICATE_RESOURCE,
+            (
+                "Box already exists with "
+                f"{'ID' if existing_box.id == new_box.id else 'tag'} "
+                f"'{new_box.id if existing_box.id == new_box.id else new_box.tag}'."
+            ),
+            details={
+                "conflict_field": "id" if existing_box.id == new_box.id else "tag",
+                "conflict_value": str(new_box.id)
+                if existing_box.id == new_box.id
+                else new_box.tag,
             },
         )
 
@@ -112,15 +110,13 @@ async def register_box(
             path_box_id=str(box_id),
             body_box_id=str(box_data.id),
         )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": errors.ErrorCode.VALIDATION_ERROR,
-                "message": "Box ID in path does not match request body.",
-                "details": {
-                    "path_box_id": str(box_id),
-                    "body_box_id": str(box_data.id),
-                },
+        raise errors.http_error(
+            status.HTTP_400_BAD_REQUEST,
+            errors.ErrorCode.VALIDATION_ERROR,
+            "Box ID in path does not match request body.",
+            details={
+                "path_box_id": str(box_id),
+                "body_box_id": str(box_data.id),
             },
         )
 
@@ -329,15 +325,13 @@ async def add_session_event(
             event_type=event.type,
             session_id=str(session_id),
         )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": errors.ErrorCode.VALIDATION_ERROR,
-                "message": f"Unknown event type: '{event.type}'",
-                "details": {
-                    "event_type": event.type,
-                    "valid_event_types": game_validation.get_all_event_types(),
-                },
+        raise errors.http_error(
+            status.HTTP_400_BAD_REQUEST,
+            errors.ErrorCode.VALIDATION_ERROR,
+            f"Unknown event type: '{event.type}'",
+            details={
+                "event_type": event.type,
+                "valid_event_types": game_validation.get_all_event_types(),
             },
         )
 
@@ -352,15 +346,11 @@ async def add_session_event(
             session_id=str(session_id),
             error=error_msg,
         )
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "code": errors.ErrorCode.VALIDATION_ERROR,
-                "message": (
-                    f"Invalid payload for event type '{event.type}': {error_msg}"
-                ),
-                "details": {"event_type": event.type},
-            },
+        raise errors.http_error(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            errors.ErrorCode.VALIDATION_ERROR,
+            f"Invalid payload for event type '{event.type}': {error_msg}",
+            details={"event_type": event.type},
         )
 
     final_payload = (

@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException, status
+from fastapi import status
 from structlog import get_logger
 
 from bxctl import errors
@@ -166,15 +166,13 @@ async def consume(
     async with lock:
         current = await get_balance(game_tag, request.box_id, db_service)
         if current.balance < request.amount:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "code": errors.ErrorCode.INSUFFICIENT_CREDITS,
-                    "message": (
-                        f"Insufficient machine credits: have {current.balance},"
-                        f" need {request.amount}"
-                    ),
-                },
+            raise errors.http_error(
+                status.HTTP_400_BAD_REQUEST,
+                errors.ErrorCode.INSUFFICIENT_CREDITS,
+                (
+                    f"Insufficient machine credits: have {current.balance},"
+                    f" need {request.amount}"
+                ),
             )
 
         # Create machine_credit/consume event

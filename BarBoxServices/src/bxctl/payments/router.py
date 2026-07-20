@@ -10,7 +10,7 @@ from time import perf_counter
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Request, status
 from sqlalchemy import select
 from stripe import (
     APIConnectionError as StripeAPIConnectionError,
@@ -84,31 +84,25 @@ async def create_checkout_session(
     start_time = perf_counter()
 
     if request.pack_id not in packs.CREDIT_PACKS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": errors.ErrorCode.VALIDATION_ERROR,
-                "message": (
-                    f"Invalid pack_id: {request.pack_id}. "
-                    f"Valid options: {list(packs.CREDIT_PACKS.keys())}"
-                ),
-                "retryable": False,
-            },
+        raise errors.http_error(
+            status.HTTP_400_BAD_REQUEST,
+            errors.ErrorCode.VALIDATION_ERROR,
+            (
+                f"Invalid pack_id: {request.pack_id}. "
+                f"Valid options: {list(packs.CREDIT_PACKS.keys())}"
+            ),
+            retryable=False,
         )
 
     pack = packs.CREDIT_PACKS[request.pack_id]
     price_id = packs.get_stripe_price_id(request.pack_id)
 
     if not price_id:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "code": errors.ErrorCode.INTERNAL_ERROR,
-                "message": (
-                    f"Stripe Price ID not configured for pack: {request.pack_id}"
-                ),
-                "retryable": False,
-            },
+        raise errors.http_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            errors.ErrorCode.INTERNAL_ERROR,
+            f"Stripe Price ID not configured for pack: {request.pack_id}",
+            retryable=False,
         )
 
     settings = env.acquire()
@@ -117,13 +111,11 @@ async def create_checkout_session(
     try:
         stripe_client = service.get_stripe_client()
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "code": errors.ErrorCode.INTERNAL_ERROR,
-                "message": "Stripe API key not configured",
-                "retryable": False,
-            },
+        raise errors.http_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            errors.ErrorCode.INTERNAL_ERROR,
+            "Stripe API key not configured",
+            retryable=False,
         ) from e
 
     # Create Checkout Session with SINGLE selected pack
@@ -154,66 +146,55 @@ async def create_checkout_session(
         )
     except TimeoutError as e:
         logger.exception("stripe_api_timeout", operation="checkout_session_create")
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail={
-                "code": errors.ErrorCode.PAYMENT_SERVICE_TIMEOUT,
-                "message": "Payment service timed out, please try again",
-                "retryable": True,
-            },
+        raise errors.http_error(
+            status.HTTP_504_GATEWAY_TIMEOUT,
+            errors.ErrorCode.PAYMENT_SERVICE_TIMEOUT,
+            "Payment service timed out, please try again",
+            retryable=True,
         ) from e
     except StripeAPIConnectionError as e:
         logger.exception("stripe_connection_failed", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "code": errors.ErrorCode.PAYMENT_SERVICE_UNAVAILABLE,
-                "message": "Payment service temporarily unavailable",
-                "retryable": True,
-            },
+        raise errors.http_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            errors.ErrorCode.PAYMENT_SERVICE_UNAVAILABLE,
+            "Payment service temporarily unavailable",
+            retryable=True,
         ) from e
     except StripeRateLimitError as e:
         logger.warning("stripe_rate_limited", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            headers={"Retry-After": RATE_LIMIT_RETRY_AFTER_SECONDS},
-            detail={
-                "code": errors.ErrorCode.RATE_LIMITED,
-                "message": "Too many requests, please try again later",
-                "retryable": True,
-            },
-        ) from e
+        rate_limit_exc = errors.http_error(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            errors.ErrorCode.RATE_LIMITED,
+            "Too many requests, please try again later",
+            retryable=True,
+        )
+        rate_limit_exc.headers = {"Retry-After": RATE_LIMIT_RETRY_AFTER_SECONDS}
+        raise rate_limit_exc from e
     except StripeInvalidRequestError as e:
         logger.exception("stripe_invalid_request", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": errors.ErrorCode.INVALID_PAYMENT_REQUEST,
-                "message": "Invalid payment request",
-                "retryable": False,
-            },
+        raise errors.http_error(
+            status.HTTP_400_BAD_REQUEST,
+            errors.ErrorCode.INVALID_PAYMENT_REQUEST,
+            "Invalid payment request",
+            retryable=False,
         ) from e
     except StripeAuthenticationError as e:
         logger.exception("stripe_auth_failed", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "code": errors.ErrorCode.INTERNAL_ERROR,
-                "message": "Payment service configuration error",
-                "retryable": False,
-            },
+        raise errors.http_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            errors.ErrorCode.INTERNAL_ERROR,
+            "Payment service configuration error",
+            retryable=False,
         ) from e
     except StripeError as e:
         logger.exception(
             "stripe_checkout_creation_failed", error=str(e), error_type=type(e).__name__
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "code": errors.ErrorCode.INTERNAL_ERROR,
-                "message": "Failed to create payment session",
-                "retryable": True,
-            },
+        raise errors.http_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            errors.ErrorCode.INTERNAL_ERROR,
+            "Failed to create payment session",
+            retryable=True,
         ) from e
 
     elapsed_ms = (perf_counter() - start_time) * 1000
