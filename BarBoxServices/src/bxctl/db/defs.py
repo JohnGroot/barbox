@@ -67,6 +67,16 @@ class Player(Base):
     phone_number: Mapped[str]  # E.164 format phone number (e.g., +15551234567)
 
 
+class PaymentStatus(StrEnum):
+    """Values persisted in StripePaymentIntent.status (column stays str)."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+
+
 class SessionType(StrEnum):
     """Values persisted in BoxSession.session_type (column stays str)."""
 

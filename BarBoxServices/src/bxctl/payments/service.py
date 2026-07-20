@@ -15,18 +15,36 @@ Stripe API References:
 
 import threading
 from datetime import datetime, timedelta
+from enum import StrEnum
+from typing import Final
 from uuid import UUID, uuid4
 
 from sqlalchemy import insert, select, update
 from stripe import StripeClient
 from structlog import get_logger
 
-from bxctl import env, structures
-from bxctl.app import dependencies
+from bxctl import env
 from bxctl.db import defs
+from bxctl.db.defs import PaymentStatus, SessionType
+from bxctl.db.service import CRUD
+from bxctl.payments import packs, schemas
 from bxctl.registry import CoreEvent
 
 logger = get_logger()
+
+
+class CreditSource(StrEnum):
+    """Values recorded in credit/earn payload "source" fields."""
+
+    STRIPE_PAYMENT = "stripe_payment"
+    STRIPE_PAYMENT_RETRY = "stripe_payment_retry"
+
+
+# StripePaymentIntent.payment_method value for Checkout Session purchases
+PAYMENT_METHOD_CHECKOUT_SESSION: Final = "checkout_session"
+
+# Cap on rows returned per reconciliation query
+RECONCILIATION_QUERY_LIMIT: Final = 100
 
 # Thread-local storage for StripeClient instances
 # Each thread gets its own client to avoid race conditions with requests.Session
@@ -52,34 +70,8 @@ def get_stripe_client() -> StripeClient:
     return _stripe_client_local.client
 
 
-# Credit pack definitions (1,000 credits = $1 USD)
-# NOTE: This is REFERENCE DATA ONLY for pack validation and lookup.
-# The SOURCE OF TRUTH for credit amounts is Stripe Price metadata,
-# which is fetched during webhook processing via
-# StripePriceMetadata.from_stripe_metadata().
-CREDIT_PACKS = {
-    "pack_5": {"credits": 5000, "bonus": 0, "amount_cents": 500},
-    "pack_10": {"credits": 10000, "bonus": 0, "amount_cents": 1000},
-    "pack_25": {"credits": 25000, "bonus": 3000, "amount_cents": 2500},
-    "pack_50": {"credits": 50000, "bonus": 10000, "amount_cents": 5000},
-    "pack_100": {"credits": 100000, "bonus": 25000, "amount_cents": 10000},
-}
-
 # Session staleness threshold (24 hours)
 STALE_SESSION_HOURS = 24
-
-
-def get_stripe_price_id(pack_id: str) -> str:
-    """Get Stripe Price ID for a credit pack from environment."""
-    settings = env.acquire()
-    price_map = {
-        "pack_5": settings.stripe_price_5_credits,
-        "pack_10": settings.stripe_price_10_credits,
-        "pack_25": settings.stripe_price_25_credits,
-        "pack_50": settings.stripe_price_50_credits,
-        "pack_100": settings.stripe_price_100_credits,
-    }
-    return price_map.get(pack_id, "")
 
 
 # explicit payment fields beat an opaque params object
@@ -96,7 +88,7 @@ async def issue_credits_for_payment(  # noqa: PLR0913
     pack_id: str,
     price_id: str | None,
     payment_method_type: str | None,
-    db_service: dependencies.Database,
+    db_service: CRUD,
     now: datetime,
     webhook_event_id: UUID | None = None,
 ) -> dict:
@@ -157,9 +149,9 @@ async def issue_credits_for_payment(  # noqa: PLR0913
                 credits_purchased=credits,
                 bonus_credits=bonus_credits,
                 selected_price_id=price_id or "",
-                payment_method="checkout_session",
+                payment_method=PAYMENT_METHOD_CHECKOUT_SESSION,
                 payment_method_type=payment_method_type,
-                status="succeeded",
+                status=PaymentStatus.SUCCEEDED,
                 completed_at=now,
                 # Reconciliation links
                 credit_event_id=credit_event_id,
@@ -179,7 +171,7 @@ async def issue_credits_for_payment(  # noqa: PLR0913
                 timestamp=now,
                 payload={
                     "amount": credits + bonus_credits,
-                    "source": "stripe_payment",
+                    "source": CreditSource.STRIPE_PAYMENT,
                     "global": True,  # Spendable at any location
                     "stripe_payment_intent_id": str(internal_payment_id),
                     "box_id": str(box_id),  # Where purchased (for bookkeeping)
@@ -247,7 +239,7 @@ async def issue_credits_for_payment(  # noqa: PLR0913
 async def get_or_create_credit_session(
     player_id: UUID,
     box_id: UUID,
-    db_service: dependencies.Database,
+    db_service: CRUD,
     now: datetime,
 ) -> UUID:
     """Get session for credit event attribution.
@@ -267,7 +259,7 @@ async def get_or_create_credit_session(
         .where(
             defs.BoxSession.host_player_id == player_id,
             defs.BoxSession.box_id == box_id,
-            defs.BoxSession.session_type == "lobby",
+            defs.BoxSession.session_type == SessionType.LOBBY,
             defs.BoxSession.end_time.is_(None),  # Still active
             defs.BoxSession.start_time > stale_threshold,  # Not stale
         )
@@ -290,8 +282,8 @@ async def get_or_create_credit_session(
             box_id=box_id,
             host_player_id=player_id,
             player_ids=[str(player_id)],
-            game_tag="payment",
-            session_type="payment",  # Ephemeral, just for credit event
+            game_tag=SessionType.PAYMENT,
+            session_type=SessionType.PAYMENT,  # Ephemeral, just for credit event
             start_time=now,
             end_time=now,  # Immediately closed
         )
@@ -302,9 +294,9 @@ async def get_or_create_credit_session(
 
 
 async def build_reconciliation_report(
-    db_service: dependencies.Database,
+    db_service: CRUD,
     now: datetime,
-) -> structures.ReconciliationReport:
+) -> schemas.ReconciliationReport:
     """Find payment/credit mismatches for investigation.
 
     Returns:
@@ -317,14 +309,20 @@ async def build_reconciliation_report(
 		id, stripe_session_id, player_id, box_id,
 		amount_cents, credits_purchased, status, credit_event_id, created_at
 	FROM stripe_payment_intent
-	WHERE status = 'succeeded'
+	WHERE status = :succeeded
 	AND credit_event_id IS NULL
 	ORDER BY created_at DESC
-	LIMIT 100
+	LIMIT :limit
 	"""
-    result = await db_service.get_many_raw(missing_credits_sql, {})
+    result = await db_service.get_many_raw(
+        missing_credits_sql,
+        {
+            "succeeded": PaymentStatus.SUCCEEDED.value,
+            "limit": RECONCILIATION_QUERY_LIMIT,
+        },
+    )
     payments_without_credits = [
-        structures.PaymentMismatch(
+        schemas.PaymentMismatch(
             payment_id=UUID(str(row[0])),
             stripe_session_id=str(row[1]),
             player_id=UUID(str(row[2])),
@@ -341,7 +339,11 @@ async def build_reconciliation_report(
     # Calculate total missing credits
     total_missing = sum(
         p.credits_purchased
-        + (CREDIT_PACKS.get(f"pack_{p.amount_cents // 100}", {}).get("bonus", 0))
+        + (
+            pack.bonus
+            if (pack := packs.CREDIT_PACKS.get(f"pack_{p.amount_cents // 100}"))
+            else 0
+        )
         for p in payments_without_credits
     )
 
@@ -350,16 +352,21 @@ async def build_reconciliation_report(
 	SELECT bse.id, bse.session_id, bse.timestamp, bse.payload
 	FROM box_session_event bse
 	WHERE bse.type = :earn_type
-	AND json_extract(bse.payload, '$.source') = 'stripe_payment'
+	AND json_extract(bse.payload, '$.source') = :stripe_source
 	AND NOT EXISTS (
 		SELECT 1 FROM stripe_payment_intent spi
 		WHERE spi.credit_event_id = bse.id
 	)
 	ORDER BY bse.timestamp DESC
-	LIMIT 100
+	LIMIT :limit
 	"""
     orphan_result = await db_service.get_many_raw(
-        orphan_sql, {"earn_type": CoreEvent.CREDIT_EARN.value}
+        orphan_sql,
+        {
+            "earn_type": CoreEvent.CREDIT_EARN.value,
+            "stripe_source": CreditSource.STRIPE_PAYMENT.value,
+            "limit": RECONCILIATION_QUERY_LIMIT,
+        },
     )
     orphan_credit_events = [
         {
@@ -371,7 +378,7 @@ async def build_reconciliation_report(
         for row in orphan_result.tuples()
     ]
 
-    return structures.ReconciliationReport(
+    return schemas.ReconciliationReport(
         payments_without_credits=payments_without_credits,
         orphan_credit_events=orphan_credit_events,
         total_missing_credits=total_missing,
@@ -381,9 +388,9 @@ async def build_reconciliation_report(
 
 async def retry_credit_issuance(
     payment_id: UUID,
-    db_service: dependencies.Database,
+    db_service: CRUD,
     now: datetime,
-) -> structures.RetryResult:
+) -> schemas.RetryResult:
     """Manually issue credits for a payment that failed to credit.
 
     Use this when a payment succeeded but the credit/earn event was not created.
@@ -397,7 +404,7 @@ async def retry_credit_issuance(
     payment = result.scalar_one_or_none()
 
     if not payment:
-        return structures.RetryResult(
+        return schemas.RetryResult(
             success=False,
             credits_issued=0,
             payment_intent_id=payment_id,
@@ -405,7 +412,7 @@ async def retry_credit_issuance(
         )
 
     if payment.credit_event_id:
-        return structures.RetryResult(
+        return schemas.RetryResult(
             success=False,
             credits_issued=0,
             payment_intent_id=payment_id,
@@ -415,8 +422,8 @@ async def retry_credit_issuance(
             ),
         )
 
-    if payment.status != "succeeded":
-        return structures.RetryResult(
+    if payment.status != PaymentStatus.SUCCEEDED:
+        return schemas.RetryResult(
             success=False,
             credits_issued=0,
             payment_intent_id=payment_id,
@@ -446,7 +453,7 @@ async def retry_credit_issuance(
             timestamp=now,
             payload={
                 "amount": total_credits,
-                "source": "stripe_payment_retry",
+                "source": CreditSource.STRIPE_PAYMENT_RETRY,
                 "global": True,
                 "stripe_payment_intent_id": str(payment_id),
                 "box_id": str(payment.box_id),
@@ -469,7 +476,7 @@ async def retry_credit_issuance(
         credits=total_credits,
     )
 
-    return structures.RetryResult(
+    return schemas.RetryResult(
         success=True,
         credits_issued=total_credits,
         payment_intent_id=payment_id,

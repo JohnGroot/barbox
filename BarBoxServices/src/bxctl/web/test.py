@@ -13,8 +13,7 @@ from structlog import get_logger
 
 from bxctl import db, env
 from bxctl.app import auth, dependencies
-
-from .payments import service as payments_service
+from bxctl.payments import service as payments_service
 
 router = APIRouter(prefix="/test", tags=["Testing"])
 logger = get_logger()

@@ -23,10 +23,10 @@ from bxctl.boxes import router as boxes_router
 from bxctl.credits import router as credits_router
 from bxctl.db.connectivity import engine
 from bxctl.db.defs import Base
+from bxctl.payments import router as payments_router
 from bxctl.players import router as players_router
 from bxctl.registry import GAMES, game_module
 from bxctl.web import test
-from bxctl.web.payments import router as payments_router
 from bxctl.web.test import _seed_test_box_and_players
 
 logger = get_logger()

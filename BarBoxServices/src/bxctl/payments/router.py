@@ -30,14 +30,21 @@ from stripe import (
 )
 from structlog import get_logger
 
-from bxctl import env, errors, structures
+from bxctl import env, errors
 from bxctl.app import dependencies
 from bxctl.db import defs
+from bxctl.db.defs import PaymentStatus
 
-from . import service
+from . import packs, schemas, service
 
 # Timeout for Stripe API calls to prevent indefinite hangs during outages
 STRIPE_API_TIMEOUT_SECONDS = 30
+
+# Reject Stripe webhook events signed longer ago than this (replay protection)
+STRIPE_WEBHOOK_TOLERANCE_SECONDS = 300
+
+# Retry-After header value returned on Stripe rate-limit errors
+RATE_LIMIT_RETRY_AFTER_SECONDS = "60"
 
 logger = get_logger()
 router = APIRouter(prefix="/payments", tags=["Core: Payments"])
@@ -45,10 +52,10 @@ router = APIRouter(prefix="/payments", tags=["Core: Payments"])
 
 @router.post("/checkout/create", status_code=201)
 async def create_checkout_session(
-    request: structures.CheckoutSessionRequest,
+    request: schemas.CheckoutSessionRequest,
     authenticated_box: dependencies.BoxAuthenticated,
     authenticated_player: dependencies.AuthenticatedPlayer,
-) -> structures.CheckoutSessionResponse:
+) -> schemas.CheckoutSessionResponse:
     """Create Stripe Checkout Session for a specific credit pack.
 
     Stripe API: https://docs.stripe.com/api/checkout/sessions/create
@@ -71,21 +78,21 @@ async def create_checkout_session(
     start_time = perf_counter()
 
     # Validate pack_id
-    if request.pack_id not in service.CREDIT_PACKS:
+    if request.pack_id not in packs.CREDIT_PACKS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": (
                     f"Invalid pack_id: {request.pack_id}. "
-                    f"Valid options: {list(service.CREDIT_PACKS.keys())}"
+                    f"Valid options: {list(packs.CREDIT_PACKS.keys())}"
                 ),
                 "retryable": False,
             },
         )
 
-    pack = service.CREDIT_PACKS[request.pack_id]
-    price_id = service.get_stripe_price_id(request.pack_id)
+    pack = packs.CREDIT_PACKS[request.pack_id]
+    price_id = packs.get_stripe_price_id(request.pack_id)
 
     if not price_id:
         raise HTTPException(
@@ -164,7 +171,7 @@ async def create_checkout_session(
         logger.warning("stripe_rate_limited", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            headers={"Retry-After": "60"},
+            headers={"Retry-After": RATE_LIMIT_RETRY_AFTER_SECONDS},
             detail={
                 "code": errors.ErrorCode.RATE_LIMITED,
                 "message": "Too many requests, please try again later",
@@ -211,11 +218,11 @@ async def create_checkout_session(
         player_id=str(authenticated_player),
         box_id=str(authenticated_box.id),
         pack_id=request.pack_id,
-        amount_cents=pack["amount_cents"],
+        amount_cents=pack.amount_cents,
         elapsed_ms=round(elapsed_ms, 2),
     )
 
-    return structures.CheckoutSessionResponse(
+    return schemas.CheckoutSessionResponse(
         session_id=checkout_session.id,
         session_url=checkout_session.url,
     )
@@ -225,7 +232,7 @@ async def create_checkout_session(
 async def get_checkout_status(
     session_id: str,
     db_service: dependencies.Database,
-) -> structures.CheckoutStatusResponse:
+) -> schemas.CheckoutStatusResponse:
     """Check payment completion status by Stripe session ID.
 
     Used by clients to poll for payment completion. This is more efficient
@@ -244,14 +251,14 @@ async def get_checkout_status(
     payment = result.scalar_one_or_none()
 
     if not payment:
-        return structures.CheckoutStatusResponse(
+        return schemas.CheckoutStatusResponse(
             session_id=session_id,
             status="pending",
         )
 
-    return structures.CheckoutStatusResponse(
+    return schemas.CheckoutStatusResponse(
         session_id=session_id,
-        status="completed" if payment.status == "succeeded" else "failed",
+        status="completed" if payment.status == PaymentStatus.SUCCEEDED else "failed",
         credits_granted=payment.credits_purchased + payment.bonus_credits,
         completed_at=payment.completed_at,
     )
@@ -297,7 +304,7 @@ async def stripe_webhook(  # noqa: C901, PLR0911, PLR0912, PLR0915
             payload=payload,
             sig_header=signature,
             secret=settings.stripe_webhook_secret,
-            tolerance=300,  # 5 minute replay window
+            tolerance=STRIPE_WEBHOOK_TOLERANCE_SECONDS,
         )
     except stripe.error.SignatureVerificationError as e:
         logger.exception(
@@ -453,7 +460,7 @@ async def stripe_webhook(  # noqa: C901, PLR0911, PLR0912, PLR0915
     price = line_item.price
 
     try:
-        price_metadata = structures.StripePriceMetadata.from_stripe_metadata(
+        price_metadata = schemas.StripePriceMetadata.from_stripe_metadata(
             price.metadata
         )
     except (ValueError, TypeError) as e:
@@ -518,7 +525,7 @@ async def get_reconciliation_report(
     _: dependencies.RequireLocalhost,
     db_service: dependencies.Database,
     now: dependencies.Now,
-) -> structures.ReconciliationReport:
+) -> schemas.ReconciliationReport:
     """Find payment/credit mismatches for investigation.
 
     Returns:
@@ -534,7 +541,7 @@ async def retry_credit_issuance(
     _: dependencies.RequireLocalhost,
     db_service: dependencies.Database,
     now: dependencies.Now,
-) -> structures.RetryResult:
+) -> schemas.RetryResult:
     """Manually issue credits for a payment that failed to credit.
 
     Use this when a payment succeeded but the credit/earn event was not created.
