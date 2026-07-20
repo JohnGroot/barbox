@@ -30,7 +30,7 @@ from stripe import (
 )
 from structlog import get_logger
 
-from bxctl import env, structures
+from bxctl import env, errors, structures
 from bxctl.db import defs
 from bxctl.web import dependencies
 
@@ -75,7 +75,7 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": (
                     f"Invalid pack_id: {request.pack_id}. "
                     f"Valid options: {list(service.CREDIT_PACKS.keys())}"
@@ -91,7 +91,7 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
-                "code": structures.ErrorCode.INTERNAL_ERROR,
+                "code": errors.ErrorCode.INTERNAL_ERROR,
                 "message": (
                     f"Stripe Price ID not configured for pack: {request.pack_id}"
                 ),
@@ -108,7 +108,7 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
-                "code": structures.ErrorCode.INTERNAL_ERROR,
+                "code": errors.ErrorCode.INTERNAL_ERROR,
                 "message": "Stripe API key not configured",
                 "retryable": False,
             },
@@ -145,7 +145,7 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail={
-                "code": structures.ErrorCode.PAYMENT_SERVICE_TIMEOUT,
+                "code": errors.ErrorCode.PAYMENT_SERVICE_TIMEOUT,
                 "message": "Payment service timed out, please try again",
                 "retryable": True,
             },
@@ -155,7 +155,7 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
-                "code": structures.ErrorCode.PAYMENT_SERVICE_UNAVAILABLE,
+                "code": errors.ErrorCode.PAYMENT_SERVICE_UNAVAILABLE,
                 "message": "Payment service temporarily unavailable",
                 "retryable": True,
             },
@@ -166,7 +166,7 @@ async def create_checkout_session(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             headers={"Retry-After": "60"},
             detail={
-                "code": structures.ErrorCode.RATE_LIMITED,
+                "code": errors.ErrorCode.RATE_LIMITED,
                 "message": "Too many requests, please try again later",
                 "retryable": True,
             },
@@ -176,7 +176,7 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "code": structures.ErrorCode.INVALID_PAYMENT_REQUEST,
+                "code": errors.ErrorCode.INVALID_PAYMENT_REQUEST,
                 "message": "Invalid payment request",
                 "retryable": False,
             },
@@ -186,7 +186,7 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
-                "code": structures.ErrorCode.INTERNAL_ERROR,
+                "code": errors.ErrorCode.INTERNAL_ERROR,
                 "message": "Payment service configuration error",
                 "retryable": False,
             },
@@ -198,7 +198,7 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
-                "code": structures.ErrorCode.INTERNAL_ERROR,
+                "code": errors.ErrorCode.INTERNAL_ERROR,
                 "message": "Failed to create payment session",
                 "retryable": True,
             },

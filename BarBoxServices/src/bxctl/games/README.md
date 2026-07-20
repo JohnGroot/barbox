@@ -21,7 +21,7 @@
    from . import router, schemas
    ```
 
-4. **Register in `structures.py` (ONLY FILE TO EDIT):**
+4. **Register in `registry.py` (ONLY FILE TO EDIT):**
    ```python
    from bxctl.games import foo  # Add import
 

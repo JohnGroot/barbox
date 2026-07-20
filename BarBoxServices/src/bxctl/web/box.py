@@ -9,8 +9,9 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.attributes import set_committed_value
 from structlog import get_logger
 
-from bxctl import db, structures
+from bxctl import db, errors, structures
 from bxctl.games import validation as game_validation
+from bxctl.registry import CoreEvent
 
 from . import auth, dependencies
 
@@ -64,7 +65,7 @@ async def create_box(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "code": structures.ErrorCode.DUPLICATE_RESOURCE,
+                "code": errors.ErrorCode.DUPLICATE_RESOURCE,
                 "message": (
                     "Box already exists with "
                     f"{'ID' if existing_box.id == new_box.id else 'tag'} "
@@ -117,7 +118,7 @@ async def create_box(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "code": structures.ErrorCode.UNIQUE_CONSTRAINT,
+                "code": errors.ErrorCode.UNIQUE_CONSTRAINT,
                 "message": "Box creation failed due to a constraint violation.",
                 "details": {"error": str(e.orig) if hasattr(e, "orig") else str(e)},
             },
@@ -134,7 +135,7 @@ async def create_box(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
-                "code": structures.ErrorCode.INTERNAL_ERROR,
+                "code": errors.ErrorCode.INTERNAL_ERROR,
                 "message": "An unexpected error occurred during box creation.",
                 "details": {"error_type": type(e).__name__},
             },
@@ -192,7 +193,7 @@ async def register_box(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": "Box ID in path does not match request body.",
                 "details": {
                     "path_box_id": str(box_id),
@@ -279,7 +280,7 @@ async def register_box(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "code": structures.ErrorCode.UNIQUE_CONSTRAINT,
+                "code": errors.ErrorCode.UNIQUE_CONSTRAINT,
                 "message": "Box registration failed due to a constraint violation.",
                 "details": {"error": str(e.orig) if hasattr(e, "orig") else str(e)},
             },
@@ -296,7 +297,7 @@ async def register_box(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
-                "code": structures.ErrorCode.INTERNAL_ERROR,
+                "code": errors.ErrorCode.INTERNAL_ERROR,
                 "message": "An unexpected error occurred during box registration.",
                 "details": {"error_type": type(e).__name__},
             },
@@ -331,7 +332,7 @@ async def create_lobby_session(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": "Box ID in path does not match authenticated box.",
             },
         )
@@ -405,7 +406,7 @@ async def create_box_session(  # noqa: PLR0913  # FastAPI dependency injection
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": "Box ID in path does not match authenticated box.",
             },
         )
@@ -500,7 +501,7 @@ async def add_session_event(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": f"Unknown event type: '{event.type}'",
                 "details": {
                     "event_type": event.type,
@@ -523,7 +524,7 @@ async def add_session_event(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": (
                     f"Invalid payload for event type '{event.type}': {error_msg}"
                 ),
@@ -535,7 +536,7 @@ async def add_session_event(
         validated_payload if validated_payload is not None else event.payload
     )
 
-    if event.type in ("credit/earn", "credit/spend"):
+    if event.type in (CoreEvent.CREDIT_EARN, CoreEvent.CREDIT_SPEND):
         logger.info(
             "credit_event_payload",
             event_type=event.type,

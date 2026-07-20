@@ -4,7 +4,7 @@ from typing import Any, get_args
 
 from pydantic import BaseModel, ValidationError
 
-from bxctl.structures import GAMES, CoreEventType, game_module
+from bxctl.registry import GAMES, CoreEventType, game_module
 
 # Build event type registry dynamically from GAMES registry
 # Uses canonical EventType alias from each game's schemas module

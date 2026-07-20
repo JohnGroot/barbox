@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from structlog import get_logger
 
-from bxctl import db, env, structures
+from bxctl import db, env, errors, structures
 from bxctl.games import common
+from bxctl.registry import CoreEvent
 
 from . import auth, dependencies
 
@@ -71,7 +72,7 @@ async def authenticate_player(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": "Box ID in credentials does not match authenticated box.",
                 "details": {
                     "requested_box_id": str(credentials.box_id),
@@ -106,7 +107,7 @@ async def authenticate_player(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": "Account not registered - please create one",
             },
         )
@@ -124,7 +125,7 @@ async def authenticate_player(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": "Incorrect PIN - please try again",
             },
         )
@@ -211,7 +212,7 @@ async def register_player(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": (
                     "Player ID cannot be all zeros. Please generate a valid UUID."
                 ),
@@ -231,7 +232,7 @@ async def register_player(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": "Origin box ID does not match authenticated box.",
                 "details": {
                     "requested_origin": str(new_player.origin_id),
@@ -255,7 +256,7 @@ async def register_player(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "code": structures.ErrorCode.FK_VIOLATION,
+                "code": errors.ErrorCode.FK_VIOLATION,
                 "message": (
                     f"Origin box '{new_player.origin_id}' does not exist. "
                     "Please ensure the box is registered first."
@@ -278,7 +279,7 @@ async def register_player(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": str(e),
                 "details": {
                     "field": "phone_number",
@@ -318,7 +319,7 @@ async def register_player(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "code": structures.ErrorCode.DUPLICATE_RESOURCE,
+                "code": errors.ErrorCode.DUPLICATE_RESOURCE,
                 "message": (
                     f"Player already exists with {conflict_field} '{conflict_value}'."
                 ),
@@ -355,7 +356,7 @@ async def register_player(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "code": structures.ErrorCode.UNIQUE_CONSTRAINT,
+                "code": errors.ErrorCode.UNIQUE_CONSTRAINT,
                 "message": "Player creation failed due to a constraint violation.",
                 "details": {"error": str(e.orig) if hasattr(e, "orig") else str(e)},
             },
@@ -372,7 +373,7 @@ async def register_player(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
-                "code": structures.ErrorCode.INTERNAL_ERROR,
+                "code": errors.ErrorCode.INTERNAL_ERROR,
                 "message": "An unexpected error occurred during player creation.",
                 "details": {"error_type": type(e).__name__},
             },
@@ -480,7 +481,7 @@ async def get_player_credits(
     """Get player's credit balance for a specific location"""
 
     signed_sum = common.signed_sum_sql(
-        "bse.payload, '$.amount'", "credit/earn", "credit/spend"
+        "bse.payload, '$.amount'", CoreEvent.CREDIT_EARN, CoreEvent.CREDIT_SPEND
     )
     sql = f"""
     SELECT
@@ -488,7 +489,7 @@ async def get_player_credits(
     FROM box_session_event bse
     JOIN box_session bs ON bse.session_id = bs.id
     WHERE bs.host_player_id = :player_id
-    AND bse.type IN ('credit/earn', 'credit/spend')
+    AND bse.type IN (:earn_type, :spend_type)
     AND (
         json_extract(bse.payload, '$.location_id') = :location_id
         OR json_extract(bse.payload, '$.global') = 1
@@ -496,7 +497,13 @@ async def get_player_credits(
     """  # noqa: S608  # only a trusted SQL fragment is interpolated; values are bound
 
     result = await db_service.get_many_raw(
-        sql, {"player_id": player_id.hex, "location_id": location_id}
+        sql,
+        {
+            "player_id": player_id.hex,
+            "location_id": location_id,
+            "earn_type": CoreEvent.CREDIT_EARN.value,
+            "spend_type": CoreEvent.CREDIT_SPEND.value,
+        },
     )
 
     credit_balance = result.scalar() or 0

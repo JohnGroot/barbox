@@ -23,6 +23,7 @@ from structlog import get_logger
 
 from bxctl import env, structures
 from bxctl.db import defs
+from bxctl.registry import CoreEvent
 from bxctl.web import dependencies
 
 logger = get_logger()
@@ -174,7 +175,7 @@ async def issue_credits_for_payment(  # noqa: PLR0913
             insert(defs.BoxSessionEvent).values(
                 id=credit_event_id,
                 session_id=credit_session_id,
-                type="credit/earn",
+                type=CoreEvent.CREDIT_EARN,
                 timestamp=now,
                 payload={
                     "amount": credits + bonus_credits,
@@ -348,7 +349,7 @@ async def build_reconciliation_report(
     orphan_sql = """
 	SELECT bse.id, bse.session_id, bse.timestamp, bse.payload
 	FROM box_session_event bse
-	WHERE bse.type = 'credit/earn'
+	WHERE bse.type = :earn_type
 	AND json_extract(bse.payload, '$.source') = 'stripe_payment'
 	AND NOT EXISTS (
 		SELECT 1 FROM stripe_payment_intent spi
@@ -357,7 +358,9 @@ async def build_reconciliation_report(
 	ORDER BY bse.timestamp DESC
 	LIMIT 100
 	"""
-    orphan_result = await db_service.get_many_raw(orphan_sql, {})
+    orphan_result = await db_service.get_many_raw(
+        orphan_sql, {"earn_type": CoreEvent.CREDIT_EARN.value}
+    )
     orphan_credit_events = [
         {
             "event_id": str(row[0]),
@@ -439,7 +442,7 @@ async def retry_credit_issuance(
         insert(defs.BoxSessionEvent).values(
             id=credit_event_id,
             session_id=credit_session_id,
-            type="credit/earn",
+            type=CoreEvent.CREDIT_EARN,
             timestamp=now,
             payload={
                 "amount": total_credits,

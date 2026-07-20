@@ -8,7 +8,7 @@ from jose import JWTError
 from sqlalchemy import select
 from structlog import get_logger
 
-from bxctl import db, structures
+from bxctl import db, errors
 from bxctl.db.defs import BoxSession
 
 from . import auth
@@ -55,7 +55,7 @@ async def _verify_box_api_key_header(box_id: UUID, x_box_api_key: str | None) ->
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
-                "code": structures.ErrorCode.UNAUTHORIZED,
+                "code": errors.ErrorCode.UNAUTHORIZED,
                 "message": "Missing X-Box-API-Key header",
             },
         )
@@ -65,7 +65,7 @@ async def _verify_box_api_key_header(box_id: UUID, x_box_api_key: str | None) ->
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
-                "code": structures.ErrorCode.UNAUTHORIZED,
+                "code": errors.ErrorCode.UNAUTHORIZED,
                 "message": "Invalid API key",
             },
         )
@@ -80,7 +80,7 @@ async def verify_registration_secret_header(x_registration_secret: str | None) -
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
-                "code": structures.ErrorCode.UNAUTHORIZED,
+                "code": errors.ErrorCode.UNAUTHORIZED,
                 "message": "Missing X-Registration-Secret header",
             },
         )
@@ -90,7 +90,7 @@ async def verify_registration_secret_header(x_registration_secret: str | None) -
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
-                "code": structures.ErrorCode.UNAUTHORIZED,
+                "code": errors.ErrorCode.UNAUTHORIZED,
                 "message": "Invalid registration secret",
             },
         )
@@ -275,7 +275,7 @@ async def _get_authenticated_box_from_header(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
-                "code": structures.ErrorCode.UNAUTHORIZED,
+                "code": errors.ErrorCode.UNAUTHORIZED,
                 "message": "Missing X-Box-ID header",
             },
         )

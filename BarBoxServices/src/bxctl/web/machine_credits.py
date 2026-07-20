@@ -12,8 +12,9 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, HTTPException, status
 from structlog import get_logger
 
-from bxctl import structures
+from bxctl import errors, structures
 from bxctl.db import defs
+from bxctl.registry import CoreEvent
 
 from . import dependencies
 
@@ -57,17 +58,17 @@ async def get_machine_credits(
 	SELECT
 		json_extract(bse.payload, '$.player_id') as player_id,
 		COALESCE(SUM(CASE
-			WHEN bse.type = 'machine_credit/deposit' THEN
+			WHEN bse.type = :deposit_type THEN
 				CAST(json_extract(bse.payload, '$.amount') AS INTEGER)
 			ELSE 0
 		END), 0) as deposited,
 		COALESCE(SUM(CASE
-			WHEN bse.type = 'machine_credit/consume' THEN
+			WHEN bse.type = :consume_type THEN
 				CAST(json_extract(bse.payload, '$.amount') AS INTEGER)
 			ELSE 0
 		END), 0) as consumed
 	FROM box_session_event bse
-	WHERE bse.type IN ('machine_credit/deposit', 'machine_credit/consume')
+	WHERE bse.type IN (:deposit_type, :consume_type)
 	AND json_extract(bse.payload, '$.box_id') = :box_id
 	AND json_extract(bse.payload, '$.game_tag') = :game_tag
 	GROUP BY player_id
@@ -75,7 +76,13 @@ async def get_machine_credits(
 	"""
 
     result = await db_service.get_many_raw(
-        sql, {"box_id": box_id.hex, "game_tag": game_tag}
+        sql,
+        {
+            "box_id": box_id.hex,
+            "game_tag": game_tag,
+            "deposit_type": CoreEvent.MACHINE_CREDIT_DEPOSIT.value,
+            "consume_type": CoreEvent.MACHINE_CREDIT_CONSUME.value,
+        },
     )
 
     balance = 0
@@ -147,7 +154,7 @@ async def deposit_machine_credits(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": "Box ID in request does not match authenticated box.",
             },
         )
@@ -157,7 +164,7 @@ async def deposit_machine_credits(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": "Player ID in request does not match authenticated player.",
             },
         )
@@ -171,7 +178,7 @@ async def deposit_machine_credits(
         data={
             "id": event_id,
             "session_id": request.lobby_session_id,
-            "type": "machine_credit/deposit",
+            "type": CoreEvent.MACHINE_CREDIT_DEPOSIT,
             "timestamp": now,
             "payload": {
                 "box_id": request.box_id.hex,
@@ -229,7 +236,7 @@ async def consume_machine_credits(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "code": structures.ErrorCode.VALIDATION_ERROR,
+                "code": errors.ErrorCode.VALIDATION_ERROR,
                 "message": "Box ID in request does not match authenticated box.",
             },
         )
@@ -243,7 +250,7 @@ async def consume_machine_credits(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
-                    "code": structures.ErrorCode.INSUFFICIENT_CREDITS,
+                    "code": errors.ErrorCode.INSUFFICIENT_CREDITS,
                     "message": (
                         f"Insufficient machine credits: have {current.balance},"
                         f" need {request.amount}"
@@ -260,7 +267,7 @@ async def consume_machine_credits(
             data={
                 "id": event_id,
                 "session_id": request.game_session_id,
-                "type": "machine_credit/consume",
+                "type": CoreEvent.MACHINE_CREDIT_CONSUME,
                 "timestamp": now,
                 "payload": {
                     "box_id": request.box_id.hex,

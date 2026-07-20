@@ -38,15 +38,15 @@ See `agent_docs/game-module-guide.md` for complete guide.
 
 1. **Game schemas**: `src/bxctl/games/{game}/schemas.py` - `Literal[...]` type
    plus the canonical `EventType = FooEventType` alias
-2. **Master validation**: `src/bxctl/structures.py` - `SessionEventType` union
+2. **Master validation**: `src/bxctl/registry.py` - `SessionEventType` union
 3. **Payload classification**: `src/bxctl/games/validation.py` - every event in
    `EVENT_PAYLOAD_MODELS` (Pydantic payload model) or `NO_PAYLOAD_EVENTS`
    (explicitly unvalidated)
 
-New *games* additionally register in the `GAMES` dict (`structures.py`), which
+New *games* additionally register in the `GAMES` dict (`registry.py`), which
 auto-wires their router and event registry.
 
-Missing from `structures.py` = HTTP 422 validation error. Missing payload
+Missing from `registry.py` = HTTP 422 validation error. Missing payload
 classification = `RuntimeError` at import (`_check_payload_model_coverage`).
 
 ## CRITICAL: API Path Synchronization
@@ -97,6 +97,8 @@ A comment earns its place only by stating what the code *cannot*: a constraint, 
 ```
 BarBoxServices/
 +-- src/bxctl/
+|   +-- registry.py      # GAMES registry + SessionEventType composition
+|   +-- errors.py        # ErrorCode + structured error envelope
 |   +-- structures.py    # Pydantic models for CORE API
 |   +-- env.py           # Environment configuration
 |   +-- db/              # Database layer

@@ -29,7 +29,7 @@ games/{game_name}/
 
 4. **Create router** (`router.py`): `router = APIRouter(prefix="/game/foo", tags=["Game: Foo"])`
 
-5. **Register in the `GAMES` dict** (`structures.py`) — single source of truth;
+5. **Register in the `GAMES` dict** (`registry.py`) — single source of truth;
    router registration (`web/main.py`) and the event registry
    (`games/validation.py`) both auto-derive from it:
    ```python
@@ -41,7 +41,7 @@ games/{game_name}/
    }
    ```
 
-6. **Extend the `SessionEventType` union** (`structures.py`):
+6. **Extend the `SessionEventType` union** (`registry.py`):
    ```python
    type SessionEventType = (
        CoreEventType

@@ -1,31 +1,10 @@
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal, get_args
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, PlainSerializer
 
-# Import game modules for registry
-from bxctl.games import carrom, mining, nines, racing
-
-# Single source of truth: All games registered here
-GAMES = {
-    "carrom": {"schemas": carrom.schemas, "router": carrom.router},
-    "racing": {"schemas": racing.schemas, "router": racing.router},
-    "mining": {"schemas": mining.schemas, "router": mining.router},
-    "nines": {"schemas": nines.schemas, "router": nines.router},
-}
-
-
-def game_module(entry: dict[str, Any], key: str) -> Any:  # noqa: ANN401  # see below
-    """Return a game's "schemas" or "router" submodule from a GAMES entry.
-
-    GAMES stores real submodules (each game's own schemas.py/router.py) as
-    plain dict values, so indexing them loses their specific attributes
-    (EventType, payload classes, `.router`, ...) to static analysis.
-    Declared Any because callers already know which submodule and
-    attribute they're asking for.
-    """
-    return entry[key]
+from bxctl.registry import SessionEventType
 
 
 class Named(BaseModel):
@@ -84,62 +63,6 @@ class PlayerLoginResponse(BaseModel):
         datetime,
         PlainSerializer(lambda v: v.isoformat().replace("+00:00", "Z")),
     ]
-
-
-# Core event types (non-game-specific)
-CoreEventType = Literal[
-    # Generic session events
-    "play/begin",
-    "play/score",
-    "play/finish",
-    "quit",
-    # User events
-    "user/login",
-    "user/logout",
-    # Credit events
-    "credit/spend",
-    "credit/earn",
-    # Machine credit events (per box+game credit pools)
-    "machine_credit/deposit",
-    "machine_credit/consume",
-]
-
-# Compose SessionEventType from core and game-specific types
-# Single source of truth: game event types defined in games/{game}/schemas.py
-type SessionEventType = (
-    CoreEventType
-    | carrom.schemas.CarromEventType
-    | racing.schemas.RacingEventType
-    | mining.schemas.MiningEventType
-    | nines.schemas.NinesEventType
-)
-
-
-def _check_session_event_type_coverage() -> None:
-    """Fail fast if a registered game's EventType isn't in SessionEventType.
-
-    Adding a game to GAMES without also adding its schemas.EventType to the
-    SessionEventType union above would otherwise only surface as a runtime
-    422 on that game's first event.
-    """
-    covered = {
-        literal
-        for member in get_args(SessionEventType.__value__)
-        for literal in get_args(member)
-    }
-    for game_name, game_data in GAMES.items():
-        game_events = set(get_args(game_module(game_data, "schemas").EventType))
-        missing = game_events - covered
-        if missing:
-            msg = (
-                f"Game '{game_name}' event type(s) {sorted(missing)} are not "
-                "reachable through SessionEventType in structures.py. Add the "
-                "game's EventType to the SessionEventType union."
-            )
-            raise RuntimeError(msg)
-
-
-_check_session_event_type_coverage()
 
 
 class SessionEventBase(BaseModel):
@@ -236,49 +159,6 @@ class MachineCreditsConsumeRequest(BaseModel):
         int, Field(gt=0, description="Credits to consume (must be positive)")
     ]
     game_session_id: UUID
-
-
-class ErrorCode(str):
-    """Standard error codes for structured error responses"""
-
-    __slots__ = ()
-
-    # Validation errors
-    VALIDATION_ERROR = "VALIDATION_ERROR"
-    INVALID_INPUT = "INVALID_INPUT"
-
-    # Resource errors
-    RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
-    DUPLICATE_RESOURCE = "DUPLICATE_RESOURCE"
-
-    # Constraint errors
-    FK_VIOLATION = "FK_VIOLATION"
-    UNIQUE_CONSTRAINT = "UNIQUE_CONSTRAINT"
-
-    # Auth errors
-    UNAUTHORIZED = "UNAUTHORIZED"
-
-    # Operation errors
-    OPERATION_FAILED = "OPERATION_FAILED"
-    INTERNAL_ERROR = "INTERNAL_ERROR"
-    INSUFFICIENT_CREDITS = "INSUFFICIENT_CREDITS"
-
-    # Payment errors (Stripe-facing; distinct from INTERNAL_ERROR because the
-    # client's retry behavior differs per case - see ErrorDetail.retryable)
-    PAYMENT_SERVICE_TIMEOUT = "PAYMENT_SERVICE_TIMEOUT"
-    PAYMENT_SERVICE_UNAVAILABLE = "PAYMENT_SERVICE_UNAVAILABLE"
-    RATE_LIMITED = "RATE_LIMITED"
-    INVALID_PAYMENT_REQUEST = "INVALID_PAYMENT_REQUEST"
-
-
-class ErrorDetail(BaseModel):
-    """Structured error response model"""
-
-    code: str  # ErrorCode value
-    message: str  # Human-readable error message
-    details: dict[str, Any] | None = None  # Additional context
-    request_id: str | None = None  # Request tracking ID
-    retryable: bool = False  # Whether the client should retry the request
 
 
 class ValidationErrorDetail(BaseModel):
