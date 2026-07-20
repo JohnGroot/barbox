@@ -22,7 +22,11 @@ For a fresh session picking up a workstream:
    dependency gates. You do not need the appendices unless your workstream
    points at them.
 2. **Re-verify every line anchor before editing** — this doc's line numbers
-   were correct on 2026-07-13 and WILL drift.
+   were correct on 2026-07-13 and WILL drift. In particular, any `web/*.py`
+   path predates the `services-refactor` branch's move to feature packages
+   (`src/bxctl/{boxes,players,credits,payments,testing,games}/`, each with
+   its own `CLAUDE.md`) — treat those paths as pointers to the old module,
+   not literal locations.
 3. One logical change per commit (conventional format, no agent signatures).
    Build + full test suites green before every commit.
 4. Update the status column in §2 (and add a dated note under the workstream
