@@ -1282,7 +1282,7 @@ Type=simple
 WorkingDirectory=/home/barbox/Desktop/barbox/BarBoxServices
 EnvironmentFile=%h/Desktop/barbox/BarBoxServices/.env
 Environment="PATH=/home/barbox/.local/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/home/barbox/Desktop/barbox/BarBoxServices/.venv/bin/fastapi run src/bxctl/web/main.py
+ExecStart=/home/barbox/Desktop/barbox/BarBoxServices/.venv/bin/fastapi run src/bxctl/app/main.py
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -1607,7 +1607,7 @@ tail -50 ~/.local/share/barbox/logs/backend.log
 ```bash
 cd ~/Desktop/barbox/BarBoxServices
 source .venv/bin/activate
-python -m fastapi dev src/bxctl/web/main.py  # Development mode with debug output
+python -m fastapi dev src/bxctl/app/main.py  # Development mode with debug output
 ```
 
 #### Frontend Won't Start

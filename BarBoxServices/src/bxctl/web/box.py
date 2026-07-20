@@ -10,10 +10,9 @@ from sqlalchemy.orm.attributes import set_committed_value
 from structlog import get_logger
 
 from bxctl import db, errors, structures
+from bxctl.app import auth, dependencies
 from bxctl.games import validation as game_validation
 from bxctl.registry import CoreEvent
-
-from . import auth, dependencies
 
 logger = get_logger()
 router = APIRouter(prefix="/box", tags=["Core: Boxes & Sessions"])

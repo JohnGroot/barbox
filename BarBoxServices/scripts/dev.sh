@@ -7,7 +7,7 @@ cd "$(dirname "$0")/.." || exit 1
 echo "Starting BarBox backend service..."
 
 # Start backend in background
-uv run fastapi dev src/bxctl/web/main.py &
+uv run fastapi dev src/bxctl/app/main.py &
 BACKEND_PID=$!
 
 echo "Backend process started (PID: $BACKEND_PID)"

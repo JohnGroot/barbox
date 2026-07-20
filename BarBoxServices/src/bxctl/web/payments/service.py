@@ -22,9 +22,9 @@ from stripe import StripeClient
 from structlog import get_logger
 
 from bxctl import env, structures
+from bxctl.app import dependencies
 from bxctl.db import defs
 from bxctl.registry import CoreEvent
-from bxctl.web import dependencies
 
 logger = get_logger()
 

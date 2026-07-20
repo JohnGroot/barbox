@@ -31,8 +31,8 @@ from stripe import (
 from structlog import get_logger
 
 from bxctl import env, errors, structures
+from bxctl.app import dependencies
 from bxctl.db import defs
-from bxctl.web import dependencies
 
 from . import service
 

@@ -13,10 +13,9 @@ from fastapi import APIRouter, HTTPException, status
 from structlog import get_logger
 
 from bxctl import errors, structures
+from bxctl.app import dependencies
 from bxctl.db import defs
 from bxctl.registry import CoreEvent
-
-from . import dependencies
 
 logger = get_logger()
 router = APIRouter(prefix="/machine-credits", tags=["Core: Machine Credits"])

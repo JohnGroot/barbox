@@ -86,7 +86,7 @@ start_backend() {
 
 	# Start backend in background
 	ENV=local DROP_DB_ON_STARTUP=1 SQLITE_PATH="$TEST_DB" \
-		uv run python -m uvicorn bxctl.web.main:app \
+		uv run python -m uvicorn bxctl.app.main:app \
 		--host 127.0.0.1 \
 		--port $TEST_PORT \
 		> "$LOG_FILE" 2>&1 &

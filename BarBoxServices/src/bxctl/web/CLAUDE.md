@@ -3,14 +3,16 @@
 ## Structure
 
 ```
-web/
+app/  (application assembly)
 +-- main.py             # FastAPI app, lifespan, router registration
 +-- dependencies.py     # Dependency injection (Database, Now, box/player auth)
 +-- auth.py             # Box API key derivation, PIN hashing, JWT, phone normalization
+
+web/  (domain routers)
 +-- box.py              # Box and session endpoints (incl. event ingest)
 +-- player.py           # Player registration/login/credit endpoints
 +-- machine_credits.py  # Per-box+game machine credit pot endpoints
-+-- payments.py         # Stripe checkout + admin reconciliation
++-- payments/           # Stripe checkout + admin reconciliation
 +-- test.py             # Dev/test-only seed and reset endpoints
 ```
 

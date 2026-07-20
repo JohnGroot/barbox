@@ -8,10 +8,9 @@ from sqlalchemy.exc import IntegrityError
 from structlog import get_logger
 
 from bxctl import db, env, errors, structures
+from bxctl.app import auth, dependencies
 from bxctl.games import common
 from bxctl.registry import CoreEvent
-
-from . import auth, dependencies
 
 router = APIRouter(prefix="/player", tags=["Core: Players"])
 logger = get_logger()

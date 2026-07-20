@@ -103,7 +103,7 @@ source .venv/bin/activate
 # Start backend in production mode with proper logging
 # NOTE: Do NOT override ENV here - it must be loaded from .env file
 # (environment variables have higher precedence than .env values)
-nohup python -m fastapi run src/bxctl/web/main.py >> "$LOG_FILE" 2>&1 &
+nohup python -m fastapi run src/bxctl/app/main.py >> "$LOG_FILE" 2>&1 &
 
 BACKEND_PID=$!
 

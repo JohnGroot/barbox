@@ -15,6 +15,9 @@ from . import auth
 
 logger = get_logger()
 
+# Localhost variants (IPv4, IPv6, hostname) allowed to reach admin endpoints
+LOCALHOST_HOSTS = ("127.0.0.1", "::1", "localhost")
+
 
 async def _acquire_crud() -> AsyncIterator[db.service.CRUD]:
     async with db.connectivity.db_session() as session:
@@ -379,10 +382,7 @@ async def _require_localhost(request: Request) -> None:
     """
     client_host = request.client.host if request.client else None
 
-    # Allow localhost variants (IPv4, IPv6, hostname)
-    allowed_hosts = ("127.0.0.1", "::1", "localhost")
-
-    if client_host not in allowed_hosts:
+    if client_host not in LOCALHOST_HOSTS:
         logger.warning("admin_access_denied", client_host=client_host)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

@@ -620,7 +620,7 @@ STOP_BACKEND_EOF
 			source .venv/bin/activate
 
 			# Start backend in background
-			nohup python -m fastapi run src/bxctl/web/main.py > /tmp/barbox-backend-reg.log 2>&1 &
+			nohup python -m fastapi run src/bxctl/app/main.py > /tmp/barbox-backend-reg.log 2>&1 &
 			echo $! > /tmp/barbox-backend-reg.pid
 
 			# Wait for backend to be ready

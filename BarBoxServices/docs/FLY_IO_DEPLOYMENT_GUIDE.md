@@ -80,7 +80,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/alive').read()"
 
 # Run FastAPI with uvicorn
-CMD [".venv/bin/uvicorn", "bxctl.web.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD [".venv/bin/uvicorn", "bxctl.app.main:app", "--host", "0.0.0.0", "--port", "8080"]
 ```
 
 **Key Points:**
@@ -659,7 +659,7 @@ fly status --app barbox-backend-prod
 
 ### Security Headers Middleware
 
-Add security headers to protect against common vulnerabilities. Add this middleware to `src/bxctl/web/main.py`:
+Add security headers to protect against common vulnerabilities. Add this middleware to `src/bxctl/app/main.py`:
 
 ```python
 from fastapi import Request
@@ -948,7 +948,7 @@ Test your backup/recovery process quarterly to ensure data can be restored.
 The `/alive` endpoint provides basic health monitoring. Enhance it with version information:
 
 ```python
-# In src/bxctl/web/main.py
+# In src/bxctl/app/main.py
 @app.get("/alive")
 async def alive():
     return {

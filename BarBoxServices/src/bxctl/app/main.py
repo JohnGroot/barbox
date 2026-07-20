@@ -22,10 +22,9 @@ from bxctl import db, env
 from bxctl.db.connectivity import engine
 from bxctl.db.defs import Base
 from bxctl.registry import GAMES, game_module
-
-from . import box, machine_credits, player, test
-from .payments import router as payments_router
-from .test import _seed_test_box_and_players
+from bxctl.web import box, machine_credits, player, test
+from bxctl.web.payments import router as payments_router
+from bxctl.web.test import _seed_test_box_and_players
 
 logger = get_logger()
 

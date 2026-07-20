@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from bxctl.web import dependencies
+from bxctl.app import dependencies
 
 from . import schemas, service
 

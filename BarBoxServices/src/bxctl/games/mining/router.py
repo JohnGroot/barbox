@@ -7,7 +7,7 @@ from sqlalchemy import text
 from structlog import get_logger
 
 from bxctl import env
-from bxctl.web import dependencies
+from bxctl.app import dependencies
 
 from . import schemas, service
 

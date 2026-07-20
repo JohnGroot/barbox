@@ -7,7 +7,7 @@ Set via `ENV` environment variable (defaults to `local`).
 ```bash
 ENV=local sh scripts/dev.sh   # Local development (default)
 ENV=test sh scripts/dev.sh    # Testing
-ENV=prod uv run fastapi run src/bxctl/web/main.py  # Production
+ENV=prod uv run fastapi run src/bxctl/app/main.py  # Production
 ```
 
 ## Environment-Specific Behavior
