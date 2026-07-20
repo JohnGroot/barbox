@@ -7,6 +7,7 @@ reconciliation) - this module is the thin FastAPI/Stripe-SDK glue layer.
 
 import asyncio
 from time import perf_counter
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -40,6 +41,19 @@ RATE_LIMIT_RETRY_AFTER_SECONDS = "60"
 
 logger = get_logger()
 router = APIRouter(prefix="/payments", tags=["Core: Payments"])
+
+# Client-facing poll status per persisted payment state. Only SUCCEEDED rows
+# are written today, but map every PaymentStatus explicitly so a future
+# PROCESSING/REFUNDED writer can't make a mid-flight payment poll as "failed".
+CHECKOUT_STATUS_BY_PAYMENT_STATUS: dict[
+    str, Literal["pending", "completed", "failed"]
+] = {
+    PaymentStatus.PENDING: "pending",
+    PaymentStatus.PROCESSING: "pending",
+    PaymentStatus.SUCCEEDED: "completed",
+    PaymentStatus.FAILED: "failed",
+    PaymentStatus.REFUNDED: "failed",
+}
 
 
 @router.post("/checkout/create", status_code=201)
@@ -249,7 +263,7 @@ async def get_checkout_status(
 
     return schemas.CheckoutStatusResponse(
         session_id=session_id,
-        status="completed" if payment.status == PaymentStatus.SUCCEEDED else "failed",
+        status=CHECKOUT_STATUS_BY_PAYMENT_STATUS.get(payment.status, "failed"),
         credits_granted=payment.credits_purchased + payment.bonus_credits,
         completed_at=payment.completed_at,
     )
