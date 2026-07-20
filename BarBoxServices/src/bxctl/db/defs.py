@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -66,6 +67,15 @@ class Player(Base):
     phone_number: Mapped[str]  # E.164 format phone number (e.g., +15551234567)
 
 
+class SessionType(StrEnum):
+    """Values persisted in BoxSession.session_type (column stays str)."""
+
+    LOBBY = "lobby"
+    GAME = "game"
+    PRACTICE = "practice"
+    PAYMENT = "payment"
+
+
 class BoxSession(Base):
     box_id: Mapped[BoxFk]
     host_player_id: Mapped[
@@ -77,7 +87,7 @@ class BoxSession(Base):
     game_tag: Mapped[
         str
     ]  # Game type identifier (e.g., "carrom", "racing", "mining", "lobby")
-    session_type: Mapped[str]  # Session type: "lobby" | "game" | "practice"
+    session_type: Mapped[str]  # SessionType value
     start_time: Mapped[datetime]
     end_time: Mapped[datetime | None]
     events: Mapped[list["BoxSessionEvent"]] = relationship(

@@ -1,37 +1,10 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, PlainSerializer
 
-from bxctl.registry import SessionEventType
-
-
-class Named(BaseModel):
-    name: str
-
-
-class Tagged(BaseModel):
-    tag: str
-
-
-class Identifiable(BaseModel):
-    id: UUID
-
-
-class BoxCreate(Identifiable, Named, Tagged):
-    pass
-
-
-class BoxDetail(Identifiable):
-    pass
-
-
-class BoxDetailWithAPIKey(Identifiable, Named, Tagged):
-    """Box details with API key - only returned on box creation."""
-
-    api_key: str
-    warning: str = "Save this API key securely - it will not be shown again"
+from bxctl.schemas import Identifiable, Tagged
 
 
 class PlayerCreate(Identifiable, Tagged):
@@ -62,54 +35,6 @@ class PlayerLoginResponse(BaseModel):
     expires_at: Annotated[
         datetime,
         PlainSerializer(lambda v: v.isoformat().replace("+00:00", "Z")),
-    ]
-
-
-class SessionEventBase(BaseModel):
-    type: SessionEventType
-    timestamp: Annotated[
-        datetime,
-        Field(default_factory=lambda: datetime.now(UTC)),
-        PlainSerializer(lambda v: v.isoformat()),
-    ]
-    payload: Any
-
-
-type GameTag = Literal["carrom"]
-
-
-class BeginPlay(SessionEventBase):
-    type: Literal["play/begin"]
-
-
-class EndPlay(SessionEventBase):
-    type: Literal["play/finish"]
-
-
-class Score(SessionEventBase):
-    type: Literal["play/score"]
-
-
-class BoxSessionDetail(Identifiable):
-    """Minimal session response for creation endpoints"""
-
-    game_tag: str
-
-
-class BoxSession(Identifiable):
-    box_id: UUID
-    host_player_id: UUID
-    player_ids: list[str]  # JSON array of player UUID strings
-    game_tag: str  # Game type identifier (e.g., "carrom", "racing", "mining")
-    start_time: Annotated[datetime, Field(default_factory=datetime.now)]
-    end_time: datetime | None = None
-    events: Annotated[
-        list[SessionEventBase],
-        Field(
-            default_factory=lambda: [
-                BeginPlay(type="play/begin", timestamp=datetime.now(UTC), payload=None)
-            ]
-        ),
     ]
 
 

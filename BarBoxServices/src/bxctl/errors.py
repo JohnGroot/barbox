@@ -1,7 +1,14 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from enum import StrEnum
 from typing import Any
 
+from fastapi import HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
+from structlog import get_logger
+
+logger = get_logger()
 
 
 class ErrorCode(StrEnum):
@@ -43,3 +50,54 @@ class ErrorDetail(BaseModel):
     details: dict[str, Any] | None = None  # Additional context
     request_id: str | None = None  # Request tracking ID
     retryable: bool = False  # Whether the client should retry the request
+
+
+@asynccontextmanager
+async def creation_error_boundary(
+    *,
+    log_event_stem: str,
+    conflict_message: str,
+    failure_message: str,
+    **log_fields: str,
+) -> AsyncIterator[None]:
+    """Translate resource-creation failures into the structured error envelope.
+
+    IntegrityError becomes a 409 UNIQUE_CONSTRAINT, anything else a 500
+    INTERNAL_ERROR; both log with `log_event_stem` so existing log event
+    names ({stem}_integrity_error / {stem}_failed) are preserved.
+    """
+    integrity_event = f"{log_event_stem}_integrity_error"
+    failure_event = f"{log_event_stem}_failed"
+    try:
+        yield
+    except IntegrityError as e:
+        logger.exception(
+            integrity_event,
+            error=str(e),
+            **log_fields,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": ErrorCode.UNIQUE_CONSTRAINT,
+                "message": conflict_message,
+                "details": {"error": str(e.orig) if hasattr(e, "orig") else str(e)},
+            },
+        ) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            failure_event,
+            error=str(e),
+            error_type=type(e).__name__,
+            **log_fields,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": ErrorCode.INTERNAL_ERROR,
+                "message": failure_message,
+                "details": {"error_type": type(e).__name__},
+            },
+        ) from e
