@@ -1,24 +1,18 @@
-"""Machine credit management endpoints
-
-Per box+game credit pools - credits transferred to machines persist until
-consumed by game start.
-"""
-
 import asyncio
 from collections import defaultdict
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import HTTPException, status
 from structlog import get_logger
 
-from bxctl import errors, structures
-from bxctl.app import dependencies
+from bxctl import errors
+from bxctl.credits import schemas
 from bxctl.db import defs
+from bxctl.db.service import CRUD
 from bxctl.registry import CoreEvent
 
 logger = get_logger()
-router = APIRouter(prefix="/machine-credits", tags=["Core: Machine Credits"])
 
 # Serializes check-then-insert consume requests per box+game pot so two
 # concurrent consumes can't both read the same pre-insert balance and
@@ -28,27 +22,11 @@ router = APIRouter(prefix="/machine-credits", tags=["Core: Machine Credits"])
 _consume_locks: defaultdict[tuple[str, str], asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
-@router.get("/{game_tag}")
-async def get_machine_credits(
+async def get_balance(
     game_tag: str,
     box_id: UUID,
-    db_service: dependencies.Database,
-) -> structures.MachineCreditsResponse:
-    """Get machine credit pot balance and player contributions
-
-    Args:
-            game_tag: Game type identifier (e.g., "carrom")
-            box_id: Physical box identifier (query param)
-
-    Returns:
-            Machine credit pot balance and individual player contributions
-
-    Example:
-            GET /machine-credits/carrom?box_id={box_id}
-            → {"box_id": "...", "game_tag": "carrom", "balance": 8,
-               "contributions": [...]}
-    """
-
+    db_service: CRUD,
+) -> schemas.MachineCreditsResponse:
     # Aggregate machine_credit/deposit and machine_credit/consume events in a
     # single table scan: group by player_id (NULL for consume events, which
     # carry no player_id) so both the per-player deposit total and the
@@ -85,7 +63,7 @@ async def get_machine_credits(
     )
 
     balance = 0
-    contributions: list[structures.MachinePlayerContribution] = []
+    contributions: list[schemas.MachinePlayerContribution] = []
     for player_id, deposited_raw, consumed_raw in result.tuples():
         deposited_amount = int(deposited_raw)
         consumed_amount = int(consumed_raw)
@@ -94,7 +72,7 @@ async def get_machine_credits(
         # and is excluded from per-player contributions.
         if player_id is not None:
             contributions.append(
-                structures.MachinePlayerContribution(
+                schemas.MachinePlayerContribution(
                     player_id=UUID(str(player_id)), amount=deposited_amount
                 )
             )
@@ -107,49 +85,20 @@ async def get_machine_credits(
         contribution_count=len(contributions),
     )
 
-    return structures.MachineCreditsResponse(
+    return schemas.MachineCreditsResponse(
         box_id=box_id, game_tag=game_tag, balance=balance, contributions=contributions
     )
 
 
-@router.post("/{game_tag}/deposit", status_code=201)
-async def deposit_machine_credits(
+async def deposit(
     game_tag: str,
-    request: structures.MachineCreditsDepositRequest,
-    authenticated_box: dependencies.BoxAuthenticated,
-    authenticated_player: dependencies.AuthenticatedPlayer,
-    db_service: dependencies.Database,
-) -> structures.MachineCreditsResponse:
-    """Deposit credits to machine pot (from player account)
-
-    **Authentication**: Requires both Box API key AND Player JWT token.
-
-    This endpoint records a machine_credit/deposit event. The caller must ensure
-    the player has sufficient balance and has already created a credit/spend event.
-
-    Args:
-            game_tag: Game type identifier
-            request: Deposit request containing box_id, player_id, amount,
-                    lobby_session_id
-
-    Returns:
-            Updated machine credit pot balance and contributions
-
-    Headers:
-            X-Box-API-Key: Box API key for authentication
-            Authorization: Bearer <player_jwt_token>
-
-    Example:
-            POST /machine-credits/carrom/deposit
-            {
-                    "box_id": "...",
-                    "player_id": "...",
-                    "amount": 5,
-                    "lobby_session_id": "..."
-            }
-    """
+    request: schemas.MachineCreditsDepositRequest,
+    authenticated_box_id: UUID,
+    authenticated_player_id: UUID,
+    db_service: CRUD,
+) -> schemas.MachineCreditsResponse:
     # Verify box_id matches authenticated box
-    if request.box_id != authenticated_box.id:
+    if request.box_id != authenticated_box_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -159,7 +108,7 @@ async def deposit_machine_credits(
         )
 
     # Verify player_id matches authenticated player
-    if request.player_id != authenticated_player:
+    if request.player_id != authenticated_player_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -198,40 +147,17 @@ async def deposit_machine_credits(
     )
 
     # Return updated balance
-    return await get_machine_credits(game_tag, request.box_id, db_service)
+    return await get_balance(game_tag, request.box_id, db_service)
 
 
-@router.post("/{game_tag}/consume", status_code=200)
-async def consume_machine_credits(
+async def consume(
     game_tag: str,
-    request: structures.MachineCreditsConsumeRequest,
-    authenticated_box: dependencies.BoxAuthenticated,
-    db_service: dependencies.Database,
-) -> structures.MachineCreditsResponse:
-    """Consume credits from machine pot (for game start)
-
-    **Authentication**: Requires Box API key.
-
-    Args:
-            game_tag: Game type identifier
-            request: Consume request containing box_id, amount, game_session_id
-
-    Returns:
-            Updated machine credit pot balance (should be reduced by amount)
-
-    Headers:
-            X-Box-API-Key: Box API key for authentication
-
-    Example:
-            POST /machine-credits/carrom/consume
-            {
-                    "box_id": "...",
-                    "amount": 8,
-                    "game_session_id": "..."
-            }
-    """
+    request: schemas.MachineCreditsConsumeRequest,
+    authenticated_box_id: UUID,
+    db_service: CRUD,
+) -> schemas.MachineCreditsResponse:
     # Verify box_id matches authenticated box
-    if request.box_id != authenticated_box.id:
+    if request.box_id != authenticated_box_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -244,7 +170,7 @@ async def consume_machine_credits(
     # consumes from both passing the balance check and overdrawing it.
     lock = _consume_locks[(game_tag, request.box_id.hex)]
     async with lock:
-        current = await get_machine_credits(game_tag, request.box_id, db_service)
+        current = await get_balance(game_tag, request.box_id, db_service)
         if current.balance < request.amount:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -285,4 +211,4 @@ async def consume_machine_credits(
     )
 
     # Return updated balance
-    return await get_machine_credits(game_tag, request.box_id, db_service)
+    return await get_balance(game_tag, request.box_id, db_service)

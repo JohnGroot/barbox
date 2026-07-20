@@ -20,11 +20,12 @@ from structlog import get_logger
 from alembic import command as alembic_command
 from bxctl import db, env
 from bxctl.boxes import router as boxes_router
+from bxctl.credits import router as credits_router
 from bxctl.db.connectivity import engine
 from bxctl.db.defs import Base
 from bxctl.players import router as players_router
 from bxctl.registry import GAMES, game_module
-from bxctl.web import machine_credits, test
+from bxctl.web import test
 from bxctl.web.payments import router as payments_router
 from bxctl.web.test import _seed_test_box_and_players
 
@@ -329,7 +330,7 @@ async def health_check() -> dict:
 routers = (
     players_router.router,
     boxes_router.router,
-    machine_credits.router,  # Machine credit pot management
+    credits_router.router,  # Machine credit pot management
     payments_router.router,  # Stripe checkout sessions for credit purchases
     payments_router.admin_router,  # Payment reconciliation (localhost only)
     test.router,  # Test endpoints (only available in dev/test modes)
