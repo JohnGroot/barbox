@@ -45,7 +45,7 @@ project/assembly_name="BarBox"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/Line2DHelpers/plugin.cfg")
+enabled=PackedStringArray("res://addons/Line2DHelpers/plugin.cfg", "res://addons/debug_menu/plugin.cfg")
 
 [gui]
 

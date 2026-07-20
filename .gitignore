@@ -93,3 +93,6 @@ BarBoxServices/app.db.ready
 
 # superpowers scratch
 .superpowers/
+
+# local profiling snapshots (dotTrace/dotMemory/py-spy output)
+profiling/
